@@ -285,7 +285,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layout_target: LayoutTarget::LayersPanelControlBar,
 				});
 			}
-
 			DocumentMessage::CreateEmptyFolder => {
 				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
 				let id = NodeId::new();
@@ -357,6 +356,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let parent = self.new_layer_parent(false);
 				let calculated_insert_index =
 					DocumentMessageHandler::get_calculated_insert_index(self.network_interface.document_metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
+
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(PortfolioMessage::PasteIntoFolder {
@@ -474,29 +474,44 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.children(self.metadata())
 					.filter(|x| self.network_interface.is_artboard(&x.to_node(), &self.selection_network_path))
 					.collect::<Vec<_>>();
-				let selected_nodes: SelectedNodes = self.network_interface.selected_nodes(&[]).unwrap();
-				if artboards.len() > 0 {
-					// Artboard workflow
+				let Some(selected_nodes) = self.network_interface.selected_nodes(&[]) else { return };
+
+				// Non-artboard (infinite canvas) workflow
+				if artboards.is_empty() {
+					let Some(parent) = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false) else {
+						return;
+					};
+					let Some(selected_nodes) = &self.network_interface.selected_nodes(&self.selection_network_path) else {
+						return;
+					};
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
+
+					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type);
+				}
+				// Artboard workflow
+				else {
 					for artboard in artboards {
 						let selected_descendants = artboard.descendants(self.metadata()).filter(|x| selected_nodes.selected_layers_contains(*x, self.metadata()));
 						for selected_descendant in selected_descendants {
-							parent_per_selected_nodes.entry(artboard).or_insert_with(Vec::new).push(selected_descendant.to_node());
+							parent_per_selected_nodes.entry(artboard).or_default().push(selected_descendant.to_node());
 						}
 					}
+
 					let mut new_folders: Vec<NodeId> = Vec::new();
+
 					for children in parent_per_selected_nodes.into_values() {
-						let selected_nodes = SelectedNodes(children);
-						let parent: LayerNodeIdentifier = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false).unwrap();
-						let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &selected_nodes, parent);
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected_nodes.0 });
+						let child_selected_nodes = SelectedNodes(children);
+						let Some(parent) = self.network_interface.deepest_common_ancestor(&child_selected_nodes, &self.selection_network_path, false) else {
+							continue;
+						};
+						let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &child_selected_nodes, parent);
+
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: child_selected_nodes.0 });
+
 						new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type));
 					}
+
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
-				} else {
-					// Non-artboard workflow
-					let parent: LayerNodeIdentifier = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false).unwrap();
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &self.network_interface.selected_nodes(&self.selection_network_path).unwrap(), parent);
-					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type);
 				}
 			}
 			DocumentMessage::ImaginateGenerate { imaginate_node } => {
@@ -1690,7 +1705,11 @@ impl DocumentMessageHandler {
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
-		let selected_nodes = self.network_interface.selected_nodes(&self.selection_network_path).unwrap();
+		let Some(selected_nodes) = self.network_interface.selected_nodes(&self.selection_network_path) else {
+			warn!("No selected nodes found in new_layer_parent. Defaulting to ROOT_PARENT.");
+			return LayerNodeIdentifier::ROOT_PARENT;
+		};
+
 		self.network_interface
 			.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
@@ -1742,8 +1761,10 @@ impl DocumentMessageHandler {
 			insert_index,
 		});
 		responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+
 		folder_id
 	}
+
 	/// Loads all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
@@ -2065,10 +2086,8 @@ impl DocumentMessageHandler {
 					.tooltip("Group Selected")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
 					.on_update(|_| {
-						DocumentMessage::GroupSelectedLayers {
-							group_folder_type: GroupFolderType::Layer,
-						}
-						.into()
+						let group_folder_type = GroupFolderType::Layer;
+						DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 					})
 					.disabled(!has_selection)
 					.widget_holder(),

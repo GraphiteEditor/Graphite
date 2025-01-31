@@ -159,10 +159,8 @@ impl SelectTool {
 				.tooltip(operation.to_string())
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
-					DocumentMessage::GroupSelectedLayers {
-						group_folder_type: GroupFolderType::BooleanOperation(operation),
-					}
-					.into()
+					let group_folder_type = GroupFolderType::BooleanOperation(operation);
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.widget_holder()
 		})
@@ -360,6 +358,7 @@ impl SelectToolData {
 			let nodes = document.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &document.network_interface.selected_nodes(&[]).unwrap(), parent);
+
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");

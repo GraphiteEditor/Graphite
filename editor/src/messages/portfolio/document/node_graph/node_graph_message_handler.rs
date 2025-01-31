@@ -1817,10 +1817,8 @@ impl NodeGraphMessageHandler {
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
 				.on_update(|_| {
-					DocumentMessage::GroupSelectedLayers {
-						group_folder_type: GroupFolderType::Layer,
-					}
-					.into()
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.disabled(!has_selection)
 				.widget_holder(),
