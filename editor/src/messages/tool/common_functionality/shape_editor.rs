@@ -1,4 +1,4 @@
-use super::graph_modification_utils;
+use super::graph_modification_utils::{self, merge_layers};
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
@@ -249,42 +249,17 @@ impl ShapeState {
 					handles: [None, None],
 				};
 				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
-			}
-			// TODO: Fix the implementation of this case so it actually connects the separate layers, see:
-			// TODO: <https://github.com/GraphiteEditor/Graphite/pull/2227#issuecomment-2626342475>
-			else {
-				// Points are in different layers - find the topmost layer
-				let top_layer = document.metadata().all_layers().find(|&layer| layer == layer1 || layer == layer2).unwrap_or(layer1);
-
-				let bottom_layer = if top_layer == layer1 { layer2 } else { layer1 };
-				let bottom_point = if top_layer == layer1 { end_point } else { start_point };
-
-				// Get position of point in bottom layer
-				let Some(bottom_vector_data) = document.network_interface.compute_modified_vector(bottom_layer) else {
-					return;
-				};
-				let Some(point_pos) = bottom_vector_data.point_domain.position_from_id(bottom_point) else {
-					return;
-				};
-
-				// Create new point in top layer
-				let new_point_id = PointId::generate();
-				let modification_type = VectorModificationType::InsertPoint {
-					id: new_point_id,
-					position: point_pos,
-				};
-				responses.add(GraphOperationMessage::Vector { layer: top_layer, modification_type });
-
-				// Create segment between points in top layer
+			} else {
+				// Merge the layers
+				merge_layers(document, layer1, layer2, responses);
+				// Create segmen between the two points
 				let segment_id = SegmentId::generate();
-				let points = if top_layer == layer1 { [start_point, new_point_id] } else { [new_point_id, end_point] };
-
 				let modification_type = VectorModificationType::InsertSegment {
 					id: segment_id,
-					points,
+					points: [end_point, start_point],
 					handles: [None, None],
 				};
-				responses.add(GraphOperationMessage::Vector { layer: top_layer, modification_type });
+				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
 			}
 			return;
 		}
