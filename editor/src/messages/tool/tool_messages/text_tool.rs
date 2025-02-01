@@ -615,7 +615,7 @@ impl Fsm for TextToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) {
 		let hint_data = match self {
 			TextToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Place Text")]),
