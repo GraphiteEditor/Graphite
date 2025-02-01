@@ -79,8 +79,7 @@ pub enum SelectToolMessage {
 	DragStart {
 		extend_selection: Key,
 		remove_from_selection: Key,
-		select_deepest_on_accel: Key,
-		select_deepest_on_control: Key,
+		select_deepest: Key,
 		lasso_select: Key,
 	},
 	DragStop {
@@ -619,8 +618,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolMessage::DragStart {
 					extend_selection,
 					remove_from_selection,
-					select_deepest_on_accel,
-					select_deepest_on_control,
+					select_deepest,
 					lasso_select,
 				},
 			) => {
@@ -740,7 +738,7 @@ impl Fsm for SelectToolFsmState {
 				else if intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					if input.keyboard.key(select_deepest_on_control) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
@@ -765,7 +763,7 @@ impl Fsm for SelectToolFsmState {
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest_on_accel) => drag_shallowest_manipulation(responses, selected, tool_data, document),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
