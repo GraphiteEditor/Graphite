@@ -11,6 +11,8 @@ use graphene_core::raster::Image;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
+#[cfg(target_arch = "wasm32")]
+use graphene_core::transform::TransformMut;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
 
@@ -86,8 +88,6 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 			height: image.height(),
 			..Default::default()
 		},
-		transform: glam::DAffine2::IDENTITY,
-		alpha_blending: Default::default(),
 	};
 
 	ImageFrameTable::new(image)
@@ -130,7 +130,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	let mut child = Scene::new();
 
 	let mut context = wgpu_executor::RenderContext::default();
-	data.render_to_vello(&mut child, glam::DAffine2::IDENTITY, &mut context);
+	data.render_to_vello(&mut child, Default::default(), &mut context);
 
 	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
@@ -200,13 +200,12 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let result = ImageFrame {
+	let mut result = ImageFrameTable::new(ImageFrame {
 		image: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
-		transform: footprint.transform,
-		..Default::default()
-	};
+	});
+	*result.transform_mut() = footprint.transform;
 
-	ImageFrameTable::new(result)
+	result
 }
 
 #[node_macro::node(category(""))]
@@ -238,8 +237,10 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(ctx.clone()).await;
+
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let surface_handle = _surface_handle.eval(ctx.clone()).await;
+
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();

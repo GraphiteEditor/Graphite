@@ -1,23 +1,13 @@
-use crate::vector::InstanceId;
-use crate::{AlphaBlending, GraphicElement};
+use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::Pixel;
+use crate::transform::{Transform, TransformMut};
+use crate::vector::{InstanceId, VectorData, VectorDataTable};
+use crate::{AlphaBlending, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
 
 use dyn_any::StaticType;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use std::hash::Hash;
-
-#[derive(Copy, Clone, Debug)]
-pub struct Instance<'a, T> {
-	pub id: &'a InstanceId,
-	pub instance: &'a T,
-	pub transform: &'a DAffine2,
-	pub alpha_blending: &'a AlphaBlending,
-}
-pub struct InstanceMut<'a, T> {
-	pub id: &'a mut InstanceId,
-	pub instance: &'a mut T,
-	pub transform: &'a mut DAffine2,
-	pub alpha_blending: &'a mut AlphaBlending,
-}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Instances<T>
@@ -53,10 +43,7 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 	}
 
 	pub fn one_instance_mut(&mut self) -> InstanceMut<T> {
-		#[cfg(debug_assertions)]
 		let length = self.instance.len();
-		#[cfg(not(debug_assertions))]
-		let length = '?';
 
 		InstanceMut {
 			id: self.id.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
@@ -95,25 +82,6 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 				alpha_blending,
 			})
 	}
-
-	// pub fn id(&self) -> impl Iterator<Item = InstanceId> + '_ {
-	// 	self.id.iter().copied()
-	// }
-
-	// pub fn push(&mut self, id: InstanceId, instance: T) {
-	// 	self.id.push(id);
-	// 	self.instances.push(instance);
-	// }
-
-	// pub fn replace_all(&mut self, id: InstanceId, instance: T) {
-	// 	let mut instance = instance;
-
-	// 	for (old_id, old_instance) in self.id.iter_mut().zip(self.instances.iter_mut()) {
-	// 		let mut new_id = id;
-	// 		std::mem::swap(old_id, &mut new_id);
-	// 		std::mem::swap(&mut instance, old_instance);
-	// 	}
-	// }
 }
 
 impl<T: Into<GraphicElement> + Default + Hash + StaticType + 'static> Default for Instances<T> {
@@ -146,4 +114,195 @@ fn one_daffine2_default() -> Vec<DAffine2> {
 }
 fn one_alpha_blending_default() -> Vec<AlphaBlending> {
 	vec![AlphaBlending::default()]
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Instance<'a, T> {
+	pub id: &'a InstanceId,
+	pub instance: &'a T,
+	pub transform: &'a DAffine2,
+	pub alpha_blending: &'a AlphaBlending,
+}
+#[derive(Debug)]
+pub struct InstanceMut<'a, T> {
+	pub id: &'a mut InstanceId,
+	pub instance: &'a mut T,
+	pub transform: &'a mut DAffine2,
+	pub alpha_blending: &'a mut AlphaBlending,
+}
+
+// GRAPHIC ELEMENT
+impl Transform for GraphicElement {
+	fn transform(&self) -> DAffine2 {
+		match self {
+			GraphicElement::GraphicGroup(group) => group.transform(),
+			GraphicElement::VectorData(vector_data) => vector_data.transform(),
+			GraphicElement::RasterFrame(frame) => frame.transform(),
+		}
+	}
+}
+impl TransformMut for GraphicElement {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		match self {
+			GraphicElement::GraphicGroup(group) => group.transform_mut(),
+			GraphicElement::VectorData(vector_data) => vector_data.transform_mut(),
+			GraphicElement::RasterFrame(frame) => frame.transform_mut(),
+		}
+	}
+}
+
+// GRAPHIC GROUP
+impl Transform for Instance<'_, GraphicGroup> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+}
+impl Transform for InstanceMut<'_, GraphicGroup> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+}
+impl TransformMut for InstanceMut<'_, GraphicGroup> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform
+	}
+}
+
+// GRAPHIC GROUP TABLE
+impl Transform for GraphicGroupTable {
+	fn transform(&self) -> DAffine2 {
+		self.one_instance().transform()
+	}
+}
+impl TransformMut for GraphicGroupTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED"))
+	}
+}
+
+// TEXTURE FRAME
+impl Transform for Instance<'_, TextureFrame> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+}
+impl Transform for InstanceMut<'_, TextureFrame> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+}
+impl TransformMut for InstanceMut<'_, TextureFrame> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform
+	}
+}
+
+// TEXTURE FRAME TABLE
+impl Transform for TextureFrameTable {
+	fn transform(&self) -> DAffine2 {
+		self.one_instance().transform()
+	}
+}
+impl TransformMut for TextureFrameTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED"))
+	}
+}
+
+// IMAGE FRAME
+impl<P: Pixel> Transform for Instance<'_, ImageFrame<P>> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.transform.transform_point2(pivot)
+	}
+}
+impl<P: Pixel> Transform for InstanceMut<'_, ImageFrame<P>> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.transform.transform_point2(pivot)
+	}
+}
+impl<P: Pixel> TransformMut for InstanceMut<'_, ImageFrame<P>> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform
+	}
+}
+
+// IMAGE FRAME TABLE
+impl<P: Pixel> Transform for ImageFrameTable<P>
+where
+	P: dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	fn transform(&self) -> DAffine2 {
+		self.one_instance().transform()
+	}
+}
+impl<P: Pixel> TransformMut for ImageFrameTable<P>
+where
+	P: dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED"))
+	}
+}
+
+// VECTOR DATA
+impl Transform for Instance<'_, VectorData> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.transform.transform_point2(self.instance.layerspace_pivot(pivot))
+	}
+}
+impl Transform for InstanceMut<'_, VectorData> {
+	fn transform(&self) -> DAffine2 {
+		*self.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.transform.transform_point2(self.instance.layerspace_pivot(pivot))
+	}
+}
+impl TransformMut for InstanceMut<'_, VectorData> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform
+	}
+}
+
+// VECTOR DATA TABLE
+impl Transform for VectorDataTable {
+	fn transform(&self) -> DAffine2 {
+		self.one_instance().transform()
+	}
+}
+impl TransformMut for VectorDataTable {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED"))
+	}
+}
+
+// RASTER FRAME
+impl Transform for RasterFrame {
+	fn transform(&self) -> DAffine2 {
+		match self {
+			RasterFrame::ImageFrame(image_frame) => image_frame.transform(),
+			RasterFrame::TextureFrame(texture_frame) => texture_frame.transform(),
+		}
+	}
+}
+impl TransformMut for RasterFrame {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		match self {
+			RasterFrame::ImageFrame(image_frame) => image_frame.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED")),
+			RasterFrame::TextureFrame(texture_frame) => texture_frame.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED")),
+		}
+	}
 }

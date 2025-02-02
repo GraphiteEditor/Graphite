@@ -1,3 +1,4 @@
+use crate::transform::Transform;
 use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
 use crate::vector::ConcatElement;
 
@@ -792,20 +793,20 @@ impl ConcatElement for VectorData {
 			segment_map,
 			region_map,
 		};
-		self.point_domain.concat(&other.point_domain, transform * other.transform, &id_map);
-		self.segment_domain.concat(&other.segment_domain, transform * other.transform, &id_map);
-		self.region_domain.concat(&other.region_domain, transform * other.transform, &id_map);
+		self.point_domain.concat(&other.point_domain, transform, &id_map);
+		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
+		self.region_domain.concat(&other.region_domain, transform, &id_map);
 		// TODO: properly deal with fills such as gradients
 		self.style = other.style.clone();
 		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
-		self.alpha_blending = other.alpha_blending;
 	}
 }
 
 impl ConcatElement for VectorDataTable {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
-			instance.instance.concat(other_instance.instance, transform, node_id);
+			*instance.alpha_blending = *other_instance.alpha_blending;
+			instance.instance.concat(other_instance.instance, transform * other_instance.transform(), node_id);
 		}
 	}
 }

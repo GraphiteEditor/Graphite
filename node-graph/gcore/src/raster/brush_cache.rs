@@ -1,15 +1,14 @@
-use core::hash::Hash;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
-
-use dyn_any::DynAny;
-
-use crate::raster::image::ImageFrame;
+use crate::graphene_core::raster::image::ImageFrameTable;
 use crate::raster::Image;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
 use crate::Color;
+
+use core::hash::Hash;
+use dyn_any::DynAny;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -18,9 +17,12 @@ struct BrushCacheImpl {
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	background: ImageFrame<Color>,
-	blended_image: ImageFrame<Color>,
-	last_stroke_texture: ImageFrame<Color>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
+	background: ImageFrameTable<Color>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
+	blended_image: ImageFrameTable<Color>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
+	last_stroke_texture: ImageFrameTable<Color>,
 
 	// A cache for brush textures.
 	#[cfg_attr(feature = "serde", serde(skip))]
@@ -28,9 +30,9 @@ struct BrushCacheImpl {
 }
 
 impl BrushCacheImpl {
-	fn compute_brush_plan(&mut self, mut background: ImageFrame<Color>, input: &[BrushStroke]) -> BrushPlan {
+	fn compute_brush_plan(&mut self, mut background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
 		// Do background invalidation.
-		if background.transform != self.background.transform || background.image != self.background.image {
+		if background.one_instance().instance.image != self.background.one_instance().instance.image {
 			self.background = background.clone();
 			return BrushPlan {
 				strokes: input.to_vec(),
@@ -55,7 +57,7 @@ impl BrushCacheImpl {
 		background = core::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = ImageFrame::default();
+		let mut first_stroke_texture = ImageFrameTable::default();
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
 		if !strokes.is_empty() && self.prev_input.len() > num_blended_strokes {
@@ -79,7 +81,7 @@ impl BrushCacheImpl {
 		}
 	}
 
-	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: ImageFrame<Color>, last_stroke_texture: ImageFrame<Color>) {
+	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: ImageFrameTable<Color>, last_stroke_texture: ImageFrameTable<Color>) {
 		self.prev_input = input;
 		self.blended_image = blended_image;
 		self.last_stroke_texture = last_stroke_texture;
@@ -94,8 +96,8 @@ impl Hash for BrushCacheImpl {
 #[derive(Clone, Debug, Default)]
 pub struct BrushPlan {
 	pub strokes: Vec<BrushStroke>,
-	pub background: ImageFrame<Color>,
-	pub first_stroke_texture: ImageFrame<Color>,
+	pub background: ImageFrameTable<Color>,
+	pub first_stroke_texture: ImageFrameTable<Color>,
 	pub first_stroke_point_skip: usize,
 }
 
@@ -159,12 +161,12 @@ impl BrushCache {
 		}
 	}
 
-	pub fn compute_brush_plan(&self, background: ImageFrame<Color>, input: &[BrushStroke]) -> BrushPlan {
+	pub fn compute_brush_plan(&self, background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.inner.lock().unwrap();
 		inner.compute_brush_plan(background, input)
 	}
 
-	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: ImageFrame<Color>, last_stroke_texture: ImageFrame<Color>) {
+	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: ImageFrameTable<Color>, last_stroke_texture: ImageFrameTable<Color>) {
 		let mut inner = self.inner.lock().unwrap();
 		inner.cache_results(input, blended_image, last_stroke_texture)
 	}
