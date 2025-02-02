@@ -322,7 +322,7 @@ impl SelectToolData {
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_direction(&mut self) -> SelectionMode {
+	pub fn calculate_selection_mode_from_direction(&mut self) -> SelectionMode {
 		let bbox: [DVec2; 2] = self.selection_box();
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
@@ -535,10 +535,10 @@ impl Fsm for SelectToolFsmState {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
-					let mut selection_direction = tool_action_data.preferences.get_selection_mode();
-					if selection_direction == SelectionMode::Directional {
-						selection_direction = tool_data.calculate_direction();
-					}
+					let selection_mode = match tool_action_data.preferences.get_selection_mode() {
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+						selection_mode => selection_mode,
+					};
 
 					// Draw outline visualizations on the layers to be selected
 					let mut draw_layer_outline = |layer| overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
@@ -546,7 +546,7 @@ impl Fsm for SelectToolFsmState {
 						SelectionShapeType::Box => document.intersect_quad_no_artboards(quad, input).collect(),
 						SelectionShapeType::Lasso => tool_data.intersect_lasso_no_artboards(document, input),
 					};
-					if selection_direction == SelectionMode::Enclosed {
+					if selection_mode == SelectionMode::Enclosed {
 						let is_inside = |layer: &LayerNodeIdentifier| match selection_shape {
 							SelectionShapeType::Box => document.is_layer_fully_inside(layer, quad),
 							SelectionShapeType::Lasso => tool_data.is_layer_inside_lasso_polygon(layer, document, input),
@@ -570,7 +570,7 @@ impl Fsm for SelectToolFsmState {
 
 					let polygon = &tool_data.lasso_polygon;
 
-					match (selection_shape, selection_direction) {
+					match (selection_shape, selection_mode) {
 						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
@@ -1122,16 +1122,16 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Drawing { selection_shape }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				let quad = tool_data.selection_quad();
 
-				let mut selection_direction = tool_action_data.preferences.get_selection_mode();
-				if selection_direction == SelectionMode::Directional {
-					selection_direction = tool_data.calculate_direction();
-				}
+				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+					selection_mode => selection_mode,
+				};
 
 				let intersection: Vec<LayerNodeIdentifier> = match selection_shape {
 					SelectionShapeType::Box => document.intersect_quad_no_artboards(quad, input).collect(),
 					SelectionShapeType::Lasso => tool_data.intersect_lasso_no_artboards(document, input),
 				};
-				let new_selected: HashSet<_> = if selection_direction == SelectionMode::Enclosed {
+				let new_selected: HashSet<_> = if selection_mode == SelectionMode::Enclosed {
 					let is_inside = |layer: &LayerNodeIdentifier| match selection_shape {
 						SelectionShapeType::Box => document.is_layer_fully_inside(layer, quad),
 						SelectionShapeType::Lasso => tool_data.is_layer_inside_lasso_polygon(layer, document, input),
