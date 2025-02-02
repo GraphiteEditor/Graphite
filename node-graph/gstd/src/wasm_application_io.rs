@@ -78,7 +78,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 #[node_macro::node(category("Network"))]
 fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return ImageFrameTable::default();
+		return ImageFrameTable::empty();
 	};
 	let image = image.to_rgba32f();
 	let image = ImageFrame {
@@ -163,7 +163,7 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 ) -> ImageFrameTable<Color> {
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return ImageFrameTable::default();
+		return ImageFrameTable::empty();
 	}
 
 	let mut render = SvgRender::new();

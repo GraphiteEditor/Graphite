@@ -129,7 +129,7 @@ impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 impl<T> Serde for T {}
 
 // TODO: Come up with a better name for this trait
-pub trait Pixel: Clone + Pod + Zeroable {
+pub trait Pixel: Clone + Pod + Zeroable + Default {
 	#[cfg(not(target_arch = "spirv"))]
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()

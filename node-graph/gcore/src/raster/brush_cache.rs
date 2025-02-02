@@ -57,7 +57,7 @@ impl BrushCacheImpl {
 		background = core::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = ImageFrameTable::default();
+		let mut first_stroke_texture = ImageFrameTable::empty();
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
 		if !strokes.is_empty() && self.prev_input.len() > num_blended_strokes {
