@@ -4,8 +4,8 @@ use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::BlendMode;
 use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
+use graphene_core::raster::{Bitmap, BlendMode};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
@@ -319,6 +319,7 @@ fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: ImageFr
 mod test {
 	use super::*;
 
+	use graphene_core::raster::Bitmap;
 	use graphene_core::transform::Transform;
 	use graphene_core::value::ClonedNode;
 
@@ -332,5 +333,27 @@ mod test {
 		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
 		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));
+	}
+
+	#[test]
+	fn test_brush_output_size() {
+		let brush_node = BrushNode::new(
+			ClonedNode::new(ImageFrameTable::<Color>::default()),
+			ClonedNode::new(ImageFrameTable::<Color>::default()),
+			ClonedNode::new(vec![BrushStroke {
+				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
+				style: BrushStyle {
+					color: Color::BLACK,
+					diameter: 20.,
+					hardness: 20.,
+					flow: 20.,
+					spacing: 20.,
+					blend_mode: BlendMode::Normal,
+				},
+			}]),
+			ClonedNode::new(BrushCache::new_proto()),
+		);
+		let image = brush_node.eval(());
+		assert_eq!(image.width(), 20);
 	}
 }
