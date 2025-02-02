@@ -933,7 +933,8 @@ async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFram
 
 	TextureFrame {
 		texture: texture.into(),
-		transform: input.transform,
-		alpha_blend: Default::default(),
+		// TODO: Find an alternate way to encode the transform and alpha_blend now that these fields have been moved up out of TextureFrame
+		// transform: input.transform,
+		// alpha_blend: Default::default(),
 	}
 }

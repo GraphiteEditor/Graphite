@@ -6,6 +6,8 @@ use graph_craft::proto::*;
 use graphene_core::application_io::ApplicationIo;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::{BlendMode, Image, Pixel};
+use graphene_core::transform::Transform;
+use graphene_core::transform::TransformMut;
 use graphene_core::*;
 use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
 
@@ -109,18 +111,17 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 	#[cfg(feature = "image-compare")]
 	log::debug!("score: {:?}", score.score);
 
-	let result = ImageFrame {
-		image: Image {
-			data: colors,
-			width: image.image.width,
-			height: image.image.height,
-			..Default::default()
-		},
-		transform: image.transform,
-		alpha_blending: image.alpha_blending,
+	let new_image = Image {
+		data: colors,
+		width: image.image.width,
+		height: image.image.height,
+		..Default::default()
 	};
+	let mut result = ImageFrameTable::new(ImageFrame { image: new_image });
+	*result.transform_mut() = image_frame_table.transform();
+	*result.one_instance_mut().alpha_blending = *image_frame_table.one_instance().alpha_blending;
 
-	ImageFrameTable::new(result)
+	result
 }
 
 impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
@@ -280,6 +281,11 @@ where
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
+	let foreground_transform = foreground.transform();
+	let background_transform = background.transform();
+
+	let background_alpha_blending = background.one_instance().alpha_blending;
+
 	let foreground = foreground.one_instance().instance;
 	let background = background.one_instance().instance;
 
@@ -287,7 +293,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
+	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground_transform.inverse() * background_transform * DAffine2::from_scale(1. / background_size);
 
 	let transform_matrix: Mat2 = bg_to_fg.matrix2.as_mat2();
 	let translation: Vec2 = bg_to_fg.translation.as_vec2();
@@ -444,16 +450,16 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 
-	let result = ImageFrame {
-		image: Image {
-			data: colors,
-			width: background.image.width,
-			height: background.image.height,
-			..Default::default()
-		},
-		transform: background.transform,
-		alpha_blending: background.alpha_blending,
+	let created_image = Image {
+		data: colors,
+		width: background.image.width,
+		height: background.image.height,
+		..Default::default()
 	};
 
-	ImageFrameTable::new(result)
+	let mut result = ImageFrameTable::new(ImageFrame { image: created_image });
+	*result.transform_mut() = background_transform;
+	*result.one_instance_mut().alpha_blending = *background_alpha_blending;
+
+	result
 }

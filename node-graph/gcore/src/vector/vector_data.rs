@@ -5,7 +5,7 @@ pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
-use crate::{AlphaBlending, Color, GraphicGroupTable};
+use crate::{Color, GraphicGroupTable};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
@@ -38,9 +38,6 @@ pub type VectorDataTable = Instances<VectorData>;
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
-	pub transform: DAffine2,
-	pub alpha_blending: AlphaBlending,
-
 	pub style: PathStyle,
 
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
@@ -60,20 +57,17 @@ impl core::hash::Hash for VectorData {
 		self.point_domain.hash(state);
 		self.segment_domain.hash(state);
 		self.region_domain.hash(state);
-		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.style.hash(state);
-		self.alpha_blending.hash(state);
 		self.colinear_manipulators.hash(state);
 	}
 }
 
 impl VectorData {
 	/// An empty subpath with no data, an identity transform, and a black fill.
+	// TODO: Replace with just `Default`
 	pub const fn empty() -> Self {
 		Self {
-			transform: DAffine2::IDENTITY,
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
-			alpha_blending: AlphaBlending::new(),
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
@@ -190,11 +184,6 @@ impl VectorData {
 		let [bounds_min, bounds_max] = self.nonzero_bounding_box();
 		let bounds_size = bounds_max - bounds_min;
 		bounds_min + bounds_size * normalized_pivot
-	}
-
-	/// Compute the pivot in local space with the current transform applied
-	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
-		self.transform.transform_point2(self.layerspace_pivot(normalized_pivot))
 	}
 
 	pub fn start_point(&self) -> impl Iterator<Item = PointId> + '_ {

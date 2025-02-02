@@ -614,8 +614,6 @@ impl Blend<Color> for ImageFrameTable<Color> {
 					height: over.instance.image.height,
 					base64_string: None,
 				},
-				transform: over.instance.transform,
-				alpha_blending: over.instance.alpha_blending,
 			};
 		}
 
@@ -1373,14 +1371,14 @@ impl MultiplyAlpha for Color {
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
-			instance.instance.alpha_blending.opacity *= factor as f32;
+			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
-			instance.instance.alpha_blending.opacity *= factor as f32;
+			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
@@ -1392,7 +1390,7 @@ where
 {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
-			instance.instance.alpha_blending.opacity *= factor as f32;
+			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
@@ -1582,10 +1580,7 @@ mod test {
 	#[tokio::test]
 	async fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
-		let image = ImageFrame {
-			image: Image::new(1, 1, image_color),
-			..Default::default()
-		};
+		let image = ImageFrame { image: Image::new(1, 1, image_color) };
 
 		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
 		let overlay_color = Color::GREEN;

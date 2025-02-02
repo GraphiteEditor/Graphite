@@ -1,7 +1,7 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
 use crate::instances::Instances;
-use crate::{AlphaBlending, GraphicElement};
+use crate::GraphicElement;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -240,27 +240,11 @@ pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
-	// The transform that maps image space to layer space.
-	//
-	// Image space is unitless [0, 1] for both axes, with x axis positive
-	// going right and y axis positive going down, with the origin lying at
-	// the topleft of the image and (1, 1) lying at the bottom right of the image.
-	//
-	// Layer space has pixels as its units for both axes, with the x axis
-	// positive going right and y axis positive going down, with the origin
-	// being an unspecified quantity.
-	pub transform: DAffine2,
-	pub alpha_blending: AlphaBlending,
 }
 
 impl<P: Pixel> Default for ImageFrame<P> {
 	fn default() -> Self {
-		Self {
-			image: Image::empty(),
-			alpha_blending: AlphaBlending::new(),
-			// Different from DAffine2::default() which is IDENTITY
-			transform: DAffine2::ZERO,
-		}
+		Self { image: Image::empty() }
 	}
 }
 
@@ -271,7 +255,6 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	#[inline(always)]
 	fn sample(&self, pos: DVec2, _area: DVec2) -> Option<Self::Pixel> {
 		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
-		let pos = (DAffine2::from_scale(image_size) * self.transform.inverse()).transform_point2(pos);
 		if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {
 			return None;
 		}
@@ -289,7 +272,11 @@ where
 	// TODO: Improve sampling logic
 	#[inline(always)]
 	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
+		let image_transform = self.one_instance().transform;
 		let image = self.one_instance().instance;
+
+		let image_size = DVec2::new(image.width() as f64, image.height() as f64);
+		let pos = (DAffine2::from_scale(image_size) * image_transform.inverse()).transform_point2(pos);
 
 		Sample::sample(image, pos, area)
 	}
@@ -384,16 +371,8 @@ impl<P: Pixel> AsRef<ImageFrame<P>> for ImageFrame<P> {
 
 impl<P: Hash + Pixel> Hash for ImageFrame<P> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		0.hash(state);
 		self.image.hash(state);
-	}
-}
-
-impl<P: Pixel> ImageFrame<P> {
-	/// Compute the pivot in local space with the current transform applied
-	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
-		self.transform.transform_point2(normalized_pivot)
 	}
 }
 
@@ -420,8 +399,6 @@ impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
 				height: image.image.height,
 				base64_string: None,
 			},
-			transform: image.transform,
-			alpha_blending: image.alpha_blending,
 		}
 	}
 }
@@ -436,8 +413,6 @@ impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
 				height: image.image.height,
 				base64_string: None,
 			},
-			transform: image.transform,
-			alpha_blending: image.alpha_blending,
 		}
 	}
 }
