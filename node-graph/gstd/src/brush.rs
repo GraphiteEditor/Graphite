@@ -222,7 +222,9 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 
 	let mut background_bounds = bbox.to_transform();
 
-	if bounds.transform() != DAffine2::ZERO {
+	// If the bounds are empty (no size on images or det(transform) = 0), keep the target bounds
+	let bounds_empty = bounds.instances().all(|bounds| bounds.instance.width() == 0 || bounds.instance.height() == 0);
+	if bounds.transform().matrix2.determinant() != 0. && !bounds_empty {
 		background_bounds = bounds.transform();
 	}
 
