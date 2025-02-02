@@ -341,7 +341,7 @@ impl PathToolData {
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_direction(&mut self) -> SelectionMode {
+	pub fn calculate_selection_mode_from_direction(&mut self) -> SelectionMode {
 		let bbox = self.selection_box();
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
@@ -714,15 +714,15 @@ impl Fsm for PathToolFsmState {
 						fill_color.insert(0, '#');
 						let fill_color = Some(fill_color.as_str());
 
-						let mut selection_direction = tool_action_data.preferences.get_selection_mode();
-						if selection_direction == SelectionMode::Directional {
-							selection_direction = tool_data.calculate_direction();
-						}
+						let selection_mode = match tool_action_data.preferences.get_selection_mode() {
+							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+							selection_mode => selection_mode,
+						};
 
 						let quad = tool_data.selection_quad();
 						let polygon = &tool_data.lasso_polygon;
 
-						match (selection_shape, selection_direction) {
+						match (selection_shape, selection_mode) {
 							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
 							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
 							(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
