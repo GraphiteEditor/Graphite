@@ -82,7 +82,6 @@ mod test {
 					data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
 					base64_string: None,
 				},
-				..Default::default()
 			})),
 		};
 		assert_eq!(futures::executor::block_on(node.eval(())), [Color::from_rgbaf32(0., 0., 0., 1.).unwrap()]);

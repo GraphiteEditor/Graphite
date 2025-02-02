@@ -1,7 +1,7 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::instances::Instances;
 use crate::GraphicElement;
+use crate::{instances::Instances, transform::TransformMut};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -110,15 +110,6 @@ impl<P: Hash + Pixel> Hash for Image<P> {
 }
 
 impl<P: Pixel> Image<P> {
-	pub const fn empty() -> Self {
-		Self {
-			width: 0,
-			height: 0,
-			data: Vec::new(),
-			base64_string: None,
-		}
-	}
-
 	pub fn new(width: u32, height: u32, color: P) -> Self {
 		Self {
 			width,
@@ -236,16 +227,19 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
 
-#[derive(Clone, Debug, PartialEq, specta::Type)]
+/// Construct a 0x0 image frame table. This is useful because ImageFrameTable::default() will return a 1x1 image frame table.
+impl ImageFrameTable<Color> {
+	pub fn empty() -> Self {
+		let mut result = Self::new(ImageFrame::default());
+		*result.transform_mut() = DAffine2::ZERO;
+		result
+	}
+}
+
+#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
-}
-
-impl<P: Pixel> Default for ImageFrame<P> {
-	fn default() -> Self {
-		Self { image: Image::empty() }
-	}
 }
 
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
