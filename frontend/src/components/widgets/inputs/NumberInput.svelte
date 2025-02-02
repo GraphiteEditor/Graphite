@@ -57,6 +57,8 @@
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
 	let self: FieldInput | undefined;
+	let isdragging: boolean;
+	isdragging = false;
 	let inputRangeElement: HTMLInputElement | undefined;
 	let text = displayText(value, unit);
 	let editing = false;
@@ -187,6 +189,9 @@
 		editing = true;
 
 		self?.selectAllText(text);
+		if (isdragging) {
+			self?.unFocus();
+		}
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -281,7 +286,7 @@
 		const onMove = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
-
+			isdragging = true;
 			beginDrag(e);
 			removeEventListener("pointermove", onMove);
 		};
@@ -289,7 +294,7 @@
 		const onUp = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
-
+			isdragging = false;
 			self?.focus();
 			removeEventListener("pointerup", onUp);
 		};
