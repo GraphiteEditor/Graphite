@@ -53,6 +53,8 @@ pub struct Image<P: Pixel> {
 	/// to an svg string. This is used as a cache in order to not have to encode the data on every graph evaluation.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub base64_string: Option<String>,
+	// TODO: Add an `origin` field to store where in the local space the image is anchored.
+	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
 }
 
 impl<P: Pixel + Debug> Debug for Image<P> {
@@ -272,6 +274,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	})
 }
 
+// TODO: Rename to ImageTable
 pub type ImageFrameTable<P> = Instances<Image<P>>;
 
 /// Construct a 0x0 image frame table. This is useful because ImageFrameTable::default() will return a 1x1 image frame table.

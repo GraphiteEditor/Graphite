@@ -1,4 +1,4 @@
-use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::transform::{Transform, TransformMut};
@@ -180,18 +180,18 @@ impl TransformMut for GraphicGroupTable {
 	}
 }
 
-// TEXTURE FRAME
-impl Transform for Instance<'_, TextureFrame> {
+// IMAGE TEXTURE
+impl Transform for Instance<'_, ImageTexture> {
 	fn transform(&self) -> DAffine2 {
 		*self.transform
 	}
 }
-impl Transform for InstanceMut<'_, TextureFrame> {
+impl Transform for InstanceMut<'_, ImageTexture> {
 	fn transform(&self) -> DAffine2 {
 		*self.transform
 	}
 }
-impl TransformMut for InstanceMut<'_, TextureFrame> {
+impl TransformMut for InstanceMut<'_, ImageTexture> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		self.transform
 	}
