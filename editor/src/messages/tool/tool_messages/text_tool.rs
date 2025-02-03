@@ -687,14 +687,13 @@ impl Fsm for TextToolFsmState {
 							return TextToolFsmState::Ready;
 						}
 
-						let node_id = node_id.unwrap();
 						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
+						let (_delta, pivot) = movement.bounds_to_scale_transform(position, size);
 
-						// Pivots will not work as expected here.
-						// let (delta, pivot) = movement.bounds_to_scale_transform(position, size);
-
-						// let pivot_transform = DAffine2::from_translation(pivot);
-						// let _transformation = pivot_transform * delta * pivot_transform.inverse();
+						let pivot_transform = DAffine2::from_translation(pivot);
+						let translation = DAffine2::from_translation(position) * bounds.original_bound_transform;
+						let transform = pivot_transform * translation * pivot_transform.inverse();
+						bounds.transform = transform;
 
 						// let _transformed_bounding_box = Quad::from_box([position, size].into());
 
@@ -702,13 +701,14 @@ impl Fsm for TextToolFsmState {
 						let width = (position.x - size.x).abs();
 
 						responses.add(NodeGraphMessage::SetInput {
-							input_connector: InputConnector::node(node_id, 6),
+							input_connector: InputConnector::node(node_id.unwrap(), 6),
 							input: NodeInput::value(TaggedValue::OptionalF64(Some(width)), false),
 						});
 						responses.add(NodeGraphMessage::SetInput {
-							input_connector: InputConnector::node(node_id, 7),
+							input_connector: InputConnector::node(node_id.unwrap(), 7),
 							input: NodeInput::value(TaggedValue::OptionalF64(Some(height)), false),
 						});
+						responses.add(GraphOperationMessage::TransformSet { layer: text_layer.unwrap(), transform: transform, transform_in: TransformIn::Viewport, skip_rerender: false });
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 
 						// AutoPanning
