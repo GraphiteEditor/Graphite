@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
@@ -1450,11 +1451,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::SetDisplayName { node_id, alias } => {
-				responses.add(DocumentMessage::StartTransaction);
+			NodeGraphMessage::SetDisplayName {
+				node_id,
+				alias,
+				skip_adding_history_step,
+			} => {
+				if !skip_adding_history_step {
+					responses.add(DocumentMessage::StartTransaction);
+				}
 				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
-				// Does not add a history step if the name was not changed
-				responses.add(DocumentMessage::EndTransaction);
+				if !skip_adding_history_step {
+					// Does not add a history step if the name was not changed
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1807,7 +1816,10 @@ impl NodeGraphMessageHandler {
 			IconButton::new("Folder", 24)
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-				.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
 				.disabled(!has_selection)
 				.widget_holder(),
 			IconButton::new("Trash", 24)
@@ -2023,6 +2035,7 @@ impl NodeGraphMessageHandler {
 								NodeGraphMessage::SetDisplayName {
 									node_id: layer,
 									alias: text_input.value.clone(),
+									skip_adding_history_step: false,
 								}
 								.into()
 							})

@@ -393,7 +393,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
+				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
 				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =
@@ -428,7 +428,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 36] = [
+				const REPLACEMENTS: [(&str, &str); 35] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -445,8 +445,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::raster::ExtractChannelNode", "graphene_core::raster::adjustments::ExtractChannelNode"),
 					("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
 					("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
-					("graphene_core::raster::IndexNode", "graphene_core::raster::adjustments::IndexNode"),
 					("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
+					// ("graphene_core::raster::IndexNode", "graphene_core::raster::adjustments::IndexNode"),
 					("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
 					("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
 					("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),

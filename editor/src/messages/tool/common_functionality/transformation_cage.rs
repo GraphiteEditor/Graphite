@@ -1,4 +1,7 @@
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, SELECTION_DRAG_ANGLE};
+use crate::consts::{
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR,
+	SELECTION_DRAG_ANGLE,
+};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -6,9 +9,9 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 
 use graphene_core::renderer::Quad;
+use graphene_std::renderer::Rect;
 
 use glam::{DAffine2, DVec2};
-use graphene_std::renderer::Rect;
 
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
@@ -28,6 +31,17 @@ pub struct SelectedEdges {
 	pub right: bool,
 	// Aspect ratio in the form of width/height, so x:1 = width:height
 	aspect_ratio: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+enum HandleDisplayCategory {
+	#[default]
+	Full,
+	ReducedLandscape,
+	ReducedPortrait,
+	ReducedBoth,
+	Narrow,
+	Flat,
 }
 
 impl SelectedEdges {
@@ -75,6 +89,7 @@ impl SelectedEdges {
 
 		let mut min = self.bounds[0];
 		let mut max = self.bounds[1];
+
 		if self.top {
 			min.y = mouse.y;
 		} else if self.bottom {
@@ -87,24 +102,43 @@ impl SelectedEdges {
 		}
 
 		let mut pivot = self.pivot_from_bounds(min, max);
+
+		// Alt: Scaling around the pivot
 		if let Some(center_around) = center_around {
 			let center_around = transform.inverse().transform_point2(center_around);
-			if self.top {
-				pivot.y = center_around.y;
-				max.y = center_around.y * 2. - min.y;
-			} else if self.bottom {
-				pivot.y = center_around.y;
-				min.y = center_around.y * 2. - max.y;
-			}
-			if self.left {
-				pivot.x = center_around.x;
-				max.x = center_around.x * 2. - min.x;
-			} else if self.right {
-				pivot.x = center_around.x;
-				min.x = center_around.x * 2. - max.x;
+
+			let calculate_distance = |moving_opposite_to_drag: &mut f64, center: f64, dragging: f64, original_dragging: f64, current_side: bool| {
+				if !current_side {
+					return true;
+				}
+
+				// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side
+				let scale_factor = (center - *moving_opposite_to_drag) / (center - original_dragging);
+				let new_distance = center - scale_factor * (center - dragging);
+
+				// Ignore the Alt key press and scale the dragged edge normally
+				if !new_distance.is_finite() || scale_factor.abs() > MAXIMUM_ALT_SCALE_FACTOR {
+					// Don't go on to check the other sides since this side is already invalid, so Alt-dragging is disabled and updating the pivot would be incorrect
+					return false;
+				}
+
+				*moving_opposite_to_drag = new_distance;
+
+				true
+			};
+
+			// Update the value of the first argument through mutation, and if we make it through all of them without
+			// encountering a case where the pivot is too near the edge, we also update the pivot so scaling occurs around it
+			if calculate_distance(&mut max.y, center_around.y, min.y, self.bounds[0].y, self.top)
+				&& calculate_distance(&mut min.y, center_around.y, max.y, self.bounds[1].y, self.bottom)
+				&& calculate_distance(&mut max.x, center_around.x, min.x, self.bounds[0].x, self.left)
+				&& calculate_distance(&mut min.x, center_around.x, max.x, self.bounds[1].x, self.right)
+			{
+				pivot = center_around;
 			}
 		}
 
+		// Shift: Aspect ratio constraint
 		if constrain {
 			let size = max - min;
 			let min_pivot = (pivot - min) / size;
@@ -287,24 +321,78 @@ impl BoundingBoxManager {
 		let (left, top): (f64, f64) = self.bounds[0].into();
 		let (right, bottom): (f64, f64) = self.bounds[1].into();
 		[
-			self.transform.transform_point2(DVec2::new(left, top)),
-			self.transform.transform_point2(DVec2::new(left, (top + bottom) / 2.)),
-			self.transform.transform_point2(DVec2::new(left, bottom)),
-			self.transform.transform_point2(DVec2::new((left + right) / 2., top)),
-			self.transform.transform_point2(DVec2::new((left + right) / 2., bottom)),
-			self.transform.transform_point2(DVec2::new(right, top)),
-			self.transform.transform_point2(DVec2::new(right, (top + bottom) / 2.)),
-			self.transform.transform_point2(DVec2::new(right, bottom)),
+			DVec2::new(left, top),
+			DVec2::new(left, (top + bottom) / 2.),
+			DVec2::new(left, bottom),
+			DVec2::new((left + right) / 2., top),
+			DVec2::new((left + right) / 2., bottom),
+			DVec2::new(right, top),
+			DVec2::new(right, (top + bottom) / 2.),
+			DVec2::new(right, bottom),
 		]
 	}
 
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
-		overlay_context.quad(self.transform * Quad::from_box(self.bounds), None);
+		let quad = self.transform * Quad::from_box(self.bounds);
+		let category = self.overlay_display_category(quad);
 
-		for position in self.evaluate_transform_handle_positions() {
-			overlay_context.square(position, Some(6.), None, None);
+		let horizontal_edges = [quad.top_right().midpoint(quad.bottom_right()), quad.bottom_left().midpoint(quad.top_left())];
+		let vertical_edges = [quad.top_left().midpoint(quad.top_right()), quad.bottom_right().midpoint(quad.bottom_left())];
+
+		// Draw the bounding box rectangle
+		overlay_context.quad(quad, None);
+
+		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
+
+		// Draw the horizontal midpoint drag handles
+		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
+			horizontal_edges.map(&mut draw_handle);
 		}
+
+		// Draw the vertical midpoint drag handles
+		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedPortrait) {
+			vertical_edges.map(&mut draw_handle);
+		}
+
+		// Draw the corner drag handles
+		if matches!(
+			category,
+			HandleDisplayCategory::Full | HandleDisplayCategory::ReducedBoth | HandleDisplayCategory::ReducedLandscape | HandleDisplayCategory::ReducedPortrait
+		) {
+			quad.0.map(&mut draw_handle);
+		}
+
+		// Draw the flat line endpoint drag handles
+		if category == HandleDisplayCategory::Flat {
+			draw_handle(self.transform.transform_point2(self.bounds[0]));
+			draw_handle(self.transform.transform_point2(self.bounds[1]));
+		}
+	}
+
+	fn overlay_display_category(&self, quad: Quad) -> HandleDisplayCategory {
+		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
+		if (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any() {
+			return HandleDisplayCategory::Flat;
+		}
+
+		let vertical_length = (quad.top_left() - quad.top_right()).length_squared();
+		let horizontal_length = (quad.bottom_left() - quad.top_left()).length_squared();
+		let corners_visible = vertical_length >= MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2) && horizontal_length >= MIN_LENGTH_FOR_CORNERS_VISIBILITY.powi(2);
+
+		if corners_visible {
+			let vertical_edge_visible = vertical_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
+			let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
+
+			return match (vertical_edge_visible, horizontal_edge_visible) {
+				(true, true) => HandleDisplayCategory::Full,
+				(true, false) => HandleDisplayCategory::ReducedPortrait,
+				(false, true) => HandleDisplayCategory::ReducedLandscape,
+				(false, false) => HandleDisplayCategory::ReducedBoth,
+			};
+		}
+
+		HandleDisplayCategory::Narrow
 	}
 
 	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
@@ -313,18 +401,27 @@ impl BoundingBoxManager {
 
 		let viewport_x = self.transform.transform_vector2(DVec2::X).normalize_or_zero() * scalar;
 		let viewport_y = self.transform.transform_vector2(DVec2::Y).normalize_or_zero() * scalar;
+
 		let threshold_x = inverse.transform_vector2(viewport_x).length();
 		let threshold_y = inverse.transform_vector2(viewport_y).length();
+
 		[threshold_x, threshold_y]
 	}
 
-	/// Check if the user has selected the edge for dragging (returns which edge in order top, bottom, left, right)
+	/// Check if the user has selected the edge for dragging.
+	///
+	/// Returns which edge in the order:
+	///
+	/// `top, bottom, left, right`
 	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 
 		let min = self.bounds[0].min(self.bounds[1]);
 		let max = self.bounds[0].max(self.bounds[1]);
+
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
+		let [corner_min_x, corner_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
+		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR);
 
 		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
@@ -332,24 +429,33 @@ impl BoundingBoxManager {
 			let mut left = (cursor.x - min.x).abs() < threshold_x;
 			let mut right = (max.x - cursor.x).abs() < threshold_x;
 
-			// Prioritise single axis transformations on very small bounds
-			if cursor.y - min.y + max.y - cursor.y < threshold_y * 2. && (left || right) {
-				top = false;
-				bottom = false;
-			}
-			if cursor.x - min.x + max.x - cursor.x < threshold_x * 2. && (top || bottom) {
-				left = false;
-				right = false;
-			}
+			let width = max.x - min.x;
+			let height = max.y - min.y;
 
-			// On bounds with no width/height, disallow transformation in the relevant axis
-			if (max.x - min.x) < f64::EPSILON * 1000. {
-				left = false;
-				right = false;
-			}
-			if (max.y - min.y) < f64::EPSILON * 1000. {
-				top = false;
-				bottom = false;
+			if width < edge_min_x || height <= edge_min_y {
+				if min.x < cursor.x && cursor.x < max.x && cursor.y < max.y && cursor.y > min.y {
+					return None;
+				}
+
+				// Prioritize single axis transformations on very small bounds
+				if height < corner_min_y && (left || right) {
+					top = false;
+					bottom = false;
+				}
+				if width < corner_min_x && (top || bottom) {
+					left = false;
+					right = false;
+				}
+
+				// On bounds with no width/height, disallow transformation in the relevant axis
+				if width < f64::EPSILON * 1000. {
+					left = false;
+					right = false;
+				}
+				if height < f64::EPSILON * 1000. {
+					top = false;
+					bottom = false;
+				}
 			}
 
 			if top || bottom || left || right {
@@ -365,19 +471,19 @@ impl BoundingBoxManager {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 
-		let min = self.bounds[0].min(self.bounds[1]);
-		let max = self.bounds[0].max(self.bounds[1]);
-
-		let outside_bounds = (min.x > cursor.x || cursor.x > max.x) || (min.y > cursor.y || cursor.y > max.y);
-		let inside_extended_bounds = min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y;
-
-		outside_bounds & inside_extended_bounds
+		let narrow = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
+		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
+		if narrow {
+			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
+		} else {
+			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
+		}
 	}
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
-		if let Some(directions) = self.check_selected_edges(input.mouse.position) {
-			match directions {
+		if let Some((top, bottom, left, right)) = self.check_selected_edges(input.mouse.position) {
+			match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
 				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,

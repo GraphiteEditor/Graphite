@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
+use super::utility_types::misc::{GroupFolderType, SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
@@ -25,12 +25,14 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::{BlendMode, ImageFrame};
+use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::BlendMode;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
-use graphene_std::vector::path_bool_lib;
+use graphene_std::vector::{path_bool_lib, PointId};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -271,7 +273,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::ClearArtboards => {
-				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ClearArtboards);
 			}
 			DocumentMessage::ClearLayersPanel => {
@@ -285,41 +286,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layout_target: LayoutTarget::LayersPanelControlBar,
 				});
 			}
-			DocumentMessage::InsertBooleanOperation { operation } => {
-				responses.add(DocumentMessage::AddTransaction);
-
-				let Some(parent) = self.network_interface.deepest_common_ancestor(&[], false) else {
-					// Cancel grouping layers across different artboards
-					// TODO: Group each set of layers for each artboard separately
-					return;
-				};
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
-
-				let folder_id = NodeId::new();
-				let boolean_operation_layer = LayerNodeIdentifier::new_unchecked(folder_id);
-				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
-					id: folder_id,
-					operation,
-					parent,
-					insert_index,
-				});
-				responses.add(NodeGraphMessage::SetDisplayNameImpl {
-					node_id: folder_id,
-					alias: "Boolean Operation".to_string(),
-				});
-				// Move all shallowest selected layers as children
-				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: boolean_operation_layer });
-			}
 			DocumentMessage::CreateEmptyFolder => {
+				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
 				let id = NodeId::new();
 
 				let parent = self
 					.network_interface
-					.deepest_common_ancestor(&self.selection_network_path, true)
+					.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, true)
 					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
-
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
@@ -380,7 +356,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
 				let calculated_insert_index =
-					DocumentMessageHandler::get_calculated_insert_index(self.network_interface.document_metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
+					DocumentMessageHandler::get_calculated_insert_index(self.network_interface.document_metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -491,33 +467,53 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.snapping_state.grid_snapping = enabled;
 				responses.add(OverlaysMessage::Draw);
 			}
-			DocumentMessage::GroupSelectedLayers => {
+			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				responses.add(DocumentMessage::AddTransaction);
 
-				let Some(parent) = self.network_interface.deepest_common_ancestor(&self.selection_network_path, false) else {
-					// Cancel grouping layers across different artboards
-					// TODO: Group each set of layers for each artboard separately
-					return;
-				};
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), self.network_interface.selected_nodes(&[]).unwrap(), parent);
+				let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
+				let artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.filter(|x| self.network_interface.is_artboard(&x.to_node(), &self.selection_network_path))
+					.collect::<Vec<_>>();
+				let Some(selected_nodes) = self.network_interface.selected_nodes(&[]) else { return };
 
-				let node_id = NodeId::new();
-				let new_group_node = document_node_definitions::resolve_document_node_type("Merge")
-					.expect("Failed to create merge node")
-					.default_node_template();
-				responses.add(NodeGraphMessage::InsertNode {
-					node_id,
-					node_template: new_group_node,
-				});
-				let new_group_folder = LayerNodeIdentifier::new_unchecked(node_id);
-				// Move the new folder to the correct position
-				responses.add(NodeGraphMessage::MoveLayerToStack {
-					layer: new_group_folder,
-					parent,
-					insert_index,
-				});
+				// Non-artboard (infinite canvas) workflow
+				if artboards.is_empty() {
+					let Some(parent) = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false) else {
+						return;
+					};
+					let Some(selected_nodes) = &self.network_interface.selected_nodes(&self.selection_network_path) else {
+						return;
+					};
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
 
-				responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type);
+				}
+				// Artboard workflow
+				else {
+					for artboard in artboards {
+						let selected_descendants = artboard.descendants(self.metadata()).filter(|x| selected_nodes.selected_layers_contains(*x, self.metadata()));
+						for selected_descendant in selected_descendants {
+							parent_per_selected_nodes.entry(artboard).or_default().push(selected_descendant.to_node());
+						}
+					}
+
+					let mut new_folders: Vec<NodeId> = Vec::new();
+
+					for children in parent_per_selected_nodes.into_values() {
+						let child_selected_nodes = SelectedNodes(children);
+						let Some(parent) = self.network_interface.deepest_common_ancestor(&child_selected_nodes, &self.selection_network_path, false) else {
+							continue;
+						};
+						let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &child_selected_nodes, parent);
+
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: child_selected_nodes.0 });
+
+						new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type));
+					}
+
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
+				}
 			}
 			DocumentMessage::ImaginateGenerate { imaginate_node } => {
 				let random_value = generate_uuid();
@@ -766,13 +762,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let image_frame = ImageFrame { image, ..Default::default() };
+				let image_frame = ImageFrame {
+					image,
+					transform: DAffine2::IDENTITY,
+					alpha_blending: Default::default(),
+				};
 				let layer = graph_modification_utils::new_image_layer(image_frame, layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
 						alias: name,
+						skip_adding_history_step: false,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -817,6 +818,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id: layer.to_node(),
 						alias: name,
+						skip_adding_history_step: false,
 					});
 				}
 				if let Some((parent, insert_index)) = parent_and_insert_index {
@@ -1159,9 +1161,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}
-			DocumentMessage::UpdateVectorModify { vector_modify } => {
-				self.network_interface.update_vector_modify(vector_modify);
-			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;
@@ -1407,6 +1406,19 @@ impl DocumentMessageHandler {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
+	/// Runs an intersection test with all layers and a viewport space subpath
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		viewport_polygon.apply_transform(document_to_viewport.inverse());
+
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Polygon(viewport_polygon))
+	}
+
+	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+	}
+
 	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_core::renderer::Quad) -> bool {
 		// Get the bounding box of the layer in document space
 		let Some(bounding_box) = self.metadata().bounding_box_viewport(*layer) else { return false };
@@ -1428,6 +1440,22 @@ impl DocumentMessageHandler {
 		let layer_bottom = top_left.y;
 
 		layer_left >= quad_left && layer_right <= quad_right && layer_top <= quad_top && layer_bottom >= quad_bottom
+	}
+
+	pub fn is_layer_fully_inside_polygon(&self, layer: &LayerNodeIdentifier, ipp: &InputPreprocessorMessageHandler, mut viewport_polygon: Subpath<PointId>) -> bool {
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
+		viewport_polygon.apply_transform(document_to_viewport.inverse());
+
+		let layer_click_targets = self.network_interface.document_metadata().click_targets(*layer);
+		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
+
+		layer_click_targets.is_some_and(|targets| {
+			targets.iter().all(|target| {
+				let mut subpath = target.subpath().clone();
+				subpath.apply_transform(layer_transform);
+				subpath.is_inside_subpath(&viewport_polygon, None, None)
+			})
+		})
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
@@ -1707,12 +1735,17 @@ impl DocumentMessageHandler {
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
+		let Some(selected_nodes) = self.network_interface.selected_nodes(&self.selection_network_path) else {
+			warn!("No selected nodes found in new_layer_parent. Defaulting to ROOT_PARENT.");
+			return LayerNodeIdentifier::ROOT_PARENT;
+		};
+
 		self.network_interface
-			.deepest_common_ancestor(&self.selection_network_path, include_self)
+			.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: SelectedNodes, parent: LayerNodeIdentifier) -> usize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> usize {
 		parent
 			.children(metadata)
 			.enumerate()
@@ -1730,6 +1763,36 @@ impl DocumentMessageHandler {
 				None
 			})
 			.unwrap_or(0)
+	}
+
+	pub fn group_layers(responses: &mut VecDeque<Message>, insert_index: usize, parent: LayerNodeIdentifier, group_folder_type: GroupFolderType) -> NodeId {
+		let folder_id = NodeId(generate_uuid());
+		match group_folder_type {
+			GroupFolderType::Layer => responses.add(GraphOperationMessage::NewCustomLayer {
+				id: folder_id,
+				nodes: Vec::new(),
+				parent,
+				insert_index,
+			}),
+			GroupFolderType::BooleanOperation(operation) => {
+				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
+					id: folder_id,
+					operation,
+					parent,
+					insert_index,
+				});
+			}
+		};
+		let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
+		// Move the new folder to the correct position
+		responses.add(NodeGraphMessage::MoveLayerToStack {
+			layer: new_group_folder,
+			parent,
+			insert_index,
+		});
+		responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
+
+		folder_id
 	}
 
 	/// Loads all of the fonts in the document.
@@ -2052,7 +2115,10 @@ impl DocumentMessageHandler {
 				IconButton::new("Folder", 24)
 					.tooltip("Group Selected")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-					.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
+					.on_update(|_| {
+						let group_folder_type = GroupFolderType::Layer;
+						DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+					})
 					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new("Trash", 24)
@@ -2126,7 +2192,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY), -1, "", &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::default()), -1, "", &[]);
 	network_interface
 }
 
@@ -2136,6 +2202,7 @@ enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
 	Path(Vec<path_bool_lib::PathSegment>),
+	Polygon(Subpath<PointId>),
 }
 
 /// The result for the [`ClickXRayIter`] on the layer
@@ -2239,6 +2306,10 @@ impl<'a> ClickXRayIter<'a> {
 			}
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
+			XRayTarget::Polygon(polygon) => {
+				let polygon = polygon.iter_closed().map(|line| path_bool_lib::PathSegment::Line(line.start, line.end)).collect();
+				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
+			}
 		}
 	}
 }
