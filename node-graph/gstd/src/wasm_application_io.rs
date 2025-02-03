@@ -6,8 +6,7 @@ use graphene_core::application_io::SurfaceHandle;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::Image;
+use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
@@ -81,13 +80,11 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 		return ImageFrameTable::empty();
 	};
 	let image = image.to_rgba32f();
-	let image = ImageFrame {
-		image: Image {
-			data: image.chunks(4).map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
-			width: image.width(),
-			height: image.height(),
-			..Default::default()
-		},
+	let image = Image {
+		data: image.chunks(4).map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
+		width: image.width(),
+		height: image.height(),
+		..Default::default()
 	};
 
 	ImageFrameTable::new(image)
@@ -200,9 +197,7 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = ImageFrameTable::new(ImageFrame {
-		image: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
-	});
+	let mut result = ImageFrameTable::new(Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32));
 	*result.transform_mut() = footprint.transform;
 
 	result

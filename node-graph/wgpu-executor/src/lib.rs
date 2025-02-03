@@ -916,10 +916,10 @@ async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFram
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 
 	let input = input.one_instance().instance;
-	let new_data: Vec<SRGBA8> = input.image.data.iter().map(|x| (*x).into()).collect();
+	let new_data: Vec<SRGBA8> = input.data.iter().map(|x| (*x).into()).collect();
 	let new_image = Image {
-		width: input.image.width,
-		height: input.image.height,
+		width: input.width,
+		height: input.height,
 		data: new_data,
 		base64_string: None,
 	};

@@ -18,7 +18,7 @@ async fn image_color_palette(
 
 	let image = image.one_instance().instance;
 
-	for pixel in image.image.data.iter() {
+	for pixel in image.data.iter() {
 		let r = pixel.r() * GRID;
 		let g = pixel.g() * GRID;
 		let b = pixel.b() * GRID;
@@ -66,7 +66,7 @@ mod test {
 	use super::*;
 
 	use graph_craft::generic::FnNode;
-	use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
+	use graphene_core::raster::image::{Image, ImageFrameTable};
 	use graphene_core::raster::Image;
 	use graphene_core::value::{ClonedNode, CopiedNode};
 	use graphene_core::Node;
@@ -75,13 +75,11 @@ mod test {
 	fn test_image_color_palette() {
 		let node = ImageColorPaletteNode {
 			max_size: CopiedNode(1u32),
-			image: ClonedNode(ImageFrameTable::new(ImageFrame {
-				image: Image {
-					width: 100,
-					height: 100,
-					data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
-					base64_string: None,
-				},
+			image: ClonedNode(ImageFrameTable::new(Image {
+				width: 100,
+				height: 100,
+				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
+				base64_string: None,
 			})),
 		};
 		assert_eq!(futures::executor::block_on(node.eval(())), [Color::from_rgbaf32(0., 0., 0., 1.).unwrap()]);

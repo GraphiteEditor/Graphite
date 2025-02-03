@@ -1,6 +1,5 @@
 use graph_craft::proto::types::Percentage;
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::Image;
+use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{Color, Ctx};
 
@@ -13,10 +12,9 @@ async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Perc
 	let image_frame_transform = image_frame.transform();
 	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
 
-	let image_frame = image_frame.one_instance().instance;
+	let image = image_frame.one_instance().instance;
 
 	// Prepare the image data for processing
-	let image = &image_frame.image;
 	let image_data = bytemuck::cast_vec(image.data.clone());
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
 	let dynamic_image: image::DynamicImage = image_buffer.into();
@@ -34,7 +32,7 @@ async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Perc
 		base64_string: None,
 	};
 
-	let mut result = ImageFrameTable::new(ImageFrame { image: dehazed_image });
+	let mut result = ImageFrameTable::new(dehazed_image);
 	*result.transform_mut() = image_frame_transform;
 	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
 
