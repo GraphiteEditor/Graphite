@@ -66,8 +66,9 @@ impl<P: Pixel + Debug> Debug for Image<P> {
 	}
 }
 
-unsafe impl<P: dyn_any::StaticTypeSized + Pixel> StaticType for Image<P>
+unsafe impl<P> StaticType for Image<P>
 where
+	P: dyn_any::StaticTypeSized + Pixel,
 	P::Static: Pixel,
 {
 	type Static = Image<P::Static>;
@@ -214,6 +215,34 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct ImageFrame<P: Pixel> {
+		pub image: Image<P>,
+	}
+	impl From<ImageFrame<Color>> for GraphicElement {
+		fn from(image_frame: ImageFrame<Color>) -> Self {
+			GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(ImageFrameTable::new(image_frame.image)))
+		}
+	}
+	impl From<GraphicElement> for ImageFrame<Color> {
+		fn from(element: GraphicElement) -> Self {
+			match element {
+				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
+					image: image.one_instance().instance.clone(),
+				},
+				_ => panic!("Expected Image, found {:?}", element),
+			}
+		}
+	}
+	unsafe impl<P> StaticType for ImageFrame<P>
+	where
+		P: dyn_any::StaticTypeSized + Pixel,
+		P::Static: Pixel,
+	{
+		type Static = ImageFrame<P::Static>;
+	}
+
+	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 	pub struct OldImageFrame<P: Pixel> {
 		image: Image<P>,
 		transform: DAffine2,
@@ -222,60 +251,57 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
-	enum EitherFormat {
-		ImageFrame(ImageFrame<Color>),
+	enum FormatVersions {
+		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
+		ImageFrame(Instances<ImageFrame<Color>>),
 		ImageFrameTable(ImageFrameTable<Color>),
 	}
 
-	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::ImageFrame(image_frame) => ImageFrameTable::<Color>::new(image_frame),
-		EitherFormat::OldImageFrame(image_frame_with_transform_and_blending) => {
+	Ok(match FormatVersions::deserialize(deserializer)? {
+		FormatVersions::Image(image) => ImageFrameTable::new(image),
+		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => {
 			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
-			let mut image_frame_table = ImageFrameTable::new(ImageFrame { image });
+			let mut image_frame_table = ImageFrameTable::new(image);
 			*image_frame_table.one_instance_mut().transform = transform;
 			*image_frame_table.one_instance_mut().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		EitherFormat::ImageFrameTable(image_frame_table) => image_frame_table,
+		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.one_instance().instance.image.clone()),
+		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table,
 	})
 }
 
-pub type ImageFrameTable<P> = Instances<ImageFrame<P>>;
+pub type ImageFrameTable<P> = Instances<Image<P>>;
 
 /// Construct a 0x0 image frame table. This is useful because ImageFrameTable::default() will return a 1x1 image frame table.
 impl ImageFrameTable<Color> {
 	pub fn empty() -> Self {
-		let mut result = Self::new(ImageFrame::default());
+		let mut result = Self::new(Image::default());
 		*result.transform_mut() = DAffine2::ZERO;
 		result
 	}
 }
 
-#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImageFrame<P: Pixel> {
-	pub image: Image<P>,
-}
-
-impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
+impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;
 
 	// TODO: Improve sampling logic
 	#[inline(always)]
 	fn sample(&self, pos: DVec2, _area: DVec2) -> Option<Self::Pixel> {
-		let image_size = DVec2::new(self.image.width() as f64, self.image.height() as f64);
+		let image_size = DVec2::new(self.width() as f64, self.height() as f64);
 		if pos.x < 0. || pos.y < 0. || pos.x >= image_size.x || pos.y >= image_size.y {
 			return None;
 		}
-		self.image.get_pixel(pos.x as u32, pos.y as u32)
+		self.get_pixel(pos.x as u32, pos.y as u32)
 	}
 }
 
-impl<P: Debug + Copy + Pixel + dyn_any::StaticType> Sample for ImageFrameTable<P>
+impl<P> Sample for ImageFrameTable<P>
 where
-	GraphicElement: From<ImageFrame<P>>,
+	P: Debug + Copy + Pixel + dyn_any::StaticType,
 	P::Static: Pixel,
+	GraphicElement: From<Image<P>>,
 {
 	type Pixel = P;
 
@@ -292,26 +318,11 @@ where
 	}
 }
 
-impl<P: Copy + Pixel> Bitmap for ImageFrame<P> {
-	type Pixel = P;
-
-	fn width(&self) -> u32 {
-		self.image.width()
-	}
-
-	fn height(&self) -> u32 {
-		self.image.height()
-	}
-
-	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
-		self.image.get_pixel(x, y)
-	}
-}
-
-impl<P: Copy + Pixel + dyn_any::StaticType> Bitmap for ImageFrameTable<P>
+impl<P> Bitmap for ImageFrameTable<P>
 where
+	P: Copy + Pixel + dyn_any::StaticType,
 	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
+	GraphicElement: From<Image<P>>,
 {
 	type Pixel = P;
 
@@ -334,95 +345,57 @@ where
 	}
 }
 
-impl<P: Copy + Pixel> BitmapMut for ImageFrame<P> {
+impl<P> BitmapMut for ImageFrameTable<P>
+where
+	P: Copy + Pixel + dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<Image<P>>,
+{
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
-		self.image.get_pixel_mut(x, y)
+		self.one_instance_mut().instance.get_pixel_mut(x, y)
 	}
 }
 
-impl<P: Copy + Pixel + dyn_any::StaticType> BitmapMut for ImageFrameTable<P>
-where
-	GraphicElement: From<ImageFrame<P>>,
-	P::Static: Pixel,
-{
-	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
-		let image = self.one_instance_mut().instance;
-
-		BitmapMut::get_pixel_mut(image, x, y)
-	}
-}
-
-unsafe impl<P: dyn_any::StaticTypeSized + Pixel> StaticType for ImageFrame<P>
-where
-	P::Static: Pixel,
-{
-	type Static = ImageFrame<P::Static>;
-}
-
-impl<P: Copy + Pixel> ImageFrame<P> {
+impl<P: Copy + Pixel> Image<P> {
 	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut P {
-		&mut self.image.data[y * (self.image.width as usize) + x]
+		&mut self.data[y * (self.width as usize) + x]
 	}
 
 	/// Clamps the provided point to ((0, 0), (ImageSize.x, ImageSize.y)) and returns the closest pixel
 	pub fn sample(&self, position: DVec2) -> P {
-		let x = position.x.clamp(0., self.image.width as f64 - 1.) as usize;
-		let y = position.y.clamp(0., self.image.height as f64 - 1.) as usize;
+		let x = position.x.clamp(0., self.width as f64 - 1.) as usize;
+		let y = position.y.clamp(0., self.height as f64 - 1.) as usize;
 
-		self.image.data[x + y * self.image.width as usize]
+		self.data[x + y * self.width as usize]
 	}
 }
 
-impl<P: Pixel> AsRef<ImageFrame<P>> for ImageFrame<P> {
-	fn as_ref(&self) -> &ImageFrame<P> {
+impl<P: Pixel> AsRef<Image<P>> for Image<P> {
+	fn as_ref(&self) -> &Image<P> {
 		self
 	}
 }
 
-impl<P: Hash + Pixel> Hash for ImageFrame<P> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		0.hash(state);
-		self.image.hash(state);
-	}
-}
-
-/* This does not work because of missing specialization
- * so we have to manually implement this for now
-impl<S: Into<P> + Pixel, P: Pixel> From<Image<S>> for Image<P> {
-	fn from(image: Image<S>) -> Self {
+impl From<Image<Color>> for Image<SRGBA8> {
+	fn from(image: Image<Color>) -> Self {
 		let data = image.data.into_iter().map(|x| x.into()).collect();
 		Self {
 			data,
 			width: image.width,
 			height: image.height,
-		}
-	}
-}*/
-
-impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
-	fn from(image: ImageFrame<Color>) -> Self {
-		let data = image.image.data.into_iter().map(|x| x.into()).collect();
-		Self {
-			image: Image {
-				data,
-				width: image.image.width,
-				height: image.image.height,
-				base64_string: None,
-			},
+			base64_string: None,
 		}
 	}
 }
 
-impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
-	fn from(image: ImageFrame<SRGBA8>) -> Self {
-		let data = image.image.data.into_iter().map(|x| x.into()).collect();
+impl From<Image<SRGBA8>> for Image<Color> {
+	fn from(image: Image<SRGBA8>) -> Self {
+		let data = image.data.into_iter().map(|x| x.into()).collect();
 		Self {
-			image: Image {
-				data,
-				width: image.image.width,
-				height: image.image.height,
-				base64_string: None,
-			},
+			data,
+			width: image.width,
+			height: image.height,
+			base64_string: None,
 		}
 	}
 }

@@ -1,6 +1,6 @@
 use crate::application_io::{TextureFrame, TextureFrameTable};
 use crate::instances::Instances;
-use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::BlendMode;
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
@@ -111,9 +111,9 @@ impl From<VectorDataTable> for GraphicGroupTable {
 		Self::new(GraphicGroup::new(vec![GraphicElement::VectorData(vector_data)]))
 	}
 }
-impl From<ImageFrame<Color>> for GraphicGroupTable {
-	fn from(image_frame: ImageFrame<Color>) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))]))
+impl From<Image<Color>> for GraphicGroupTable {
+	fn from(image: Image<Color>) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image)))]))
 	}
 }
 impl From<ImageFrameTable<Color>> for GraphicGroupTable {
@@ -207,7 +207,7 @@ impl<'de> serde::Deserialize<'de> for RasterFrame {
 	where
 		D: serde::Deserializer<'de>,
 	{
-		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(ImageFrame::deserialize(deserializer)?)))
+		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
 	}
 }
 
@@ -382,7 +382,7 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
+async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
 	// let mut artboards = artboards.eval(ctx.clone()).await;
 	// let artboard = artboard.eval(ctx).await;
 	// let foot = ctx.footprint();
@@ -399,8 +399,8 @@ async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: 
 }
 
 // TODO: Remove this one
-impl From<ImageFrame<Color>> for GraphicElement {
-	fn from(image_frame: ImageFrame<Color>) -> Self {
+impl From<Image<Color>> for GraphicElement {
+	fn from(image_frame: Image<Color>) -> Self {
 		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
 	}
 }

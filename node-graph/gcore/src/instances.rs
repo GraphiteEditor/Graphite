@@ -1,5 +1,5 @@
 use crate::application_io::{TextureFrame, TextureFrameTable};
-use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::transform::{Transform, TransformMut};
 use crate::vector::{InstanceId, VectorData, VectorDataTable};
@@ -209,8 +209,8 @@ impl TransformMut for TextureFrameTable {
 	}
 }
 
-// IMAGE FRAME
-impl<P: Pixel> Transform for Instance<'_, ImageFrame<P>> {
+// IMAGE
+impl<P: Pixel> Transform for Instance<'_, Image<P>> {
 	fn transform(&self) -> DAffine2 {
 		*self.transform
 	}
@@ -218,7 +218,7 @@ impl<P: Pixel> Transform for Instance<'_, ImageFrame<P>> {
 		self.transform.transform_point2(pivot)
 	}
 }
-impl<P: Pixel> Transform for InstanceMut<'_, ImageFrame<P>> {
+impl<P: Pixel> Transform for InstanceMut<'_, Image<P>> {
 	fn transform(&self) -> DAffine2 {
 		*self.transform
 	}
@@ -226,7 +226,7 @@ impl<P: Pixel> Transform for InstanceMut<'_, ImageFrame<P>> {
 		self.transform.transform_point2(pivot)
 	}
 }
-impl<P: Pixel> TransformMut for InstanceMut<'_, ImageFrame<P>> {
+impl<P: Pixel> TransformMut for InstanceMut<'_, Image<P>> {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		self.transform
 	}
@@ -237,7 +237,7 @@ impl<P: Pixel> Transform for ImageFrameTable<P>
 where
 	P: dyn_any::StaticType,
 	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
+	GraphicElement: From<Image<P>>,
 {
 	fn transform(&self) -> DAffine2 {
 		self.one_instance().transform()
@@ -247,7 +247,7 @@ impl<P: Pixel> TransformMut for ImageFrameTable<P>
 where
 	P: dyn_any::StaticType,
 	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
+	GraphicElement: From<Image<P>>,
 {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED"))

@@ -831,7 +831,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 
 			match render_params.image_render_mode {
 				ImageRenderMode::Base64 => {
-					let image = &instance.instance.image;
+					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
 					}
@@ -894,7 +894,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 		use vello::peniko;
 
 		for instance in self.instances() {
-			let image = &instance.instance.image;
+			let image = &instance.instance;
 			if image.data.is_empty() {
 				return;
 			}
@@ -918,7 +918,7 @@ impl GraphicElementRendered for RasterFrame {
 				};
 
 				for instance in image.instances() {
-					let (image, blending) = (&instance.instance.image, instance.alpha_blending);
+					let (image, blending) = (&instance.instance, instance.alpha_blending);
 					if image.data.is_empty() {
 						return;
 					}
@@ -994,7 +994,7 @@ impl GraphicElementRendered for RasterFrame {
 		match self {
 			RasterFrame::ImageFrame(image_frame) => {
 				for instance in image_frame.instances() {
-					let image = &instance.instance.image;
+					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
 					}
