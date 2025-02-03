@@ -64,24 +64,25 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-pub type TextureFrameTable = Instances<TextureFrame>;
+// TODO: Rename to ImageTextureTable
+pub type TextureFrameTable = Instances<ImageTexture>;
 
 #[derive(Debug, Clone)]
-pub struct TextureFrame {
+pub struct ImageTexture {
 	#[cfg(feature = "wgpu")]
 	pub texture: Arc<wgpu::Texture>,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
 }
 
-impl Hash for TextureFrame {
+impl Hash for ImageTexture {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		#[cfg(feature = "wgpu")]
 		self.texture.hash(state);
 	}
 }
 
-impl PartialEq for TextureFrame {
+impl PartialEq for ImageTexture {
 	fn eq(&self, other: &Self) -> bool {
 		#[cfg(feature = "wgpu")]
 		return self.texture == other.texture;
@@ -91,12 +92,12 @@ impl PartialEq for TextureFrame {
 	}
 }
 
-unsafe impl StaticType for TextureFrame {
-	type Static = TextureFrame;
+unsafe impl StaticType for ImageTexture {
+	type Static = ImageTexture;
 }
 
 #[cfg(feature = "wgpu")]
-impl Size for TextureFrame {
+impl Size for ImageTexture {
 	fn size(&self) -> UVec2 {
 		UVec2::new(self.texture.width(), self.texture.height())
 	}

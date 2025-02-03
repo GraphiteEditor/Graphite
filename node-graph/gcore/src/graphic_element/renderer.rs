@@ -276,6 +276,7 @@ pub struct RenderMetadata {
 	pub clip_targets: HashSet<NodeId>,
 }
 
+// TODO: Rename to "Graphical"
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
@@ -992,8 +993,8 @@ impl GraphicElementRendered for RasterFrame {
 		};
 
 		match self {
-			RasterFrame::ImageFrame(image_frame) => {
-				for instance in image_frame.instances() {
+			RasterFrame::ImageFrame(image) => {
+				for instance in image.instances() {
 					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
@@ -1004,8 +1005,8 @@ impl GraphicElementRendered for RasterFrame {
 					render_stuff(image, *instance.alpha_blending);
 				}
 			}
-			RasterFrame::TextureFrame(texture) => {
-				for instance in texture.instances() {
+			RasterFrame::TextureFrame(image_texture) => {
+				for instance in image_texture.instances() {
 					let image =
 						vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.texture.width(), instance.instance.texture.height()).with_extend(peniko::Extend::Repeat);
 
