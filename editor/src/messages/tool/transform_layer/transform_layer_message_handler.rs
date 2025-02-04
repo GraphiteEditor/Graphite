@@ -28,7 +28,6 @@ pub struct TransformLayerMessageHandler {
 	increments: bool,
 	local: bool,
 	fixed_bbox: Quad,
-	scale_sign: f64,
 	typing: Typing,
 
 	mouse_position: ViewportPosition,
@@ -180,7 +179,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					let axis_constraint = self.transform_operation.axis_constraint();
 
 					let format_rounded = |value: f64, precision: usize| {
-						if self.typing.digits.is_empty() {
+						if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 							format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
 						} else {
 							self.typing.string.clone()
@@ -217,7 +216,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter >= 0. { Pivot::Start } else { Pivot::End };
-								if axis_constraint != Axis::Both || self.typing.digits.is_empty() {
+								if axis_constraint != Axis::Both || self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
 							}
@@ -448,7 +447,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				self.local = false;
 				self.fixed_bbox = selected.bounding_box();
-				self.scale_sign = 1.;
 
 				selected.original_transforms.clear();
 
@@ -483,11 +481,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.local = self
 					.transform_operation
 					.constrain_axis(Axis::X, &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+				self.transform_operation
+					.grs_typed(self.typing.evaluate(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
 			}
 			TransformLayerMessage::ConstrainY => {
 				self.local = self
 					.transform_operation
 					.constrain_axis(Axis::Y, &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+				self.transform_operation
+					.grs_typed(self.typing.evaluate(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
 				self.slow = input.keyboard.get(slow_key as usize);
@@ -499,7 +501,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						.apply_transform_operation(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
 				}
 
-				if self.typing.digits.is_empty() {
+				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 					let delta_pos = input.mouse.position - self.mouse_position;
 
 					match self.transform_operation {
@@ -532,20 +534,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let to_mouse_start = project_edge_to_quad(to_mouse_start, &self.fixed_bbox, self.local, axis_constraint);
 
 							let change = {
-								let previous_frame_dist = to_mouse_final.length();
-								let current_frame_dist = to_mouse_final_old.length();
-								let start_transform_dist = to_mouse_start.length();
+								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
+								let current_frame_dist = to_mouse_final_old.dot(to_mouse_start);
+								let start_transform_dist = to_mouse_start.length_squared();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
 							};
 							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 
-							let sign = to_mouse_final.dot(to_mouse_start).signum();
-							scale = scale.increment_amount(change * scale.dragged_factor.signum());
-							if self.scale_sign != sign {
-								self.scale_sign = sign;
-								scale = scale.negate();
-							}
+							scale = scale.increment_amount(change);
 							self.transform_operation = TransformOperation::Scaling(scale);
 							self.transform_operation
 								.apply_transform_operation(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);

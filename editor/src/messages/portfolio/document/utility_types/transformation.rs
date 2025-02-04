@@ -14,6 +14,7 @@ use graphene_std::vector::{HandleId, PointId};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
+use std::f64::consts::PI;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct AnchorPoint {
@@ -145,8 +146,11 @@ pub struct Translation {
 impl Translation {
 	pub fn to_dvec(self, transform: DAffine2, increment_mode: bool) -> DVec2 {
 		let displacement = if let Some(value) = self.typed_distance {
-			let document_displacement = if self.constraint == Axis::Y { DVec2::new(0., value) } else { DVec2::new(value, 0.) };
-			transform.transform_vector2(document_displacement)
+			match self.constraint {
+				Axis::X => transform.transform_vector2(DVec2::new(value, 0.)),
+				Axis::Y => transform.transform_vector2(DVec2::new(0., value)),
+				Axis::Both => self.dragged_distance,
+			}
 		} else {
 			match self.constraint {
 				Axis::Both => self.dragged_distance,
@@ -272,7 +276,7 @@ impl Scale {
 	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
-			dragged_factor: (self.dragged_factor + delta).abs().max(1e-4) * self.dragged_factor.signum(),
+			dragged_factor: (self.dragged_factor + delta),
 			typed_factor: None,
 			constraint: self.constraint,
 		}
@@ -303,13 +307,18 @@ pub enum TransformOperation {
 
 impl TransformOperation {
 	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
-		let local_axis_transform_angle = (quad.top_right() - quad.top_left()).to_angle();
+		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
 					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, increment_mode)));
 					if local {
-						DAffine2::from_angle(local_axis_transform_angle) * translate * DAffine2::from_angle(-local_axis_transform_angle)
+						let resolved_angle = if local_axis_transform_angle > 0.0 {
+							local_axis_transform_angle - PI
+						} else {
+							local_axis_transform_angle
+						};
+						DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
 					} else {
 						translate
 					}
