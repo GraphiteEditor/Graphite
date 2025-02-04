@@ -268,6 +268,25 @@ impl ArtboardGroup {
 	}
 }
 
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum EitherFormat {
+		ArtboardGroup(ArtboardGroup),
+		ArtboardGroupTable(ArtboardGroupTable),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::ArtboardGroup(artboard_group) => ArtboardGroupTable::new(artboard_group),
+		EitherFormat::ArtboardGroupTable(artboard_group_table) => artboard_group_table,
+	})
+}
+
+pub type ArtboardGroupTable = Instances<ArtboardGroup>;
+
 #[node_macro::node(category(""))]
 async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
 	let mut stack = stack;
@@ -385,15 +404,15 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
-	// let mut artboards = artboards.eval(ctx.clone()).await;
-	// let artboard = artboard.eval(ctx).await;
+async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroupTable {
+	let artboard_group = artboards.one_instance_mut().instance;
+
 	// let foot = ctx.footprint();
 	// log::debug!("{:?}", foot);
 	// Get the penultimate element of the node path, or None if the path is too short.
 	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	artboards.append_artboard(artboard, encapsulating_node_id);
+	artboard_group.append_artboard(artboard, encapsulating_node_id);
 
 	artboards
 }
