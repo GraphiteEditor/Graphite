@@ -4,8 +4,9 @@ use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
 use crate::Color;
 
-use core::hash::Hash;
 use dyn_any::DynAny;
+
+use core::hash::Hash;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;

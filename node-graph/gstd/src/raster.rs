@@ -257,8 +257,7 @@ fn mask_image<
 #[node_macro::node(skip_impl)]
 async fn blend_image_tuple<_P, MapFn, _Fg>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'n MapFn) -> ImageFrameTable<_P>
 where
-	_P: Alpha + Pixel + Debug + Send + dyn_any::StaticType,
-	_P::Static: Pixel,
+	_P: Alpha + Pixel + Debug + Send,
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'n + Clone,
 	_Fg: Sample<Pixel = _P> + Transform + Clone + Send + 'n,
 	GraphicElement: From<Image<_P>>,

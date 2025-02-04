@@ -2,7 +2,6 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
-use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
@@ -220,7 +219,8 @@ impl Default for Type {
 	}
 }
 
-unsafe impl StaticType for Type {
+#[cfg(feature = "dyn-any")]
+unsafe impl dyn_any::StaticType for Type {
 	type Static = Self;
 }
 
@@ -269,7 +269,7 @@ impl Type {
 }
 
 impl Type {
-	pub fn new<T: StaticType + Sized>() -> Self {
+	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
@@ -278,6 +278,7 @@ impl Type {
 			align: core::mem::align_of::<T>(),
 		})
 	}
+
 	pub fn size(&self) -> Option<usize> {
 		match self {
 			Self::Generic(_) => None,

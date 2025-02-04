@@ -90,8 +90,7 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 #[node_macro::node(skip_impl)]
 fn blit<P, BlendFn>(mut target: ImageFrameTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrameTable<P>
 where
-	P: Pixel + Alpha + std::fmt::Debug + dyn_any::StaticType,
-	P::Static: Pixel,
+	P: Pixel + Alpha + std::fmt::Debug,
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
 	GraphicElement: From<Image<P>>,
 {

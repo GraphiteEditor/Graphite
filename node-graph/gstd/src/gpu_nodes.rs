@@ -14,8 +14,7 @@ use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, Wg
 use glam::{DAffine2, DVec2, Mat2, Vec2};
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::wasm_application_io::WasmApplicationIo;
 

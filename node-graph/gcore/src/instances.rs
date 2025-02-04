@@ -6,14 +6,12 @@ use crate::vector::{InstanceId, VectorData, VectorDataTable};
 use crate::{AlphaBlending, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
 
 use dyn_any::StaticType;
+
 use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Instances<T>
-where
-	T: Into<GraphicElement> + StaticType + 'static,
-{
+pub struct Instances<T> {
 	id: Vec<InstanceId>,
 	#[serde(alias = "instances")]
 	instance: Vec<T>,
@@ -23,7 +21,7 @@ where
 	alpha_blending: Vec<AlphaBlending>,
 }
 
-impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
+impl<T> Instances<T> {
 	pub fn new(instance: T) -> Self {
 		Self {
 			id: vec![InstanceId::generate()],
@@ -84,13 +82,13 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 	}
 }
 
-impl<T: Into<GraphicElement> + Default + Hash + StaticType + 'static> Default for Instances<T> {
+impl<T: Default + Hash> Default for Instances<T> {
 	fn default() -> Self {
 		Self::new(T::default())
 	}
 }
 
-impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for Instances<T> {
+impl<T: Hash> core::hash::Hash for Instances<T> {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 		for instance in &self.instance {
@@ -99,13 +97,14 @@ impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for
 	}
 }
 
-impl<T: Into<GraphicElement> + PartialEq + StaticType + 'static> PartialEq for Instances<T> {
+impl<T: PartialEq> PartialEq for Instances<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id == other.id && self.instance.len() == other.instance.len() && { self.instance.iter().zip(other.instance.iter()).all(|(a, b)| a == b) }
 	}
 }
 
-unsafe impl<T: Into<GraphicElement> + StaticType + 'static> dyn_any::StaticType for Instances<T> {
+#[cfg(feature = "dyn-any")]
+unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
 }
 
@@ -235,8 +234,6 @@ impl<P: Pixel> TransformMut for InstanceMut<'_, Image<P>> {
 // IMAGE FRAME TABLE
 impl<P: Pixel> Transform for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn transform(&self) -> DAffine2 {
@@ -245,8 +242,6 @@ where
 }
 impl<P: Pixel> TransformMut for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
