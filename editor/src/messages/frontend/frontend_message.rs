@@ -294,4 +294,8 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateGraphRenderingState {
+		#[serde(rename = "isRendering")]
+		is_rendering: bool,
+	},
 }

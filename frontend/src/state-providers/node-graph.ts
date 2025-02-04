@@ -24,6 +24,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
+	UpdateGraphRenderingState,
 } from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -51,6 +52,7 @@ export function createNodeGraphState(editor: Editor) {
 		inSelectedNetwork: true,
 		reorderImportIndex: undefined as number | undefined,
 		reorderExportIndex: undefined as number | undefined,
+		isRendering: false,
 	});
 
 	// Set up message subscriptions on creation
@@ -147,6 +149,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
 		update((state) => {
 			state.wirePathInProgress = updateWirePathInProgress.wirePath;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateGraphRenderingState, (updateGraphRenderingState) => {
+		update((state) => {
+			state.isRendering = updateGraphRenderingState.isRendering;
 			return state;
 		});
 	});

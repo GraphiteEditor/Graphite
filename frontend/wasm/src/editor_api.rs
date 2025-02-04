@@ -811,7 +811,7 @@ impl EditorHandle {
 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, true)
+			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, true, &mut VecDeque::new())
 			.unwrap();
 		editor::node_graph_executor::run_node_graph().await;
 

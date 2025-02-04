@@ -1557,6 +1557,9 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 	);
 }
 
+export class UpdateGraphRenderingState extends JsMessage {
+	readonly isRendering!: boolean;
+}
 // `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
@@ -1627,5 +1630,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolShelfLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
+	UpdateGraphRenderingState,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

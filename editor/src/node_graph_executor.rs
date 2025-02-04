@@ -439,7 +439,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
+	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool,responses: &mut VecDeque<Message>) -> Result<(), String> {
 		// Get the node graph layer
 		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
 		if network_hash != self.node_graph_hash || ignore_hash {
@@ -463,7 +463,7 @@ impl NodeGraphExecutor {
 			hide_artboards: false,
 			for_export: false,
 		};
-
+		responses.add(FrontendMessage::UpdateGraphRenderingState { is_rendering: true });
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
@@ -671,6 +671,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
+		responses.add(FrontendMessage::UpdateGraphRenderingState { is_rendering: false });
 		Ok(())
 	}
 }
