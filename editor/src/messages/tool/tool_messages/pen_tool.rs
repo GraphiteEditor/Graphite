@@ -641,7 +641,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::Ready, PenToolMessage::Overlays(mut overlay_context)) => {
-				path_overlays(document, shape_editor, &mut overlay_context);
+				path_overlays(document, shape_editor, &mut overlay_context, true);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
@@ -680,7 +680,7 @@ impl Fsm for PenToolFsmState {
 					// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
 					overlay_context.line(next_anchor, handle_end, None);
 
-					path_overlays(document, shape_editor, &mut overlay_context);
+					path_overlays(document, shape_editor, &mut overlay_context, false);
 
 					if self == PenToolFsmState::DraggingHandle && valid(next_anchor, handle_end) {
 						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
@@ -693,7 +693,7 @@ impl Fsm for PenToolFsmState {
 					}
 				} else {
 					// Draw the whole path and its manipulators when the user is clicking-and-dragging out from the most recently placed anchor to set its outgoing handle, during which it would otherwise not have its overlays drawn
-					path_overlays(document, shape_editor, &mut overlay_context);
+					path_overlays(document, shape_editor, &mut overlay_context, false);
 				}
 
 				if self == PenToolFsmState::DraggingHandle && valid(next_anchor, next_handle_start) {

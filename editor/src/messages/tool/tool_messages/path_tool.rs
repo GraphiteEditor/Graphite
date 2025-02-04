@@ -703,7 +703,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				path_overlays(document, shape_editor, &mut overlay_context);
+				path_overlays(document, shape_editor, &mut overlay_context, true);
 
 				match self {
 					Self::Drawing { selection_shape } => {
