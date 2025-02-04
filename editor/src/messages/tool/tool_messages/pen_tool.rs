@@ -709,7 +709,7 @@ impl Fsm for PenToolFsmState {
 				}
 				PenToolFsmState::GRSHandle
 			}
-			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_position: final_pos }) => {
+			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_position }) => {
 				let Some(layer) = layer else { return PenToolFsmState::GRSHandle };
 				let vector_data = document.network_interface.compute_modified_vector(layer);
 				let Some(vector_data) = vector_data else { return PenToolFsmState::GRSHandle };
@@ -1155,26 +1155,16 @@ impl Fsm for PenToolFsmState {
 					}
 				};
 
+				let mut common_hints = vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")];
 				let hold_group = match mode {
-					HandleMode::Free => {
-						let mut hints = vec![];
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints
-					}
+					HandleMode::Free => common_hints,
 					HandleMode::ColinearLocked => {
-						let mut hints = vec![];
-						hints.push(HintInfo::keys([Key::Alt], "Non-Equidistant Handles"));
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints
+						common_hints.push(HintInfo::keys([Key::Alt], "Non-Equidistant Handles"));
+						common_hints
 					}
 					HandleMode::ColinearEquidistant => {
-						let mut hints = vec![];
-						hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints
+						common_hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+						common_hints
 					}
 				};
 
