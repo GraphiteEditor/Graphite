@@ -716,7 +716,7 @@ impl Fsm for PenToolFsmState {
 
 				if let Some(latest_pt) = tool_data.latest_point_mut() {
 					let layer_space_to_viewport = document.metadata().transform_to_viewport(layer);
-					let final_pos = layer_space_to_viewport.inverse().transform_point2(final_pos);
+					let final_pos = layer_space_to_viewport.inverse().transform_point2(final_position);
 					latest_pt.handle_start = final_pos;
 				}
 

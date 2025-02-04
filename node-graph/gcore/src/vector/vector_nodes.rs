@@ -75,7 +75,7 @@ async fn assign_colors<F: 'n + Send, T: VectorIterMut>(
 
 	for (i, (vector_data, _)) in vector_group.vector_iter_mut().enumerate() {
 		let factor = match randomize {
-			true => rng.gen::<f64>(),
+			true => rng.random::<f64>(),
 			false => match repeat_every {
 				0 => i as f64 / (length - 1).max(1) as f64,
 				1 => 0.,
@@ -389,7 +389,7 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 		let translation = points.transform.transform_point2(point);
 
 		let rotation = if do_rotation {
-			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
+			let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
 			degrees / 360. * std::f64::consts::TAU
 		} else {
 			0.
@@ -398,11 +398,11 @@ async fn copy_to_points<F: 'n + Send + Copy, I: GraphicElementRendered + ConcatE
 		let scale = if do_scale {
 			if random_scale_bias.abs() < 1e-6 {
 				// Linear
-				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
+				random_scale_min + scale_rng.random::<f64>() * random_scale_difference
 			} else {
 				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
 				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+				let scale_factor = (1. - scale_rng.random::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
 				random_scale_min + scale_factor * random_scale_difference
 			}
 		} else {
@@ -818,7 +818,7 @@ async fn poisson_disk_points<F: 'n + Send>(
 
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()) {
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>()) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 
@@ -941,8 +941,8 @@ async fn jitter_points<F: 'n + Send>(
 
 	let deltas = (0..vector_data.point_domain.positions().len())
 		.map(|_| {
-			let angle = rng.gen::<f64>() * std::f64::consts::TAU;
-			DVec2::from_angle(angle) * rng.gen::<f64>() * amount
+			let angle = rng.random::<f64>() * std::f64::consts::TAU;
+			DVec2::from_angle(angle) * rng.random::<f64>() * amount
 		})
 		.collect::<Vec<_>>();
 	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
