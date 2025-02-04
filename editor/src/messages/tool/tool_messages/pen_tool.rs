@@ -215,10 +215,13 @@ struct LastPoint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum HandleMode {
+	/// Pressing 'C' breaks colinearity
 	Free,
-	#[default] // Pressing 'C' breaks colinearity
-	ColinearLocked, // Pressing 'Alt': Handle length is locked
-	ColinearEquidistant, // Pressing 'Alt' : Handle is equidistant
+	/// Pressing 'Alt': Handle length is locked
+	#[default]
+	ColinearLocked,
+	/// Pressing 'Alt': Handles are equidistant
+	ColinearEquidistant,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -410,7 +413,7 @@ impl PenToolData {
 
 	fn colinear(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, handle_start: DVec2, anchor_point: DVec2, vector_data: &VectorData) {
 		let Some(direction) = (anchor_point - handle_start).try_normalize() else {
-			log::warn!("Skipping colinear adjustment: handle_start and anchor_point are too close!");
+			log::trace!("Skipping colinear adjustment: handle_start and anchor_point are too close!");
 			return;
 		};
 
@@ -444,7 +447,7 @@ impl PenToolData {
 		}
 	}
 
-	/// Temporarily stores the opposite handle position to revert back when alt is released in equidistant mode.
+	/// Temporarily stores the opposite handle position to revert back when Alt is released in equidistant mode.
 	fn store_handle(&mut self, vector_data: &VectorData) {
 		if !self.alt_press {
 			self.previous_handle_end_pos = self.handle_end.or_else(|| {
@@ -469,9 +472,9 @@ impl PenToolData {
 			*handle = new_position;
 		} else {
 			let Some(segment) = self.segment_end_before_bent else { return };
-
 			let relative_position = new_position - anchor_pos;
 			let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 	}
@@ -681,33 +684,32 @@ impl Fsm for PenToolFsmState {
 		let ToolMessage::Pen(event) = event else { return self };
 		match (self, event) {
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
-				let segment = tool_data.segment_end_before_bent;
 				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
 
 				let Some(latest) = tool_data.latest_point() else { return PenToolFsmState::PlacingAnchor };
-
-				let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-
-				if latest.handle_start != latest.pos {
-					let viewport = document.metadata().transform_to_viewport(layer);
-					let last_point = viewport.transform_point2(latest.pos);
-					let handle = viewport.transform_point2(latest.handle_start);
-
-					if input.keyboard.key(grab) {
-						responses.add(TransformLayerMessage::BeginGrabPen { last_point, handle });
-					} else if input.keyboard.key(rotate) {
-						responses.add(TransformLayerMessage::BeginRotatePen { last_point, handle });
-					} else if input.keyboard.key(scale) {
-						responses.add(TransformLayerMessage::BeginScalePen { last_point, handle });
-					}
-
-					tool_data.previous_handle_start_pos = latest.handle_start;
-					// Store the handle_end position
-					if let Some(segment) = segment {
-						tool_data.previous_handle_end_pos = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
-					}
-				} else {
+				if latest.handle_start == latest.pos {
 					return PenToolFsmState::PlacingAnchor;
+				}
+
+				let viewport = document.metadata().transform_to_viewport(layer);
+				let last_point = viewport.transform_point2(latest.pos);
+				let handle = viewport.transform_point2(latest.handle_start);
+
+				if input.keyboard.key(grab) {
+					responses.add(TransformLayerMessage::BeginGrabPen { last_point, handle });
+				} else if input.keyboard.key(rotate) {
+					responses.add(TransformLayerMessage::BeginRotatePen { last_point, handle });
+				} else if input.keyboard.key(scale) {
+					responses.add(TransformLayerMessage::BeginScalePen { last_point, handle });
+				}
+
+				tool_data.previous_handle_start_pos = latest.handle_start;
+
+				// Store the handle_end position
+				let segment = tool_data.segment_end_before_bent;
+				if let Some(segment) = segment {
+					let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+					tool_data.previous_handle_end_pos = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
 				}
 				PenToolFsmState::GRSHandle
 			}
@@ -731,7 +733,7 @@ impl Fsm for PenToolFsmState {
 							let Some(handle) = handle else { return PenToolFsmState::GRSHandle };
 
 							let Some(direction) = (latest.pos - latest.handle_start).try_normalize() else {
-								log::warn!("Skipping handle adjustment: latest.pos and latest.handle_start are too close!");
+								log::trace!("Skipping handle adjustment: latest.pos and latest.handle_start are too close!");
 								return PenToolFsmState::GRSHandle;
 							};
 
@@ -934,7 +936,7 @@ impl Fsm for PenToolFsmState {
 					last_point.handle_start = last_point.pos;
 					responses.add(OverlaysMessage::Draw);
 				} else {
-					log::warn!("No latest point available to modify handle_start.");
+					log::trace!("No latest point available to modify handle_start.");
 				}
 				self
 			}
@@ -1151,14 +1153,10 @@ impl Fsm for PenToolFsmState {
 
 				let toggle_group = match mode {
 					HandleMode::Free => {
-						let mut hints = vec![];
-						hints.push(HintInfo::keys([Key::KeyC], "Make Handles Colinear"));
-						hints
+						vec![HintInfo::keys([Key::KeyC], "Make Handles Colinear")]
 					}
 					HandleMode::ColinearLocked | HandleMode::ColinearEquidistant => {
-						let mut hints = vec![];
-						hints.push(HintInfo::keys([Key::KeyC], "Break Colinear Handles"));
-						hints
+						vec![HintInfo::keys([Key::KeyC], "Break Colinear Handles")]
 					}
 				};
 
