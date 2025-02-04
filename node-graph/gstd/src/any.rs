@@ -1,12 +1,10 @@
+use dyn_any::StaticType;
 pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
+pub use graphene_core::registry::{DowncastBothNode, DynAnyNode, FutureWrapperNode, PanicNode};
 use graphene_core::NodeIO;
 use graphene_core::WasmNotSend;
 pub use graphene_core::{generic, ops, Node};
-
-use dyn_any::StaticType;
-
-pub use graphene_core::registry::{DowncastBothNode, DynAnyNode, FutureWrapperNode, PanicNode};
 
 pub trait IntoTypeErasedNode<'n> {
 	fn into_type_erased(self) -> TypeErasedBox<'n>;

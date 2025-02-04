@@ -258,8 +258,7 @@ pub struct BlendImageTupleNode<P, Fg, MapFn> {
 fn blend_image_tuple<_P, MapFn, _Fg>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrameTable<_P>
 where
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
-	_P: Alpha + Pixel + Debug + dyn_any::StaticType,
-	_P::Static: Pixel,
+	_P: Alpha + Pixel + Debug,
 	_Fg: Sample<Pixel = _P> + Transform,
 	GraphicElement: From<Image<_P>>,
 {

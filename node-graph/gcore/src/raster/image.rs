@@ -1,7 +1,9 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
+use crate::instances::Instances;
+use crate::transform::TransformMut;
 use crate::GraphicElement;
-use crate::{instances::Instances, transform::TransformMut};
+
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -68,6 +70,7 @@ impl<P: Pixel + Debug> Debug for Image<P> {
 	}
 }
 
+#[cfg(feature = "dyn-any")]
 unsafe impl<P> StaticType for Image<P>
 where
 	P: dyn_any::StaticTypeSized + Pixel,
@@ -235,6 +238,8 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			}
 		}
 	}
+
+	#[cfg(feature = "dyn-any")]
 	unsafe impl<P> StaticType for ImageFrame<P>
 	where
 		P: dyn_any::StaticTypeSized + Pixel,
@@ -286,8 +291,7 @@ impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 
 impl<P> Sample for ImageFrameTable<P>
 where
-	P: Debug + Copy + Pixel + dyn_any::StaticType,
-	P::Static: Pixel,
+	P: Debug + Copy + Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	type Pixel = P;
@@ -307,8 +311,7 @@ where
 
 impl<P> Bitmap for ImageFrameTable<P>
 where
-	P: Copy + Pixel + dyn_any::StaticType,
-	P::Static: Pixel,
+	P: Copy + Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	type Pixel = P;
@@ -334,8 +337,7 @@ where
 
 impl<P> BitmapMut for ImageFrameTable<P>
 where
-	P: Copy + Pixel + dyn_any::StaticType,
-	P::Static: Pixel,
+	P: Copy + Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
