@@ -217,8 +217,8 @@ struct LastPoint {
 enum HandleMode {
 	Free,
 	#[default] // Pressing 'C' breaks colinearity
-	ColinearLocked, // Alt pressed: Handle length is locked
-	ColinearEquidistant, // Alt pressed: Handle is equidistant
+	ColinearLocked, // Pressing 'Alt': Handle length is locked
+	ColinearEquidistant, // Pressing 'Alt' : Handle is equidistant
 }
 
 #[derive(Clone, Debug, Default)]
@@ -242,7 +242,7 @@ struct PenToolData {
 	buffering_merged_vector: bool,
 
 	previous_handle_start_pos: DVec2,
-	previous_handle_end_pos: DVec2,
+	previous_handle_end_pos: Option<DVec2>,
 	alt_press: bool,
 
 	handle_mode: HandleMode,
@@ -414,23 +414,22 @@ impl PenToolData {
 			return;
 		};
 
-		let new_handle_position = if let Some(handle_end) = self.handle_end {
-			anchor_point + (handle_end - anchor_point).project_onto_normalized(direction)
+		let handle_offset = if let Some(handle_end) = self.handle_end {
+			(handle_end - anchor_point).length()
 		} else {
 			let Some(segment) = self.segment_end_before_bent else { return };
 			let end_handle = ManipulatorPointId::EndHandle(segment);
 			let Some(end_handle) = end_handle.get_position(vector_data) else { return };
-			anchor_point + (end_handle - anchor_point).project_onto_normalized(direction)
+			(end_handle - anchor_point).length()
 		};
+		let new_handle_position = anchor_point + handle_offset * direction;
 		self.update_handle_position(new_handle_position, anchor_point, responses, layer);
 	}
 
 	fn adjust_equidistant_handle(&mut self, anchor_pos: DVec2, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) {
 		if self.modifiers.break_handle {
-			// Store original handle before equidistant adjustment
 			self.store_handle(vector_data);
 			self.alt_press = true;
-
 			let new_position = self.next_point * 2. - self.next_handle_start;
 			self.update_handle_position(new_position, anchor_pos, responses, layer);
 		} else {
@@ -447,10 +446,10 @@ impl PenToolData {
 
 	/// Temporarily stores the opposite handle position to revert back when alt is released in equidistant mode.
 	fn store_handle(&mut self, vector_data: &VectorData) {
-		if self.previous_handle_end_pos == DVec2::ZERO {
-			self.previous_handle_end_pos = self.handle_end.unwrap_or_else(|| {
-				let Some(segment) = self.segment_end_before_bent else { return DVec2::ZERO };
-				ManipulatorPointId::EndHandle(segment).get_position(vector_data).unwrap_or(DVec2::ZERO)
+		if !self.alt_press {
+			self.previous_handle_end_pos = self.handle_end.or_else(|| {
+				let segment = self.segment_end_before_bent?;
+				ManipulatorPointId::EndHandle(segment).get_position(vector_data)
 			});
 		}
 	}
@@ -458,8 +457,10 @@ impl PenToolData {
 	fn restore_previous_handle(&mut self, anchor_pos: DVec2, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
 		if self.alt_press {
 			self.alt_press = false;
-			self.update_handle_position(self.previous_handle_end_pos, anchor_pos, responses, layer);
-			self.previous_handle_end_pos = DVec2::ZERO;
+			if let Some(previous_handle) = self.previous_handle_end_pos {
+				self.update_handle_position(previous_handle, anchor_pos, responses, layer);
+			}
+			self.previous_handle_end_pos = None; // Reset storage
 		}
 	}
 
@@ -703,7 +704,7 @@ impl Fsm for PenToolFsmState {
 					tool_data.previous_handle_start_pos = latest.handle_start;
 					// Store the handle_end position
 					if let Some(segment) = segment {
-						tool_data.previous_handle_end_pos = ManipulatorPointId::EndHandle(segment).get_position(&vector_data).unwrap_or(DVec2::ZERO);
+						tool_data.previous_handle_end_pos = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
 					}
 				}
 				PenToolFsmState::GRSHandle
@@ -778,8 +779,8 @@ impl Fsm for PenToolFsmState {
 				});
 
 				// Set the handle-end back to original position
-				if let Some((latest, segment)) = tool_data.latest_point().zip(tool_data.segment_end_before_bent) {
-					let relative = tool_data.previous_handle_end_pos - latest.pos;
+				if let Some(((latest, segment), handle_end)) = tool_data.latest_point().zip(tool_data.segment_end_before_bent).zip(tool_data.previous_handle_end_pos) {
+					let relative = handle_end - latest.pos;
 					let modification_type = VectorModificationType::SetEndHandle { segment, relative_position: relative };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
@@ -994,6 +995,7 @@ impl Fsm for PenToolFsmState {
 					colinear,
 				},
 			) => {
+				tool_data.alt_press = false;
 				tool_data.modifiers = ModifierState {
 					snap_angle: input.keyboard.key(snap_angle),
 					lock_angle: input.keyboard.key(lock_angle),
