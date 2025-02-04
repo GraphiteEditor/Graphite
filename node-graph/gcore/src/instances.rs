@@ -2,6 +2,7 @@ use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::transform::{Transform, TransformMut};
+use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorData, VectorDataTable};
 use crate::{AlphaBlending, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
 
@@ -17,6 +18,7 @@ pub struct Instances<T> {
 	instance: Vec<T>,
 	transform: Vec<DAffine2>,
 	alpha_blending: Vec<AlphaBlending>,
+	source_node_id: Vec<Option<NodeId>>,
 }
 
 impl<T> Instances<T> {
@@ -26,6 +28,23 @@ impl<T> Instances<T> {
 			instance: vec![instance],
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
+			source_node_id: vec![None],
+		}
+	}
+
+	pub fn push(&mut self, instance: T) -> InstanceMut<T> {
+		self.id.push(InstanceId::generate());
+		self.instance.push(instance);
+		self.transform.push(DAffine2::IDENTITY);
+		self.alpha_blending.push(AlphaBlending::default());
+		self.source_node_id.push(None);
+
+		InstanceMut {
+			id: self.id.last_mut().expect("Shouldn't be empty"),
+			instance: self.instance.last_mut().expect("Shouldn't be empty"),
+			transform: self.transform.last_mut().expect("Shouldn't be empty"),
+			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
+			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
 		}
 	}
 
@@ -35,6 +54,7 @@ impl<T> Instances<T> {
 			instance: self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			transform: self.transform.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			alpha_blending: self.alpha_blending.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
+			source_node_id: self.source_node_id.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 		}
 	}
 
@@ -46,6 +66,7 @@ impl<T> Instances<T> {
 			instance: self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			transform: self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			alpha_blending: self.alpha_blending.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
+			source_node_id: self.source_node_id.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 		}
 	}
 
@@ -56,11 +77,13 @@ impl<T> Instances<T> {
 			.zip(self.instance.iter())
 			.zip(self.transform.iter())
 			.zip(self.alpha_blending.iter())
-			.map(|(((id, instance), transform), alpha_blending)| Instance {
+			.zip(self.source_node_id.iter())
+			.map(|((((id, instance), transform), alpha_blending), source_node_id)| Instance {
 				id,
 				instance,
 				transform,
 				alpha_blending,
+				source_node_id,
 			})
 	}
 
@@ -71,11 +94,13 @@ impl<T> Instances<T> {
 			.zip(self.instance.iter_mut())
 			.zip(self.transform.iter_mut())
 			.zip(self.alpha_blending.iter_mut())
-			.map(|(((id, instance), transform), alpha_blending)| InstanceMut {
+			.zip(self.source_node_id.iter_mut())
+			.map(|((((id, instance), transform), alpha_blending), source_node_id)| InstanceMut {
 				id,
 				instance,
 				transform,
 				alpha_blending,
+				source_node_id,
 			})
 	}
 }
@@ -112,6 +137,7 @@ pub struct Instance<'a, T> {
 	pub instance: &'a T,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
+	pub source_node_id: &'a Option<NodeId>,
 }
 #[derive(Debug)]
 pub struct InstanceMut<'a, T> {
@@ -119,6 +145,7 @@ pub struct InstanceMut<'a, T> {
 	pub instance: &'a mut T,
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
+	pub source_node_id: &'a mut Option<NodeId>,
 }
 
 // GRAPHIC ELEMENT
