@@ -565,7 +565,7 @@ impl PenToolData {
 		}
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)) {
-			if (relative - document_pos) != DVec2::ZERO {
+			if (relative - document_pos) != DVec2::ZERO && (relative - document_pos).length_squared() > f64::EPSILON * 100. {
 				self.angle = -(relative - document_pos).angle_to(DVec2::X)
 			}
 		}
