@@ -212,7 +212,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		Context -> ImageFrameTable<Color>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
-		Context -> graphene_core::ArtboardGroup,
+		Context -> graphene_core::ArtboardGroupTable,
 		Context -> Option<Color>,
 		Context -> Vec<Color>,
 		Context -> bool,

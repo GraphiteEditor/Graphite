@@ -182,7 +182,8 @@ tagged_value! {
 	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
 	GraphicGroup(graphene_core::GraphicGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
-	ArtboardGroup(graphene_core::ArtboardGroup),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	Palette(Vec<Color>),

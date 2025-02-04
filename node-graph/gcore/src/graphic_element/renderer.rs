@@ -9,7 +9,7 @@ use crate::transform::{Footprint, Transform};
 use crate::uuid::{generate_uuid, NodeId};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroupTable, RasterFrame};
+use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -790,38 +790,43 @@ impl GraphicElementRendered for Artboard {
 	}
 }
 
-impl GraphicElementRendered for ArtboardGroup {
+impl GraphicElementRendered for ArtboardGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for (artboard, _) in &self.artboards {
+		for (artboard, _) in &self.one_instance().instance.artboards {
 			artboard.render_svg(render, render_params);
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
+		self.one_instance()
+			.instance
+			.artboards
+			.iter()
+			.filter_map(|(element, _)| element.bounding_box(transform))
+			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
-		for (artboard, element_id) in &self.artboards {
+		for (artboard, element_id) in &self.one_instance().instance.artboards {
 			artboard.collect_metadata(metadata, footprint, *element_id);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for (artboard, _) in &self.artboards {
+		for (artboard, _) in &self.one_instance().instance.artboards {
 			artboard.add_upstream_click_targets(click_targets);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		for (artboard, _) in &self.artboards {
+		for (artboard, _) in &self.one_instance().instance.artboards {
 			artboard.render_to_vello(scene, transform, context)
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		!self.artboards.is_empty()
+		!self.one_instance().instance.artboards.is_empty()
 	}
 }
 
