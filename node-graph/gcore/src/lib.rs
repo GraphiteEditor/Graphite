@@ -114,8 +114,7 @@ where
 	{
 		NodeIOTypes {
 			call_argument: concrete!(<Input as StaticTypeSized>::Static),
-			// TODO return actual future type
-			return_value: concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
+			return_value: future!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
 			inputs,
 		}
 	}

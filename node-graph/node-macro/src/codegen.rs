@@ -278,7 +278,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
@@ -403,7 +403,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						// try polling futures
 				)
 			});
-			temp_node_io.push(quote!(fn_type!(#input_type, #output_type, alias: #output_type)));
+			temp_node_io.push(quote!(fn_type_fut!(#input_type, #output_type, alias: #output_type)));
 			match (parsed.is_async || true) && *impl_node || true {
 				true => panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>)),
 				false => panic_node_types.push(quote!(#input_type, #output_type)),

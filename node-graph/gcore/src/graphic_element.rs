@@ -398,14 +398,9 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard<C: Ctx + Clone + 'n>(
-	#[implementations(Context)] ctx: C,
-	#[implementations(Context -> ArtboardGroup)] artboards: impl Node<C, Output = ArtboardGroup>,
-	#[implementations(Context -> Artboard)] artboard: impl Node<C, Output = Artboard>,
-	node_path: Vec<NodeId>,
-) -> ArtboardGroup {
-	let mut artboards = artboards.eval(ctx.clone()).await;
-	let artboard = artboard.eval(ctx).await;
+async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
+	// let mut artboards = artboards.eval(ctx.clone()).await;
+	// let artboard = artboard.eval(ctx).await;
 	// let foot = ctx.footprint();
 	// log::debug!("{:?}", foot);
 	// Get the penultimate element of the node path, or None if the path is too short

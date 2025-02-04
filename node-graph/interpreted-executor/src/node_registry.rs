@@ -9,6 +9,7 @@ use graphene_core::raster::*;
 use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{concrete, generic, Artboard, GraphicGroupTable};
+use graphene_core::{fn_type_fut, future};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
@@ -25,49 +26,6 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-macro_rules! construct_node {
-	($args: ident, $path:ty, [$($arg:ty => $type:ty),*]) => { async move {
-		let mut args = $args.clone();
-		args.reverse();
-		let node = <$path>::new($(
-				{
-					let node = graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"));
-					// let node = graphene_std::any::FutureWrapperNode::new(node);
-					let value = node.eval(None).await;
-					graphene_core::value::ClonedNode::new(value)
-				}
-			),*
-		);
-		node
-	}}
-}
-
-macro_rules! register_node {
-	($path:ty, input: $input:ty, params: [ $($type:ty),*]) => {
-		register_node!($path, input: $input, fn_params: [ $(Context => $type),*])
-	};
-	($path:ty, input: $input:ty, fn_params: [ $($arg:ty => $type:ty),*]) => {
-		(
-			ProtoNodeIdentifier::new(stringify!($path)),
-			|args| {
-				Box::pin(async move {
-				let node = construct_node!(args, $path, [$($arg => $type),*]).await;
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
-				Box::new(any) as TypeErasedBox
-				})
-			},
-			{
-				let node = <$path>::new($(
-					graphene_std::any::PanicNode::<Context, $type>::new()
-				),*);
-				let params = vec![$(fn_type!(Context, $type)),*];
-				let mut node_io = <$path as NodeIO<'_, $input>>::to_node_io(&node, params);
-				node_io.call_argument = concrete!(<$input as StaticType>::Static);
-				node_io
-			},
-		)
-	};
-}
 macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
 	// TODO: assign a Pin<Box<dyn Future<Output=T>>> type to the node, which is not what we want for now.
@@ -93,7 +51,7 @@ macro_rules! async_node {
 				),*);
 				// TODO: Propagate the future type through the node graph
 				// let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
-				let params = vec![$(fn_type!($arg, $type)),*];
+				let params = vec![$(fn_type_fut!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_async_node_io(&node, params);
 				node_io.call_argument = concrete!(<$input as StaticType>::Static);
 				node_io
@@ -132,22 +90,20 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),
 			|args| {
 				Box::pin(async move {
-					let editor_api: DowncastBothNode<Context, &WasmEditorApi> = DowncastBothNode::new(args[1].clone());
+					let editor_api: DowncastBothNode<(), &WasmEditorApi> = DowncastBothNode::new(args[0].clone());
 					let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(editor_api);
-					// let node = FutureWrapperNode::new(node);
-					let any: DynAnyNode<Context, _, _> = graphene_std::any::DynAnyNode::new(node);
+					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(node);
 					Box::new(any) as TypeErasedBox
 				})
 			},
 			{
 				let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(graphene_std::any::PanicNode::<Context, DynFuture<'static, &WasmEditorApi>>::new());
-				let params = vec![fn_type!(Context, DynFuture<'static, &WasmEditorApi>)];
+				let params = vec![fn_type_fut!(Context, &WasmEditorApi)];
 				let mut node_io = <wgpu_executor::CreateGpuSurfaceNode<_> as NodeIO<'_, Context>>::to_async_node_io(&node, params);
 				node_io.call_argument = concrete!(<Context as StaticType>::Static);
 				node_io
 			},
 		),
-		// register_node!(wgpu_executor::CreateGpuSurfaceNode<_>, input: Context, params: [&WasmEditorApi]),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode"),
@@ -155,7 +111,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
 					let editor_api: DowncastBothNode<(), &WasmEditorApi> = DowncastBothNode::new(args[1].clone());
-					// let document_node = ClonedNode::new(document_node.eval(()));
 					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node, editor_api);
 					let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 					any.into_type_erased()

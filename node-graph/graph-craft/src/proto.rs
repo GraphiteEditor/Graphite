@@ -653,7 +653,7 @@ impl TypingContext {
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![v.ty()]);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![v.ty()]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -696,6 +696,8 @@ impl TypingContext {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+				// Check inner type for futures
+				(Type::Future(type1), Type::Future(type2)) => type1 == type2,
 				// Loose comparison of function types, where loose means that functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
 				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.

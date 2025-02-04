@@ -53,6 +53,9 @@ macro_rules! future {
 	($type:ty) => {{
 		$crate::Type::Future(Box::new(concrete!($type)))
 	}};
+	($type:ty, $name:ty) => {
+		$crate::Type::Future(Box::new(concrete!($type, $name)))
+	};
 }
 
 #[macro_export]
@@ -65,6 +68,18 @@ macro_rules! fn_type {
 	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
+	};
+}
+#[macro_export]
+macro_rules! fn_type_fut {
+	($type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
+	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
+	};
+	($in_type:ty, $type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
 	};
 }
 
