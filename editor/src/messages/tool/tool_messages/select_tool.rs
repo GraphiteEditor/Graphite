@@ -1305,18 +1305,21 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::ResizingBounds => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-					HintGroup(vec![HintInfo::keys([Key::Alt], "Center Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect")]),
+					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			Self::RotatingBounds => {
+			SelectToolFsmState::RotatingBounds => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control], "Snap")]),
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			_ => {}
+			SelectToolFsmState::DraggingPivot => {
+				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			}
 		}
 	}
 

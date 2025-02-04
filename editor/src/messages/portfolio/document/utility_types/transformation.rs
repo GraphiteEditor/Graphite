@@ -377,20 +377,20 @@ impl TransformOperation {
 		let clear_constraint = "Clear Constraint";
 		match self.axis_constraint() {
 			Axis::Both => {
-				input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
-				input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+				input_hints.push(HintInfo::keys([Key::KeyX], "X-Axis Constraint"));
+				input_hints.push(HintInfo::keys([Key::KeyY], "Y-Axis Constraint"));
 			}
 			Axis::X => {
-				let x_label = if local { clear_constraint } else { "Along Local X Axis" };
+				let x_label = if local { clear_constraint } else { "Local X-Axis Constraint" };
 				input_hints.push(HintInfo::keys([Key::KeyX], x_label));
-				input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+				input_hints.push(HintInfo::keys([Key::KeyY], "Y-Axis Constraint"));
 				if !local {
 					input_hints.push(HintInfo::keys([Key::KeyX, Key::KeyX], clear_constraint));
 				}
 			}
 			Axis::Y => {
-				let y_label = if local { clear_constraint } else { "Along Local Y Axis" };
-				input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+				let y_label = if local { clear_constraint } else { "Local Y-Axis Constraint" };
+				input_hints.push(HintInfo::keys([Key::KeyX], "X-Axis Constraint"));
 				input_hints.push(HintInfo::keys([Key::KeyY], y_label));
 				if !local {
 					input_hints.push(HintInfo::keys([Key::KeyY, Key::KeyY], clear_constraint));
@@ -405,11 +405,18 @@ impl TransformOperation {
 			TransformOperation::Rotating(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
 		};
 
-		let confirm_group = HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, ""), HintInfo::keys([Key::Enter], "Confirm").prepend_slash()]);
-		let cancel_group = HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]);
-		let mut hint_groups = vec![confirm_group, cancel_group, grs_hint_group];
+		let confirm_and_cancel_group = HintGroup(vec![
+			HintInfo::mouse(MouseMotion::Lmb, ""),
+			HintInfo::keys([Key::Enter], "Confirm").prepend_slash(),
+			HintInfo::mouse(MouseMotion::Rmb, ""),
+			HintInfo::keys([Key::Escape], "Cancel").prepend_slash(),
+		]);
+		let mut hint_groups = vec![confirm_and_cancel_group, grs_hint_group];
 		if !self.is_typing() {
-			let modifiers = vec![HintInfo::keys([Key::Shift], "Slow"), HintInfo::keys([Key::Control], "Increments")];
+			let modifiers = vec![
+				HintInfo::keys([Key::Shift], "Slow"),
+				HintInfo::keys([Key::Control], if matches!(self, TransformOperation::Rotating(_)) { "15° Increments" } else { "Increments" }),
+			];
 			hint_groups.push(HintGroup(modifiers));
 		}
 		if !matches!(self, TransformOperation::Rotating(_)) {
@@ -418,7 +425,9 @@ impl TransformOperation {
 		let mut typing_hints = vec![HintInfo::keys([Key::Minus], "Negate Direction")];
 		if self.can_begin_typing() {
 			typing_hints.push(HintInfo::keys([Key::NumKeys], "Enter Number"));
-			typing_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
+			if self.is_typing() {
+				typing_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
+			}
 		}
 		hint_groups.push(HintGroup(typing_hints));
 
