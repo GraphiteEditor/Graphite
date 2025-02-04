@@ -706,6 +706,8 @@ impl Fsm for PenToolFsmState {
 					if let Some(segment) = segment {
 						tool_data.previous_handle_end_pos = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
 					}
+				} else {
+					return PenToolFsmState::PlacingAnchor;
 				}
 				PenToolFsmState::GRSHandle
 			}
@@ -830,6 +832,11 @@ impl Fsm for PenToolFsmState {
 
 					// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
 					overlay_context.line(next_anchor, handle_end, None);
+
+					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.lock_angle {
+						// Draw the line between the currently-being-placed anchor and last-placed point (Lock angle bent overlays)
+						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
+					}
 
 					path_overlays(document, shape_editor, &mut overlay_context);
 
