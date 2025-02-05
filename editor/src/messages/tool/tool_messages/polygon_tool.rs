@@ -282,12 +282,55 @@ impl Fsm for PolygonToolFsmState {
 						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
 
 						update_radius_sign(end, start, layer, document, responses);
+
+						let dimensions = (start - end).abs();
+						let mut scale = DVec2::ONE;
+						let radius: f64;
+
+						// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
+						if dimensions.x > dimensions.y {
+							scale.x = dimensions.x / dimensions.y;
+							radius = dimensions.y / 2.;
+						} else {
+							scale.y = dimensions.y / dimensions.x;
+							radius = dimensions.x / 2.;
+						}
+
+						match tool_options.polygon_type {
+							PolygonType::Convex => {
+								let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) else {
+									return self;
+								};
+
+								responses.add(NodeGraphMessage::SetInput {
+									input_connector: InputConnector::node(node_id, 2),
+									input: NodeInput::value(TaggedValue::F64(radius), false),
+								});
+							}
+							PolygonType::Star => {
+								let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) else {
+									return self;
+								};
+
+								responses.add(NodeGraphMessage::SetInput {
+									input_connector: InputConnector::node(node_id, 2),
+									input: NodeInput::value(TaggedValue::F64(radius), false),
+								});
+								responses.add(NodeGraphMessage::SetInput {
+									input_connector: InputConnector::node(node_id, 3),
+									input: NodeInput::value(TaggedValue::F64(radius / 2.), false),
+								});
+							}
+						}
+
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
+
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 
