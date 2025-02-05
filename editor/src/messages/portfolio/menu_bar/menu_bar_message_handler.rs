@@ -466,13 +466,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuBarEntry {
 							label: "Debug: Print Trace Logs".into(),
 							icon: Some(if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-							shortcut: action_keys!(DebugMessageDiscriminant::ToggleTraceLogs),
 							action: MenuBarEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Debug: Print Document".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::DebugPrintDocument),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::DebugPrintDocument.into()),
 							..MenuBarEntry::default()
 						},
