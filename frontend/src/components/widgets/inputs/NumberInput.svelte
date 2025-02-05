@@ -57,10 +57,9 @@
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
 	let self: FieldInput | undefined;
-	let isdragging: boolean;
-	isdragging = false;
 	let inputRangeElement: HTMLInputElement | undefined;
 	let text = displayText(value, unit);
+	let isDragging = false;
 	let editing = false;
 	// Stays in sync with a binding to the actual input range slider element.
 	let rangeSliderValue = value !== undefined ? value : 0;
@@ -189,9 +188,8 @@
 		editing = true;
 
 		self?.selectAllText(text);
-		if (isdragging) {
-			self?.unFocus();
-		}
+		// Workaround for weird behavior in Firefox: <https://github.com/GraphiteEditor/Graphite/issues/2215>
+		if (isDragging) self?.unFocus();
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -286,7 +284,7 @@
 		const onMove = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
-			isdragging = true;
+			isDragging = true;
 			beginDrag(e);
 			removeEventListener("pointermove", onMove);
 		};
@@ -294,7 +292,7 @@
 		const onUp = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
-			isdragging = false;
+			isDragging = false;
 			self?.focus();
 			removeEventListener("pointerup", onUp);
 		};
