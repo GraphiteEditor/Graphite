@@ -14,7 +14,6 @@ use graphene_std::vector::{HandleId, PointId};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
-use std::f64::consts::PI;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct AnchorPoint {
@@ -313,8 +312,8 @@ impl TransformOperation {
 				TransformOperation::Grabbing(translation) => {
 					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, increment_mode)));
 					if local {
-						let resolved_angle = if local_axis_transform_angle > 0.0 {
-							local_axis_transform_angle - PI
+						let resolved_angle = if local_axis_transform_angle > 0. {
+							local_axis_transform_angle - std::f64::consts::PI
 						} else {
 							local_axis_transform_angle
 						};
