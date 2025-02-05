@@ -56,7 +56,7 @@ pub trait Fsm {
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
-	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData);
+	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &Self::ToolData);
 	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 

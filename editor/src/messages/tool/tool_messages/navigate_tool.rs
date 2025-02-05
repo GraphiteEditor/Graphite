@@ -144,7 +144,7 @@ impl Fsm for NavigateToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			NavigateToolFsmState::Ready | NavigateToolFsmState::ZoomOrClickZooming => HintData(vec![
 				HintGroup(vec![

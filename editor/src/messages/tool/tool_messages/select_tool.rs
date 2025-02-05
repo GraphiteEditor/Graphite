@@ -227,10 +227,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			responses.add(ToolMessage::UpdateHints);
 		}
 
-		if let ToolMessage::Select(SelectToolMessage::PointerMove(ref _modifier_keys)) = message {
-			if !self.tool_data.has_dragged {
-				responses.add(ToolMessage::UpdateHints);
-			}
+		if matches!(message, ToolMessage::Select(SelectToolMessage::PointerMove(_))) && !self.tool_data.has_dragged {
+			responses.add(ToolMessage::UpdateHints);
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
@@ -1255,7 +1253,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &Self::ToolData) {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
