@@ -19,6 +19,8 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 
+pub struct TaggedValueTypeError;
+
 /// Macro to generate the tagged value enum.
 macro_rules! tagged_value {
 	($ ($( #[$meta:meta] )* $identifier:ident ($ty:ty) ),* $(,)?) => {
@@ -111,6 +113,26 @@ macro_rules! tagged_value {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
 			}
 		}
+
+		$(
+			impl From<$ty> for TaggedValue {
+				fn from(value: $ty) -> Self {
+					Self::$identifier(value)
+				}
+			}
+		)*
+
+		$(
+			impl<'a> TryFrom<&'a TaggedValue> for &'a $ty {
+				type Error = TaggedValueTypeError;
+				fn try_from(value: &'a TaggedValue) -> Result<Self, Self::Error> {
+					match value{
+						TaggedValue::$identifier(value) => Ok(value),
+						_ => Err(TaggedValueTypeError),
+					}
+				}
+			}
+		)*
 	};
 }
 
@@ -192,6 +214,7 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
+	Artboard(graphene_core::Artboard),
 }
 
 impl TaggedValue {

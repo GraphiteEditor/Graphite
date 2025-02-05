@@ -506,7 +506,7 @@ where
 		self.0.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.0.serialize()
 	}
 }
@@ -580,5 +580,30 @@ mod test {
 	pub fn foo() {
 		let fnn = FnNode::new(|(a, b)| (b, a));
 		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
+	}
+
+	#[test]
+	pub fn add_vectors() {
+		assert_eq!(super::add((), DVec2::ONE, DVec2::ONE), DVec2::ONE * 2.);
+	}
+
+	#[test]
+	pub fn subtract_f64() {
+		assert_eq!(super::subtract((), 5_f64, 3_f64), 2.);
+	}
+
+	#[test]
+	pub fn divide_vectors() {
+		assert_eq!(super::divide((), DVec2::ONE, 2_f64), DVec2::ONE / 2.);
+	}
+
+	#[test]
+	pub fn modulo_positive() {
+		assert_eq!(super::modulo((), -5_f64, 2_f64, true), 1_f64);
+	}
+
+	#[test]
+	pub fn modulo_negative() {
+		assert_eq!(super::modulo((), -5_f64, 2_f64, false), -1_f64);
 	}
 }

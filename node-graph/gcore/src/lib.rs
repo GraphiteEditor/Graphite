@@ -72,7 +72,7 @@ pub trait Node<'i, Input> {
 	}
 	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
 	#[cfg(feature = "std")]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
 	}
@@ -170,3 +170,25 @@ pub use crate::application_io::{SurfaceFrame, SurfaceId};
 pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
+
+pub trait InputAccessorSource<'a, T>: InputAccessorSourceIdentifier + core::fmt::Debug {
+	fn get_input(&'a self, index: usize) -> Option<&'a T>;
+	fn set_input(&'a mut self, index: usize, value: T);
+}
+
+pub trait InputAccessorSourceIdentifier {
+	fn has_identifier(&self, identifier: &str) -> bool;
+}
+
+pub trait InputAccessor<'n, Source: 'n>
+where
+	Self: Sized,
+{
+	fn new_with_source(source: &'n Source) -> Option<Self>;
+}
+
+pub trait NodeInputDecleration {
+	const INDEX: usize;
+	fn identifier() -> &'static str;
+	type Result;
+}

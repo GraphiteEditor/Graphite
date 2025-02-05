@@ -95,7 +95,7 @@ impl DynamicExecutor {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		self.tree.introspect(node_path)
 	}
 
@@ -217,7 +217,7 @@ impl BorrowTree {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
 		node.serialize().ok_or(IntrospectError::NoData)

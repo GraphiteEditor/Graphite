@@ -1160,7 +1160,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 }
 
 impl PortfolioMessageHandler {
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
+		Self { executor, ..Default::default() }
+	}
+
+	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync>, IntrospectError> {
 		self.executor.introspect_node(node_path).await
 	}
 
