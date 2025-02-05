@@ -26,6 +26,15 @@ pub struct DispatcherMessageHandlers {
 	workspace_message_handler: WorkspaceMessageHandler,
 }
 
+impl DispatcherMessageHandlers {
+	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
+		Self {
+			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
+			..Default::default()
+		}
+	}
+}
+
 /// For optimization, these are messages guaranteed to be redundant when repeated.
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
@@ -51,6 +60,13 @@ const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsid
 impl Dispatcher {
 	pub fn new() -> Self {
 		Self::default()
+	}
+
+	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
+		Self {
+			message_handlers: DispatcherMessageHandlers::with_executor(executor),
+			..Default::default()
+		}
 	}
 
 	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
@@ -328,24 +344,14 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::application::Editor;
-	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-	use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-	use crate::messages::prelude::*;
-	use crate::test_utils::EditorTestUtils;
-	use graphene_core::raster::color::Color;
-
-	fn init_logger() {
-		let _ = env_logger::builder().is_test(true).try_init();
-	}
+	pub use crate::test_utils::test_prelude::*;
 
 	/// Create an editor with three layers
 	/// 1. A red rectangle
 	/// 2. A blue shape
 	/// 3. A green ellipse
 	fn create_editor_with_three_layers() -> Editor {
-		init_logger();
-		let mut editor = Editor::create();
+		let (mut editor, _) = Editor::create();
 
 		editor.new_document();
 
@@ -498,8 +504,7 @@ mod test {
 			panic!()
 		};
 
-		init_logger();
-		let mut editor = Editor::create();
+		let (mut editor, mut runtime) = Editor::create();
 
 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 		//
@@ -529,14 +534,7 @@ mod test {
 			});
 
 			// Check if the graph renders
-			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-			portfolio
-				.executor
-				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE, true)
-				.expect("submit_node_graph_evaluation failed");
-			crate::node_graph_executor::run_node_graph().await;
-			let mut messages = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
+			editor.eval_graph(&mut runtime).await;
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
