@@ -191,12 +191,7 @@ impl Fsm for LineToolFsmState {
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
-				// responses.add(GraphOperationMessage::TransformSet {
-				// 	layer,
-				// 	transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
-				// 	transform_in: TransformIn::Viewport,
-				// 	skip_rerender: false,
-				// });
+
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 
 				tool_data.layer = Some(layer);
@@ -211,7 +206,7 @@ impl Fsm for LineToolFsmState {
 				let keyboard = &input.keyboard;
 				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
 				let snap_data = SnapData::ignore(document, input, &ignore);
-				generate_line(tool_data, snap_data, keyboard.key(center), keyboard.key(snap_angle), keyboard.key(lock_angle), responses);
+				generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center), responses);
 
 				// Auto-panning
 				let messages = [
@@ -271,8 +266,8 @@ impl Fsm for LineToolFsmState {
 			LineToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
 				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
-				HintInfo::keys([Key::Control], "From Center").prepend_plus(),
-				HintInfo::keys([Key::Alt], "Lock Angle").prepend_plus(),
+				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 			])]),
 			LineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
@@ -352,7 +347,10 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 		snap.update_indicator(snapped);
 	}
 
-	let node_id = graph_modification_utils::get_line_id(tool_data.layer.unwrap(), &snap_data.document.network_interface).unwrap();
+	let Some(node_id) = graph_modification_utils::get_line_id(tool_data.layer.unwrap(), &snap_data.document.network_interface) else {
+		return;
+	};
+
 	responses.add(NodeGraphMessage::SetInput {
 		input_connector: InputConnector::node(node_id, 1),
 		input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),

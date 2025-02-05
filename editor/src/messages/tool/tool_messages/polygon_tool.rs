@@ -280,11 +280,12 @@ impl Fsm for PolygonToolFsmState {
 				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = tool_data.data.layer {
 						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
+
 						update_radius_sign(end, start, layer, document, responses);
 
 						let dimensions = (start - end).abs();
-						let radius: f64;
 						let mut scale = DVec2::ONE;
+						let radius: f64;
 
 						// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
 						if dimensions.x > dimensions.y {
@@ -297,14 +298,20 @@ impl Fsm for PolygonToolFsmState {
 
 						match tool_options.polygon_type {
 							PolygonType::Convex => {
-								let node_id = graph_modification_utils::get_polygon_id(layer, &document.network_interface).unwrap();
+								let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) else {
+									return self;
+								};
+
 								responses.add(NodeGraphMessage::SetInput {
 									input_connector: InputConnector::node(node_id, 2),
 									input: NodeInput::value(TaggedValue::F64(radius), false),
 								});
 							}
 							PolygonType::Star => {
-								let node_id = graph_modification_utils::get_star_id(layer, &document.network_interface).unwrap();
+								let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) else {
+									return self;
+								};
+
 								responses.add(NodeGraphMessage::SetInput {
 									input_connector: InputConnector::node(node_id, 2),
 									input: NodeInput::value(TaggedValue::F64(radius), false),
