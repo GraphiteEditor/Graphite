@@ -27,7 +27,7 @@ pub struct TransformLayerMessageHandler {
 	slow: bool,
 	increments: bool,
 	local: bool,
-	fixed_bbox: Quad,
+	layer_bounding_box: Quad,
 	typing: Typing,
 
 	mouse_position: ViewportPosition,
@@ -192,7 +192,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let translation = translation.to_dvec(document_to_viewport, self.increments);
 							let viewport_translate = document_to_viewport.transform_vector2(translation);
 							let quad = Quad::from_box([self.grab_target, self.grab_target + viewport_translate]).0;
-							let e1 = (self.fixed_bbox.0[1] - self.fixed_bbox.0[0]).normalize_or(DVec2::X);
+							let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 								let end = if self.local {
@@ -229,7 +229,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let scale = scale.to_f64(self.increments);
 							let text = format!("{}x", format_rounded(scale, 3));
 							let local_edge = self.start_mouse - self.pivot;
-							let local_edge = project_edge_to_quad(local_edge, &self.fixed_bbox, self.local, axis_constraint);
+							let local_edge = project_edge_to_quad(local_edge, &self.layer_bounding_box, self.local, axis_constraint);
 							let boundary_point = self.pivot + local_edge * scale.min(1.);
 							let end_point = self.pivot + local_edge * scale.max(1.);
 
@@ -238,7 +238,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							}
 							overlay_context.line(boundary_point, end_point, None);
 
-							let transform = DAffine2::from_translation(boundary_point.midpoint(self.pivot) + local_edge.perp().normalize() * local_edge.element_product().signum() * 24.);
+							let transform = DAffine2::from_translation(boundary_point.midpoint(self.pivot) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.);
 							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 						}
 						TransformOperation::Rotating(rotation) => {
@@ -248,7 +248,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							} else if using_path_tool {
 								self.start_mouse - self.pivot
 							} else {
-								self.fixed_bbox.top_right() - self.fixed_bbox.top_right()
+								self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
 							};
 							let offset_angle = offset_angle.to_angle();
 							let width = viewport_box.max_element();
@@ -304,7 +304,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let top_left = DVec2::new(last_point.x, handle.y);
 				let bottom_right = DVec2::new(handle.x, last_point.y);
 				self.local = false;
-				self.fixed_bbox = Quad::from_box([top_left, bottom_right]);
+				self.layer_bounding_box = Quad::from_box([top_left, bottom_right]);
 				self.grab_target = handle;
 				self.pivot = last_point;
 				self.handle = handle;
@@ -339,7 +339,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 				self.local = false;
-				self.fixed_bbox = selected.bounding_box();
+				self.layer_bounding_box = selected.bounding_box();
 
 				selected.original_transforms.clear();
 
@@ -393,7 +393,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				self.local = false;
-				self.fixed_bbox = selected.bounding_box();
+				self.layer_bounding_box = selected.bounding_box();
 
 				selected.original_transforms.clear();
 
@@ -446,7 +446,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
 				self.local = false;
-				self.fixed_bbox = selected.bounding_box();
+				self.layer_bounding_box = selected.bounding_box();
 
 				selected.original_transforms.clear();
 
@@ -481,16 +481,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			TransformLayerMessage::ConstrainX => {
 				self.local = self
 					.transform_operation
-					.constrain_axis(Axis::X, &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					.constrain_axis(Axis::X, &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 				self.transform_operation
-					.grs_typed(self.typing.evaluate(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					.grs_typed(self.typing.evaluate(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 			}
 			TransformLayerMessage::ConstrainY => {
 				self.local = self
 					.transform_operation
-					.constrain_axis(Axis::Y, &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					.constrain_axis(Axis::Y, &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 				self.transform_operation
-					.grs_typed(self.typing.evaluate(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					.grs_typed(self.typing.evaluate(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
 				self.slow = input.keyboard.get(slow_key as usize);
@@ -499,7 +499,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				if new_increments != self.increments {
 					self.increments = new_increments;
 					self.transform_operation
-						.apply_transform_operation(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+						.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 				}
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
@@ -511,7 +511,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
 							self.transform_operation
-								.apply_transform_operation(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+								.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
@@ -522,7 +522,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
 							self.transform_operation
-								.apply_transform_operation(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+								.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
@@ -530,9 +530,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let to_mouse_final_old = input.mouse.position - *selected.pivot;
 							let to_mouse_start = self.start_mouse - *selected.pivot;
 
-							let to_mouse_final = project_edge_to_quad(to_mouse_final, &self.fixed_bbox, self.local, axis_constraint);
-							let to_mouse_final_old = project_edge_to_quad(to_mouse_final_old, &self.fixed_bbox, self.local, axis_constraint);
-							let to_mouse_start = project_edge_to_quad(to_mouse_start, &self.fixed_bbox, self.local, axis_constraint);
+							let to_mouse_final = project_edge_to_quad(to_mouse_final, &self.layer_bounding_box, self.local, axis_constraint);
+							let to_mouse_final_old = project_edge_to_quad(to_mouse_final_old, &self.layer_bounding_box, self.local, axis_constraint);
+							let to_mouse_start = project_edge_to_quad(to_mouse_start, &self.layer_bounding_box, self.local, axis_constraint);
 
 							let change = {
 								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
@@ -546,7 +546,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							scale = scale.increment_amount(change);
 							self.transform_operation = TransformOperation::Scaling(scale);
 							self.transform_operation
-								.apply_transform_operation(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+								.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 						}
 					};
 				}
@@ -559,30 +559,30 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 			TransformLayerMessage::TypeBackspace => {
 				if self.typing.digits.is_empty() && self.typing.negative {
-					self.transform_operation.negate(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					self.transform_operation.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 					self.typing.type_negate();
 				}
 				self.transform_operation
-					.grs_typed(self.typing.type_backspace(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					.grs_typed(self.typing.type_backspace(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
 				if self.transform_operation.can_begin_typing() {
 					self.transform_operation
-						.grs_typed(self.typing.type_decimal_point(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
+						.grs_typed(self.typing.type_decimal_point(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport)
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
 					self.transform_operation
-						.grs_typed(self.typing.type_number(digit), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
+						.grs_typed(self.typing.type_number(digit), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport)
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
 				if self.typing.digits.is_empty() {
-					self.transform_operation.negate(&mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport);
+					self.transform_operation.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 				}
 				self.transform_operation
-					.grs_typed(self.typing.type_negate(), &mut selected, self.increments, self.local, self.fixed_bbox, document_to_viewport)
+					.grs_typed(self.typing.type_negate(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport)
 			}
 		}
 	}

@@ -12,7 +12,7 @@ use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
 
-use glam::{DAffine2, DVec2, DMat2};
+use glam::{DAffine2, DMat2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
