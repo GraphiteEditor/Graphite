@@ -81,6 +81,7 @@ pub enum SelectToolMessage {
 		remove_from_selection: Key,
 		select_deepest: Key,
 		lasso_select: Key,
+		skew: Key,
 	},
 	DragStop {
 		remove_from_selection: Key,
@@ -274,6 +275,7 @@ enum SelectToolFsmState {
 	Drawing { selection_shape: SelectionShapeType },
 	Dragging,
 	ResizingBounds,
+	SkewingBounds,
 	RotatingBounds,
 	DraggingPivot,
 }
@@ -624,6 +626,7 @@ impl Fsm for SelectToolFsmState {
 					remove_from_selection,
 					select_deepest,
 					lasso_select,
+					skew,
 				},
 			) => {
 				tool_data.drag_start = input.mouse.position;
@@ -705,7 +708,11 @@ impl Fsm for SelectToolFsmState {
 					}
 					tool_data.get_snap_candidates(document, input);
 
-					SelectToolFsmState::ResizingBounds
+					if input.keyboard.key(skew) {
+						SelectToolFsmState::SkewingBounds
+					}else{
+						SelectToolFsmState::ResizingBounds
+					}
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -877,6 +884,37 @@ impl Fsm for SelectToolFsmState {
 				}
 				SelectToolFsmState::ResizingBounds
 			}
+			(SelectToolFsmState::SkewingBounds, SelectToolMessage::PointerMove(_)) => {
+				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+					if let Some(movement) = &mut bounds.selected_edges {
+						let transformation = movement.skew_transform(input.mouse.position, bounds.original_bound_transform);
+
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
+						let selected = &tool_data.layers_dragging;
+						let mut pivot = DVec2::ZERO;
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut pivot,
+							selected,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Select,
+							None,
+						);
+
+						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
+					}
+				}
+				SelectToolFsmState::SkewingBounds
+			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let angle = {
@@ -978,7 +1016,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::Dragging
 			}
-			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
@@ -1081,7 +1119,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::ResizingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::AbortTransaction,
 					false => DocumentMessage::EndTransaction,
