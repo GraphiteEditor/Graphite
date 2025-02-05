@@ -45,7 +45,7 @@ impl OverlayContext {
 	}
 
 	pub fn polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>) {
-		self.dashed_polygon(&polygon, color_fill, None, None, None);
+		self.dashed_polygon(polygon, color_fill, None, None, None);
 	}
 
 	pub fn dashed_polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {

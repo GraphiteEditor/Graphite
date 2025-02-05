@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
@@ -240,6 +240,42 @@ impl SelectedEdges {
 			pivot.y = 0.;
 		}
 		(DAffine2::from_scale(enlargement_factor), pivot)
+	}
+
+	pub fn skew_transform(&self, mouse: DVec2, to_viewport_transform: DAffine2) -> DAffine2 {
+		// Skip if the matrix is singular (as it isn't really possible to skew).
+		if !to_viewport_transform.matrix2.determinant().recip().is_finite() {
+			return DAffine2::IDENTITY;
+		}
+
+		let opposite = self.pivot_from_bounds(self.bounds[0], self.bounds[1]);
+		// This is the current handle that goes under the mouse.
+		let dragging_point = self.pivot_from_bounds(self.bounds[1], self.bounds[0]);
+
+		let mut new_dragging_point = to_viewport_transform.transform_point2(dragging_point);
+		let parallel_to_x = self.top || self.bottom;
+		let parallel_to_y = !parallel_to_x && (self.left || self.right);
+
+		// The target point is the projection in viewport space onto the line that the skew is parallel to.
+		if parallel_to_x {
+			new_dragging_point += (mouse - new_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::X));
+		} else if parallel_to_y {
+			new_dragging_point += (mouse - new_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::Y));
+		}
+		new_dragging_point = to_viewport_transform.inverse().transform_point2(new_dragging_point);
+
+		let movement = new_dragging_point - dragging_point;
+
+		// Produce a skew that moves the dragging point to the new dragging point (assuming the opposite is origin).
+		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
+			1.,
+			if parallel_to_y { movement.y / (dragging_point - opposite).x } else { 0. },
+			if parallel_to_x { movement.x / (dragging_point - opposite).y } else { 0. },
+			1.,
+		]));
+
+		// Combine that with a transform that makes opposite the origin.
+		DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite)
 	}
 }
 
@@ -495,5 +531,54 @@ impl BoundingBoxManager {
 		} else {
 			MouseCursorIcon::Default
 		}
+	}
+}
+
+#[test]
+fn skew_transform_singular() {
+	for edge in [
+		SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+		SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+		SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
+		SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
+	] {
+		// The determinant is 0.
+		let transform = DAffine2::from_cols_array(&[2.; 6]);
+		// This shouldn't panic. We don't really care about the behavior in this test.
+		let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform);
+	}
+}
+
+#[test]
+fn skew_transform_correct() {
+	for edge in [
+		SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+		SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+		SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
+		SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
+	] {
+		// Random transform with det != 0.
+		let to_viewport_transform = DAffine2::from_cols_array(&[2., 1., 0., 1., 2., 3.]);
+		// Random mouse position.
+		let mouse = DVec2::new(1.5, 1.5);
+		let final_transform = edge.skew_transform(mouse, to_viewport_transform);
+
+		// This is the current handle that goes under the mouse.
+		let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
+
+		let parallel_to_x = edge.top || edge.bottom;
+		let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
+
+		// The target point is the projection in viewport space onto the line that the skew is parallel to.
+		let mut target_dragging_point = to_viewport_transform.transform_point2(dragging_point);
+		if parallel_to_x {
+			target_dragging_point += (mouse - target_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::X));
+		} else if parallel_to_y {
+			target_dragging_point += (mouse - target_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::Y));
+		}
+
+		// Compute the final point in viewport space.
+		let final_dragging_point = to_viewport_transform.transform_point2(final_transform.transform_point2(dragging_point));
+		assert_eq!(final_dragging_point, target_dragging_point);
 	}
 }

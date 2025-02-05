@@ -434,7 +434,7 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		result == 0
 	}
 
-	pub fn ones(&self) -> u32 {
+	pub fn count_ones(&self) -> u32 {
 		let mut result = 0;
 
 		for storage in self.0.iter() {
