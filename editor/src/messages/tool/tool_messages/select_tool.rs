@@ -228,6 +228,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			responses.add(ToolMessage::UpdateHints);
 		}
 
+		if matches!(message, ToolMessage::Select(SelectToolMessage::PointerMove(_))) && !self.tool_data.has_dragged {
+			responses.add(ToolMessage::UpdateHints);
+		}
+
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
 		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
@@ -745,7 +749,7 @@ impl Fsm for SelectToolFsmState {
 				else if intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
@@ -1272,11 +1276,11 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(responses);
+				self.update_hints(responses, tool_data);
 				true
 			}
 			ToolMessage::UpdateCursor => {
@@ -1287,7 +1291,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &Self::ToolData) {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
@@ -1319,7 +1323,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Dragging => {
+			SelectToolFsmState::Dragging if tool_data.has_dragged => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
@@ -1330,7 +1334,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Drawing { .. } => {
+			SelectToolFsmState::Drawing { .. } if tool_data.drag_start != tool_data.drag_current => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
