@@ -559,7 +559,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 			TransformLayerMessage::TypeBackspace => {
 				if self.typing.digits.is_empty() && self.typing.negative {
-					self.transform_operation.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
+					self.transform_operation
+						.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 					self.typing.type_negate();
 				}
 				self.transform_operation
@@ -567,19 +568,32 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
 				if self.transform_operation.can_begin_typing() {
-					self.transform_operation
-						.grs_typed(self.typing.type_decimal_point(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport)
+					self.transform_operation.grs_typed(
+						self.typing.type_decimal_point(),
+						&mut selected,
+						self.increments,
+						self.local,
+						self.layer_bounding_box,
+						document_to_viewport,
+					)
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
-					self.transform_operation
-						.grs_typed(self.typing.type_number(digit), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport)
+					self.transform_operation.grs_typed(
+						self.typing.type_number(digit),
+						&mut selected,
+						self.increments,
+						self.local,
+						self.layer_bounding_box,
+						document_to_viewport,
+					)
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
 				if self.typing.digits.is_empty() {
-					self.transform_operation.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
+					self.transform_operation
+						.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport);
 				}
 				self.transform_operation
 					.grs_typed(self.typing.type_negate(), &mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport)
