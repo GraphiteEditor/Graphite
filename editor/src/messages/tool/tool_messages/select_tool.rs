@@ -376,15 +376,13 @@ impl SelectToolData {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
 
-		//getting the shallowest unique layers and sorting by their index relative to parent for ordered processing
-		let mut layers: Vec<LayerNodeIdentifier> = document.network_interface.shallowest_unique_layers(&[]).collect();
+		// Get the shallowest unique layers and sort by their index relative to parent for ordered processing
+		let mut layers = document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
 
-		fn get_layer_insert_index(document: &mut DocumentMessageHandler, layer: &LayerNodeIdentifier) -> Option<usize> {
-			let parent = layer.parent(document.metadata())?;
-			Some(DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent))
-		}
-
-		layers.sort_by_key(|layer| get_layer_insert_index(document, layer).unwrap_or(usize::MAX));
+		layers.sort_by_key(|layer| {
+			let Some(parent) = layer.parent(document.metadata()) else { return usize::MAX };
+			DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+		});
 
 		for layer in layers.into_iter().rev() {
 			let Some(parent) = layer.parent(document.metadata()) else { continue };
@@ -413,6 +411,7 @@ impl SelectToolData {
 			let nodes = document.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
+
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
 			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");

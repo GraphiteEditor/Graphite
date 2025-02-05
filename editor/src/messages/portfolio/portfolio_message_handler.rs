@@ -203,14 +203,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				};
 
 				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let mut ordered_last_elements: Vec<LayerNodeIdentifier> = active_document.network_interface.shallowest_unique_layers(&[]).collect();
+					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
 
-					fn get_layer_insert_index(document: &mut DocumentMessageHandler, layer: &LayerNodeIdentifier) -> Option<usize> {
-						let parent = layer.parent(document.metadata())?;
-						Some(DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent))
-					}
-
-					ordered_last_elements.sort_by_key(|layer| get_layer_insert_index(active_document, layer).unwrap_or(usize::MAX));
+					ordered_last_elements.sort_by_key(|layer| {
+						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
+						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+					});
 
 					for layer in ordered_last_elements.into_iter() {
 						let layer_node_id = layer.to_node();
