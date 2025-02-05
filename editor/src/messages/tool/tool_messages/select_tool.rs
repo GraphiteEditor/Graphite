@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
@@ -374,7 +375,16 @@ impl SelectToolData {
 	fn start_duplicates(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
-		for layer in document.network_interface.shallowest_unique_layers(&[]) {
+
+		// Get the shallowest unique layers and sort by their index relative to parent for ordered processing
+		let mut layers = document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+
+		layers.sort_by_key(|layer| {
+			let Some(parent) = layer.parent(document.metadata()) else { return usize::MAX };
+			DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+		});
+
+		for layer in layers.into_iter().rev() {
 			let Some(parent) = layer.parent(document.metadata()) else { continue };
 
 			// Moves the layer back to its starting position.
@@ -400,7 +410,7 @@ impl SelectToolData {
 
 			let nodes = document.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 
-			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &document.network_interface.selected_nodes(&[]).unwrap(), parent);
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
 
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
