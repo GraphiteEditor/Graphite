@@ -285,7 +285,7 @@ fn random<U: num_traits::float::Float>(
 	max: U,
 ) -> f64 {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-	let result = rng.gen::<f64>();
+	let result = rng.random::<f64>();
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
 	let (min, max) = (min.to_f64().unwrap(), max.to_f64().unwrap());
 	result * (max - min) + min
