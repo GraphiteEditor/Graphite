@@ -1,7 +1,9 @@
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
+
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::raster::image::ImageFrame;
@@ -18,13 +20,14 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
 	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
 	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+
 	// Represents the change in position that would occur if the other layer was moved below the current layer
 	let transform_delta = current_transform * other_transform.inverse();
 	let offset = transform_delta.inverse();
 	responses.add(GraphOperationMessage::TransformChange {
 		layer: other_layer,
 		transform: offset,
-		transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+		transform_in: TransformIn::Local,
 		skip_rerender: false,
 	});
 

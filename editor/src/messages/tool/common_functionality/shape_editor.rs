@@ -252,7 +252,7 @@ impl ShapeState {
 			} else {
 				// Merge the layers
 				merge_layers(document, layer1, layer2, responses);
-				// Create segmen between the two points
+				// Create segment between the two points
 				let segment_id = SegmentId::generate();
 				let modification_type = VectorModificationType::InsertSegment {
 					id: segment_id,
