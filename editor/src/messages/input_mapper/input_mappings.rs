@@ -212,7 +212,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
+		entry!(KeyDownNoRepeat(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { direct_insert_without_sliding: Control, extend_selection: Shift, lasso_select: Control }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
 		entry!(KeyDown(Escape); action_dispatch=PathToolMessage::Escape),
@@ -254,7 +254,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=ToolMessage::Path(PathToolMessage::ClosePath)),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC }),
 		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Confirm),
