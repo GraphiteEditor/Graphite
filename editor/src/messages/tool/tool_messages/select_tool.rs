@@ -1368,7 +1368,7 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::RotatingBounds => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-					HintGroup(vec![HintInfo::keys([Key::Control], "Snap")]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}

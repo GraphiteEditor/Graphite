@@ -1138,7 +1138,7 @@ impl Fsm for PenToolFsmState {
 					HintInfo::keys([Key::Escape], "").prepend_slash(),
 					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
 				]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments"), HintInfo::keys([Key::Control], "Lock Angle")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Sharp Point"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Smooth Point")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, ""), HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash()]),
 			]),
@@ -1159,7 +1159,7 @@ impl Fsm for PenToolFsmState {
 					}
 				};
 
-				let mut common_hints = vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")];
+				let mut common_hints = vec![HintInfo::keys([Key::Shift], "15° Increments"), HintInfo::keys([Key::Control], "Lock Angle")];
 				let hold_group = match mode {
 					HandleMode::Free => common_hints,
 					HandleMode::ColinearLocked => {

@@ -1206,7 +1206,7 @@ impl Fsm for PathToolFsmState {
 						if colinear != ManipulatorAngle::Free {
 							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
 						}
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
+						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
 						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
 						hints.push(drag_anchor);
 						hints
@@ -1216,7 +1216,7 @@ impl Fsm for PathToolFsmState {
 						if colinear != ManipulatorAngle::Free {
 							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
 						}
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
+						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
 						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
 						hints.push(drag_anchor);
 						hints
