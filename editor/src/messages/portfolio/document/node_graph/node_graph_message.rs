@@ -96,7 +96,6 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
-	PrintSelectedNodeCoordinates,
 	RemoveImport {
 		import_index: usize,
 	},

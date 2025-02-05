@@ -507,7 +507,7 @@ fn noise_pattern(
 			for y in 0..height {
 				for x in 0..width {
 					let pixel = image.get_pixel_mut(x, y).unwrap();
-					let luminance = rng.gen_range(0.0..1.) as f32;
+					let luminance = rng.random_range(0.0..1.) as f32;
 					*pixel = Color::from_luminance(luminance);
 				}
 			}
