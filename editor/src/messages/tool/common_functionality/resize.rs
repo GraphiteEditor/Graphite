@@ -41,12 +41,12 @@ impl Resize {
 			self.layer.take();
 			return None;
 		}
-		Some(self.calculate_points_ignore_layer(document, input, center, lock_ratio))
+		Some(self.calculate_points_ignore_layer(document, input, center, lock_ratio, false))
 	}
 
 	/// Compute the drag start and end based on the current mouse position. Ignores the state of the layer.
 	/// If you want to only draw whilst a layer exists, use [`Resize::calculate_points`].
-	pub fn calculate_points_ignore_layer(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> [DVec2; 2] {
+	pub fn calculate_points_ignore_layer(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, in_document: bool) -> [DVec2; 2] {
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
 		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
@@ -58,9 +58,12 @@ impl Resize {
 		let snap_data = SnapData::ignore(document, input, &ignore);
 		let config = SnapTypeConfiguration::default();
 		if ratio {
-			let size = points_viewport[1] - points_viewport[0];
-			let size = size.abs().max(size.abs().yx()) * size.signum();
+			let viewport_size = points_viewport[1] - points_viewport[0];
+			let raw_size = if in_document { document_to_viewport.inverse() } else { DAffine2::IDENTITY }.transform_vector2(viewport_size);
+			let adjusted_size = raw_size.abs().max(raw_size.abs().yx()) * raw_size.signum();
+			let size = if in_document { document_to_viewport.transform_vector2(adjusted_size) } else { adjusted_size };
 			points_viewport[1] = points_viewport[0] + size;
+
 			let end_document = document_to_viewport.inverse().transform_point2(points_viewport[1]);
 			let constraint = SnapConstraint::Line {
 				origin: self.drag_start,

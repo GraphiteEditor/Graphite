@@ -505,7 +505,7 @@ where
 		self.0.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.0.serialize()
 	}
 }
@@ -580,5 +580,52 @@ mod test {
 	pub fn foo() {
 		let fnn = FnNode::new(|(a, b)| (b, a));
 		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
+	}
+
+	#[test]
+	pub fn add_vectors() {
+		let add_node = AddNode {
+			augend: ClonedNode(DVec2::ONE),
+			addend: ClonedNode(DVec2::ONE),
+		};
+		assert_eq!(add_node.eval(()), DVec2::ONE * 2.);
+	}
+
+	#[test]
+	pub fn subtract_f64() {
+		let subtract_node = SubtractNode {
+			minuend: ClonedNode(5_f64),
+			subtrahend: ClonedNode(3_f64),
+		};
+		assert_eq!(subtract_node.eval(()), 2.);
+	}
+
+	#[test]
+	pub fn divide_vectors() {
+		let divide_node = DivideNode {
+			numerator: ClonedNode(DVec2::ONE),
+			denominator: ClonedNode(2_f64),
+		};
+		assert_eq!(divide_node.eval(()), DVec2::ONE / 2.);
+	}
+
+	#[test]
+	pub fn modulo_positive() {
+		let modulo_node = ModuloNode {
+			numerator: ClonedNode(-5_f64),
+			modulus: ClonedNode(2_f64),
+			always_positive: ClonedNode(true),
+		};
+		assert_eq!(modulo_node.eval(()), 1_f64);
+	}
+
+	#[test]
+	pub fn modulo_negative() {
+		let modulo_node = ModuloNode {
+			numerator: ClonedNode(-5_f64),
+			modulus: ClonedNode(2_f64),
+			always_positive: ClonedNode(false),
+		};
+		assert_eq!(modulo_node.eval(()), -1_f64);
 	}
 }
