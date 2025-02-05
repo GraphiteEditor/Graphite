@@ -1142,24 +1142,27 @@ impl Fsm for SelectToolFsmState {
 				};
 
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
-				if new_selected != current_selected {
-					// Negative selection when both Shift and Ctrl are pressed
-					if input.keyboard.key(remove_from_selection) {
-						let updated_selection = current_selected
-							.into_iter()
-							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
-							.collect();
-						tool_data.layers_dragging = updated_selection;
-					} else {
-						let parent_selected: HashSet<_> = new_selected
-							.into_iter()
-							.map(|layer| {
-								// Find the parent node
-								layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
-							})
-							.collect();
-						tool_data.layers_dragging.extend(parent_selected.iter().copied());
-					}
+				let negative_selection = input.keyboard.key(remove_from_selection);
+				let selection_modified = new_selected != current_selected;
+				// Negative selection when both Shift and Ctrl are pressed
+				if negative_selection {
+					let updated_selection = current_selected
+						.into_iter()
+						.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
+						.collect();
+					tool_data.layers_dragging = updated_selection;
+				} else if selection_modified {
+					let parent_selected: HashSet<_> = new_selected
+						.into_iter()
+						.map(|layer| {
+							// Find the parent node
+							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
+						})
+						.collect();
+					tool_data.layers_dragging.extend(parent_selected.iter().copied());
+				}
+
+				if negative_selection || selection_modified {
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging
