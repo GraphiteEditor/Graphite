@@ -48,14 +48,14 @@ env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
-convert_case = "0.6"
+convert_case = "0.7"
 derivative = "2.2"
 tempfile = "3.6"
 thiserror = "2"
 anyhow = "1.0"
 proc-macro2 = "1"
 quote = "1.0"
-axum = "0.7"
+axum = "0.8"
 chrono = "0.4"
 ron = "0.8"
 fastnoise-lite = "1.1"
@@ -73,18 +73,18 @@ tokio = { version = "1.29", features = ["fs", "io-std"] }
 vello = { git = "https://github.com/linebender/vello.git", rev = "3275ec8" } # TODO switch back to stable when a release is made
 resvg = "0.44"
 usvg = "0.44"
-rand = { version = "0.8", default-features = false }
-rand_chacha = "0.3"
+rand = { version = "0.9", default-features = false }
+rand_chacha = "0.9"
 glam = { version = "0.29", default-features = false, features = ["serde"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rustybuzz = "0.20"
 spirv = "0.3"
-fern = { version = "0.6", features = ["colored"] }
+fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["i128"] }
-specta = { git = "https://github.com/0hypercube/specta.git", features = [
+specta = { git = "https://github.com/specta-rs/specta.git", features = [
 	"glam",
 	"derive",
 	# "typescript",
