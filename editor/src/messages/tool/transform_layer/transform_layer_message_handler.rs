@@ -192,7 +192,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let translation = translation.to_dvec(document_to_viewport, self.increments);
 							let viewport_translate = document_to_viewport.transform_vector2(translation);
 							let quad = Quad::from_box([self.grab_target, self.grab_target + viewport_translate]).0;
-							let e1 = (self.fixed_bbox.0[1] - self.fixed_bbox.0[0]).normalize();
+							let e1 = (self.fixed_bbox.0[1] - self.fixed_bbox.0[0]).normalize_or(DVec2::X);
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 								let end = if self.local {
@@ -465,6 +465,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.handle = DVec2::ZERO;
 
 					responses.add(PenToolMessage::Abort);
+					responses.add(ToolMessage::UpdateHints);
 				} else {
 					selected.revert_operation();
 					selected.original_transforms.clear();

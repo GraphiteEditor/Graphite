@@ -12,7 +12,7 @@ use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, DMat2};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
@@ -537,7 +537,7 @@ impl<'a> Selected<'a> {
 	pub fn bounding_box(&mut self) -> Quad {
 		let metadata = self.network_interface.document_metadata();
 
-		let transform = self
+		let mut transform = self
 			.network_interface
 			.selected_nodes(&[])
 			.unwrap()
@@ -546,8 +546,8 @@ impl<'a> Selected<'a> {
 			.map(|layer| metadata.transform_to_viewport(layer))
 			.unwrap_or(DAffine2::IDENTITY);
 
-		if transform.matrix2.determinant() == 0. {
-			return Default::default();
+		if transform.matrix2.determinant().abs() <= f64::EPSILON {
+			transform.matrix2 += DMat2::IDENTITY * 1e-4;
 		}
 
 		let bounds = self
