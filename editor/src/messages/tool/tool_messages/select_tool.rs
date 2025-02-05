@@ -742,7 +742,7 @@ impl Fsm for SelectToolFsmState {
 				else if intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
