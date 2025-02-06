@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::DRAG_THRESHOLD;
+use crate::consts::{COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -277,7 +277,7 @@ struct TextToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	pivot: Pivot,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	// Handle multiple layers in the future
+	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<LayerNodeIdentifier>,
 }
 
@@ -409,11 +409,13 @@ impl TextToolData {
 
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
 		self.snap_candidates.clear();
-		if let Some(layer) = self.layer_dragging {		
+
+		if let Some(layer) = self.layer_dragging {
 			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
 				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
 			}
-			let quad = document.metadata().transform_to_document(layer) * text_bounding_box(layer, document, &font_cache);
+
+			let quad = document.metadata().transform_to_document(layer) * text_bounding_box(layer, document, font_cache);
 			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 		}
 	}
@@ -461,7 +463,7 @@ impl Fsm for TextToolFsmState {
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face.clone(), editing_text.typesetting);
+					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -487,8 +489,8 @@ impl Fsm for TextToolFsmState {
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				}
 
-				// TODO: implement for multiple layers
-				// currently we find the first layer
+				// TODO: Implement for multiple layers
+				// Currently we find the first layer
 				let layer = document
 					.network_interface
 					.selected_nodes(&[])
@@ -515,7 +517,7 @@ impl Fsm for TextToolFsmState {
 					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
 						let buzz_face = font_cache.get(font).map(|data| load_face(data));
 						if lines_clipping(text.as_str(), buzz_face, typesetting) {
-							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(&"#FF0000".to_string()));
+							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED));
 						}
 					}
 
@@ -572,19 +574,21 @@ impl Fsm for TextToolFsmState {
 				if selected.is_none() {
 					TextToolFsmState::Placing
 				} else if tool_data.pivot.is_over(input.mouse.position) {
-					// Pivot currently hardcoded to 0.5, 0.5 for text layers
+					// TODO: Pivot is currently hardcoded to 0.5, 0.5 for text layers
 
 					// responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+
 					TextToolFsmState::DraggingPivot
 					
+				}
 				// Check if the user is dragging the bounds
-				} else if let Some(_selected_edges) = dragging_bounds {
+				else if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
 
-					tool_data.layer_dragging = selected.clone();
+					tool_data.layer_dragging = selected;
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
@@ -597,6 +601,7 @@ impl Fsm for TextToolFsmState {
 						// 		false
 						// 	}
 						// });
+
 						let selected = Vec::from([tool_data.layer_dragging.unwrap()]);
 
 						let mut selected = Selected::new(
@@ -611,14 +616,14 @@ impl Fsm for TextToolFsmState {
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
-					tool_data.get_snap_candidates(document, input, &font_cache);
+					tool_data.get_snap_candidates(document, input, font_cache);
 
 					TextToolFsmState::ResizingBounds
 				} else {
 					TextToolFsmState::Placing
 				};
 
-				return state;
+				state
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
 				// This ensures the cursor only changes if a layer is selected
@@ -633,12 +638,12 @@ impl Fsm for TextToolFsmState {
 				if layer.is_none() || cursor == MouseCursorIcon::Default {
 					cursor = MouseCursorIcon::Text;
 				}
-				
+
 				// Dragging the pivot overrules the other operations
 				// if tool_data.pivot.is_over(input.mouse.position) {
 				// 	cursor = MouseCursorIcon::Move;
 				// }
-					
+
 				responses.add(OverlaysMessage::Draw);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 
@@ -708,7 +713,7 @@ impl Fsm for TextToolFsmState {
 							input_connector: InputConnector::node(node_id.unwrap(), 7),
 							input: NodeInput::value(TaggedValue::OptionalF64(Some(height)), false),
 						});
-						responses.add(GraphOperationMessage::TransformSet { layer: text_layer.unwrap(), transform: transform, transform_in: TransformIn::Viewport, skip_rerender: false });
+						responses.add(GraphOperationMessage::TransformSet { layer: text_layer.unwrap(), transform, transform_in: TransformIn::Viewport, skip_rerender: false });
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 
 						// AutoPanning
@@ -864,6 +869,7 @@ impl Fsm for TextToolFsmState {
 				}
 
 				responses.add(FrontendMessage::TriggerTextCommit);
+
 				TextToolFsmState::Editing
 			}
 			(state, TextToolMessage::Abort) => {
