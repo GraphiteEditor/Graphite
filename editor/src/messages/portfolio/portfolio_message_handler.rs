@@ -8,6 +8,7 @@ use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -202,9 +203,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				};
 
 				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]);
+					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
 
-					for layer in ordered_last_elements {
+					ordered_last_elements.sort_by_key(|layer| {
+						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
+						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+					});
+
+					for layer in ordered_last_elements.into_iter() {
 						let layer_node_id = layer.to_node();
 
 						let mut copy_ids = HashMap::new();
@@ -393,7 +399,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
+				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
 				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =

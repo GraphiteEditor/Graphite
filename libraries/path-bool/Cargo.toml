@@ -32,7 +32,7 @@ slotmap = "1.0.7"
 glob = "0.3"
 svg = "0.18"
 resvg = "0.44"
-image = "0.24"
+image = "0.25"
 
 # Required dependencies
 criterion = { version = "0.5", features = ["html_reports"] }
