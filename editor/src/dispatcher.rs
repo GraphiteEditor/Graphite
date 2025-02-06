@@ -350,44 +350,42 @@ mod test {
 	/// 1. A red rectangle
 	/// 2. A blue shape
 	/// 3. A green ellipse
-	fn create_editor_with_three_layers() -> Editor {
-		let (mut editor, _) = Editor::create();
+	async fn create_editor_with_three_layers() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
 
-		editor.new_document();
+		editor.new_document().await;
 
-		editor.select_primary_color(Color::RED);
-		editor.draw_rect(100., 200., 300., 400.);
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(100., 200., 300., 400.).await;
 
-		editor.select_primary_color(Color::BLUE);
-		editor.draw_polygon(10., 1200., 1300., 400.);
+		editor.select_primary_color(Color::BLUE).await;
+		editor.draw_polygon(10., 1200., 1300., 400.).await;
 
-		editor.select_primary_color(Color::GREEN);
-		editor.draw_ellipse(104., 1200., 1300., 400.);
+		editor.select_primary_color(Color::GREEN).await;
+		editor.draw_ellipse(104., 1200., 1300., 400.).await;
 
 		editor
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
 	/// - create rect, shape and ellipse
 	/// - copy
 	/// - paste
 	/// - assert that ellipse was copied
-	fn copy_paste_single_layer() {
-		let mut editor = create_editor_with_three_layers();
+	#[tokio::test]
+	async fn copy_paste_single_layer() {
+		let mut editor = create_editor_with_three_layers().await;
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
+		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
 
-		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -398,33 +396,30 @@ mod test {
 		}
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
 	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select shape
 	/// - copy
 	/// - paste
 	/// - assert that shape was copied
-	fn copy_paste_single_layer_from_middle() {
-		let mut editor = create_editor_with_three_layers();
+	#[tokio::test]
+	async fn copy_paste_single_layer_from_middle() {
+		let mut editor = create_editor_with_three_layers().await;
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let shape_id = document_before_copy.metadata().all_layers().nth(1).unwrap();
+		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] });
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-
-		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -435,9 +430,6 @@ mod test {
 		}
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
 	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
@@ -446,36 +438,40 @@ mod test {
 	/// - create another rect
 	/// - paste
 	/// - paste
-	fn copy_paste_deleted_layers() {
-		let mut editor = create_editor_with_three_layers();
+	#[tokio::test]
+	async fn copy_paste_deleted_layers() {
+		let mut editor = create_editor_with_three_layers().await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let mut layers = document_before_copy.metadata().all_layers();
-		let rect_id = layers.next().expect("rectangle");
-		let shape_id = layers.next().expect("shape");
-		let ellipse_id = layers.next().expect("ellipse");
+		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+		let rect_id = layers_before_copy[0];
+		let shape_id = layers_before_copy[1];
+		let ellipse_id = layers_before_copy[2];
 
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet {
-			nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
-		});
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
-		editor.draw_rect(0., 800., 12., 200.);
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
+			})
+			.await;
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
+		editor.draw_rect(0., 800., 12., 200.).await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-
-		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
@@ -504,7 +500,7 @@ mod test {
 			panic!()
 		};
 
-		let (mut editor, mut runtime) = Editor::create();
+		let mut editor = EditorTestUtils::create();
 
 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 		//
@@ -528,13 +524,13 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
 				document_name: document_name.into(),
 				document_serialized_content,
 			});
 
 			// Check if the graph renders
-			editor.eval_graph(&mut runtime).await;
+			editor.eval_graph().await;
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
