@@ -561,19 +561,18 @@ mod test_artboard {
 
 	pub use crate::test_utils::test_prelude::*;
 
-	async fn get_artboards(editor: &mut Editor, runtime: &mut NodeRuntime) -> Vec<graphene_core::Artboard> {
-		editor.eval_graph(runtime).await; // Required to process any buffered messages
-		let instrumented = editor.eval_graph(runtime).await;
-		instrumented.grab_all_input::<graphene_core::append_artboard::ArtboardInput>(&runtime).collect()
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_core::Artboard> {
+		let instrumented = editor.eval_graph().await;
+		instrumented.grab_all_input::<graphene_core::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]
 	async fn artboard_draw_simple() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty());
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty()).await;
 
-		let artboards = get_artboards(&mut editor, &mut runtime).await;
+		let artboards = get_artboards(&mut editor).await;
 
 		assert_eq!(artboards.len(), 1);
 		assert_eq!(artboards[0].location, IVec2::new(10, 0));
@@ -582,11 +581,11 @@ mod test_artboard {
 
 	#[tokio::test]
 	async fn artboard_draw_square() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT);
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
 
-		let artboards = get_artboards(&mut editor, &mut runtime).await;
+		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
 		assert_eq!(artboards[0].location, IVec2::new(-10, 10));
 		assert_eq!(artboards[0].dimensions, IVec2::new(20, 20));
@@ -594,14 +593,16 @@ mod test_artboard {
 
 	#[tokio::test]
 	async fn artboard_draw_square_rotated() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.handle_message(NavigationMessage::CanvasTiltSet {
-			angle_radians: f64::consts::FRAC_PI_4,
-		}); // 45 degree rotation of content clockwise
-		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT); // Viewport coordinates
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await; // 45 degree rotation of content clockwise
+		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await; // Viewport coordinates
 
-		let artboards = get_artboards(&mut editor, &mut runtime).await;
+		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
 		assert_eq!(artboards[0].location, IVec2::new(0, 0));
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
@@ -610,14 +611,17 @@ mod test_artboard {
 
 	#[tokio::test]
 	async fn artboard_draw_centre_square_rotated() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.handle_message(NavigationMessage::CanvasTiltSet {
-			angle_radians: f64::consts::FRAC_PI_4,
-		}); // 45 degree rotation of content clockwise
-		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT); // Viewport coordinates
+		let mut editor = EditorTestUtils::create();
 
-		let artboards = get_artboards(&mut editor, &mut runtime).await;
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await; // 45 degree rotation of content clockwise
+		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await; // Viewport coordinates
+
+		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
 		assert_eq!(artboards[0].location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
@@ -626,22 +630,24 @@ mod test_artboard {
 
 	#[tokio::test]
 	async fn artboard_delete() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::default());
-		editor.press(Key::Delete, ModifierKeys::default());
+		let mut editor = EditorTestUtils::create();
 
-		let artboards = get_artboards(&mut editor, &mut runtime).await;
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::default()).await;
+		editor.press(Key::Delete, ModifierKeys::default()).await;
+
+		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 0);
 	}
 
 	#[tokio::test]
 	async fn artboard_cancel() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
+		let mut editor = EditorTestUtils::create();
 
-		editor.drag_tool_cancel_rmb(ToolType::Artboard);
-		let artboards = get_artboards(&mut editor, &mut runtime).await;
+		editor.new_document().await;
+
+		editor.drag_tool_cancel_rmb(ToolType::Artboard).await;
+		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 0);
 	}
 }

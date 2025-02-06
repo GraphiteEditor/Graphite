@@ -124,3 +124,62 @@ impl Fsm for FillToolFsmState {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
+
+#[cfg(test)]
+mod test_fill {
+
+	pub use crate::test_utils::test_prelude::*;
+	use graphene_core::vector::fill;
+	use graphene_std::vector::style::Fill;
+
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
+		let instrumented = editor.eval_graph().await;
+
+		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
+	}
+
+	#[tokio::test]
+	async fn ignore_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor,).await.is_empty());
+	}
+
+	#[tokio::test]
+	// TODO: fix https://github.com/GraphiteEditor/Graphite/issues/2270
+	#[should_panic]
+	async fn ignore_raster() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor,).await.is_empty());
+	}
+
+	#[tokio::test]
+	async fn primary() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(fills[0], Fill::Solid(Color::GREEN));
+	}
+
+	#[tokio::test]
+	async fn secondary() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let color = Color::YELLOW;
+		editor.handle_message(ToolMessage::SelectSecondaryColor { color }).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(fills[0], Fill::Solid(color));
+	}
+}

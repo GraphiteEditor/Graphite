@@ -330,9 +330,8 @@ mod test_ellipse {
 		transform: DAffine2,
 	}
 
-	async fn get_ellipse(editor: &mut Editor, runtime: &mut NodeRuntime) -> Vec<ResolvedEllipse> {
-		editor.eval_graph(runtime).await; // Required to process any buffered messages
-		let instrumented = editor.eval_graph(runtime).await;
+	async fn get_ellipse(editor: &mut EditorTestUtils) -> Vec<ResolvedEllipse> {
+		let instrumented = editor.eval_graph().await;
 
 		let document = editor.active_document();
 		let layers = document.metadata().all_layers();
@@ -341,8 +340,8 @@ mod test_ellipse {
 				let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::protonode_identifier())?;
 				Some(ResolvedEllipse {
-					radius_x: instrumented.grab_protonode_input::<ellipse::RadiusXInput>(&vec![ellipse_node], runtime).unwrap(),
-					radius_y: instrumented.grab_protonode_input::<ellipse::RadiusYInput>(&vec![ellipse_node], runtime).unwrap(),
+					radius_x: instrumented.grab_protonode_input::<ellipse::RadiusXInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					radius_y: instrumented.grab_protonode_input::<ellipse::RadiusYInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
 					transform: document.metadata().transform_to_document(layer),
 				})
 			})
@@ -351,11 +350,13 @@ mod test_ellipse {
 
 	#[tokio::test]
 	async fn ellipse_draw_simple() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.drag_tool(ToolType::Ellipse, 10., 10., 19., 0., ModifierKeys::empty());
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 10., 10., 19., 0., ModifierKeys::empty()).await;
 
-		let ellipse = get_ellipse(&mut editor, &mut runtime).await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		assert_eq!(
 			ellipse[0],
@@ -369,11 +370,11 @@ mod test_ellipse {
 
 	#[tokio::test]
 	async fn ellipse_draw_circle() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.drag_tool(ToolType::Ellipse, 10., 10., -10., 11., ModifierKeys::SHIFT);
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
 
-		let ellipse = get_ellipse(&mut editor, &mut runtime).await;
+		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		assert_eq!(
 			ellipse[0],
@@ -387,14 +388,16 @@ mod test_ellipse {
 
 	#[tokio::test]
 	async fn ellipse_draw_square_rotated() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.handle_message(NavigationMessage::CanvasTiltSet {
-			angle_radians: f64::consts::FRAC_PI_4,
-		}); // 45 degree rotation of content clockwise
-		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT); // Viewport coordinates
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await; // 45 degree rotation of content clockwise
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT).await; // Viewport coordinates
 
-		let ellipse = get_ellipse(&mut editor, &mut runtime).await;
+		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		println!("{ellipse:?}");
 		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
@@ -412,14 +415,16 @@ mod test_ellipse {
 
 	#[tokio::test]
 	async fn ellipse_draw_centre_square_rotated() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.handle_message(NavigationMessage::CanvasTiltSet {
-			angle_radians: f64::consts::FRAC_PI_4,
-		}); // 45 degree rotation of content clockwise
-		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT | ModifierKeys::ALT); // Viewport coordinates
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await; // 45 degree rotation of content clockwise
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await; // Viewport coordinates
 
-		let ellipse = get_ellipse(&mut editor, &mut runtime).await;
+		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
 		// assert_eq!(ellipse[0].radius_x, 10.);
@@ -432,11 +437,11 @@ mod test_ellipse {
 
 	#[tokio::test]
 	async fn ellipse_cancel() {
-		let (mut editor, mut runtime) = Editor::create();
-		editor.new_document();
-		editor.drag_tool_cancel_rmb(ToolType::Ellipse);
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool_cancel_rmb(ToolType::Ellipse).await;
 
-		let ellipse = get_ellipse(&mut editor, &mut runtime).await;
+		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 0);
 	}
 }

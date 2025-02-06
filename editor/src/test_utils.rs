@@ -8,40 +8,20 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
+use glam::DVec2;
 use graph_craft::document::DocumentNode;
 use graphene_core::InputAccessor;
 
 use graphene_core::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
-pub trait EditorTestUtils {
-	fn create() -> (Editor, NodeRuntime);
-
-	fn new_document(&mut self);
-	fn eval_graph<'a>(&'a mut self, runtime: &'a mut NodeRuntime) -> impl std::future::Future<Output = Instrumented> + 'a;
-
-	fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
-	fn draw_polygon(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
-	fn draw_ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64);
-
-	/// Select given tool and drag it from (x1, y1) to (x2, y2)
-	fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64, modifier_keys: ModifierKeys);
-	fn drag_tool_cancel_rmb(&mut self, typ: ToolType);
-	fn active_document(&self) -> &DocumentMessageHandler;
-	fn active_document_mut(&mut self) -> &mut DocumentMessageHandler;
-	fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T>;
-	fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys);
-	fn mousedown(&mut self, state: EditorMouseState, modifier_keys: ModifierKeys);
-	fn mouseup(&mut self, state: EditorMouseState, modifier_keys: ModifierKeys);
-	fn press(&mut self, key: Key, modifier_keys: ModifierKeys);
-	fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys);
-	fn input(&mut self, message: InputPreprocessorMessage);
-	fn select_tool(&mut self, typ: ToolType);
-	fn select_primary_color(&mut self, color: Color);
+pub struct EditorTestUtils {
+	pub editor: Editor,
+	pub runtime: NodeRuntime,
 }
 
-impl EditorTestUtils for Editor {
-	fn create() -> (Editor, NodeRuntime) {
+impl EditorTestUtils {
+	pub fn create() -> Self {
 		let _ = env_logger::builder().is_test(true).try_init();
 		set_uuid_seed(0);
 
@@ -53,10 +33,10 @@ impl EditorTestUtils for Editor {
 
 		editor.handle_message(Message::Init);
 
-		(editor, runtime)
+		Self { editor, runtime }
 	}
 
-	fn eval_graph<'a>(&'a mut self, runtime: &'a mut NodeRuntime) -> impl std::future::Future<Output = Instrumented> + 'a {
+	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Instrumented> + 'a {
 		// An inner function is required since async functions in traits are a bit weird
 		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Instrumented {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
@@ -76,30 +56,58 @@ impl EditorTestUtils for Editor {
 			}
 			instrumented
 		}
-		run(self, runtime)
+		run(&mut self.editor, &mut self.runtime)
 	}
 
-	fn new_document(&mut self) {
-		self.handle_message(Message::Portfolio(PortfolioMessage::NewDocumentWithName { name: String::from("Test document") }));
+	pub async fn handle_message(&mut self, message: impl Into<Message>) {
+		self.editor.handle_message(message);
+		self.eval_graph().await; // Required to process any buffered messages
 	}
 
-	fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-		self.drag_tool(ToolType::Rectangle, x1, y1, x2, y2, ModifierKeys::default());
+	pub async fn new_document(&mut self) {
+		self.handle_message(Message::Portfolio(PortfolioMessage::NewDocumentWithName { name: String::from("Test document") }))
+			.await;
 	}
 
-	fn draw_polygon(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-		self.drag_tool(ToolType::Polygon, x1, y1, x2, y2, ModifierKeys::default());
+	pub async fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
+		self.drag_tool(ToolType::Rectangle, x1, y1, x2, y2, ModifierKeys::default()).await;
 	}
 
-	fn draw_ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-		self.drag_tool(ToolType::Ellipse, x1, y1, x2, y2, ModifierKeys::default());
+	pub async fn draw_polygon(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
+		self.drag_tool(ToolType::Polygon, x1, y1, x2, y2, ModifierKeys::default()).await;
 	}
 
-	fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64, modifier_keys: ModifierKeys) {
-		self.select_tool(typ);
-		self.move_mouse(x1, y1, modifier_keys, MouseKeys::empty());
-		self.left_mousedown(x1, y1, modifier_keys);
-		self.move_mouse(x2, y2, modifier_keys, MouseKeys::LEFT);
+	pub async fn draw_ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
+		self.drag_tool(ToolType::Ellipse, x1, y1, x2, y2, ModifierKeys::default()).await;
+	}
+
+	pub async fn click_tool(&mut self, typ: ToolType, button: MouseKeys, position: DVec2, modifier_keys: ModifierKeys) {
+		self.select_tool(typ).await;
+		self.move_mouse(position.x, position.y, modifier_keys, MouseKeys::empty()).await;
+		self.mousedown(
+			EditorMouseState {
+				editor_position: position,
+				mouse_keys: button,
+				..Default::default()
+			},
+			modifier_keys,
+		)
+		.await;
+		self.mouseup(
+			EditorMouseState {
+				editor_position: position,
+				..Default::default()
+			},
+			modifier_keys,
+		)
+		.await;
+	}
+
+	pub async fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64, modifier_keys: ModifierKeys) {
+		self.select_tool(typ).await;
+		self.move_mouse(x1, y1, modifier_keys, MouseKeys::empty()).await;
+		self.left_mousedown(x1, y1, modifier_keys).await;
+		self.move_mouse(x2, y2, modifier_keys, MouseKeys::LEFT).await;
 		self.mouseup(
 			EditorMouseState {
 				editor_position: (x2, y2).into(),
@@ -107,14 +115,15 @@ impl EditorTestUtils for Editor {
 				scroll_delta: ScrollDelta::default(),
 			},
 			modifier_keys,
-		);
+		)
+		.await;
 	}
 
-	fn drag_tool_cancel_rmb(&mut self, typ: ToolType) {
-		self.select_tool(typ);
-		self.move_mouse(50., 50., ModifierKeys::default(), MouseKeys::empty());
-		self.left_mousedown(50., 50., ModifierKeys::default());
-		self.move_mouse(100., 100., ModifierKeys::default(), MouseKeys::LEFT);
+	pub async fn drag_tool_cancel_rmb(&mut self, typ: ToolType) {
+		self.select_tool(typ).await;
+		self.move_mouse(50., 50., ModifierKeys::default(), MouseKeys::empty()).await;
+		self.left_mousedown(50., 50., ModifierKeys::default()).await;
+		self.move_mouse(100., 100., ModifierKeys::default(), MouseKeys::LEFT).await;
 		self.mousedown(
 			EditorMouseState {
 				editor_position: (100., 100.).into(),
@@ -122,18 +131,19 @@ impl EditorTestUtils for Editor {
 				scroll_delta: ScrollDelta::default(),
 			},
 			ModifierKeys::default(),
-		);
+		)
+		.await;
 	}
 
-	fn active_document(&self) -> &DocumentMessageHandler {
-		self.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap()
+	pub fn active_document(&self) -> &DocumentMessageHandler {
+		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap()
 	}
 
-	fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
+	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
+		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
 	}
 
-	fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> {
+	pub fn get_node<'a, T: InputAccessor<'a, DocumentNode>>(&'a self) -> impl Iterator<Item = T> + 'a {
 		self.active_document()
 			.network_interface
 			.iter_recursive()
@@ -141,30 +151,30 @@ impl EditorTestUtils for Editor {
 			.filter_map(move |(_, document)| T::new_with_source(document))
 	}
 
-	fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
+	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
 		let editor_mouse_state = EditorMouseState {
 			editor_position: ViewportPosition::new(x, y),
 			mouse_keys,
 			..Default::default()
 		};
-		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
+		self.input(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }).await;
 	}
 
-	fn mousedown(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
-		self.input(InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys });
+	pub async fn mousedown(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
+		self.input(InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys }).await;
 	}
 
-	fn mouseup(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
-		self.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys });
+	pub async fn mouseup(&mut self, editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys) {
+		self.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys }).await;
 	}
 
-	fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
+	pub async fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
 		let key_repeat = false;
-		self.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat });
-		self.handle_message(InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat });
+		self.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat }).await;
+		self.handle_message(InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat }).await;
 	}
 
-	fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
+	pub async fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
 		self.mousedown(
 			EditorMouseState {
 				editor_position: (x, y).into(),
@@ -172,19 +182,30 @@ impl EditorTestUtils for Editor {
 				scroll_delta: ScrollDelta::default(),
 			},
 			modifier_keys,
-		);
+		)
+		.await;
 	}
 
-	fn input(&mut self, message: InputPreprocessorMessage) {
-		self.handle_message(Message::InputPreprocessor(message));
+	pub async fn input(&mut self, message: InputPreprocessorMessage) {
+		self.handle_message(Message::InputPreprocessor(message)).await;
 	}
 
-	fn select_tool(&mut self, tool_type: ToolType) {
-		self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type }));
+	pub async fn select_tool(&mut self, tool_type: ToolType) {
+		self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await;
 	}
 
-	fn select_primary_color(&mut self, color: Color) {
-		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color }));
+	pub async fn select_primary_color(&mut self, color: Color) {
+		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
+	}
+
+	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
+		self.handle_message(PortfolioMessage::PasteImage {
+			name: None,
+			image,
+			mouse,
+			parent_and_insert_index: None,
+		})
+		.await;
 	}
 }
 
@@ -212,6 +233,7 @@ pub mod test_prelude {
 	pub use crate::application::Editor;
 	pub use crate::float_eq;
 	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
+	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
@@ -223,7 +245,7 @@ pub mod test_prelude {
 	pub use glam::DVec2;
 	pub use glam::IVec2;
 	pub use graph_craft::document::DocumentNode;
-	pub use graphene_core::raster::color::Color;
+	pub use graphene_core::raster::{Color, Image};
 	pub use graphene_core::{InputAccessor, InputAccessorSource};
 	pub use graphene_std::{transform::Footprint, GraphicGroup};
 
