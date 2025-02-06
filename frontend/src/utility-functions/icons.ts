@@ -109,6 +109,7 @@ import CheckboxUnchecked from "@graphite-frontend/assets/icon-16px-solid/checkbo
 import Copy from "@graphite-frontend/assets/icon-16px-solid/copy.svg";
 import Credits from "@graphite-frontend/assets/icon-16px-solid/credits.svg";
 import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
+import Cut from "@graphite-frontend/assets/icon-16px-solid/cut.svg";
 import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
 import EyeHidden from "@graphite-frontend/assets/icon-16px-solid/eye-hidden.svg";
 import EyeHide from "@graphite-frontend/assets/icon-16px-solid/eye-hide.svg";
@@ -144,6 +145,8 @@ import Node from "@graphite-frontend/assets/icon-16px-solid/node.svg";
 import PadlockLocked from "@graphite-frontend/assets/icon-16px-solid/padlock-locked.svg";
 import PadlockUnlocked from "@graphite-frontend/assets/icon-16px-solid/padlock-unlocked.svg";
 import Paste from "@graphite-frontend/assets/icon-16px-solid/paste.svg";
+import PinActive from "@graphite-frontend/assets/icon-16px-solid/pin-active.svg";
+import PinInactive from "@graphite-frontend/assets/icon-16px-solid/pin-inactive.svg";
 import Random from "@graphite-frontend/assets/icon-16px-solid/random.svg";
 import Regenerate from "@graphite-frontend/assets/icon-16px-solid/regenerate.svg";
 import Reload from "@graphite-frontend/assets/icon-16px-solid/reload.svg";
@@ -188,6 +191,7 @@ const SOLID_16PX = {
 	Copy: { svg: Copy, size: 16 },
 	Credits: { svg: Credits, size: 16 },
 	CustomColor: { svg: CustomColor, size: 16 },
+	Cut: { svg: Cut, size: 16 },
 	Edit: { svg: Edit, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
 	EyeHidden: { svg: EyeHidden, size: 16 },
@@ -223,6 +227,8 @@ const SOLID_16PX = {
 	PadlockLocked: { svg: PadlockLocked, size: 16 },
 	PadlockUnlocked: { svg: PadlockUnlocked, size: 16 },
 	Paste: { svg: Paste, size: 16 },
+	PinActive: { svg: PinActive, size: 16 },
+	PinInactive: { svg: PinInactive, size: 16 },
 	Random: { svg: Random, size: 16 },
 	Regenerate: { svg: Regenerate, size: 16 },
 	Reload: { svg: Reload, size: 16 },

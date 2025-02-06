@@ -156,6 +156,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuBarEntry {
 							label: "Cut".into(),
+							icon: Some("Cut".into()),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::Cut),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into()),
 							disabled: no_active_document || !has_selected_layers,
