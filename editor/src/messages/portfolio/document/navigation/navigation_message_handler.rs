@@ -3,7 +3,7 @@ use crate::consts::{
 	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
@@ -95,14 +95,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					responses.add(FrontendMessage::UpdateInputHints {
 						hint_data: HintData(vec![
 							HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-							HintGroup(vec![HintInfo {
-								key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-								key_groups_mac: None,
-								mouse: None,
-								label: "Snap 15°".into(),
-								plus: false,
-								slash: false,
-							}]),
+							HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 						]),
 					});
 
@@ -125,14 +118,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-							key_groups_mac: None,
-							mouse: None,
-							label: "Increments".into(),
-							plus: false,
-							slash: false,
-						}]),
+						HintGroup(vec![HintInfo::keys([Key::Shift], "Increments")]),
 					]),
 				});
 
