@@ -455,6 +455,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
+	#[cfg(test)]
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
 		self.node_graph_hash = generate_uuid();
