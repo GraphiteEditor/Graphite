@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
@@ -6,7 +8,7 @@ use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
 use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, VectorData};
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 
 use core::borrow::Borrow;
 use core::f64::consts::TAU;
@@ -481,4 +483,11 @@ pub enum Pivot {
 	Start,
 	Middle,
 	End,
+}
+
+pub enum DrawHandles {
+	All,
+	SelectedAnchors(Vec<SegmentId>),
+	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	None,
 }

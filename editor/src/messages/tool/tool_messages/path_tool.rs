@@ -3,8 +3,8 @@ use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
-use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_functions::{get_selected_segments, path_overlays};
+use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::preferences::SelectionMode;
@@ -15,8 +15,8 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graphene_core::renderer::Quad;
-use graphene_core::vector::ManipulatorPointId;
-use graphene_std::vector::NoHashBuilder;
+use graphene_core::vector::{ManipulatorPointId, PointId};
+use graphene_std::vector::{NoHashBuilder, SegmentId};
 
 use std::vec;
 
@@ -24,6 +24,19 @@ use std::vec;
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
 	tool_data: PathToolData,
+	options: PathToolOptions,
+}
+
+pub struct PathToolOptions {
+	path_overlay_mode: PathOverlayMode,
+}
+
+impl Default for PathToolOptions {
+	fn default() -> Self {
+		Self {
+			path_overlay_mode: PathOverlayMode::SelectedPointHandles,
+		}
+	}
 }
 
 #[impl_message(Message, ToolMessage, Path)]
@@ -89,6 +102,19 @@ pub enum PathToolMessage {
 		new_y: f64,
 	},
 	SwapSelectedHandles,
+	UpdateOptions(PathOptionsUpdate),
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum PathOverlayMode {
+	AllHandles = 0,
+	SelectedPointHandles = 1,
+	FrontierHandles = 2,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum PathOptionsUpdate {
+	OverlayModeType(PathOverlayMode),
 }
 
 impl ToolMetadata for PathTool {
@@ -101,6 +127,21 @@ impl ToolMetadata for PathTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Path
 	}
+}
+
+fn create_path_overlay_mode_widget(path_overlay_mode: PathOverlayMode) -> WidgetHolder {
+	let entries = vec![
+		RadioEntryData::new("1")
+			.label("1")
+			.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::AllHandles)).into()),
+		RadioEntryData::new("2")
+			.label("2")
+			.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::SelectedPointHandles)).into()),
+		RadioEntryData::new("3")
+			.label("3")
+			.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::FrontierHandles)).into()),
+	];
+	RadioInput::new(entries).selected_index(Some(path_overlay_mode as u32)).widget_holder()
 }
 
 impl LayoutHolder for PathTool {
@@ -175,10 +216,12 @@ impl LayoutHolder for PathTool {
 				x_location,
 				related_seperator.clone(),
 				y_location,
-				unrelated_seperator,
+				unrelated_seperator.clone(),
 				colinear_handle_checkbox,
 				related_seperator,
 				colinear_handles_label,
+				unrelated_seperator.clone(),
+				create_path_overlay_mode_widget(self.options.path_overlay_mode),
 			],
 		}]))
 	}
@@ -189,6 +232,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
+			ToolMessage::Path(PathToolMessage::UpdateOptions(action)) => match action {
+				PathOptionsUpdate::OverlayModeType(overlay_mode_type) => {
+					self.options.path_overlay_mode = overlay_mode_type;
+					responses.add(OverlaysMessage::Draw);
+				}
+			},
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
 				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
@@ -204,7 +253,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				}
 			}
 			_ => {
-				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);
+				self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			}
 		}
 
@@ -686,9 +735,9 @@ impl PathToolData {
 
 impl Fsm for PathToolFsmState {
 	type ToolData = PathToolData;
-	type ToolOptions = ();
+	type ToolOptions = PathToolOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
 		let ToolMessage::Path(event) = event else { return self };
 		match (self, event) {
@@ -703,7 +752,45 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				path_overlays(document, shape_editor, &mut overlay_context, true);
+				//TODO: find the segment ids of which the selected points are a part of
+
+				match tool_options.path_overlay_mode {
+					PathOverlayMode::AllHandles => {
+						path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::All);
+					}
+
+					PathOverlayMode::SelectedPointHandles => {
+						let selected_segments = get_selected_segments(document, shape_editor);
+						path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::SelectedAnchors(selected_segments));
+					}
+
+					PathOverlayMode::FrontierHandles => {
+						let selected_segments = get_selected_segments(document, shape_editor);
+						let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
+
+						for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+								continue;
+							};
+
+							//The points which are part of only one segment will be rendered
+							let mut selected_segments_by_point: HashMap<PointId, Vec<SegmentId>> = HashMap::new();
+							for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
+								if selected_segments.contains(&segment_id) {
+									selected_segments_by_point.entry(start).or_insert_with(Vec::new).push(segment_id);
+									selected_segments_by_point.entry(end).or_insert_with(Vec::new).push(segment_id);
+								}
+							}
+							for (point, attached_segments) in selected_segments_by_point {
+								if attached_segments.len() == 1 {
+									segment_endpoints.entry(attached_segments[0]).or_insert_with(Vec::new).push(point);
+								}
+							}
+						}
+						//Now frontier anchors can be sent for rendering overlays
+						path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::FrontierHandles(segment_endpoints));
+					}
+				}
 
 				match self {
 					Self::Drawing { selection_shape } => {
