@@ -329,7 +329,7 @@
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
-		// Make it so maxHeight is a multiple of lineHeight
+		// Make it so `maxHeight` is a multiple of `lineHeight`
 		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
 		let height;
 		if (displayEditableTextbox.maxHeight) {

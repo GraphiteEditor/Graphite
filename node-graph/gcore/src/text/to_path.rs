@@ -160,7 +160,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 	builder.other_subpaths
 }
 
-pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> DVec2 {
+pub fn bounding_box(str: &str, buzz_face: Option<&rustybuzz::Face>, typesetting: TypesettingConfig) -> DVec2 {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
@@ -168,7 +168,7 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 	};
 	let space_glyph = buzz_face.glyph_index(' ');
 
-	let (scale, line_height, mut buffer) = font_properties(&buzz_face, typesetting.font_size, typesetting.line_height_ratio);
+	let (scale, line_height, mut buffer) = font_properties(buzz_face, typesetting.font_size, typesetting.line_height_ratio);
 
 	let mut pos = DVec2::ZERO;
 	let mut bounds = DVec2::ZERO;
@@ -177,7 +177,7 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
 			push_str(&mut buffer, word);
 
-			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+			let glyph_buffer = rustybuzz::shape(buzz_face, &[], buffer);
 
 			// Don't wrap the first word
 			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, pos.x, space_glyph) {
