@@ -115,6 +115,7 @@ pub enum DocumentMessage {
 	SelectedLayersLowerToBack,
 	SelectedLayersRaise,
 	SelectedLayersRaiseToFront,
+	SelectedLayersReverse,
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},

@@ -301,6 +301,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 								disabled: no_active_document || !has_selected_layers,
 								..MenuBarEntry::default()
 							},
+							MenuBarEntry {
+								label: "Reverse".into(),
+								shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersReverse),
+								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersReverse.into()),
+								disabled: no_active_document || !has_selected_layers,
+								..MenuBarEntry::default()
+							},
 						]]),
 						..MenuBarEntry::default()
 					}],

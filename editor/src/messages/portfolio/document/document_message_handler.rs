@@ -951,6 +951,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SelectedLayersRaiseToFront => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN });
 			}
+			DocumentMessage::SelectedLayersReverse => {
+    			self.selected_layers_reverse(responses);
+			}
 			DocumentMessage::SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
@@ -1554,6 +1557,80 @@ impl DocumentMessageHandler {
 		Ok(document_message_handler)
 	}
 
+    
+pub fn selected_layers_reverse(&mut self, responses: &mut VecDeque<Message>) {
+    let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+    let selected_layers: Vec<_> = selected_nodes.selected_layers(self.metadata()).collect();
+
+    if selected_layers.len() < 2 {
+        return;
+    }
+
+    // Step 1: Ignore children if their ancestor is selected
+    let mut selected_ancestors = HashSet::new();
+    for &layer in &selected_layers {
+        let mut current = layer;
+        while let Some(parent) = current.parent(self.metadata()) {
+            if selected_layers.contains(&parent) {
+                selected_ancestors.insert(layer);
+                break;
+            }
+            current = parent;
+        }
+    }
+
+    let filtered_layers: Vec<_> = selected_layers
+        .into_iter()
+        .filter(|layer| !selected_ancestors.contains(layer))
+        .collect();
+
+    // Step 2: Ignore single selected layers
+    let mut valid_layers = Vec::new();
+    for &layer in &filtered_layers {
+        let parent = layer.parent(self.metadata()).unwrap();
+        let siblings: Vec<_> = parent.children(self.metadata()).collect();
+        let sibling_count = siblings.iter().filter(|sibling| filtered_layers.contains(sibling)).count();
+
+        if sibling_count > 1 {
+            valid_layers.push(layer);
+        }
+    }
+
+    if valid_layers.len() < 2 {
+        return;
+    }
+
+    // Step 3: Reverse valid layers within each sibling group
+    let mut grouped_layers: HashMap<LayerNodeIdentifier, Vec<LayerNodeIdentifier>> = HashMap::new();
+    for layer in &valid_layers {
+        if let Some(parent) = layer.parent(self.metadata()) {
+            grouped_layers.entry(parent).or_insert_with(Vec::new).push(*layer);
+        }
+    }
+
+    responses.add(DocumentMessage::StartTransaction);
+
+    for (parent, mut layers) in grouped_layers {
+        layers.sort_by_cached_key(|layer| {
+            parent.children(self.metadata()).position(|child| child == *layer).unwrap_or(usize::MAX)
+        });
+
+        layers.reverse();
+        for (index, &layer) in layers.iter().enumerate() {
+            responses.push_back(NodeGraphMessage::MoveLayerToStack {
+                layer,
+                parent,
+                insert_index: index,
+            }.into());
+        }
+    }
+
+    responses.add(DocumentMessage::EndTransaction);
+}
+
+
+
+
 	/// Called recursively by the entry function [`serialize_root`].
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure_section: &mut Vec<u64>, data_section: &mut Vec<u64>, path: &mut Vec<LayerNodeIdentifier>) {
 		let mut space = 0;
@@ -1573,6 +1650,7 @@ impl DocumentMessageHandler {
 		}
 		structure_section.push(space | 1 << 63);
 	}
+
 
 	/// Serializes the layer structure into a condensed 1D structure.
 	///
