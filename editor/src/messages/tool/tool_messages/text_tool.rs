@@ -637,20 +637,19 @@ impl Fsm for TextToolFsmState {
 							snap_data: SnapData::ignore(document, input, &selected),
 						});
 						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
-						let transform = DAffine2::from_translation(position) * bounds.original_bound_transform;
+						let [min, max] = [position, position + size].map(|point| bounds.original_bound_transform.transform_point2(point));
+						let (position, size) = (min.min(max), (min - max).abs());
+						let transform = DAffine2::from_translation(position);
 
 						// let _transformed_bounding_box = Quad::from_box([position, size].into());
 
-						let height = (position.y - size.y).abs();
-						let width = (position.x - size.x).abs();
-
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id.unwrap(), 6),
-							input: NodeInput::value(TaggedValue::OptionalF64(Some(width)), false),
+							input: NodeInput::value(TaggedValue::OptionalF64(Some(size.x)), false),
 						});
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id.unwrap(), 7),
-							input: NodeInput::value(TaggedValue::OptionalF64(Some(height)), false),
+							input: NodeInput::value(TaggedValue::OptionalF64(Some(size.y)), false),
 						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer: layer.unwrap(),
