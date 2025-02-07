@@ -860,12 +860,12 @@ impl Fsm for PenToolFsmState {
 
 					// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
 					overlay_context.line(next_anchor, handle_end, None);
-          
-          if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.lock_angle {
+
+					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.lock_angle {
 						// Draw the line between the currently-being-placed anchor and last-placed point (Lock angle bent overlays)
 						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
 					}
-          
+
 					match tool_options.pen_overlay_mode {
 						PenOverlayMode::AllHandles => {
 							path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::All);
