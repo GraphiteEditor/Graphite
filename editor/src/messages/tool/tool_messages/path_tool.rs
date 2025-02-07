@@ -502,6 +502,7 @@ impl PathToolData {
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
+			shape_editor.deselect_all_points();
 			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -1244,7 +1245,7 @@ impl Fsm for PathToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
@@ -1271,16 +1272,9 @@ impl Fsm for PathToolFsmState {
 					.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]));
 
 				let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
-				let point_select_state_hint_group = match dragging_state.point_select_state {
-					PointSelectState::HandleNoPair => {
-						let mut hints = vec![drag_anchor];
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints
-					}
-					PointSelectState::HandleWithPair => {
-						let mut hints = vec![drag_anchor];
-						hints.push(HintInfo::keys([Key::Tab], "Swap Selected Handles"));
+				let toggle_group = match dragging_state.point_select_state {
+					PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
+						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Selected Handles")];
 						hints.push(HintInfo::keys(
 							[Key::KeyC],
 							if colinear == ManipulatorAngle::Colinear {
@@ -1289,18 +1283,40 @@ impl Fsm for PathToolFsmState {
 								"Make Handles Colinear"
 							},
 						));
+						hints
+					}
+					PointSelectState::Anchor => Vec::new(),
+				};
+				let hold_group = match dragging_state.point_select_state {
+					PointSelectState::HandleNoPair => {
+						let mut hints = vec![];
 						if colinear != ManipulatorAngle::Free {
 							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
 						}
-						hints.push(HintInfo::keys([Key::Shift], "Snap 15°"));
+						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
 						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+						hints.push(drag_anchor);
+						hints
+					}
+					PointSelectState::HandleWithPair => {
+						let mut hints = vec![];
+						if colinear != ManipulatorAngle::Free {
+							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+						}
+						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
+						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+						hints.push(drag_anchor);
 						hints
 					}
 					PointSelectState::Anchor => Vec::new(),
 				};
 
-				if !point_select_state_hint_group.is_empty() {
-					dragging_hint_data.0.push(HintGroup(point_select_state_hint_group));
+				if !toggle_group.is_empty() {
+					dragging_hint_data.0.push(HintGroup(toggle_group));
+				}
+
+				if !hold_group.is_empty() {
+					dragging_hint_data.0.push(HintGroup(hold_group));
 				}
 
 				dragging_hint_data

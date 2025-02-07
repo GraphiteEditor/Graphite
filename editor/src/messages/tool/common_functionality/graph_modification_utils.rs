@@ -1,6 +1,9 @@
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
+
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::raster::image::ImageFrame;
@@ -12,6 +15,103 @@ use graphene_core::Color;
 
 use glam::DVec2;
 use std::collections::VecDeque;
+
+pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
+	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+
+	// Represents the change in position that would occur if the other layer was moved below the current layer
+	let transform_delta = current_transform * other_transform.inverse();
+	let offset = transform_delta.inverse();
+	responses.add(GraphOperationMessage::TransformChange {
+		layer: other_layer,
+		transform: offset,
+		transform_in: TransformIn::Local,
+		skip_rerender: false,
+	});
+
+	// Move the other layer below the current layer for positioning purposes
+	let current_layer_parent = current_layer.parent(document.metadata()).unwrap();
+	let current_layer_index = current_layer_parent.children(document.metadata()).position(|child| child == current_layer).unwrap();
+	responses.add(NodeGraphMessage::MoveLayerToStack {
+		layer: other_layer,
+		parent: current_layer_parent,
+		insert_index: current_layer_index + 1,
+	});
+
+	// Merge the inputs of the two layers
+	let merge_node_id = NodeId::new();
+	let merge_node = document_node_definitions::resolve_document_node_type("Merge")
+		.expect("Failed to create merge node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: merge_node_id,
+		node_template: merge_node,
+	});
+	responses.add(NodeGraphMessage::SetToNodeOrLayer {
+		node_id: merge_node_id,
+		is_layer: false,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: merge_node_id,
+		parent: current_layer,
+	});
+	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector::node(other_layer.to_node(), 1),
+		input_connector: InputConnector::node(merge_node_id, 1),
+	});
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: vec![other_layer.to_node()],
+		delete_children: false,
+	});
+
+	// Add a flatten vector elements node after the merge
+	let flatten_node_id = NodeId::new();
+	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+		.expect("Failed to create flatten node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: flatten_node_id,
+		node_template: flatten_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: flatten_node_id,
+		parent: current_layer,
+	});
+
+	// Add a path node after the flatten node
+	let path_node_id = NodeId::new();
+	let path_node = document_node_definitions::resolve_document_node_type("Path")
+		.expect("Failed to create path node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: path_node_id,
+		node_template: path_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: path_node_id,
+		parent: current_layer,
+	});
+
+	// Add a transform node to ensure correct tooling modifications
+	let transform_node_id = NodeId::new();
+	let transform_node = document_node_definitions::resolve_document_node_type("Transform")
+		.expect("Failed to create transform node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: transform_node_id,
+		node_template: transform_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: transform_node_id,
+		parent: current_layer,
+	});
+
+	responses.add(NodeGraphMessage::RunDocumentGraph);
+	responses.add(Message::StartBuffer);
+	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+}
 
 /// Create a new vector layer.
 pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
@@ -121,6 +221,26 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 
 pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Fill")
+}
+
+pub fn get_ellipse_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Ellipse")
+}
+
+pub fn get_line_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Line")
+}
+
+pub fn get_polygon_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Regular Polygon")
+}
+
+pub fn get_rectangle_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Rectangle")
+}
+
+pub fn get_star_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Star")
 }
 
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
