@@ -28,7 +28,7 @@
 		<div class="expand-arrow" />
 		<TextLabel bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
-			icon={widgetData.pinned ? "CheckboxChecked" : "CheckboxUnchecked"}
+			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
 			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
 			size={24}
 			action={(e) => {

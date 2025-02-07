@@ -1238,7 +1238,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Ensure selection box is kept in sync with the pointer when the PTZ changes
 					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
 						axis_align: Key::Shift,
-						snap_angle: Key::Control,
+						snap_angle: Key::Shift,
 						center: Key::Alt,
 						duplicate: Key::Alt,
 					}));

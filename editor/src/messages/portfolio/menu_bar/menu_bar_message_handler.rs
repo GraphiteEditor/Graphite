@@ -156,6 +156,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuBarEntry {
 							label: "Cut".into(),
+							icon: Some("Cut".into()),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::Cut),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into()),
 							disabled: no_active_document || !has_selected_layers,
@@ -473,13 +474,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuBarEntry {
 							label: "Debug: Print Trace Logs".into(),
 							icon: Some(if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-							shortcut: action_keys!(DebugMessageDiscriminant::ToggleTraceLogs),
 							action: MenuBarEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Debug: Print Document".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::DebugPrintDocument),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::DebugPrintDocument.into()),
 							..MenuBarEntry::default()
 						},
