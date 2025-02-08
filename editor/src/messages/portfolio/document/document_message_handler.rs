@@ -2161,7 +2161,7 @@ impl DocumentMessageHandler {
     let metadata = self.metadata();
     let selected_layer_set: HashSet<LayerNodeIdentifier> = selected_layers.selected_layers(metadata).collect();
 
-    // Step 1: Find top-level selected layers (ignore those with selected ancestors)
+    // ignore those with selected ancestors
     let mut top_level_layers = Vec::new();
     for &layer in &selected_layer_set {
         let mut is_top_level = true;
@@ -2180,84 +2180,76 @@ impl DocumentMessageHandler {
         }
     }
 
-    // Step 2: Group selected layers by their parent
+    //Group selected layers by their parent
     let mut grouped_layers: HashMap<LayerNodeIdentifier, Vec<(usize, LayerNodeIdentifier)>> = HashMap::new();
-    for &layer in &top_level_layers {
-        if let Some(parent) = layer.parent(metadata) {
-            let index = parent
-                .children(metadata)
-                .position(|child| child == layer)
-                .unwrap_or(usize::MAX);
-
-            grouped_layers.entry(parent).or_insert_with(Vec::new).push((index, layer));
-        }
-    }
-
-    let mut modified = false;
-
-    // Step 3: Process each group separately
-    for (parent, mut layers) in grouped_layers {
-        // Retrieve all children under the parent
-        let all_children: Vec<LayerNodeIdentifier> = parent.children(metadata).collect();
-
-        // Separate unselected layers with their original indices
-        let mut unselected_layers: Vec<(usize, LayerNodeIdentifier)> = all_children
-            .iter()
-            .enumerate()
-            .filter_map(|(index, &layer)| {
-                if !selected_layer_set.contains(&layer) {
-                    Some((index, layer))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        // Sort selected layers by their original positions
-        layers.sort_by_key(|(index, _)| *index);
-
-        // Reverse the selected layers
-        let reversed_layers: Vec<LayerNodeIdentifier> = layers.iter().rev().map(|(_, layer)| *layer).collect();
-        let selected_positions: Vec<usize> = layers.iter().map(|(index, _)| *index).collect();
-        let mut selected_iter = reversed_layers.into_iter();
-
-        // Step 1: Initialize merged layers with None (preserve indices)
-        let mut merged_layers = vec![None; all_children.len()];
-
-        // Step 2: Place reversed selected layers at their correct reversed indices
-        for (&original_index, new_layer) in selected_positions.iter().zip(selected_iter) {
-            merged_layers[original_index] = Some(new_layer);
-        }
-
-        // Step 3: Place unselected layers at their original positions *without overwriting selected ones*
-        for (index, layer) in unselected_layers {
-            if merged_layers[index].is_none() {  // Only insert if the slot is empty
-                merged_layers[index] = Some(layer);
-            }
-        }
-
-        // Step 4: Remove None values and construct the final list
-        let final_layers: Vec<LayerNodeIdentifier> = merged_layers.into_iter().flatten().collect();
-
-        // Step 5: Move layers back in the correct order
-        for (index, layer) in final_layers.iter().enumerate() {
-            responses.add(NodeGraphMessage::MoveLayerToStack {
-                layer: *layer,
-                parent,
-                insert_index: index,
-            });
-        }
-
-        modified = true;
-    }
-
-    // Step 6: Finalize the transaction if layers were modified
-    if modified {
-        responses.add(DocumentMessage::AddTransaction);
-        responses.add(NodeGraphMessage::RunDocumentGraph);
-        responses.add(NodeGraphMessage::SendGraph);
-    }
-}
+	    for &layer in &top_level_layers {
+	        if let Some(parent) = layer.parent(metadata) {
+	            let index = parent
+	                .children(metadata)
+	                .position(|child| child == layer)
+	                .unwrap_or(usize::MAX);
+	
+	            grouped_layers.entry(parent).or_insert_with(Vec::new).push((index, layer));
+	        }
+	    }
+	
+	    let mut modified = false;
+	
+	    //Process each group separately
+	    for (parent, mut layers) in grouped_layers {
+	        // Retrieve all children under the parent
+	        let all_children: Vec<LayerNodeIdentifier> = parent.children(metadata).collect();
+	
+	        // Separate unselected layers with their original indices
+	        let mut unselected_layers: Vec<(usize, LayerNodeIdentifier)> = all_children
+	            .iter()
+	            .enumerate()
+	            .filter_map(|(index, &layer)| {
+	                if !selected_layer_set.contains(&layer) {
+	                    Some((index, layer))
+	                } else {
+	                    None
+	                }
+	            })
+	            .collect();
+	
+			layers.sort_by_key(|(index, _)| *index);
+	
+	        let reversed_layers: Vec<LayerNodeIdentifier> = layers.iter().rev().map(|(_, layer)| *layer).collect();
+	        let selected_positions: Vec<usize> = layers.iter().map(|(index, _)| *index).collect();
+	        let mut selected_iter = reversed_layers.into_iter();
+	        let mut merged_layers = vec![None; all_children.len()];
+	
+	        for (&original_index, new_layer) in selected_positions.iter().zip(selected_iter) {
+	            merged_layers[original_index] = Some(new_layer);
+	        }
+	
+	        // Place unselected layers at their original positions
+	        for (index, layer) in unselected_layers {
+	            if merged_layers[index].is_none() {  
+	                merged_layers[index] = Some(layer);
+	            }
+	        }
+	
+	        let final_layers: Vec<LayerNodeIdentifier> = merged_layers.into_iter().flatten().collect();
+	
+	        for (index, layer) in final_layers.iter().enumerate() {
+	            responses.add(NodeGraphMessage::MoveLayerToStack {
+	                layer: *layer,
+	                parent,
+	                insert_index: index,
+	            });
+	        }
+	
+	        modified = true;
+	    }
+	
+	    if modified {
+	        responses.add(DocumentMessage::AddTransaction);
+	        responses.add(NodeGraphMessage::RunDocumentGraph);
+	        responses.add(NodeGraphMessage::SendGraph);
+	    }
+	}
 
 
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
