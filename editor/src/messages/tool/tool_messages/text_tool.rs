@@ -504,7 +504,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(Self::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
+				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
 

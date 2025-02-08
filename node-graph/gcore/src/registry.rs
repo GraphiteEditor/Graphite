@@ -184,7 +184,7 @@ impl<'input, O: 'input + StaticType + WasmNotSend, I: 'input + StaticType + Wasm
 		self.node.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
@@ -217,7 +217,7 @@ where
 	}
 
 	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
@@ -271,7 +271,7 @@ where
 		self.node.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
