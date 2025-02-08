@@ -468,8 +468,8 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => (node_id, input_index),
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
-					// The outermost network export defaults to an ArtboardGroup.
-					return Some((concrete!(graphene_core::ArtboardGroup), TypeSource::OuterMostExportDefault));
+					// The outermost network export defaults to an ArtboardGroupTable.
+					return Some((concrete!(graphene_core::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_types(encapsulating_node_id, encapsulating_node_id_path).into_iter().nth(export_index).flatten();
@@ -6222,10 +6222,11 @@ impl PropertiesRow {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 3] = [
+	const REPLACEMENTS: [(&str, &str); 4] = [
 		("VectorData", "Instances<VectorData>"),
 		("GraphicGroup", "Instances<GraphicGroup>"),
-		("ImageFrame", "Instances<ImageFrame>"),
+		("ImageFrame", "Instances<Image>"),
+		("Instances<ImageFrame>", "Instances<Image>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;
