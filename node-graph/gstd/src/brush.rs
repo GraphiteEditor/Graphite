@@ -4,19 +4,19 @@ use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::BlendMode;
 use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
-use graphene_core::transform::{Footprint, Transform, TransformMut};
+use graphene_core::raster::{Bitmap, BlendMode};
+use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorDataTable;
-use graphene_core::Node;
+use graphene_core::{Ctx, GraphicElement, Node};
 
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-fn vector_points(_: (), vector_data: VectorDataTable) -> Vec<DVec2> {
-	let vector_data = vector_data.one_item();
+fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
+	let vector_data = vector_data.one_instance().instance;
 
 	vector_data.point_domain.positions().to_vec()
 }
@@ -87,17 +87,24 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 }
 
 #[node_macro::node(skip_impl)]
-fn blit<P: Alpha + Pixel + std::fmt::Debug, BlendFn>(mut target: ImageFrame<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrame<P>
+fn blit<P, BlendFn>(mut target: ImageFrameTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrameTable<P>
 where
+	P: Pixel + Alpha + std::fmt::Debug + dyn_any::StaticType,
+	P::Static: Pixel,
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
+	GraphicElement: From<ImageFrame<P>>,
 {
 	if positions.is_empty() {
 		return target;
 	}
 
-	let target_size = DVec2::new(target.image.width as f64, target.image.height as f64);
+	let target_width = target.one_instance().instance.image.width;
+	let target_height = target.one_instance().instance.image.height;
+	let target_size = DVec2::new(target_width as f64, target_height as f64);
+
 	let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
-	let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * target.transform.inverse();
+
+	let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * target.transform().inverse();
 
 	for position in positions {
 		let start = document_to_target.transform_point2(position).round();
@@ -112,17 +119,17 @@ where
 
 		// Tight blitting loop. Eagerly assert bounds to hopefully eliminate bounds check inside loop.
 		let texture_index = |x: u32, y: u32| -> usize { (y as usize * texture.width as usize) + (x as usize) };
-		let target_index = |x: u32, y: u32| -> usize { (y as usize * target.image.width as usize) + (x as usize) };
+		let target_index = |x: u32, y: u32| -> usize { (y as usize * target_width as usize) + (x as usize) };
 
 		let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 		let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
 		assert!(texture_index(max_x, max_y) < texture.data.len());
-		assert!(target_index(max_x, max_y) < target.image.data.len());
+		assert!(target_index(max_x, max_y) < target.one_instance().instance.image.data.len());
 
 		for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 			for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 				let src_pixel = texture.data[texture_index(x, y)];
-				let dst_pixel = &mut target.image.data[target_index(x + clamp_start.x, y + clamp_start.y)];
+				let dst_pixel = &mut target.one_instance_mut().instance.image.data[target_index(x + clamp_start.x, y + clamp_start.y)];
 				*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 			}
 		}
@@ -132,13 +139,15 @@ where
 }
 
 pub fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
-	let stamp = BrushStampGeneratorNode::new(CopiedNode::new(brush_style.color), CopiedNode::new(brush_style.hardness), CopiedNode::new(brush_style.flow));
-	let stamp = stamp.eval(brush_style.diameter);
+	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
 	let blank_texture = EmptyImageNode::new(CopiedNode::new(transform), CopiedNode::new(Color::TRANSPARENT)).eval(());
-	let normal_blend = BlendColorPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+	let normal_blend = BlendColorPairNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal)), ValueNode::new(CopiedNode::new(100.)));
+	normal_blend.eval((Color::default(), Color::default()));
 	let blend_executor = BlendImageTupleNode::new(ValueNode::new(normal_blend));
-	blend_executor.eval((blank_texture, stamp)).image
+	let image = blend_executor.eval((blank_texture, stamp));
+
+	image.one_instance().instance.image.clone()
 }
 
 macro_rules! inline_blend_funcs {
@@ -153,7 +162,7 @@ macro_rules! inline_blend_funcs {
 	};
 }
 
-pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
+pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
 	let opacity = opacity / 100.;
 	inline_blend_funcs!(
 		background,
@@ -202,21 +211,21 @@ pub fn blend_with_mode(background: ImageFrame<Color>, foreground: ImageFrame<Col
 }
 
 #[node_macro::node(category(""))]
-fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
-	let image = image.one_item().clone();
-
+fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
-	let image_bbox = Bbox::from_transform(image.transform).to_axis_aligned_bbox();
+	let image_bbox = Bbox::from_transform(image_frame_table.transform()).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
 
 	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 	let erase_restore_strokes: Vec<_> = strokes.iter().filter(|&s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
-	let mut brush_plan = cache.compute_brush_plan(image, &draw_strokes);
+	let mut brush_plan = cache.compute_brush_plan(image_frame_table, &draw_strokes);
 
 	let mut background_bounds = bbox.to_transform();
 
-	if bounds.transform() != DAffine2::ZERO {
+	// If the bounds are empty (no size on images or det(transform) = 0), keep the target bounds
+	let bounds_empty = bounds.instances().all(|bounds| bounds.instance.width() == 0 || bounds.instance.height() == 0);
+	if bounds.transform().matrix2.determinant() != 0. && !bounds_empty {
 		background_bounds = bounds.transform();
 	}
 
@@ -246,7 +255,7 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
-			let normal_blend = BlendColorPairNode::new(CopiedNode::new(BlendMode::Normal), CopiedNode::new(100.));
+			let normal_blend = BlendColorPairNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal)), ValueNode::new(CopiedNode::new(100.)));
 			let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(normal_blend));
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
@@ -271,10 +280,10 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 	if has_erase_strokes {
 		let opaque_image = ImageFrame {
 			image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE),
-			transform: background_bounds,
-			alpha_blending: Default::default(),
 		};
-		let mut erase_restore_mask = opaque_image;
+		let mut erase_restore_mask = ImageFrameTable::new(opaque_image);
+		*erase_restore_mask.transform_mut() = background_bounds;
+		*erase_restore_mask.one_instance_mut().alpha_blending = Default::default();
 
 		for stroke in erase_restore_strokes {
 			let brush_texture = cache.get_cached_brush(&stroke.style).unwrap_or_else(|| {
@@ -286,34 +295,33 @@ fn brush(_: Footprint, image: ImageFrameTable<Color>, bounds: ImageFrameTable<Co
 
 			match stroke.style.blend_mode {
 				BlendMode::Erase => {
-					let blend_params = BlendColorPairNode::new(CopiedNode::new(BlendMode::Erase), CopiedNode::new(100.));
+					let blend_params = BlendColorPairNode::new(ValueNode(CopiedNode::new(BlendMode::Erase)), ValueNode(CopiedNode::new(100.)));
 					let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
 					erase_restore_mask = blit_node.eval(erase_restore_mask);
 				}
-
 				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
 				BlendMode::Restore => {
-					let blend_params = BlendColorPairNode::new(CopiedNode::new(BlendMode::Restore), CopiedNode::new(100.));
+					let blend_params = BlendColorPairNode::new(ValueNode(CopiedNode::new(BlendMode::Restore)), ValueNode(CopiedNode::new(100.)));
 					let blit_node = BlitNode::new(ClonedNode::new(brush_texture), ClonedNode::new(positions), ClonedNode::new(blend_params));
 					erase_restore_mask = blit_node.eval(erase_restore_mask);
 				}
-
 				_ => unreachable!(),
 			}
 		}
 
-		let blend_params = BlendColorPairNode::new(CopiedNode::new(BlendMode::MultiplyAlpha), CopiedNode::new(100.));
+		let blend_params = BlendColorPairNode::new(ValueNode(CopiedNode::new(BlendMode::MultiplyAlpha)), ValueNode(CopiedNode::new(100.)));
 		let blend_executor = BlendImageTupleNode::new(ValueNode::new(blend_params));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask));
 	}
 
-	ImageFrameTable::new(actual_image)
+	actual_image
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
 
+	use graphene_core::raster::Bitmap;
 	use graphene_core::transform::Transform;
 	use graphene_core::value::ClonedNode;
 
@@ -327,5 +335,27 @@ mod test {
 		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
 		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));
+	}
+
+	#[test]
+	fn test_brush_output_size() {
+		let brush_node = BrushNode::new(
+			ClonedNode::new(ImageFrameTable::<Color>::default()),
+			ClonedNode::new(ImageFrameTable::<Color>::default()),
+			ClonedNode::new(vec![BrushStroke {
+				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
+				style: BrushStyle {
+					color: Color::BLACK,
+					diameter: 20.,
+					hardness: 20.,
+					flow: 20.,
+					spacing: 20.,
+					blend_mode: BlendMode::Normal,
+				},
+			}]),
+			ClonedNode::new(BrushCache::new_proto()),
+		);
+		let image = brush_node.eval(());
+		assert_eq!(image.width(), 20);
 	}
 }

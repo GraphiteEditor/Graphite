@@ -1,29 +1,19 @@
 use graph_craft::proto::types::Percentage;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::Image;
-use graphene_core::transform::Footprint;
-use graphene_core::Color;
+use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::{Color, Ctx};
 
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster: Filter"))]
-async fn dehaze<F: 'n + Send + Sync>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ImageFrameTable<Color>,
-		Footprint -> ImageFrameTable<Color>,
-	)]
-	image_frame: impl Node<F, Output = ImageFrameTable<Color>>,
-	strength: Percentage,
-) -> ImageFrameTable<Color> {
-	let image_frame = image_frame.eval(footprint).await;
-	let image_frame = image_frame.one_item();
+async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
+	let image_frame_transform = image_frame.transform();
+	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
+
+	let image_frame = image_frame.one_instance().instance;
 
 	// Prepare the image data for processing
 	let image = &image_frame.image;
@@ -44,13 +34,11 @@ async fn dehaze<F: 'n + Send + Sync>(
 		base64_string: None,
 	};
 
-	let result = ImageFrame {
-		image: dehazed_image,
-		transform: image_frame.transform,
-		alpha_blending: image_frame.alpha_blending,
-	};
+	let mut result = ImageFrameTable::new(ImageFrame { image: dehazed_image });
+	*result.transform_mut() = image_frame_transform;
+	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
 
-	ImageFrameTable::new(result)
+	result
 }
 
 // There is no real point in modifying these values because they do not change the final result all that much.
