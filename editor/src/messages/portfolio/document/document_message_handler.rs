@@ -2217,8 +2217,8 @@ impl DocumentMessageHandler {
 	
 	        let reversed_layers: Vec<LayerNodeIdentifier> = layers.iter().rev().map(|(_, layer)| *layer).collect();
 	        let selected_positions: Vec<usize> = layers.iter().map(|(index, _)| *index).collect();
-	        let mut selected_iter = reversed_layers.into_iter();
-	        let mut merged_layers = vec![None; all_children.len()];
+	        let selected_iter = reversed_layers.into_iter();
+	        let merged_layers = vec![None; all_children.len()];
 	
 	        for (&original_index, new_layer) in selected_positions.iter().zip(selected_iter) {
 	            merged_layers[original_index] = Some(new_layer);
