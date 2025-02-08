@@ -6222,10 +6222,11 @@ impl PropertiesRow {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 3] = [
+	const REPLACEMENTS: [(&str, &str); 4] = [
 		("VectorData", "Instances<VectorData>"),
 		("GraphicGroup", "Instances<GraphicGroup>"),
-		("ImageFrame", "Instances<ImageFrame>"),
+		("ImageFrame", "Instances<Image>"),
+		("Instances<ImageFrame>", "Instances<Image>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

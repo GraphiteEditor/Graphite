@@ -7,7 +7,7 @@ use graph_craft::{
 	wasm_application_io::WasmEditorApi,
 	ProtoNodeIdentifier,
 };
-use graphene_std::{transform::Footprint, uuid::NodeId};
+use graphene_std::{uuid::NodeId, Context};
 
 // TODO: this is copy pasta from the editor (and does get out of sync)
 pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
@@ -32,13 +32,13 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 			nodes: [
 				DocumentNode {
 					inputs: vec![NodeInput::scope("editor-api")],
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Context)),
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
 				},
 				DocumentNode {
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Context)),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 					..Default::default()
@@ -48,7 +48,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					manual_composition: Some(concrete!(graphene_std::application_io::RenderConfig)),
 					inputs: vec![
 						NodeInput::scope("editor-api"),
-						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
+						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),
 					],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode")),

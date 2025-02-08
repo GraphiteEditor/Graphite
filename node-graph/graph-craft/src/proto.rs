@@ -162,7 +162,7 @@ impl Default for ProtoNode {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProtoNodeInput {
-	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
+	/// This input will be converted to `()` as the call argument.
 	None,
 	/// A ManualComposition input represents an input that opts out of being resolved through the `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated
 	/// result to this node. Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
@@ -224,7 +224,7 @@ impl ProtoNode {
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
-			input: ProtoNodeInput::None,
+			input: ProtoNodeInput::ManualComposition(concrete!(Context)),
 			original_location: OriginalLocation {
 				path: Some(path),
 				inputs_exposed: vec![false; inputs_exposed],
@@ -552,7 +552,7 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
-				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}", index + 1);
+				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}, found: {_found}", index + 1);
 				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
 				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
 				errors.sort();
@@ -651,7 +651,7 @@ impl TypingContext {
 		let inputs = match node.construction_args {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
-				assert!(matches!(node.input, ProtoNodeInput::None));
+				assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
 				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![v.ty()]);
 				self.inferred.insert(node_id, types.clone());
