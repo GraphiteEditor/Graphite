@@ -622,59 +622,49 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					if reference == "Spline" {
-						let Some(layer) = document.network_interface.downstream_layer(node_id, &[]) else { continue };
+						let tagged_value = document.network_interface.document_node(node_id, &[]).unwrap().inputs[1]
+							.as_value()
+							.expect("Spline node to have TaggedValue at input index 1.")
+							.clone();
 
-						log::info!("got spline node");
-						let value = document.network_interface.document_node(node_id, &[]).unwrap().inputs[1].as_value().clone();
-						let Some(TaggedValue::VecDVec2(vd)) = value else {
-							continue;
-						};
-						let vd = VectorData::from_subpath(Subpath::from_anchors_linear(vd.to_vec(), false));
+						let mut points = Vec::new();
 
-						log::info!("tagget value => {:?}\n", vd);
-
-						let nodes = document
-							.network_interface
-							.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], network_interface::FlowType::HorizontalFlow)
-							.collect::<Vec<_>>();
-						log::info!("layer {:?}, nodes => {:?}", layer, nodes);
-
-						let mut spline_output = None;
-						let nodes = nodes.clone();
-						let mut nodes = nodes.iter().peekable();
-						while let Some(next) = nodes.next() {
-							if let Some(peed_id) = nodes.peek() {
-								if **peed_id == *node_id {
-									spline_output = Some(*next);
-
-									break;
-								}
-							}
+						if let TaggedValue::VecDVec2(mut value) = tagged_value {
+							points.append(&mut value);
+						} else {
+							log::error!("Spline node does not have TaggedValue::VecDVec2 in its input at index 1.");
 						}
 
-						log::info!("spline is connected to {:?}", spline_output);
+						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points, false));
+
+						let spline_outputs = document
+							.network_interface
+							.outward_wires(&[])
+							.unwrap()
+							.get(&OutputConnector::node(*node_id, 0))
+							.expect("Vec of InputConnector Spline node is connected to its output port 0.")
+							.clone();
 
 						document.network_interface.delete_nodes(vec![*node_id], false, &[]);
-						log::info!("delete spline node");
 
-						let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-						let mut path_node = path_node_type.default_node_template();
-						path_node.document_node.inputs[0] = NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vd)), true);
-						// let path_node_id = NodeId::new();
+						let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist.");
+						let path_node = path_node_type.node_template_input_override([
+							Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
+							Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
+						]);
 
-						let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist");
+						let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist.");
 						let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 
 						let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-						let spline_node_id = new_ids.get(&NodeId(0)).unwrap();
-						let spline_node_id = spline_node_id.clone();
-						document.network_interface.insert_node_group(nodes.clone(), new_ids, &[]);
-						log::info!("inserted spline from points and path nodes");
+						let new_spline_id = *new_ids.get(&NodeId(0)).unwrap();
 
-						document
-							.network_interface
-							.set_input(&InputConnector::node(spline_output.unwrap(), 0), NodeInput::node(spline_node_id, 0), &[]);
+						document.network_interface.insert_node_group(nodes.clone(), new_ids, &[]);
+
+						for input_connector in spline_outputs {
+							document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), &[]);
+						}
 					}
 
 					// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
