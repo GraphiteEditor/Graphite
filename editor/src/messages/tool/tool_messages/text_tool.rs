@@ -6,7 +6,6 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
@@ -490,21 +489,21 @@ impl Fsm for TextToolFsmState {
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
 				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
-				let transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
+				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
-				if layer.is_none() || bounds.is_none() || transform.matrix2.determinant() == 0. {
+				if layer.is_none() || bounds.is_none() || layer_transform.matrix2.determinant() == 0. {
 					return self;
 				}
 
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
-					bounding_box_manager.transform = transform;
+					bounding_box_manager.transform = layer_transform;
 
 					bounding_box_manager.render_overlays(&mut overlay_context);
 
 					// Draw red overlay if text is clipped
-					let transformed_quad = transform * bounds;
+					let transformed_quad = layer_transform * bounds;
 					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
 						let buzz_face = font_cache.get(font).map(|data| load_face(data));
 						if lines_clipping(text.as_str(), buzz_face, typesetting) {
@@ -518,7 +517,6 @@ impl Fsm for TextToolFsmState {
 				// Update pivot
 				let (min, max) = bounds.map(|quad| (quad.0[0], quad.0[2])).unwrap();
 				let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-				let layer_transform = document.metadata().transform_to_viewport(layer.unwrap());
 				tool_data.pivot.update_box_pivot(DVec2::new(0.5, 0.5), layer_transform, bounds_transform, &mut overlay_context);
 
 				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -564,19 +562,9 @@ impl Fsm for TextToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
 
-						let selected = Vec::from([tool_data.layer_dragging.unwrap()]);
-
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&selected,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Text,
-							None,
-						);
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						if selected.is_some() {
+							bounds.center_of_transformation = graph_modification_utils::get_viewport_pivot(selected.unwrap(), &document.network_interface);
+						}
 					}
 					tool_data.get_snap_candidates(document, input, font_cache);
 
@@ -622,6 +610,7 @@ impl Fsm for TextToolFsmState {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = center_bool.then_some(bounds.center_of_transformation);
+						debug!("Center position: {:?}", center_position);
 
 						let layer = tool_data.layer_dragging;
 						let node_id = layer.map(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface).unwrap());
@@ -636,12 +625,13 @@ impl Fsm for TextToolFsmState {
 							points: &mut tool_data.snap_candidates,
 							snap_data: SnapData::ignore(document, input, &selected),
 						});
-						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
-						let [min, max] = [position, position + size].map(|point| bounds.original_bound_transform.transform_point2(point));
-						let (position, size) = (min.min(max), (min - max).abs());
-						let transform = DAffine2::from_translation(position);
 
-						// let _transformed_bounding_box = Quad::from_box([position, size].into());
+						let (mut position, mut size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
+						debug!("Position: {:?}, Size: {:?}", position, size);
+						let [min, max] = [position, position + size].map(|point| bounds.original_bound_transform.transform_point2(point));
+						(position, size) = (min.min(max), (min - max).abs());
+						let transform = DAffine2::from_translation(position);
+						debug!("Position2: {:?}, Size2: {:?}", position, size);
 
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id.unwrap(), 6),
@@ -825,7 +815,7 @@ impl Fsm for TextToolFsmState {
 			]),
 			TextToolFsmState::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Resize Text Box")]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Lock Aspect Ratio"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
 		};
 
