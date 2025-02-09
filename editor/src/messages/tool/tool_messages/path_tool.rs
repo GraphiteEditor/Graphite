@@ -370,6 +370,8 @@ struct PathToolData {
 	auto_panning: AutoPanning,
 	saved_points_before_anchor_select_toggle: Vec<ManipulatorPointId>,
 	select_anchor_toggled: bool,
+	saved_points_before_handle_drag: Vec<ManipulatorPointId>,
+	handle_drag_toggle: bool,
 	dragging_state: DraggingState,
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
@@ -473,11 +475,14 @@ impl PathToolData {
 		extend_selection: bool,
 		direct_insert_without_sliding: bool,
 		lasso_select: bool,
+		tool_options: &PathToolOptions,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
 
 		self.drag_start_pos = input.mouse.position;
+
+		let old_selection: Vec<ManipulatorPointId> = shape_editor.selected_points().cloned().collect();
 
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
@@ -485,6 +490,23 @@ impl PathToolData {
 
 			if let Some(selected_points) = selected_points {
 				self.drag_start_pos = input.mouse.position;
+
+				//While in mode 2 or 3, if selected points contain only handles and there was some selection before then it stores it and restore on release
+				if !matches!(tool_options.path_overlay_mode, PathOverlayMode::AllHandles) {
+					let mut dragging_only_handles = true;
+					for point in &selected_points.points {
+						if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
+							dragging_only_handles = false;
+							break;
+						}
+					}
+
+					if dragging_only_handles && !self.handle_drag_toggle && old_selection.len() > 0 {
+						self.saved_points_before_handle_drag = old_selection;
+						self.handle_drag_toggle = true;
+					}
+				}
+
 				self.start_dragging_point(selected_points, input, document, shape_editor);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -767,29 +789,34 @@ impl Fsm for PathToolFsmState {
 
 					PathOverlayMode::FrontierHandles => {
 						let selected_segments = get_selected_segments(document, shape_editor);
-						let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
+						//Behaviour like Selectedpointhandles when only one point is selected
+						if shape_editor.selected_points().count() == 1 {
+							path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::SelectedAnchors(selected_segments));
+						} else {
+							let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
 
-						for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
-							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-								continue;
-							};
+							for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+									continue;
+								};
 
-							//The points which are part of only one segment will be rendered
-							let mut selected_segments_by_point: HashMap<PointId, Vec<SegmentId>> = HashMap::new();
-							for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
-								if selected_segments.contains(&segment_id) {
-									selected_segments_by_point.entry(start).or_insert_with(Vec::new).push(segment_id);
-									selected_segments_by_point.entry(end).or_insert_with(Vec::new).push(segment_id);
+								//The points which are part of only one segment will be rendered
+								let mut selected_segments_by_point: HashMap<PointId, Vec<SegmentId>> = HashMap::new();
+								for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
+									if selected_segments.contains(&segment_id) {
+										selected_segments_by_point.entry(start).or_insert_with(Vec::new).push(segment_id);
+										selected_segments_by_point.entry(end).or_insert_with(Vec::new).push(segment_id);
+									}
+								}
+								for (point, attached_segments) in selected_segments_by_point {
+									if attached_segments.len() == 1 {
+										segment_endpoints.entry(attached_segments[0]).or_insert_with(Vec::new).push(point);
+									}
 								}
 							}
-							for (point, attached_segments) in selected_segments_by_point {
-								if attached_segments.len() == 1 {
-									segment_endpoints.entry(attached_segments[0]).or_insert_with(Vec::new).push(point);
-								}
-							}
+							//Now frontier anchors can be sent for rendering overlays
+							path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::FrontierHandles(segment_endpoints));
 						}
-						//Now frontier anchors can be sent for rendering overlays
-						path_overlays(document, shape_editor, &mut overlay_context, DrawHandles::FrontierHandles(segment_endpoints));
 					}
 				}
 
@@ -873,7 +900,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select)
+				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select, tool_options)
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
@@ -1114,6 +1141,13 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
+				if tool_data.handle_drag_toggle {
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
+					tool_data.saved_points_before_handle_drag.clear();
+					tool_data.handle_drag_toggle = false;
+				}
+
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);

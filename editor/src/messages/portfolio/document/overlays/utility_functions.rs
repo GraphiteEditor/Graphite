@@ -43,8 +43,9 @@ pub fn get_selected_segments(document: &DocumentMessageHandler, shape_editor: &m
 			}
 		})
 		.collect();
+
 	//TODO: Currently if there are two duplicate layers, both of their segments get overlays
-	// Segments of which the selected anchors are a part of
+	// Adding segments which are are connected to selected anchors
 	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			continue;
@@ -88,6 +89,43 @@ fn overlay_bezier_handles(
 	}
 }
 
+pub fn overlay_bezier_handle_specific_point(
+	segment_id: SegmentId,
+	bezier: Bezier,
+	start: PointId,
+	end: PointId,
+	transform: DAffine2,
+	overlay_context: &mut OverlayContext,
+	selected: Option<&SelectedLayerState>,
+	is_selected: impl Fn(Option<&SelectedLayerState>, ManipulatorPointId) -> bool,
+	point_to_render: PointId,
+) {
+	let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
+	let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
+	match bezier.handles {
+		bezier_rs::BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
+			if start == point_to_render {
+				//what is point of doing this, what have to be done in this?
+				overlay_context.line(handle, bezier.start, None);
+			} else {
+				overlay_context.line(handle, bezier.end, None);
+			}
+			overlay_context.manipulator_handle(handle, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)), None);
+		}
+		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+			if not_under_anchor(handle_start, bezier.start) && (point_to_render == start) {
+				overlay_context.line(handle_start, bezier.start, None);
+				overlay_context.manipulator_handle(handle_start, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)), None);
+			}
+			if not_under_anchor(handle_end, bezier.end) && (point_to_render == end) {
+				overlay_context.line(handle_end, bezier.end, None);
+				overlay_context.manipulator_handle(handle_end, is_selected(selected, ManipulatorPointId::EndHandle(segment_id)), None);
+			}
+		}
+		_ => {}
+	}
+}
+
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, draw_handles: DrawHandles) {
 	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
@@ -99,7 +137,8 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 		overlay_context.outline_vector(&vector_data, transform);
 
-		//TODO: Here define which handles to show and which handles to not, for path tool selection
+		let opposite_handles_data: Vec<(PointId, SegmentId)> = shape_editor.selected_points().filter_map(|point_id| vector_data.get_adjacent_segment(point_id)).collect();
+
 		match draw_handles {
 			DrawHandles::All => {
 				vector_data.segment_bezier_iter().for_each(|(segment_id, bezier, _start, _end)| {
@@ -113,6 +152,12 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 					.for_each(|(segment_id, bezier, _start, _end)| {
 						overlay_bezier_handles(segment_id, bezier, transform, overlay_context, selected, is_selected);
 					});
+
+				for (segment_id, bezier, start, end) in vector_data.segment_bezier_iter() {
+					if let Some((corresponding_anchor, _)) = opposite_handles_data.iter().find(|(_, adj_segment_id)| adj_segment_id == &segment_id) {
+						overlay_bezier_handle_specific_point(segment_id, bezier, start, end, transform, overlay_context, selected, is_selected, *corresponding_anchor);
+					}
+				}
 			}
 
 			DrawHandles::FrontierHandles(ref segment_endpoints) => {
@@ -122,29 +167,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 					.for_each(|(segment_id, bezier, start, end)| {
 						if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
 							let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
-							let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
-							let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
-							match bezier.handles {
-								bezier_rs::BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
-									if start == point_to_render {
-										overlay_context.line(handle, bezier.start, None);
-									} else {
-										overlay_context.line(handle, bezier.end, None);
-									}
-									overlay_context.manipulator_handle(handle, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)), None);
-								}
-								bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-									if not_under_anchor(handle_start, bezier.start) && (point_to_render == start) {
-										overlay_context.line(handle_start, bezier.start, None);
-										overlay_context.manipulator_handle(handle_start, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)), None);
-									}
-									if not_under_anchor(handle_end, bezier.end) && (point_to_render == end) {
-										overlay_context.line(handle_end, bezier.end, None);
-										overlay_context.manipulator_handle(handle_end, is_selected(selected, ManipulatorPointId::EndHandle(segment_id)), None);
-									}
-								}
-								_ => {}
-							}
+							overlay_bezier_handle_specific_point(segment_id, bezier, start, end, transform, overlay_context, selected, is_selected, point_to_render);
 						} else {
 							overlay_bezier_handles(segment_id, bezier, transform, overlay_context, selected, is_selected);
 						}
