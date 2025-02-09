@@ -10,6 +10,7 @@
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import ImageButton from "@graphite/components/widgets/buttons/ImageButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -24,7 +25,6 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import WorkingColorsInput from "@graphite/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
@@ -124,9 +124,9 @@
 		{#if iconLabel}
 			<IconLabel {...exclude(iconLabel)} />
 		{/if}
-		{@const imageLabel = narrowWidgetProps(component.props, "ImageLabel")}
-		{#if imageLabel}
-			<ImageLabel {...exclude(imageLabel)} />
+		{@const imageButton = narrowWidgetProps(component.props, "ImageButton")}
+		{#if imageButton}
+			<ImageButton {...exclude(imageButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const nodeCatalog = narrowWidgetProps(component.props, "NodeCatalog")}
 		{#if nodeCatalog}
