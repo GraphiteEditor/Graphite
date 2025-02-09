@@ -16,6 +16,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use bezier_rs::Subpath;
+use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
@@ -622,18 +623,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					if reference == "Spline" {
-						let tagged_value = document.network_interface.document_node(node_id, &[]).unwrap().inputs[1]
-							.as_value()
-							.expect("Spline node to have TaggedValue at input index 1.")
-							.clone();
+						let node = document.network_interface.document_node(node_id, &[]).unwrap();
+						let tagged_value = node.inputs[1].as_value().expect("Spline node to have TaggedValue at input index 1.").clone();
 
-						let mut points = Vec::new();
-
-						if let TaggedValue::VecDVec2(mut value) = tagged_value {
-							points.append(&mut value);
+						let points = if let TaggedValue::VecDVec2(value) = tagged_value {
+							value
 						} else {
 							log::error!("Spline node does not have TaggedValue::VecDVec2 in its input at index 1.");
-						}
+							Vec::new()
+						};
 
 						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points, false));
 
@@ -645,7 +643,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.expect("Vec of InputConnector Spline node is connected to its output port 0.")
 							.clone();
 
-						document.network_interface.delete_nodes(vec![*node_id], false, &[]);
+						let Some(node_position) = document.network_interface.position(node_id, &[]) else {
+							log::error!("Could not get position of spline node.");
+							continue;
+						};
 
 						let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist.");
 						let path_node = path_node_type.node_template_input_override([
@@ -659,8 +660,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 						let new_spline_id = *new_ids.get(&NodeId(0)).unwrap();
+						let new_path_id = *new_ids.get(&NodeId(1)).unwrap();
 
+						document.network_interface.delete_nodes(vec![*node_id], false, &[]);
 						document.network_interface.insert_node_group(nodes.clone(), new_ids, &[]);
+
+						document.network_interface.shift_node(&new_spline_id, node_position, &[]);
+						document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), &[]);
 
 						for input_connector in spline_outputs {
 							document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), &[]);
