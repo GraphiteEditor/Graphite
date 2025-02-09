@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ColorInput from "@graphite/components/widgets/buttons/ColorInput.svelte";
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
@@ -8,7 +9,6 @@
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
-	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import ImageButton from "@graphite/components/widgets/buttons/ImageButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
@@ -87,9 +87,9 @@
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
-		{@const colorInput = narrowWidgetProps(component.props, "ColorButton")}
+		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
-			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
+			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}

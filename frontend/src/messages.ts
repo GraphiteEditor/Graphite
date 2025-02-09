@@ -950,7 +950,7 @@ export class CheckboxInput extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export class ColorButton extends WidgetProps {
+export class ColorInput extends WidgetProps {
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
@@ -1351,7 +1351,7 @@ export class PivotInput extends WidgetProps {
 const widgetSubTypes = [
 	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
-	{ value: ColorButton, name: "ColorButton" },
+	{ value: ColorInput, name: "ColorInput" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },

@@ -160,7 +160,7 @@ impl LayoutHolder for TextTool {
 			true,
 			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))

@@ -79,7 +79,7 @@ impl ToolColorOptions {
 		color_allow_none: bool,
 		reset_callback: impl Fn(&IconButton) -> Message + 'static + Send + Sync,
 		radio_callback: fn(ToolColorType) -> WidgetCallback<()>,
-		color_callback: impl Fn(&ColorButton) -> Message + 'static + Send + Sync,
+		color_callback: impl Fn(&ColorInput) -> Message + 'static + Send + Sync,
 	) -> Vec<WidgetHolder> {
 		let mut widgets = vec![TextLabel::new(label_text).widget_holder()];
 
@@ -112,7 +112,7 @@ impl ToolColorOptions {
 		widgets.push(radio);
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
-		let color_button = ColorButton::new(FillChoice::from_optional_color(self.active_color()))
+		let color_button = ColorInput::new(FillChoice::from_optional_color(self.active_color()))
 			.allow_none(color_allow_none)
 			.on_update(color_callback);
 		widgets.push(color_button.widget_holder());
