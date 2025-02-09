@@ -475,7 +475,6 @@ impl PathToolData {
 		extend_selection: bool,
 		direct_insert_without_sliding: bool,
 		lasso_select: bool,
-		tool_options: &PathToolOptions,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -491,20 +490,16 @@ impl PathToolData {
 			if let Some(selected_points) = selected_points {
 				self.drag_start_pos = input.mouse.position;
 
-				//While in mode 2 or 3, if selected points contain only handles and there was some selection before then it stores it and restore on release
-				if !matches!(tool_options.path_overlay_mode, PathOverlayMode::AllHandles) {
-					let mut dragging_only_handles = true;
-					for point in &selected_points.points {
-						if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
-							dragging_only_handles = false;
-							break;
-						}
+				//If selected points contain only handles and there was some selection before then it stores it and restore on release
+				let mut dragging_only_handles = true;
+				for point in &selected_points.points {
+					if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
+						dragging_only_handles = false;
+						break;
 					}
-
-					if dragging_only_handles && !self.handle_drag_toggle && old_selection.len() > 0 {
-						self.saved_points_before_handle_drag = old_selection;
-						self.handle_drag_toggle = true;
-					}
+				}
+				if dragging_only_handles && !self.handle_drag_toggle && (old_selection.len() > 0) {
+					self.saved_points_before_handle_drag = old_selection;
 				}
 
 				self.start_dragging_point(selected_points, input, document, shape_editor);
@@ -900,7 +895,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select, tool_options)
+				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select)
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
@@ -953,6 +948,21 @@ impl Fsm for PathToolFsmState {
 					lock_angle,
 				},
 			) => {
+				let mut selected_only_handles = true;
+
+				let selected_points = shape_editor.selected_points();
+
+				for point in selected_points {
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						selected_only_handles = false;
+						break;
+					}
+				}
+
+				if (tool_data.saved_points_before_handle_drag.len() > 0) && (tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD) && (selected_only_handles) {
+					tool_data.handle_drag_toggle = true;
+				}
+
 				if tool_data.selection_status.is_none() {
 					if let Some(layer) = document.click(input) {
 						shape_editor.select_all_anchors_in_layer(document, layer);
@@ -1141,7 +1151,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
-				if tool_data.handle_drag_toggle {
+				if tool_data.handle_drag_toggle && !(tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD) {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 					tool_data.saved_points_before_handle_drag.clear();
