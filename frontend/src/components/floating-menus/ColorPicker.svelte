@@ -3,7 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { HSV, RGB, FillChoice } from "@graphite/messages";
-	import { Color, Gradient } from "@graphite/messages";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -77,6 +77,9 @@
 	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
+	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
+	$: outlined = outlineFactor > 0.0001;
+	$: transparency = newColor.alpha < 1 || oldColor.alpha < 1;
 
 	function generateColor(h: number, s: number, v: number, a: number, none: boolean) {
 		if (none) return new Color("none");
@@ -360,6 +363,8 @@
 		<LayoutCol class="details">
 			<LayoutRow
 				class="choice-preview"
+				classes={{ outlined, transparency }}
+				styles={{ "--outline-amount": outlineFactor }}
 				tooltip={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before any change was made (right)" : "The present color choice"}
 			>
 				{#if !newColor.equals(oldColor)}
@@ -642,14 +647,27 @@
 				width: 100%;
 				height: 32px;
 				border-radius: 2px;
-				border: 1px solid var(--color-1-nearblack);
 				box-sizing: border-box;
 				overflow: hidden;
 				position: relative;
-				background-image: var(--color-transparent-checkered-background);
-				background-size: var(--color-transparent-checkered-background-size);
-				background-position: var(--color-transparent-checkered-background-position);
-				background-repeat: var(--color-transparent-checkered-background-repeat);
+
+				&.outlined::after {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					left: 0;
+					right: 0;
+					box-shadow: inset 0 0 0 1px rgba(var(--color-0-black-rgb), var(--outline-amount));
+					pointer-events: none;
+				}
+
+				&.transparency {
+					background-image: var(--color-transparent-checkered-background);
+					background-size: var(--color-transparent-checkered-background-size);
+					background-position: var(--color-transparent-checkered-background-position);
+					background-repeat: var(--color-transparent-checkered-background-repeat);
+				}
 
 				.swap-button-background {
 					overflow: hidden;
