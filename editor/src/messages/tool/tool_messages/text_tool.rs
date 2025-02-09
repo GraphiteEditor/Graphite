@@ -610,7 +610,6 @@ impl Fsm for TextToolFsmState {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = center_bool.then_some(bounds.center_of_transformation);
-						debug!("Center position: {:?}", center_position);
 
 						let layer = tool_data.layer_dragging;
 						let node_id = layer.map(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface).unwrap());
@@ -627,11 +626,9 @@ impl Fsm for TextToolFsmState {
 						});
 
 						let (mut position, mut size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
-						debug!("Position: {:?}, Size: {:?}", position, size);
 						let [min, max] = [position, position + size].map(|point| bounds.original_bound_transform.transform_point2(point));
 						(position, size) = (min.min(max), (min - max).abs());
 						let transform = DAffine2::from_translation(position);
-						debug!("Position2: {:?}, Size2: {:?}", position, size);
 
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id.unwrap(), 6),
