@@ -105,7 +105,7 @@ pub fn overlay_bezier_handle_specific_point(
 	match bezier.handles {
 		bezier_rs::BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
 			if start == point_to_render {
-				//what is point of doing this, what have to be done in this?
+				//review this
 				overlay_context.line(handle, bezier.start, None);
 			} else {
 				overlay_context.line(handle, bezier.end, None);
