@@ -201,10 +201,18 @@ impl LayoutMessageHandler {
 					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => (icon_button.on_update.callback)(icon_button),
 				};
+
+				responses.add(callback_message);
+			}
+			Widget::ImageButton(image_label) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (image_label.on_commit.callback)(&()),
+					WidgetValueAction::Update => (image_label.on_update.callback)(&()),
+				};
+
 				responses.add(callback_message);
 			}
 			Widget::IconLabel(_) => {}
-			Widget::ImageLabel(_) => {}
 			Widget::InvisibleStandinInput(invisible) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (invisible.on_commit.callback)(&()),

@@ -1,9 +1,8 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::{document_metadata::LayerNodeIdentifier, network_interface::InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -179,23 +178,24 @@ impl Fsm for LineToolFsmState {
 				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 				let node = node_type.node_template_input_override([
 					None,
-					Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
-					Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
+					Some(NodeInput::value(
+						TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start)),
+						false,
+					)),
+					Some(NodeInput::value(
+						TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(tool_data.drag_start)),
+						false,
+					)),
 				]);
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
-				responses.add(GraphOperationMessage::TransformSet {
-					layer,
-					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: false,
-				});
+
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-				tool_data.layer = Some(layer);
 
 				tool_data.layer = Some(layer);
+				tool_data.angle = 0.;
 				tool_data.weight = tool_options.line_weight;
 
 				LineToolFsmState::Drawing
@@ -206,7 +206,7 @@ impl Fsm for LineToolFsmState {
 				let keyboard = &input.keyboard;
 				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
 				let snap_data = SnapData::ignore(document, input, &ignore);
-				responses.add(generate_transform(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+				generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center), responses);
 
 				// Auto-panning
 				let messages = [
@@ -261,18 +261,18 @@ impl Fsm for LineToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			LineToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
-				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
+				HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 			])]),
 			LineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
-					HintInfo::keys([Key::Shift], "Snap 15°"),
+					HintInfo::keys([Key::Shift], "15° Increments"),
 					HintInfo::keys([Key::Alt], "From Center"),
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
@@ -287,7 +287,7 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
+fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool, responses: &mut VecDeque<Message>) {
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
@@ -347,17 +347,18 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 		snap.update_indicator(snapped);
 	}
 
-	// Used for keeping the same angle next frame
-	tool_data.angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
+	let Some(node_id) = graph_modification_utils::get_line_id(tool_data.layer.unwrap(), &snap_data.document.network_interface) else {
+		return;
+	};
 
-	let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
-	let line_length = (viewport_points[1] - viewport_points[0]).length();
-	let angle = -(viewport_points[1] - viewport_points[0]).angle_to(DVec2::X);
-	GraphOperationMessage::TransformSet {
-		layer: tool_data.layer.unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),
-		transform_in: TransformIn::Viewport,
-		skip_rerender: false,
-	}
-	.into()
+	responses.add(NodeGraphMessage::SetInput {
+		input_connector: InputConnector::node(node_id, 1),
+		input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
+	});
+	responses.add(NodeGraphMessage::SetInput {
+		input_connector: InputConnector::node(node_id, 2),
+		input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
+	});
+
+	responses.add(NodeGraphMessage::RunDocumentGraph);
 }

@@ -92,11 +92,9 @@ impl InputMapperMessageHandler {
 					.collect::<Vec<_>>();
 
 				// Append the key button for the entry
+				use InputMapperMessage as IMM;
 				match entry.input {
-					InputMapperMessage::KeyDown(key) => keys.push(key),
-					InputMapperMessage::KeyUp(key) => keys.push(key),
-					InputMapperMessage::KeyDownNoRepeat(key) => keys.push(key),
-					InputMapperMessage::KeyUpNoRepeat(key) => keys.push(key),
+					IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) => keys.push(key),
 					_ => (),
 				}
 

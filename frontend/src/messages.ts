@@ -1075,7 +1075,7 @@ export class IconLabel extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export class ImageLabel extends WidgetProps {
+export class ImageButton extends WidgetProps {
 	image!: IconName;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
@@ -1289,6 +1289,8 @@ export class TextLabel extends WidgetProps {
 
 	italic!: boolean;
 
+	centerAlign!: boolean;
+
 	tableAlign!: boolean;
 
 	minWidth!: number;
@@ -1317,8 +1319,8 @@ const widgetSubTypes = [
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
+	{ value: ImageButton, name: "ImageButton" },
 	{ value: IconLabel, name: "IconLabel" },
-	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },

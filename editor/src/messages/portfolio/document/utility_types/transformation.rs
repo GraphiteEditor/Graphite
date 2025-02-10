@@ -1,5 +1,5 @@
 use super::network_interface::NodeNetworkInterface;
-use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
+use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
@@ -12,7 +12,7 @@ use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -143,16 +143,25 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, transform: DAffine2) -> DVec2 {
-		if let Some(value) = self.typed_distance {
-			let document_displacement = if self.constraint == Axis::Y { DVec2::new(0., value) } else { DVec2::new(value, 0.) };
-			transform.transform_vector2(document_displacement)
+	pub fn to_dvec(self, transform: DAffine2, increment_mode: bool) -> DVec2 {
+		let displacement = if let Some(value) = self.typed_distance {
+			match self.constraint {
+				Axis::X => transform.transform_vector2(DVec2::new(value, 0.)),
+				Axis::Y => transform.transform_vector2(DVec2::new(0., value)),
+				Axis::Both => self.dragged_distance,
+			}
 		} else {
 			match self.constraint {
 				Axis::Both => self.dragged_distance,
 				Axis::X => DVec2::new(self.dragged_distance.x, 0.),
 				Axis::Y => DVec2::new(0., self.dragged_distance.y),
 			}
+		};
+		let displacement = transform.inverse().transform_vector2(displacement);
+		if increment_mode {
+			displacement.round()
+		} else {
+			displacement
 		}
 	}
 
@@ -172,6 +181,11 @@ impl Translation {
 		}
 	}
 
+	pub fn negate(self) -> Self {
+		let dragged_distance = -self.dragged_distance;
+		Self { dragged_distance, ..self }
+	}
+
 	pub fn with_constraint(self, target: Axis, local: bool) -> (Self, bool) {
 		let (constraint, local) = self.constraint.contrainted_to_axis(target, local);
 		(Self { constraint, ..self }, local)
@@ -185,12 +199,12 @@ pub struct Rotation {
 }
 
 impl Rotation {
-	pub fn to_f64(self, snap: bool) -> f64 {
+	pub fn to_f64(self, increment_mode: bool) -> f64 {
 		if let Some(value) = self.typed_angle {
 			value.to_radians()
-		} else if snap {
-			let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
-			(self.dragged_angle / snap_resolution).round() * snap_resolution
+		} else if increment_mode {
+			let increment_resolution = ROTATE_INCREMENT.to_radians();
+			(self.dragged_angle / increment_resolution).round() * increment_resolution
 		} else {
 			self.dragged_angle
 		}
@@ -234,17 +248,17 @@ impl Default for Scale {
 }
 
 impl Scale {
-	pub fn to_f64(self, snap: bool) -> f64 {
+	pub fn to_f64(self, increment: bool) -> f64 {
 		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
-		if snap {
-			(factor / SCALE_SNAP_INTERVAL).round() * SCALE_SNAP_INTERVAL
+		if increment {
+			(factor / SCALE_INCREMENT).round() * SCALE_INCREMENT
 		} else {
 			factor
 		}
 	}
 
-	pub fn to_dvec(self, snap: bool) -> DVec2 {
-		let factor = self.to_f64(snap);
+	pub fn to_dvec(self, increment_mode: bool) -> DVec2 {
+		let factor = self.to_f64(increment_mode);
 
 		match self.constraint {
 			Axis::Both => DVec2::splat(factor),
@@ -261,7 +275,7 @@ impl Scale {
 	#[must_use]
 	pub fn increment_amount(self, delta: f64) -> Self {
 		Self {
-			dragged_factor: self.dragged_factor + delta,
+			dragged_factor: (self.dragged_factor + delta),
 			typed_factor: None,
 			constraint: self.constraint,
 		}
@@ -291,35 +305,52 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
-		let quad = quad.0;
-		let edge = quad[1] - quad[0];
+	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
+		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
+					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, increment_mode)));
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_translation(translation.to_dvec(transform)) * DAffine2::from_angle(-edge.to_angle())
+						let resolved_angle = if local_axis_transform_angle > 0. {
+							local_axis_transform_angle - std::f64::consts::PI
+						} else {
+							local_axis_transform_angle
+						};
+						DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
 					} else {
-						DAffine2::from_translation(translation.to_dvec(transform))
+						translate
 					}
 				}
-				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(snapping)),
+				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(increment_mode)),
 				TransformOperation::Scaling(scale) => {
 					if local {
-						DAffine2::from_angle(edge.to_angle()) * DAffine2::from_scale(scale.to_dvec(snapping)) * DAffine2::from_angle(-edge.to_angle())
+						DAffine2::from_angle(local_axis_transform_angle) * DAffine2::from_scale(scale.to_dvec(increment_mode)) * DAffine2::from_angle(-local_axis_transform_angle)
 					} else {
-						DAffine2::from_scale(scale.to_dvec(snapping))
+						DAffine2::from_scale(scale.to_dvec(increment_mode))
 					}
 				}
 				TransformOperation::None => unreachable!(),
 			};
 
 			selected.update_transforms(transformation);
-			self.hints(selected.responses);
+			self.hints(selected.responses, local);
 		}
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, snapping: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
+	pub fn axis_constraint(&self) -> Axis {
+		match self {
+			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
+			TransformOperation::Scaling(scaling) => scaling.constraint,
+			_ => Axis::Both,
+		}
+	}
+
+	pub fn can_begin_typing(&self) -> bool {
+		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
+	}
+
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
 		(*self, local) = match self {
 			TransformOperation::Grabbing(translation) => {
 				let (translation, local) = translation.with_constraint(axis, local);
@@ -331,11 +362,11 @@ impl TransformOperation {
 			}
 			_ => (*self, false),
 		};
-		self.apply_transform_operation(selected, snapping, local, quad, transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform);
 		local
 	}
 
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -343,35 +374,97 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, snapping, local, quad, transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform);
 	}
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
+		use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();
-		input_hints.push(HintInfo::keys([Key::Shift], "Slow Mode"));
-		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
-			input_hints.push(HintInfo::keys([Key::Control], "Snap"));
-		}
-		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
-			input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
-			input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
+		let clear_constraint = "Clear Constraint";
+		match self.axis_constraint() {
+			Axis::Both => {
+				input_hints.push(HintInfo::keys([Key::KeyX], "X-Axis Constraint"));
+				input_hints.push(HintInfo::keys([Key::KeyY], "Y-Axis Constraint"));
+			}
+			Axis::X => {
+				let x_label = if local { clear_constraint } else { "Local X-Axis Constraint" };
+				input_hints.push(HintInfo::keys([Key::KeyX], x_label));
+				input_hints.push(HintInfo::keys([Key::KeyY], "Y-Axis Constraint"));
+				if !local {
+					input_hints.push(HintInfo::keys([Key::KeyX, Key::KeyX], clear_constraint));
+				}
+			}
+			Axis::Y => {
+				let y_label = if local { clear_constraint } else { "Local Y-Axis Constraint" };
+				input_hints.push(HintInfo::keys([Key::KeyX], "X-Axis Constraint"));
+				input_hints.push(HintInfo::keys([Key::KeyY], y_label));
+				if !local {
+					input_hints.push(HintInfo::keys([Key::KeyY, Key::KeyY], clear_constraint));
+				}
+			}
 		}
 
-		let hint_data = HintData(vec![HintGroup(input_hints)]);
+		let grs_hint_group = match self {
+			TransformOperation::None => unreachable!(),
+			TransformOperation::Scaling(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR]], "Grab/Rotate Selected")]),
+			TransformOperation::Grabbing(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyR], [Key::KeyS]], "Rotate/Scale Selected")]),
+			TransformOperation::Rotating(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
+		};
+
+		let confirm_and_cancel_group = HintGroup(vec![
+			HintInfo::mouse(MouseMotion::Lmb, ""),
+			HintInfo::keys([Key::Enter], "Confirm").prepend_slash(),
+			HintInfo::mouse(MouseMotion::Rmb, ""),
+			HintInfo::keys([Key::Escape], "Cancel").prepend_slash(),
+		]);
+		let mut hint_groups = vec![confirm_and_cancel_group, grs_hint_group];
+		if !self.is_typing() {
+			let modifiers = vec![
+				HintInfo::keys([Key::Shift], "Slow"),
+				HintInfo::keys([Key::Control], if matches!(self, TransformOperation::Rotating(_)) { "15° Increments" } else { "Increments" }),
+			];
+			hint_groups.push(HintGroup(modifiers));
+		}
+		if !matches!(self, TransformOperation::Rotating(_)) {
+			hint_groups.push(HintGroup(input_hints));
+		}
+		let mut typing_hints = vec![HintInfo::keys([Key::Minus], "Negate Direction")];
+		if self.can_begin_typing() {
+			typing_hints.push(HintInfo::keys([Key::NumKeys], "Enter Number"));
+			if self.is_typing() {
+				typing_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
+			}
+		}
+		hint_groups.push(HintGroup(typing_hints));
+
+		let hint_data = HintData(hint_groups);
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 
-	pub fn negate(&mut self, selected: &mut Selected, snapping: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn is_constraint_to_axis(&self) -> bool {
+		self.axis_constraint() != Axis::Both
+	}
+
+	pub fn is_typing(&self) -> bool {
+		match self {
+			TransformOperation::None => false,
+			TransformOperation::Grabbing(translation) => translation.typed_distance.is_some(),
+			TransformOperation::Rotating(rotation) => rotation.typed_angle.is_some(),
+			TransformOperation::Scaling(scale) => scale.typed_factor.is_some(),
+		}
+	}
+
+	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
 				TransformOperation::Rotating(rotation) => TransformOperation::Rotating(rotation.negate()),
+				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, snapping, local, quad, transform);
+			self.apply_transform_operation(selected, increment_mode, local, quad, transform);
 		}
 	}
 }
@@ -443,7 +536,7 @@ impl<'a> Selected<'a> {
 	pub fn bounding_box(&mut self) -> Quad {
 		let metadata = self.network_interface.document_metadata();
 
-		let transform = self
+		let mut transform = self
 			.network_interface
 			.selected_nodes(&[])
 			.unwrap()
@@ -452,8 +545,8 @@ impl<'a> Selected<'a> {
 			.map(|layer| metadata.transform_to_viewport(layer))
 			.unwrap_or(DAffine2::IDENTITY);
 
-		if transform.matrix2.determinant() == 0. {
-			return Default::default();
+		if transform.matrix2.determinant().abs() <= f64::EPSILON {
+			transform.matrix2 += DMat2::IDENTITY * 1e-4;
 		}
 
 		let bounds = self
@@ -580,6 +673,7 @@ impl<'a> Selected<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Typing {
 	pub digits: Vec<u8>,
+	pub string: String,
 	pub contains_decimal: bool,
 	pub negative: bool,
 }
@@ -589,6 +683,7 @@ const DECIMAL_POINT: u8 = 10;
 impl Typing {
 	pub fn type_number(&mut self, number: u8) -> Option<f64> {
 		self.digits.push(number);
+		self.string.push((b'0' + number) as char);
 
 		self.evaluate()
 	}
@@ -603,7 +698,7 @@ impl Typing {
 			Some(_) => (),
 			None => self.negative = false,
 		}
-
+		self.string.pop();
 		self.evaluate()
 	}
 
@@ -611,6 +706,7 @@ impl Typing {
 		if !self.contains_decimal {
 			self.contains_decimal = true;
 			self.digits.push(DECIMAL_POINT);
+			self.string.push('.');
 		}
 
 		self.evaluate()
@@ -618,6 +714,11 @@ impl Typing {
 
 	pub fn type_negate(&mut self) -> Option<f64> {
 		self.negative = !self.negative;
+		if self.negative {
+			self.string.insert(0, '-');
+		} else {
+			self.string.remove(0);
+		}
 
 		self.evaluate()
 	}
@@ -653,6 +754,7 @@ impl Typing {
 
 	pub fn clear(&mut self) {
 		self.digits.clear();
+		self.string.clear();
 		self.contains_decimal = false;
 		self.negative = false;
 	}

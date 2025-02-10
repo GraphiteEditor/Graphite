@@ -41,8 +41,8 @@ pub const MAX_LAYER_SNAP_POINTS: usize = 100;
 pub const DRAG_THRESHOLD: f64 = 1.;
 
 // TRANSFORMING LAYER
-pub const ROTATE_SNAP_ANGLE: f64 = 15.;
-pub const SCALE_SNAP_INTERVAL: f64 = 0.1;
+pub const ROTATE_INCREMENT: f64 = 15.;
+pub const SCALE_INCREMENT: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
 pub const NUDGE_AMOUNT: f64 = 1.;
 pub const BIG_NUDGE_AMOUNT: f64 = 10.;
@@ -52,6 +52,7 @@ pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
 
 // SELECT TOOL
 pub const SELECTION_TOLERANCE: f64 = 5.;
+pub const DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD: f64 = 15.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
@@ -74,6 +75,11 @@ pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
 pub const MIN_LENGTH_FOR_CORNERS_VISIBILITY: f64 = 12.;
 /// When the width or height of the transform cage is less than this value, only the exterior of the bounding box will act as a click target for resizing.
 pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
+/// When dragging the edge of a cage with Alt, it centers around the pivot.
+/// However if the pivot is on or near the same edge you are dragging, we should avoid scaling by a massive factor caused by the small denominator.
+///
+/// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
+pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
 
 // PATH TOOL
 pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;

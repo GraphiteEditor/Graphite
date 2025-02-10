@@ -11,18 +11,6 @@ pub struct IconLabel {
 	pub tooltip: String,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
-pub struct ImageLabel {
-	#[widget_builder(constructor)]
-	pub image: String,
-
-	pub width: Option<String>,
-
-	pub height: Option<String>,
-
-	pub tooltip: String,
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 pub struct Separator {
 	pub direction: SeparatorDirection,
@@ -54,6 +42,9 @@ pub struct TextLabel {
 	pub bold: bool,
 
 	pub italic: bool,
+
+	#[serde(rename = "centerAlign")]
+	pub center_align: bool,
 
 	#[serde(rename = "tableAlign")]
 	pub table_align: bool,
