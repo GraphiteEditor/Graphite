@@ -624,16 +624,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					if reference == "Spline" {
 						let node = document.network_interface.document_node(node_id, &[]).unwrap();
-						let tagged_value = node.inputs[1].as_value().expect("Spline node to have TaggedValue at input index 1.").clone();
 
-						let points = if let TaggedValue::VecDVec2(value) = tagged_value {
-							value
-						} else {
-							log::error!("Spline node does not have TaggedValue::VecDVec2 in its input at index 1.");
-							Vec::new()
-						};
+						// If input at index 1 is not `TaggedValue::VecDVec2`, it's a new Spline node, so no upgrade required.
+						let Some(tagged_value) = node.inputs.get(1) else { continue };
+						let Some(TaggedValue::VecDVec2(points)) = tagged_value.as_value() else { continue };
 
-						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points, false));
+						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
 						let spline_outputs = document
 							.network_interface
