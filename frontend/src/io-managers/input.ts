@@ -12,6 +12,16 @@ import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
+const BUTTON_LEFT = 0;
+const BUTTON_MIDDLE = 1;
+const BUTTON_RIGHT = 2;
+const BUTTON_BACK = 3;
+const BUTTON_FORWARD = 4;
+
+export const PRESS_REPEAT_DELAY_MS = 400;
+export const PRESS_REPEAT_INTERVAL_MS = 72;
+export const PRESS_REPEAT_INTERVAL_RAPID_MS = 10;
+
 type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
 type EventListenerTarget = {
 	addEventListener: typeof window.addEventListener;
@@ -155,7 +165,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onMouseDown(e: MouseEvent) {
 		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
-		if (e.button === 1) e.preventDefault();
+		if (e.button === BUTTON_MIDDLE) e.preventDefault();
 	}
 
 	function onPointerDown(e: PointerEvent) {
@@ -172,7 +182,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (!inTextInput && !inContextMenu) {
-			const isLeftOrRightClick = e.button === 2 || e.button === 0;
+			const isLeftOrRightClick = e.button === BUTTON_RIGHT || e.button === BUTTON_LEFT;
 			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText), isLeftOrRightClick);
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
@@ -188,7 +198,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		// TODO: This works in Chrome but not in Firefox
 		// TODO: Possible workaround: use the browser's history API to block navigation:
 		// TODO: <https://stackoverflow.com/questions/57102502/preventing-mouse-fourth-and-fifth-buttons-from-navigating-back-forward-in-browse>
-		if (e.button === 3 || e.button === 4) e.preventDefault();
+		if (e.button === BUTTON_BACK || e.button === BUTTON_FORWARD) e.preventDefault();
 
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
@@ -206,11 +216,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
 		let buttons = 1;
-		if (e.button === 0) buttons = 1; // Left
-		if (e.button === 2) buttons = 2; // Right
-		if (e.button === 1) buttons = 4; // Middle
-		if (e.button === 3) buttons = 8; // Back
-		if (e.button === 4) buttons = 16; // Forward
+		if (e.button === BUTTON_LEFT) buttons = 1; // Left
+		if (e.button === BUTTON_RIGHT) buttons = 2; // Right
+		if (e.button === BUTTON_MIDDLE) buttons = 4; // Middle
+		if (e.button === BUTTON_BACK) buttons = 8; // Back
+		if (e.button === BUTTON_FORWARD) buttons = 16; // Forward
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
