@@ -14,8 +14,12 @@
 	$: iconSizeClass = ((icon: IconName) => {
 		const iconData = ICONS[icon];
 		// eslint-disable-next-line no-console
-		if (!iconData) console.warn(`Icon "${icon}" does not exist.`);
-		return `size-${iconSizeOverride || iconData?.size || 24}`;
+		if (!iconData) {
+			console.warn(`Icon "${icon}" does not exist.`);
+			return "size-24";
+		}
+		if (iconData.size === undefined) return "";
+		return `size-${iconSizeOverride || iconData.size}`;
 	})(icon);
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
