@@ -12,7 +12,10 @@
 	export let tooltip: string | undefined = undefined;
 
 	$: iconSizeClass = ((icon: IconName) => {
-		return `size-${iconSizeOverride || ICONS[icon].size}`;
+		const iconData = ICONS[icon];
+		// eslint-disable-next-line no-console
+		if (!iconData) console.warn(`Icon "${icon}" does not exist.`);
+		return `size-${iconSizeOverride || iconData?.size || 24}`;
 	})(icon);
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -20,7 +23,7 @@
 </script>
 
 <LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>
-	{@html ICON_SVG_STRINGS[icon]}
+	{@html ICON_SVG_STRINGS[icon] || "�"}
 </LayoutRow>
 
 <style lang="scss" global>

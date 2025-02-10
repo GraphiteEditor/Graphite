@@ -1776,7 +1776,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 // 		if let Some(&TaggedValue::F64(seed)) = &input.as_non_exposed_value() {
 // 			widgets.extend_from_slice(&[
 // 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				IconButton::new("Regenerate", 24)
+// 				IconButton::new("Resync", 24)
 // 					.tooltip("Set a new random seed")
 // 					.on_update({
 // 						let imaginate_node = imaginate_node.clone();
@@ -1856,7 +1856,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 // 			widgets.extend_from_slice(&[
 // 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				IconButton::new("Rescale", 24)
+// 				IconButton::new("FrameAll", 24)
 // 					.tooltip("Set the layer dimensions to this resolution")
 // 					.on_update(move |_| DialogMessage::RequestComingSoonDialog { issue: None }.into())
 // 					.widget_holder(),
