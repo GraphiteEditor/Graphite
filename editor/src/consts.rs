@@ -55,7 +55,13 @@ pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
-pub const PIVOT_DIAMETER: f64 = 5.;
+
+pub const COMPASS_ROSE_PIVOT_DIAMETER: f64 = 5.;
+pub const COMPASS_ROSE_RING_INNER_DIAMETER: f64 = 13.;
+pub const COMPASS_ROSE_MAIN_RING_DIAMETER: f64 = 15.;
+pub const COMPASS_ROSE_HOVER_RING_DIAMETER: f64 = 23.;
+
+pub const COMPASS_ROSE_ARROW_SIZE: f64 = 5.;
 
 // TRANSFORM OVERLAY
 pub const ANGLE_MEASURE_RADIUS_FACTOR: f64 = 0.04;
@@ -96,6 +102,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
+pub const COLOR_OVERLAY_BLUE_TRANSLUCENT: &str = "#00a8ff77";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";

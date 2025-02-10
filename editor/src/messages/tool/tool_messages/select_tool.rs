@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::pivot::Pivot;
+use crate::messages::tool::common_functionality::pivot::{CompassRoseState, Pivot};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
@@ -490,9 +490,9 @@ impl Fsm for SelectToolFsmState {
 				let angle = bounds
 					.map(|bounds| transform * Quad::from_box(bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
-
+				let mouse_position = input.mouse.position;
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, mouse_position);
 
 				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox) {
@@ -604,9 +604,11 @@ impl Fsm for SelectToolFsmState {
 				// If the user clicks on new shape, make that layer their new selection.
 				// Otherwise enter the box select mode
 
+				let compass_ross_state = tool_data.pivot.is_over(input.mouse.position);
+
 				let state =
 				// Dragging the pivot
-				if tool_data.pivot.is_over(input.mouse.position) {
+				if compass_ross_state == CompassRoseState::Pivot{
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
@@ -680,7 +682,7 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::RotatingBounds
 				}
 				// Dragging the selected layers around to transform them
-				else if intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+				else if compass_ross_state == CompassRoseState::HoverRing || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
@@ -891,7 +893,7 @@ impl Fsm for SelectToolFsmState {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.is_over(input.mouse.position) {
+				if tool_data.pivot.is_over(input.mouse.position) == CompassRoseState::Pivot {
 					cursor = MouseCursorIcon::Move;
 				}
 

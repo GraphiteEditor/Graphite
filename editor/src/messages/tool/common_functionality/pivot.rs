@@ -1,7 +1,7 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
 use super::graph_modification_utils;
-use crate::consts::PIVOT_DIAMETER;
+use crate::consts::{COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -9,6 +9,16 @@ use crate::messages::prelude::*;
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CompassRoseState {
+	Pivot,
+	HoverRing,
+	MainRing,
+	AxisX,
+	AxisY,
+	None,
+}
 
 #[derive(Clone, Debug)]
 pub struct Pivot {
@@ -83,10 +93,11 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, mouse_position: DVec2) {
 		self.recalculate_pivot(document);
+		let show_hover_ring = matches!(self.is_over(mouse_position), CompassRoseState::HoverRing | CompassRoseState::MainRing);
 		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot, angle);
+			overlay_context.pivot(pivot, angle, show_hover_ring);
 		}
 	}
 
@@ -125,7 +136,21 @@ impl Pivot {
 	}
 
 	/// Answers if the pointer is currently positioned over the pivot.
-	pub fn is_over(&self, mouse: DVec2) -> bool {
-		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
+	pub fn is_over(&self, mouse: DVec2) -> CompassRoseState {
+		match self.pivot {
+			None => CompassRoseState::None,
+			Some(pivot) => {
+				let distance_squared = mouse.distance_squared(pivot);
+				if distance_squared < (COMPASS_ROSE_PIVOT_DIAMETER / 2.).powi(2) {
+					CompassRoseState::Pivot
+				} else if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < distance_squared && distance_squared < (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) {
+					CompassRoseState::MainRing
+				} else if (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) < distance_squared && distance_squared < (COMPASS_ROSE_HOVER_RING_DIAMETER / 2.).powi(2) {
+					CompassRoseState::HoverRing
+				} else {
+					CompassRoseState::None
+				}
+			}
+		}
 	}
 }
