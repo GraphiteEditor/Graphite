@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ColorInput from "@graphite/components/widgets/buttons/ColorInput.svelte";
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
@@ -15,6 +14,7 @@
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
+	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
