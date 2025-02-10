@@ -1,11 +1,11 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::{document_metadata::LayerNodeIdentifier, network_interface::InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name, NodeGraphLayer};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
@@ -120,6 +120,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 		match self.fsm_state {
 			LineToolFsmState::Ready => actions!(LineToolMessageDiscriminant; DragStart, PointerMove),
 			LineToolFsmState::Drawing => actions!(LineToolMessageDiscriminant; DragStop, PointerMove, Abort),
+			LineToolFsmState::Editing => actions!(LineToolMessageDiscriminant; DragStop, PointerMove, Abort),
 		}
 	}
 }
@@ -140,6 +141,7 @@ enum LineToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
+	Editing,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -151,6 +153,8 @@ struct LineToolData {
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
+	layer_start: Option<DVec2>,
+	layer_end: Option<DVec2>,
 }
 
 impl Fsm for LineToolFsmState {
@@ -166,12 +170,53 @@ impl Fsm for LineToolFsmState {
 		match (self, event) {
 			(_, LineToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+
+				if let Some(layer) = tool_data.layer {
+					let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line").unwrap();
+					let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (inputs[1].as_value(), inputs[2].as_value()) else {
+						return self;
+					};
+
+					let transform = document.metadata().document_to_viewport;
+
+					tool_data.layer_start = Some(transform.transform_point2(start));
+					tool_data.layer_end = Some(transform.transform_point2(end));
+
+					overlay_context.square(tool_data.layer_start.unwrap(), Some(6.), None, None);
+					overlay_context.square(tool_data.layer_end.unwrap(), Some(6.), None, None);
+				} else {
+					tool_data.layer = document
+						.network_interface
+						.selected_nodes(&[])
+						.unwrap()
+						.selected_visible_and_unlocked_layers(&document.network_interface)
+						.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Line"));
+				}
+
 				self
 			}
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
+
+				if let (Some(start), Some(end)) = (tool_data.layer_start, tool_data.layer_end) {
+					let transform = document.metadata().document_to_viewport;
+					let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+					let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+
+					let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
+					let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
+
+					let start_bool = (tool_data.drag_start.y - start.y).abs() < threshold_y && (tool_data.drag_start.x - start.x).abs() < threshold_x;
+					let end_bool = (tool_data.drag_start.y - end.y).abs() < threshold_y && (tool_data.drag_start.x - end.x).abs() < threshold_x;
+
+					debug!("Start: {:?}, End: {:?}", start_bool, end_bool);
+
+					if start_bool || end_bool {
+						return LineToolFsmState::Editing;
+					}
+				};
 
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -217,6 +262,16 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::Drawing
 			}
+			(LineToolFsmState::Editing, LineToolMessage::PointerMove { center, lock_angle, snap_angle }) => {
+				tool_data.drag_current = input.mouse.position;
+				let keyboard = &input.keyboard;
+				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
+				let snap_data = SnapData::ignore(document, input, &ignore);
+				debug!("Editing line");
+				generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center), responses);
+
+				LineToolFsmState::Editing
+			}
 			(_, LineToolMessage::PointerMove { .. }) => {
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
@@ -245,6 +300,7 @@ impl Fsm for LineToolFsmState {
 				LineToolFsmState::Ready
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
+				tool_data.layer.take();
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.layer = None;
@@ -270,6 +326,14 @@ impl Fsm for LineToolFsmState {
 				HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 			])]),
 			LineToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Shift], "15° Increments"),
+					HintInfo::keys([Key::Alt], "From Center"),
+					HintInfo::keys([Key::Control], "Lock Angle"),
+				]),
+			]),
+			LineToolFsmState::Editing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
