@@ -103,7 +103,7 @@ pub enum GraphOperationMessage {
 		location: IVec2,
 		dimensions: IVec2,
 	},
-	ClearArtboards,
+	RemoveArtboards,
 	NewSvg {
 		id: NodeId,
 		svg: String,

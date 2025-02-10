@@ -7,11 +7,12 @@
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 	export let icon: IconName;
+	export let iconSizeOverride: number | undefined = undefined;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
 
 	$: iconSizeClass = ((icon: IconName) => {
-		return `size-${ICONS[icon].size}`;
+		return `size-${iconSizeOverride || ICONS[icon].size}`;
 	})(icon);
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
