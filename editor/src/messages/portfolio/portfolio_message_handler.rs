@@ -437,7 +437,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 34] = [
+				const REPLACEMENTS: [(&str, &str); 35] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -465,6 +465,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
 					("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
 					("graphene_core::transform::SetTransformNode", "graphene_core::transform::ReplaceTransformNode"),
+					("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
 					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
@@ -621,12 +622,37 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 
+					if reference == "Splines from Points" {
+						document.network_interface.set_reference(node_id, &[], Some("Spline".to_string()));
+					}
+
 					if reference == "Spline" {
 						let node = document.network_interface.document_node(node_id, &[]).unwrap();
 
-						// If input at index 1 is not `TaggedValue::VecDVec2`, it's a new Spline node, so no upgrade required.
-						let Some(tagged_value) = node.inputs.get(1) else { continue };
-						let Some(TaggedValue::VecDVec2(points)) = tagged_value.as_value() else { continue };
+						let match_implementation = || {
+							let DocumentNodeImplementation::ProtoNode(identifier) = document.network_interface.implementation(node_id, &[]).unwrap() else {
+								return false;
+							};
+							if identifier.name != "graphene_core::vector::generator_nodes::SplineNode" {
+								return false;
+							};
+							true
+						};
+
+						if !match_implementation() {
+							continue;
+						}
+
+						let points = || {
+							let Some(tagged_value) = node.inputs.get(1) else { return None };
+							let Some(TaggedValue::VecDVec2(points)) = tagged_value.as_value() else { return None };
+							Some(points)
+						};
+
+						let Some(points) = points() else {
+							log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
+							continue;
+						};
 
 						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
@@ -649,7 +675,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 						]);
 
-						let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist.");
+						let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist.");
 						let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 
 						let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
