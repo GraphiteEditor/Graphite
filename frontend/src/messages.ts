@@ -667,8 +667,8 @@ export class Color {
 		return new Color(this.red, this.green, this.blue, 1);
 	}
 
-	contrastingColor(): "black" | "white" {
-		if (this.none) return "black";
+	luminance(): number | undefined {
+		if (this.none) return undefined;
 
 		// Convert alpha into white
 		const r = this.red * this.alpha + (1 - this.alpha);
@@ -681,9 +681,15 @@ export class Color {
 		const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
 		const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
 
-		const linear = linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+		return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+	}
 
-		return linear > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
+	contrastingColor(): "black" | "white" {
+		if (this.none) return "black";
+
+		const luminance = this.luminance();
+
+		return luminance && luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 	}
 }
 
@@ -944,7 +950,7 @@ export class CheckboxInput extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export class ColorButton extends WidgetProps {
+export class ColorInput extends WidgetProps {
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
@@ -977,6 +983,37 @@ export class ColorButton extends WidgetProps {
 }
 
 export type FillChoice = Color | Gradient;
+
+export function contrastingOutlineFactor(value: FillChoice, proximityColor: string | [string, string], proximityRange: number): number {
+	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
+	const [range1, range2] = pair.map((color) => Color.fromCSS(window.getComputedStyle(document.body).getPropertyValue(color)) || new Color("none"));
+
+	const contrast = (color: Color): number => {
+		const colorLuminance = color.luminance() || 0;
+		let rangeLuminance1 = range1.luminance() || 0;
+		let rangeLuminance2 = range2.luminance() || 0;
+		[rangeLuminance1, rangeLuminance2] = [Math.min(rangeLuminance1, rangeLuminance2), Math.max(rangeLuminance1, rangeLuminance2)];
+
+		const distance = (() => {
+			if (colorLuminance < rangeLuminance1) return rangeLuminance1 - colorLuminance;
+			if (colorLuminance > rangeLuminance2) return colorLuminance - rangeLuminance2;
+			return 0;
+		})();
+
+		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (color.toHSV()?.s || 0));
+	};
+
+	if (value instanceof Gradient) {
+		if (value.stops.length === 0) return 0;
+
+		const first = contrast(value.stops[0].color);
+		const last = contrast(value.stops[value.stops.length - 1].color);
+
+		return Math.min(first, last);
+	}
+
+	return contrast(value);
+}
 
 type MenuEntryCommon = {
 	label: string;
@@ -1314,7 +1351,7 @@ export class PivotInput extends WidgetProps {
 const widgetSubTypes = [
 	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
-	{ value: ColorButton, name: "ColorButton" },
+	{ value: ColorInput, name: "ColorInput" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },
