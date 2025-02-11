@@ -1,4 +1,4 @@
-use super::tool_prelude::*;
+use super::{ellipse_tool, tool_prelude::*};
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type};
@@ -460,12 +460,15 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 					log::error!("Could not get vector data for current layer");
 					return false;
 				};
-				let Some(starting_vector_data) = document.network_interface.compute_modified_vector(tool_data.starting_layer.unwrap()) else {
+				let Some(starting_vector_data) = document.network_interface.compute_modified_vector(starting_layer) else {
 					log::error!("Could not get vector data for other layer");
 					return false;
 				};
 
-				let current_layer_endpoint = starting_vector_data.end_point().last().unwrap();
+				let Some(starting_layer_endpoint) = starting_vector_data.end_point().last() else {
+					log::error!("Could not get endpoint");
+					return false;
+				};
 
 				let handles = (0..current_vector_data.segment_domain.handles().len())
 					.find_map(|index| {
@@ -482,21 +485,21 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 					.unwrap();
 
 				// Merge the layers first
-				merge_two_path_layer(document, tool_data.starting_layer.unwrap(), current_layer, other_layer, responses);
+				merge_non_spline_layers(document, starting_layer, current_layer, other_layer, responses);
 
 				let points = [endpoint, join_point];
-				let points2 = [start_point, current_layer_endpoint];
+				let points2 = [start_point, starting_layer_endpoint];
 				let id = SegmentId::generate();
 				let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 				responses.add(GraphOperationMessage::Vector {
-					layer: tool_data.starting_layer.unwrap(),
+					layer: starting_layer,
 					modification_type,
 				});
 
 				let id = SegmentId::generate();
 				let modification_type = VectorModificationType::InsertSegment { id, points: points2, handles };
 				responses.add(GraphOperationMessage::Vector {
-					layer: tool_data.starting_layer.unwrap(),
+					layer: starting_layer,
 					modification_type,
 				});
 			}
@@ -714,7 +717,7 @@ fn merge_two_spline_layer(document: &DocumentMessageHandler, current_layer: Laye
 	responses.add(NodeGraphMessage::RunDocumentGraph);
 	responses.add(Message::StartBuffer);
 }
-fn merge_two_path_layer(
+fn merge_non_spline_layers(
 	document: &DocumentMessageHandler,
 	starting_layer: LayerNodeIdentifier,
 	current_layer: LayerNodeIdentifier,
@@ -844,11 +847,11 @@ fn merge_two_path_layer(
 	});
 
 	responses.add(NodeGraphMessage::DeleteNodes {
-		node_ids: starting_layer_nodes[1..3].to_vec(),
+		node_ids: starting_layer_nodes[1..(if is_layer_line(document, starting_layer) { 2 } else { 3 })].to_vec(),
 		delete_children: false,
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
-		node_ids: other_layer_nodes[..3].to_vec(),
+		node_ids: other_layer_nodes[..(if is_layer_line(document, other_layer) { 2 } else { 3 })].to_vec(),
 		delete_children: false,
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
@@ -954,8 +957,14 @@ fn merge_path_spline_layer(document: &DocumentMessageHandler, current_layer: Lay
 		parent: other_layer,
 	});
 
+	let node_range = if is_layer_line(document, other_layer) {
+		1..2 // transform node is not deleted
+	} else {
+		1..3
+	};
+
 	responses.add(NodeGraphMessage::DeleteNodes {
-		node_ids: other_layer_nodes[1..3].to_vec(),
+		node_ids: other_layer_nodes[node_range].to_vec(),
 		delete_children: false,
 	});
 
@@ -987,4 +996,24 @@ fn is_layer_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 	}
 
 	has_spline
+}
+fn is_layer_line(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
+	let nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
+		.collect::<Vec<NodeId>>();
+
+	// Check node types in the chain
+	let mut has_line = false;
+
+	for node in nodes {
+		if let Some(reference) = document.network_interface.reference(&node, &[]) {
+			match reference.as_deref() {
+				Some("Line") => has_line = true,
+				_ => continue,
+			}
+		}
+	}
+
+	has_line
 }
