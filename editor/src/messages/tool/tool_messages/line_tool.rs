@@ -174,12 +174,28 @@ impl Fsm for LineToolFsmState {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				if let Some(layer) = tool_data.layer {
-					let inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line").unwrap();
-					let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (inputs[1].as_value(), inputs[2].as_value()) else {
+					let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+					let node_inputs = graph_layer.find_node_inputs("Line").expect("Tool data layer should have a Line node");
+					let transform_inputs = graph_layer.find_node_inputs("Transform");
+					let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 						return self;
 					};
 
-					let transform = document.metadata().document_to_viewport;
+					let mut transform = document.metadata().document_to_viewport;
+
+					if let Some(transform_inputs) = transform_inputs {
+						let Some(&TaggedValue::DVec2(translation)) = transform_inputs[1].as_value() else {
+							return self;
+						};
+						let Some(&TaggedValue::F64(angle)) = transform_inputs[2].as_value() else {
+							return self;
+						};
+						let Some(&TaggedValue::DVec2(scale)) = transform_inputs[3].as_value() else {
+							return self;
+						};
+
+						transform = transform * DAffine2::from_scale_angle_translation(scale, angle, translation);
+					}
 
 					tool_data.line_start = Some(start);
 					tool_data.line_end = Some(end);
