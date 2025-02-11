@@ -224,27 +224,27 @@ impl Fsm for RectangleToolFsmState {
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
-						// TODO: make the scale impact the rect node
 						let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
 							return self;
 						};
-
+						debug!("Untransformed Start: {:?}, End: {:?}", start, end);
+						let [start, end] = [start, end].map(|point| document.metadata().document_to_viewport.inverse().transform_point2(point));
+						debug!("Start: {:?}, End: {:?}", start, end);
+						let (scale, angle, translation) = (DVec2::ONE, 0., (start + end) / 2.);
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 1),
-							input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
+							input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
 						});
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 2),
-							input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
+							input: NodeInput::value(TaggedValue::F64(((start.y - end.y) / 2.).abs()), false),
 						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_translation((start + end) / 2.),
+							transform: DAffine2::from_scale_angle_translation(scale, angle, translation),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 
