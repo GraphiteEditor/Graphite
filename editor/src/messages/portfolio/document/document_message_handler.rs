@@ -948,6 +948,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SelectedLayersRaiseToFront => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN });
 			}
+			DocumentMessage::SelectedLayersReverse => {
+				self.selected_layers_reverse(responses);
+			}
 			DocumentMessage::SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
@@ -2147,6 +2150,98 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(layers_panel_control_bar),
 			layout_target: LayoutTarget::LayersPanelControlBar,
 		});
+	}
+
+	pub fn selected_layers_reverse(&mut self, responses: &mut VecDeque<Message>) {
+		let selected_layers = self.network_interface.selected_nodes(&[]).unwrap();
+		let metadata = self.metadata();
+		let selected_layer_set = selected_layers.selected_layers(metadata).collect::<HashSet<_>>();
+
+		// Ignore those with selected ancestors
+		let mut top_level_layers = Vec::new();
+		for &layer in &selected_layer_set {
+			let mut is_top_level = true;
+			let mut current_layer = layer;
+
+			while let Some(parent) = current_layer.parent(metadata) {
+				if selected_layer_set.contains(&parent) {
+					is_top_level = false;
+					break;
+				}
+				current_layer = parent;
+			}
+
+			if is_top_level {
+				top_level_layers.push(layer);
+			}
+		}
+
+		// Group selected layers by their parent
+		let mut grouped_layers: HashMap<LayerNodeIdentifier, Vec<(usize, LayerNodeIdentifier)>> = HashMap::new();
+		for &layer in &top_level_layers {
+			if let Some(parent) = layer.parent(metadata) {
+				let index = parent.children(metadata).position(|child| child == layer).unwrap_or(usize::MAX);
+
+				grouped_layers.entry(parent).or_default().push((index, layer));
+			}
+		}
+
+		let mut modified = false;
+
+		// Process each group separately
+		for (parent, mut layers) in grouped_layers {
+			// Retrieve all children under the parent
+			let all_children = parent.children(metadata).collect::<Vec<_>>();
+
+			// Separate unselected layers with their original indices
+			let unselected_layers = all_children
+				.iter()
+				.enumerate()
+				.filter_map(|(index, &layer)| if !selected_layer_set.contains(&layer) { Some((index, layer)) } else { None })
+				.collect::<Vec<_>>();
+
+			layers.sort_by_key(|(index, _)| *index);
+
+			let reversed_layers = layers.iter().rev().map(|(_, layer)| *layer).collect::<Vec<_>>();
+			let selected_positions = layers.iter().map(|(index, _)| *index).collect::<Vec<_>>();
+			let selected_iter = reversed_layers.into_iter();
+			let mut merged_layers = vec![None; all_children.len()];
+
+			for (&original_index, new_layer) in selected_positions.iter().zip(selected_iter) {
+				merged_layers[original_index] = Some(new_layer);
+			}
+
+			// Place unselected layers at their original positions
+			for (index, layer) in unselected_layers {
+				if merged_layers[index].is_none() {
+					merged_layers[index] = Some(layer);
+				}
+			}
+
+			let final_layers = merged_layers.into_iter().flatten().collect::<Vec<_>>();
+			if final_layers.is_empty() {
+				continue;
+			}
+
+			if !modified {
+				responses.add(DocumentMessage::AddTransaction);
+			}
+
+			for (index, layer) in final_layers.iter().enumerate() {
+				responses.add(NodeGraphMessage::MoveLayerToStack {
+					layer: *layer,
+					parent,
+					insert_index: index,
+				});
+			}
+
+			modified = true;
+		}
+
+		if modified {
+			responses.add(NodeGraphMessage::RunDocumentGraph);
+			responses.add(NodeGraphMessage::SendGraph);
+		}
 	}
 
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
