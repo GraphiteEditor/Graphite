@@ -142,7 +142,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 			if !using_path_tool {
 				*selected.pivot = selected.mean_average_of_pivots();
-				self.grab_target = selected.mean_average_of_pivots();
+				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());
 			} else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
@@ -154,6 +154,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					*selected.pivot = new_pivot;
 
 					self.grab_target = grab_target;
+
+					self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(grab_target);
 				} else {
 					log::warn!("Failed to calculate pivot.");
 				}
@@ -161,6 +163,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 			*mouse_position = input.mouse.position;
 			*start_mouse = input.mouse.position;
+
 			selected.original_transforms.clear();
 
 			selected.responses.add(DocumentMessage::StartTransaction);
@@ -191,7 +194,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Grabbing(translation) => {
 							let translation = translation.to_dvec(document_to_viewport, self.increments);
 							let viewport_translate = document_to_viewport.transform_vector2(translation);
-							let quad = Quad::from_box([self.grab_target, self.grab_target + viewport_translate]).0;
+							let pivot = document_to_viewport.transform_point2(self.grab_target);
+							let quad = Quad::from_box([pivot, pivot + viewport_translate]).0;
 							let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
@@ -305,7 +309,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let bottom_right = DVec2::new(handle.x, last_point.y);
 				self.local = false;
 				self.layer_bounding_box = Quad::from_box([top_left, bottom_right]);
-				self.grab_target = handle;
+				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(handle);
 				self.pivot = last_point;
 				self.handle = handle;
 
