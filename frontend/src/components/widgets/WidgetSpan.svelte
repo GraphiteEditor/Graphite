@@ -8,13 +8,13 @@
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
-	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import ImageButton from "@graphite/components/widgets/buttons/ImageButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
+	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
@@ -87,9 +87,9 @@
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
-		{@const colorInput = narrowWidgetProps(component.props, "ColorButton")}
+		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
-			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
+			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}

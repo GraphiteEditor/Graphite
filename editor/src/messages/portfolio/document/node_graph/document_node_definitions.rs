@@ -3303,7 +3303,7 @@ fn static_input_properties() -> InputProperties {
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
-			let gradient_row = node_properties::color_widget(document_node, node_id, index, input_name, ColorButton::default().allow_none(false), true);
+			let gradient_row = node_properties::color_widget(document_node, node_id, index, input_name, ColorInput::default().allow_none(false), true);
 			Ok(vec![gradient_row])
 		}),
 	);
@@ -3329,7 +3329,7 @@ fn static_input_properties() -> InputProperties {
 		"mask_stencil".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
-			let mask = node_properties::color_widget(document_node, node_id, index, input_name, ColorButton::default(), true);
+			let mask = node_properties::color_widget(document_node, node_id, index, input_name, ColorInput::default(), true);
 			Ok(vec![mask])
 		}),
 	);
@@ -3403,7 +3403,7 @@ fn static_input_properties() -> InputProperties {
 				node_id,
 				index,
 				input_name,
-				ColorButton::default().allow_none(false),
+				ColorInput::default().allow_none(false),
 				true,
 			)])
 		}),
