@@ -108,14 +108,12 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
-pub const COLOR_OVERLAY_BLUE_TRANSLUCENT: &str = "#00a8ff77";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_LABEL_BACKGROUND: &str = "#000000cc";
-pub const COLOR_OVERLAY_TRANSPARENT: &str = "#ffffff00";
 
 // DOCUMENT
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";

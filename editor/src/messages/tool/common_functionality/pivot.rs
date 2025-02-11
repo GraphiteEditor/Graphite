@@ -9,7 +9,7 @@ use crate::messages::prelude::*;
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
-use std::f64::consts::TAU;
+use std::f64::consts::FRAC_PI_2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompassRoseState {
@@ -21,12 +21,40 @@ pub enum CompassRoseState {
 	None,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum Axis {
+	#[default]
+	None,
+	X,
+	Y,
+}
+
+impl Axis {
+	pub fn is_constraint(&self) -> bool {
+		matches!(self, Self::X | Self::Y)
+	}
+}
+
 impl CompassRoseState {
 	pub fn can_grab(&self) -> bool {
 		matches!(self, Self::HoverRing | Self::AxisX | Self::AxisY)
 	}
+
 	pub fn is_pivot(&self) -> bool {
 		matches!(self, Self::Pivot)
+	}
+
+	pub fn is_ring(&self) -> bool {
+		matches!(self, Self::HoverRing | Self::MainRing)
+	}
+
+	pub fn axis_type(&self) -> Axis {
+		match self {
+			CompassRoseState::AxisX => Axis::X,
+			CompassRoseState::AxisY => Axis::Y,
+			CompassRoseState::HoverRing => Axis::None,
+			_ => unreachable!(),
+		}
 	}
 }
 
@@ -61,6 +89,10 @@ impl Pivot {
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		let layer_transform = document.metadata().transform_to_viewport(layer);
 		layer_transform * bounds_transform
+	}
+
+	pub fn get_position(&self) -> Option<DVec2> {
+		self.pivot
 	}
 
 	/// Recomputes the pivot position and transform.
@@ -103,9 +135,8 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, mouse_position: DVec2) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, show_hover_ring: bool) {
 		self.recalculate_pivot(document);
-		let show_hover_ring = matches!(self.is_over(mouse_position, angle), CompassRoseState::HoverRing | CompassRoseState::MainRing);
 		if let Some(pivot) = self.pivot {
 			overlay_context.pivot(pivot, angle, show_hover_ring);
 		}
@@ -146,7 +177,7 @@ impl Pivot {
 	}
 
 	/// Answers if the pointer is currently positioned over the pivot.
-	pub fn is_over(&self, mouse: DVec2, angle: f64) -> CompassRoseState {
+	pub fn compass_rose_state(&self, mouse: DVec2, angle: f64) -> CompassRoseState {
 		match self.pivot {
 			None => CompassRoseState::None,
 			Some(pivot) => {
@@ -154,13 +185,13 @@ impl Pivot {
 				let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
 
 				for i in 0..4 {
-					let base_angle = i as f64 * TAU / 4.0 + angle;
+					let base_angle = i as f64 * FRAC_PI_2 + angle;
 					let direction = DVec2::from_angle(base_angle);
 
 					let arrow_base = pivot + direction * ring_radius;
 					let arrow_tip = arrow_base + direction * COMPASS_ROSE_ARROW_SIZE;
 
-					let perp = DVec2::from_angle(base_angle + TAU / 4.) * COMPASS_ROSE_ARROW_SIZE / 2.;
+					let perp = direction.perp() * COMPASS_ROSE_ARROW_SIZE / 2.;
 					let side1 = arrow_base + perp;
 					let side2 = arrow_base - perp;
 

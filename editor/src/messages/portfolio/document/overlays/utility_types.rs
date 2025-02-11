@@ -1,7 +1,6 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_TRANSLUCENT, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS,
 };
 use crate::consts::{COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER};
 use crate::messages::prelude::Message;
@@ -295,9 +294,15 @@ impl OverlayContext {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
+		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
+			.unwrap()
+			.with_alpha(0.05)
+			.rgba_hex();
+		fill_color.insert(0, '#');
+		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
-		self.circle(start, radius, Some(COLOR_OVERLAY_TRANSPARENT), None);
-		self.circle(start, radius * scale.abs(), Some(COLOR_OVERLAY_TRANSPARENT), None);
+		self.circle(start, radius, fill_color, None);
+		self.circle(start, radius * scale.abs(), fill_color, None);
 		self.text(
 			text,
 			COLOR_OVERLAY_BLUE,
@@ -343,29 +348,6 @@ impl OverlayContext {
 
 		let old_line_width = self.render_context.line_width();
 
-		if show_hover_ring {
-			self.render_context.set_line_width((COMPASS_ROSE_HOVER_RING_DIAMETER - COMPASS_ROSE_MAIN_RING_DIAMETER) / 2.);
-			self.render_context.begin_path();
-			self.render_context
-				.arc(position.x, position.y, (COMPASS_ROSE_MAIN_RING_DIAMETER + COMPASS_ROSE_HOVER_RING_DIAMETER) / 4., 0., TAU)
-				.expect("Failed to draw outer circle");
-			self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE_TRANSLUCENT);
-			self.render_context.stroke();
-		}
-
-		self.render_context.set_line_width(2.);
-		self.render_context.begin_path();
-		self.render_context
-			.arc(position.x, position.y, (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2., 0., TAU)
-			.expect("Failed to draw inner circle");
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.stroke();
-
-		self.render_context.set_line_width(1.);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE);
-
-		// Draw 4 arrows at cardinal directions
 		let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
 
 		for i in 0..4 {
@@ -374,7 +356,7 @@ impl OverlayContext {
 			let perpendicular = DVec2::from_angle(base_angle + TAU / 4.);
 			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
 
-			let base = DVec2::new(x, y) + direction * ring_radius;
+			let base = DVec2::new(x, y) + direction * (ring_radius - COMPASS_ROSE_ARROW_SIZE * 0.1);
 
 			self.render_context.begin_path();
 
@@ -389,7 +371,37 @@ impl OverlayContext {
 			self.render_context.close_path();
 			self.render_context.set_fill_style_str(color);
 			self.render_context.fill();
+			self.render_context.set_stroke_style_str(color);
+			self.render_context.stroke();
 		}
+
+		if show_hover_ring {
+			let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+				.unwrap()
+				.with_alpha(0.3)
+				.rgba_hex();
+			fill_color.insert(0, '#');
+
+			self.render_context.set_line_width((COMPASS_ROSE_HOVER_RING_DIAMETER - COMPASS_ROSE_MAIN_RING_DIAMETER) / 2.);
+			self.render_context.begin_path();
+			self.render_context
+				.arc(position.x, position.y, (COMPASS_ROSE_MAIN_RING_DIAMETER + COMPASS_ROSE_HOVER_RING_DIAMETER) / 4., 0., TAU)
+				.expect("Failed to draw outer circle");
+			self.render_context.set_stroke_style_str(fill_color.as_str());
+			self.render_context.stroke();
+		}
+
+		self.render_context.set_line_width(2.);
+		self.render_context.begin_path();
+		self.render_context
+			.arc(position.x, position.y, (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2., 0., TAU)
+			.expect("Failed to draw inner circle");
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.stroke();
+
+		self.render_context.set_line_width(1.);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE);
 
 		self.render_context.set_line_width(old_line_width);
 

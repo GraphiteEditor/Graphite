@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_INCREMENT, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_INCREMENT, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::pivot::{CompassRoseState, Pivot};
+use crate::messages::tool::common_functionality::pivot::{Axis, Pivot};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -268,14 +268,6 @@ impl ToolTransition for SelectTool {
 			..Default::default()
 		}
 	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
-pub enum Axis {
-	#[default]
-	None,
-	X,
-	Y,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -555,8 +547,30 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounds| transform * Quad::from_box(bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
+				let compass_rose_state = tool_data.pivot.compass_rose_state(mouse_position, angle);
+				let show_hover_ring = compass_rose_state.is_ring();
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, mouse_position);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_hover_ring);
+				if let SelectToolFsmState::Dragging { axis } = self {
+					if axis.is_constraint() {
+						let e0 = tool_data
+							.bounding_box_manager
+							.as_ref()
+							.map(|man| man.transform * Quad::from_box(man.bounds))
+							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
+
+						let origin = tool_data.pivot.get_position().unwrap_or(tool_data.drag_start);
+						let (direction, color) = match axis {
+							Axis::X => (e0, COLOR_OVERLAY_RED),
+							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+							_ => unreachable!(),
+						};
+
+						let viewport_diagonal = input.viewport_bounds.size().length();
+
+						overlay_context.line(origin - direction * viewport_diagonal, origin + direction * viewport_diagonal, Some(color));
+					}
+				}
 
 				// Check if the tool is in selection mode
 				if let Self::Drawing { selection_shape } = self {
@@ -693,11 +707,11 @@ impl Fsm for SelectToolFsmState {
 					.as_ref()
 					.map(|man| man.transform * Quad::from_box(man.bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
-				let compass_ross_state = tool_data.pivot.is_over(input.mouse.position, angle);
+				let compass_rose_state = tool_data.pivot.compass_rose_state(input.mouse.position, angle);
 
 				let state =
 				// Dragging the pivot
-				if compass_ross_state.is_pivot() {
+				if compass_rose_state.is_pivot() {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
@@ -775,7 +789,7 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::RotatingBounds
 				}
 				// Dragging the selected layers around to transform them
-				else if compass_ross_state.can_grab() || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+				else if compass_rose_state.can_grab() || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
@@ -787,13 +801,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
-					let axis = match compass_ross_state{
-						CompassRoseState::AxisX => Axis::X,
-						CompassRoseState::AxisY => Axis::Y,
-						CompassRoseState::HoverRing => Axis::None,
-						_ => unreachable!()
-					};
-
+					let axis = compass_rose_state.axis_type();
 					SelectToolFsmState::Dragging{axis}
 				}
 				// Dragging a selection box
@@ -1042,7 +1050,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|man| man.transform * Quad::from_box(man.bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.is_over(input.mouse.position, angle).is_pivot() {
+				if tool_data.pivot.compass_rose_state(input.mouse.position, angle).is_pivot() {
 					cursor = MouseCursorIcon::Move;
 				}
 
