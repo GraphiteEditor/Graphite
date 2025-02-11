@@ -215,13 +215,10 @@ impl Fsm for LineToolFsmState {
 					tool_data.start_click = (tool_data.drag_start.y - start.y).abs() < threshold_y && (tool_data.drag_start.x - start.x).abs() < threshold_x;
 					tool_data.end_click = (tool_data.drag_start.y - end.y).abs() < threshold_y && (tool_data.drag_start.x - end.x).abs() < threshold_x;
 
-					if tool_data.start_click {
-						tool_data.drag_start = end;
-					} else if tool_data.end_click {
-						tool_data.drag_start = start;
+					if tool_data.start_click || tool_data.end_click {
+						tool_data.drag_start = if tool_data.start_click { end } else { start };
+						return LineToolFsmState::Editing;
 					}
-
-					return LineToolFsmState::Editing;
 				};
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -310,14 +307,18 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
-				tool_data.layer = None;
+				tool_data.layer.take();
 				LineToolFsmState::Ready
 			}
-			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::Abort) => {
-				tool_data.layer.take();
+			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.layer = None;
+				tool_data.layer.take();
+				LineToolFsmState::Ready
+			}
+			(LineToolFsmState::Editing, LineToolMessage::Abort) => {
+				tool_data.snap_manager.cleanup(responses);
+				tool_data.layer.take();
 				LineToolFsmState::Ready
 			}
 			(_, LineToolMessage::WorkingColorChanged) => {
