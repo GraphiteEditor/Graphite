@@ -272,8 +272,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 				}
 			}
-			DocumentMessage::ClearArtboards => {
-				responses.add(GraphOperationMessage::ClearArtboards);
+			DocumentMessage::RemoveArtboards => {
+				responses.add(GraphOperationMessage::RemoveArtboards);
 			}
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
@@ -304,9 +304,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					insert_index,
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
-			}
-			DocumentMessage::DebugPrintDocument => {
-				info!("{:?}", self.network_interface);
 			}
 			DocumentMessage::DeleteNode { node_id } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1340,7 +1337,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			CreateEmptyFolder,
-			DebugPrintDocument,
 			DeselectAllLayers,
 			GraphViewOverlayToggle,
 			Noop,

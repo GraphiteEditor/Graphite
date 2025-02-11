@@ -1822,7 +1822,7 @@ impl NodeGraphMessageHandler {
 		// If only one node is selected then show the preview or stop previewing button
 		if let Some(node_id) = previewing {
 			let button = TextButton::new("End Preview")
-				.icon(Some("Rescale".to_string()))
+				.icon(Some("FrameAll".to_string()))
 				.tooltip("Restore preview to the graph output")
 				.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 				.widget_holder();
@@ -1834,7 +1834,7 @@ impl NodeGraphMessageHandler {
 				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
 			if selection_is_not_already_the_output && no_other_selections {
 				let button = TextButton::new("Preview")
-					.icon(Some("Rescale".to_string()))
+					.icon(Some("FrameAll".to_string()))
 					.tooltip("Preview selected node/layer (Shortcut: Alt-click node/layer)")
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 					.widget_holder();

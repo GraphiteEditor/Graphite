@@ -37,10 +37,9 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	ClearArtboards,
+	RemoveArtboards,
 	ClearLayersPanel,
 	CreateEmptyFolder,
-	DebugPrintDocument,
 	DeleteNode {
 		node_id: NodeId,
 	},

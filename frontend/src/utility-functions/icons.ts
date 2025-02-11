@@ -104,25 +104,37 @@ import BooleanIntersect from "@graphite-frontend/assets/icon-16px-solid/boolean-
 import BooleanSubtractBack from "@graphite-frontend/assets/icon-16px-solid/boolean-subtract-back.svg";
 import BooleanSubtractFront from "@graphite-frontend/assets/icon-16px-solid/boolean-subtract-front.svg";
 import BooleanUnion from "@graphite-frontend/assets/icon-16px-solid/boolean-union.svg";
+import Bug from "@graphite-frontend/assets/icon-16px-solid/bug.svg";
 import CheckboxChecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-checked.svg";
 import CheckboxUnchecked from "@graphite-frontend/assets/icon-16px-solid/checkbox-unchecked.svg";
+import CloseAll from "@graphite-frontend/assets/icon-16px-solid/close-all.svg";
+import Close from "@graphite-frontend/assets/icon-16px-solid/close.svg";
+import Code from "@graphite-frontend/assets/icon-16px-solid/code.svg";
 import Copy from "@graphite-frontend/assets/icon-16px-solid/copy.svg";
 import Credits from "@graphite-frontend/assets/icon-16px-solid/credits.svg";
 import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
 import Cut from "@graphite-frontend/assets/icon-16px-solid/cut.svg";
+import DeselectAll from "@graphite-frontend/assets/icon-16px-solid/deselect-all.svg";
 import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
+import Empty from "@graphite-frontend/assets/icon-16px-solid/empty.svg";
 import EyeHidden from "@graphite-frontend/assets/icon-16px-solid/eye-hidden.svg";
 import EyeHide from "@graphite-frontend/assets/icon-16px-solid/eye-hide.svg";
 import EyeShow from "@graphite-frontend/assets/icon-16px-solid/eye-show.svg";
 import EyeVisible from "@graphite-frontend/assets/icon-16px-solid/eye-visible.svg";
 import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
+import FileExport from "@graphite-frontend/assets/icon-16px-solid/file-export.svg";
+import FileImport from "@graphite-frontend/assets/icon-16px-solid/file-import.svg";
 import File from "@graphite-frontend/assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@graphite-frontend/assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@graphite-frontend/assets/icon-16px-solid/flip-vertical.svg";
 import Folder from "@graphite-frontend/assets/icon-16px-solid/folder.svg";
+import FrameAll from "@graphite-frontend/assets/icon-16px-solid/frame-all.svg";
+import FrameSelected from "@graphite-frontend/assets/icon-16px-solid/frame-selected.svg";
 import GraphViewClosed from "@graphite-frontend/assets/icon-16px-solid/graph-view-closed.svg";
 import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-open.svg";
 import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
+import HistoryRedo from "@graphite-frontend/assets/icon-16px-solid/history-redo.svg";
+import HistoryUndo from "@graphite-frontend/assets/icon-16px-solid/history-undo.svg";
 import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
@@ -148,16 +160,29 @@ import Paste from "@graphite-frontend/assets/icon-16px-solid/paste.svg";
 import PinActive from "@graphite-frontend/assets/icon-16px-solid/pin-active.svg";
 import PinInactive from "@graphite-frontend/assets/icon-16px-solid/pin-inactive.svg";
 import Random from "@graphite-frontend/assets/icon-16px-solid/random.svg";
-import Regenerate from "@graphite-frontend/assets/icon-16px-solid/regenerate.svg";
 import Reload from "@graphite-frontend/assets/icon-16px-solid/reload.svg";
-import Rescale from "@graphite-frontend/assets/icon-16px-solid/rescale.svg";
 import Reset from "@graphite-frontend/assets/icon-16px-solid/reset.svg";
+import Resync from "@graphite-frontend/assets/icon-16px-solid/resync.svg";
 import ReverseRadialGradientToLeft from "@graphite-frontend/assets/icon-16px-solid/reverse-radial-gradient-to-left.svg";
 import ReverseRadialGradientToRight from "@graphite-frontend/assets/icon-16px-solid/reverse-radial-gradient-to-right.svg";
 import Reverse from "@graphite-frontend/assets/icon-16px-solid/reverse.svg";
+import Save from "@graphite-frontend/assets/icon-16px-solid/save.svg";
+import SelectAll from "@graphite-frontend/assets/icon-16px-solid/select-all.svg";
 import Settings from "@graphite-frontend/assets/icon-16px-solid/settings.svg";
+import SmallDot from "@graphite-frontend/assets/icon-16px-solid/small-dot.svg";
+import StackBottom from "@graphite-frontend/assets/icon-16px-solid/stack-bottom.svg";
+import StackHollow from "@graphite-frontend/assets/icon-16px-solid/stack-hollow.svg";
+import StackLower from "@graphite-frontend/assets/icon-16px-solid/stack-lower.svg";
+import StackRaise from "@graphite-frontend/assets/icon-16px-solid/stack-raise.svg";
+import StackReverse from "@graphite-frontend/assets/icon-16px-solid/stack-reverse.svg";
 import Stack from "@graphite-frontend/assets/icon-16px-solid/stack.svg";
+import TiltReset from "@graphite-frontend/assets/icon-16px-solid/tilt-reset.svg";
+import Tilt from "@graphite-frontend/assets/icon-16px-solid/tilt.svg";
+import TransformationGrab from "@graphite-frontend/assets/icon-16px-solid/transformation-grab.svg";
+import TransformationRotate from "@graphite-frontend/assets/icon-16px-solid/transformation-rotate.svg";
+import TransformationScale from "@graphite-frontend/assets/icon-16px-solid/transformation-scale.svg";
 import Trash from "@graphite-frontend/assets/icon-16px-solid/trash.svg";
+import UserManual from "@graphite-frontend/assets/icon-16px-solid/user-manual.svg";
 import ViewModeNormal from "@graphite-frontend/assets/icon-16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@graphite-frontend/assets/icon-16px-solid/view-mode-outline.svg";
 import ViewModePixels from "@graphite-frontend/assets/icon-16px-solid/view-mode-pixels.svg";
@@ -168,6 +193,8 @@ import Volunteer from "@graphite-frontend/assets/icon-16px-solid/volunteer.svg";
 import Website from "@graphite-frontend/assets/icon-16px-solid/website.svg";
 import WorkingColorsPrimary from "@graphite-frontend/assets/icon-16px-solid/working-colors-primary.svg";
 import WorkingColorsSecondary from "@graphite-frontend/assets/icon-16px-solid/working-colors-secondary.svg";
+import Zoom1x from "@graphite-frontend/assets/icon-16px-solid/zoom-1x.svg";
+import Zoom2x from "@graphite-frontend/assets/icon-16px-solid/zoom-2x.svg";
 import ZoomIn from "@graphite-frontend/assets/icon-16px-solid/zoom-in.svg";
 import ZoomOut from "@graphite-frontend/assets/icon-16px-solid/zoom-out.svg";
 import ZoomReset from "@graphite-frontend/assets/icon-16px-solid/zoom-reset.svg";
@@ -186,25 +213,37 @@ const SOLID_16PX = {
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },
 	BooleanSubtractFront: { svg: BooleanSubtractFront, size: 16 },
 	BooleanUnion: { svg: BooleanUnion, size: 16 },
+	Bug: { svg: Bug, size: 16 },
 	CheckboxChecked: { svg: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { svg: CheckboxUnchecked, size: 16 },
+	Close: { svg: Close, size: 16 },
+	CloseAll: { svg: CloseAll, size: 16 },
+	Code: { svg: Code, size: 16 },
 	Copy: { svg: Copy, size: 16 },
 	Credits: { svg: Credits, size: 16 },
 	CustomColor: { svg: CustomColor, size: 16 },
 	Cut: { svg: Cut, size: 16 },
+	DeselectAll: { svg: DeselectAll, size: 16 },
 	Edit: { svg: Edit, size: 16 },
+	Empty: { svg: Empty, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
 	EyeHidden: { svg: EyeHidden, size: 16 },
 	EyeHide: { svg: EyeHide, size: 16 },
 	EyeShow: { svg: EyeShow, size: 16 },
 	EyeVisible: { svg: EyeVisible, size: 16 },
 	File: { svg: File, size: 16 },
+	FileExport: { svg: FileExport, size: 16 },
+	FileImport: { svg: FileImport, size: 16 },
 	FlipHorizontal: { svg: FlipHorizontal, size: 16 },
 	FlipVertical: { svg: FlipVertical, size: 16 },
 	Folder: { svg: Folder, size: 16 },
+	FrameAll: { svg: FrameAll, size: 16 },
+	FrameSelected: { svg: FrameSelected, size: 16 },
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
 	GraphViewClosed: { svg: GraphViewClosed, size: 16 },
 	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
+	HistoryRedo: { svg: HistoryRedo, size: 16 },
+	HistoryUndo: { svg: HistoryUndo, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },
 	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
@@ -230,16 +269,29 @@ const SOLID_16PX = {
 	PinActive: { svg: PinActive, size: 16 },
 	PinInactive: { svg: PinInactive, size: 16 },
 	Random: { svg: Random, size: 16 },
-	Regenerate: { svg: Regenerate, size: 16 },
 	Reload: { svg: Reload, size: 16 },
-	Rescale: { svg: Rescale, size: 16 },
 	Reset: { svg: Reset, size: 16 },
+	Resync: { svg: Resync, size: 16 },
 	Reverse: { svg: Reverse, size: 16 },
 	ReverseRadialGradientToLeft: { svg: ReverseRadialGradientToLeft, size: 16 },
 	ReverseRadialGradientToRight: { svg: ReverseRadialGradientToRight, size: 16 },
+	Save: { svg: Save, size: 16 },
+	SelectAll: { svg: SelectAll, size: 16 },
 	Settings: { svg: Settings, size: 16 },
+	SmallDot: { svg: SmallDot, size: 16 },
 	Stack: { svg: Stack, size: 16 },
+	StackBottom: { svg: StackBottom, size: 16 },
+	StackHollow: { svg: StackHollow, size: 16 },
+	StackLower: { svg: StackLower, size: 16 },
+	StackRaise: { svg: StackRaise, size: 16 },
+	StackReverse: { svg: StackReverse, size: 16 },
+	Tilt: { svg: Tilt, size: 16 },
+	TiltReset: { svg: TiltReset, size: 16 },
+	TransformationGrab: { svg: TransformationGrab, size: 16 },
+	TransformationRotate: { svg: TransformationRotate, size: 16 },
+	TransformationScale: { svg: TransformationScale, size: 16 },
 	Trash: { svg: Trash, size: 16 },
+	UserManual: { svg: UserManual, size: 16 },
 	ViewModeNormal: { svg: ViewModeNormal, size: 16 },
 	ViewModeOutline: { svg: ViewModeOutline, size: 16 },
 	ViewModePixels: { svg: ViewModePixels, size: 16 },
@@ -250,6 +302,8 @@ const SOLID_16PX = {
 	Website: { svg: Website, size: 16 },
 	WorkingColorsPrimary: { svg: WorkingColorsPrimary, size: 16 },
 	WorkingColorsSecondary: { svg: WorkingColorsSecondary, size: 16 },
+	Zoom1x: { svg: Zoom1x, size: 16 },
+	Zoom2x: { svg: Zoom2x, size: 16 },
 	ZoomIn: { svg: ZoomIn, size: 16 },
 	ZoomOut: { svg: ZoomOut, size: 16 },
 	ZoomReset: { svg: ZoomReset, size: 16 },

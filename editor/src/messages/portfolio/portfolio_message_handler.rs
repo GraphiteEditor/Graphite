@@ -3,6 +3,7 @@ use super::document::utility_types::network_interface::{self, InputConnector, Ou
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -28,6 +29,7 @@ pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
 #[derive(Debug, Default)]
@@ -45,7 +47,12 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData { ipp, preferences, current_tool } = data;
+		let PortfolioMessageData {
+			ipp,
+			preferences,
+			current_tool,
+			message_logging_verbosity,
+		} = data;
 
 		match message {
 			// Sub-messages
@@ -55,6 +62,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let mut node_graph_open = false;
 				let mut has_selected_nodes = false;
 				let mut has_selected_layers = false;
+				let mut has_selection_history = (false, false);
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
@@ -63,6 +71,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+					has_selection_history = document
+						.network_interface
+						.network_metadata(&[])
+						.map(|metadata| {
+							let metadata = &metadata.persistent_metadata;
+							(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
+						})
+						.unwrap_or((false, false));
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -73,6 +89,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						node_graph_open,
 						has_selected_nodes,
 						has_selected_layers,
+						has_selection_history,
+						message_logging_verbosity,
 					},
 				);
 			}
