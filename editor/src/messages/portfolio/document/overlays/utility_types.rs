@@ -1,9 +1,9 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_TRANSLUCENT, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH,
-	PIVOT_CROSSHAIR_THICKNESS,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_TRANSLUCENT, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE,
+	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS,
 };
-use crate::consts::{COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_ARROW_SIZE};
+use crate::consts::{COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER};
 use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
@@ -361,33 +361,35 @@ impl OverlayContext {
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 
-self.render_context.set_line_width(1.);
-self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.set_line_width(1.);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE);
 
-// Draw 4 arrows at cardinal directions
-let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
+		// Draw 4 arrows at cardinal directions
+		let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
 
-for i in 0..4 {
-    let base_angle = i as f64 * TAU / 4.0 + angle;
-    let direction = DVec2::from_angle(base_angle);
-    let perpendicular = DVec2::from_angle(base_angle + TAU / 4.);
+		for i in 0..4 {
+			let base_angle = i as f64 * TAU / 4.0 + angle;
+			let direction = DVec2::from_angle(base_angle);
+			let perpendicular = DVec2::from_angle(base_angle + TAU / 4.);
+			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
 
-    let base = DVec2::new(x, y) + direction * ring_radius;
+			let base = DVec2::new(x, y) + direction * ring_radius;
 
-    self.render_context.begin_path();
+			self.render_context.begin_path();
 
-    let tip = base + direction * COMPASS_ROSE_ARROW_SIZE;
-    let side1 = base + perpendicular * COMPASS_ROSE_ARROW_SIZE / 2.;
-    let side2 = base - perpendicular * COMPASS_ROSE_ARROW_SIZE / 2.;
+			let tip = base + direction * COMPASS_ROSE_ARROW_SIZE;
+			let side1 = base + perpendicular * COMPASS_ROSE_ARROW_SIZE / 2.;
+			let side2 = base - perpendicular * COMPASS_ROSE_ARROW_SIZE / 2.;
 
-    self.render_context.move_to(tip.x, tip.y);
-    self.render_context.line_to(side1.x, side1.y);
-    self.render_context.line_to(side2.x, side2.y);
+			self.render_context.move_to(tip.x, tip.y);
+			self.render_context.line_to(side1.x, side1.y);
+			self.render_context.line_to(side2.x, side2.y);
 
-    self.render_context.close_path();
-    self.render_context.fill();
-}
+			self.render_context.close_path();
+			self.render_context.set_fill_style_str(color);
+			self.render_context.fill();
+		}
 
 		self.render_context.set_line_width(old_line_width);
 

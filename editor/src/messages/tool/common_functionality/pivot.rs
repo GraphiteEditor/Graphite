@@ -1,7 +1,7 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
 use super::graph_modification_utils;
-use crate::consts::{COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
+use crate::consts::{COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -9,6 +9,7 @@ use crate::messages::prelude::*;
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
+use std::f64::consts::TAU;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompassRoseState {
@@ -18,6 +19,15 @@ pub enum CompassRoseState {
 	AxisX,
 	AxisY,
 	None,
+}
+
+impl CompassRoseState {
+	pub fn can_grab(&self) -> bool {
+		matches!(self, Self::HoverRing | Self::AxisX | Self::AxisY)
+	}
+	pub fn is_pivot(&self) -> bool {
+		matches!(self, Self::Pivot)
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -95,7 +105,7 @@ impl Pivot {
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, mouse_position: DVec2) {
 		self.recalculate_pivot(document);
-		let show_hover_ring = matches!(self.is_over(mouse_position), CompassRoseState::HoverRing | CompassRoseState::MainRing);
+		let show_hover_ring = matches!(self.is_over(mouse_position, angle), CompassRoseState::HoverRing | CompassRoseState::MainRing);
 		if let Some(pivot) = self.pivot {
 			overlay_context.pivot(pivot, angle, show_hover_ring);
 		}
@@ -136,11 +146,28 @@ impl Pivot {
 	}
 
 	/// Answers if the pointer is currently positioned over the pivot.
-	pub fn is_over(&self, mouse: DVec2) -> CompassRoseState {
+	pub fn is_over(&self, mouse: DVec2, angle: f64) -> CompassRoseState {
 		match self.pivot {
 			None => CompassRoseState::None,
 			Some(pivot) => {
 				let distance_squared = mouse.distance_squared(pivot);
+				let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
+
+				for i in 0..4 {
+					let base_angle = i as f64 * TAU / 4.0 + angle;
+					let direction = DVec2::from_angle(base_angle);
+
+					let arrow_base = pivot + direction * ring_radius;
+					let arrow_tip = arrow_base + direction * COMPASS_ROSE_ARROW_SIZE;
+
+					let perp = DVec2::from_angle(base_angle + TAU / 4.) * COMPASS_ROSE_ARROW_SIZE / 2.;
+					let side1 = arrow_base + perp;
+					let side2 = arrow_base - perp;
+
+					if is_point_in_triangle(mouse, arrow_tip, side1, side2) {
+						return if i % 2 == 0 { CompassRoseState::AxisX } else { CompassRoseState::AxisY };
+					}
+				}
 				if distance_squared < (COMPASS_ROSE_PIVOT_DIAMETER / 2.).powi(2) {
 					CompassRoseState::Pivot
 				} else if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < distance_squared && distance_squared < (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) {
@@ -153,4 +180,23 @@ impl Pivot {
 			}
 		}
 	}
+}
+fn is_point_in_triangle(p: DVec2, a: DVec2, b: DVec2, c: DVec2) -> bool {
+	// Calculate barycentric coordinates
+	let v0 = c - a;
+	let v1 = b - a;
+	let v2 = p - a;
+
+	let dot00 = v0.dot(v0);
+	let dot01 = v0.dot(v1);
+	let dot02 = v0.dot(v2);
+	let dot11 = v1.dot(v1);
+	let dot12 = v1.dot(v2);
+
+	let inv_denom = 1. / (dot00 * dot11 - dot01 * dot01);
+	let u = (dot11 * dot02 - dot01 * dot12) * inv_denom;
+	let v = (dot00 * dot12 - dot01 * dot02) * inv_denom;
+
+	// Check if point is inside triangle
+	u >= 0. && v >= 0. && u + v <= 1.
 }
