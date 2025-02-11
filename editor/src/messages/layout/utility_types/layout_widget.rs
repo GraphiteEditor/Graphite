@@ -327,7 +327,7 @@ impl LayoutGroup {
 		for widget in &mut widgets {
 			let val = match &mut widget.widget {
 				Widget::CheckboxInput(x) => &mut x.tooltip,
-				Widget::ColorButton(x) => &mut x.tooltip,
+				Widget::ColorInput(x) => &mut x.tooltip,
 				Widget::CurveInput(x) => &mut x.tooltip,
 				Widget::DropdownInput(x) => &mut x.tooltip,
 				Widget::FontInput(x) => &mut x.tooltip,
@@ -498,7 +498,7 @@ impl<T> Default for WidgetCallback<T> {
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
-	ColorButton(ColorButton),
+	ColorInput(ColorInput),
 	CurveInput(CurveInput),
 	DropdownInput(DropdownInput),
 	FontInput(FontInput),
@@ -571,7 +571,7 @@ impl DiffUpdate {
 			let mut tooltip_shortcut = match &mut widget_holder.widget {
 				Widget::BreadcrumbTrailButtons(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::ColorButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+				Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::DropdownInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::FontInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
