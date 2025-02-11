@@ -153,8 +153,10 @@ struct LineToolData {
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
-	layer_start: Option<DVec2>,
-	layer_end: Option<DVec2>,
+	line_start: Option<DVec2>,
+	line_end: Option<DVec2>,
+	start_click: bool,
+	end_click: bool,
 }
 
 impl Fsm for LineToolFsmState {
@@ -179,11 +181,13 @@ impl Fsm for LineToolFsmState {
 
 					let transform = document.metadata().document_to_viewport;
 
-					tool_data.layer_start = Some(transform.transform_point2(start));
-					tool_data.layer_end = Some(transform.transform_point2(end));
+					tool_data.line_start = Some(start);
+					tool_data.line_end = Some(end);
 
-					overlay_context.square(tool_data.layer_start.unwrap(), Some(6.), None, None);
-					overlay_context.square(tool_data.layer_end.unwrap(), Some(6.), None, None);
+					if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
+						overlay_context.square(transform.transform_point2(start), Some(6.), None, None);
+						overlay_context.square(transform.transform_point2(end), Some(6.), None, None);
+					}
 				} else {
 					tool_data.layer = document
 						.network_interface
@@ -200,22 +204,24 @@ impl Fsm for LineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
 
-				if let (Some(start), Some(end)) = (tool_data.layer_start, tool_data.layer_end) {
+				if let (Some(start), Some(end)) = (tool_data.line_start, tool_data.line_end) {
 					let transform = document.metadata().document_to_viewport;
+
 					let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
 					let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-
 					let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
 					let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
 
-					let start_bool = (tool_data.drag_start.y - start.y).abs() < threshold_y && (tool_data.drag_start.x - start.x).abs() < threshold_x;
-					let end_bool = (tool_data.drag_start.y - end.y).abs() < threshold_y && (tool_data.drag_start.x - end.x).abs() < threshold_x;
+					tool_data.start_click = (tool_data.drag_start.y - start.y).abs() < threshold_y && (tool_data.drag_start.x - start.x).abs() < threshold_x;
+					tool_data.end_click = (tool_data.drag_start.y - end.y).abs() < threshold_y && (tool_data.drag_start.x - end.x).abs() < threshold_x;
 
-					debug!("Start: {:?}, End: {:?}", start_bool, end_bool);
-
-					if start_bool || end_bool {
-						return LineToolFsmState::Editing;
+					if tool_data.start_click {
+						tool_data.drag_start = end;
+					} else if tool_data.end_click {
+						tool_data.drag_start = start;
 					}
+
+					return LineToolFsmState::Editing;
 				};
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -245,13 +251,31 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::Drawing
 			}
-			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
+			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
 				tool_data.drag_current = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let keyboard = &input.keyboard;
 				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
 				let snap_data = SnapData::ignore(document, input, &ignore);
-				generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center), responses);
+				let mut document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+
+				if tool_data.start_click {
+					document_points.swap(0, 1);
+				}
+
+				let Some(node_id) = graph_modification_utils::get_line_id(tool_data.layer.unwrap(), &document.network_interface) else {
+					return LineToolFsmState::Ready;
+				};
+
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, 1),
+					input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
+				});
+				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, 2),
+					input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
 				let messages = [
@@ -260,28 +284,18 @@ impl Fsm for LineToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				LineToolFsmState::Drawing
-			}
-			(LineToolFsmState::Editing, LineToolMessage::PointerMove { center, lock_angle, snap_angle }) => {
-				tool_data.drag_current = input.mouse.position;
-				let keyboard = &input.keyboard;
-				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
-				let snap_data = SnapData::ignore(document, input, &ignore);
-				debug!("Editing line");
-				generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center), responses);
-
-				LineToolFsmState::Editing
+				self
 			}
 			(_, LineToolMessage::PointerMove { .. }) => {
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
+			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
-				LineToolFsmState::Drawing
+				self
 			}
 			(state, LineToolMessage::PointerOutsideViewport { center, lock_angle, snap_angle }) => {
 				// Auto-panning
@@ -293,13 +307,13 @@ impl Fsm for LineToolFsmState {
 
 				state
 			}
-			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
+			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
 				tool_data.layer = None;
 				LineToolFsmState::Ready
 			}
-			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
+			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::Abort) => {
 				tool_data.layer.take();
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::AbortTransaction);
@@ -351,7 +365,7 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool, responses: &mut VecDeque<Message>) {
+fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
@@ -411,18 +425,5 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 		snap.update_indicator(snapped);
 	}
 
-	let Some(node_id) = graph_modification_utils::get_line_id(tool_data.layer.unwrap(), &snap_data.document.network_interface) else {
-		return;
-	};
-
-	responses.add(NodeGraphMessage::SetInput {
-		input_connector: InputConnector::node(node_id, 1),
-		input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
-	});
-	responses.add(NodeGraphMessage::SetInput {
-		input_connector: InputConnector::node(node_id, 2),
-		input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
-	});
-
-	responses.add(NodeGraphMessage::RunDocumentGraph);
+	document_points
 }
