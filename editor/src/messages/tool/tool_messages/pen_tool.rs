@@ -299,9 +299,33 @@ impl PenToolData {
 				point.in_segment = None;
 			}
 
-			self.segment_end_before_bent = vector_data.segment_domain.ids().last().copied();
-			self.handle_mode = HandleMode::Free;
 			self.handle_end = None;
+			let last_segment = vector_data.segment_domain.ids().last();
+			let Some(last_segment) = last_segment else {
+				self.handle_mode = HandleMode::Free;
+				return;
+			};
+
+			let handle = ManipulatorPointId::EndHandle(*last_segment).get_position(&vector_data);
+			self.segment_end_before_bent = Some(*last_segment);
+
+			if !self.modifiers.lock_angle {
+				self.handle_mode = HandleMode::Free;
+				return;
+			}
+
+			let Some(handle) = handle else {
+				return;
+			};
+
+			self.angle = -(handle - last_pos).angle_to(DVec2::X);
+			if handle == last_pos {
+				// Tangent is equal to the vector from the endpoint to the one nonzero handle [https://math.stackexchange.com/questions/5032575/finding-the-tangent-direction-of-a-cubic-bezier-at-an-endpoint-shared-by-its-own]
+				if let Some(start) = ManipulatorPointId::PrimaryHandle(*last_segment).get_position(&vector_data) {
+					self.angle = -(start - last_pos).angle_to(DVec2::X);
+				}
+			}
+			self.handle_mode = HandleMode::ColinearEquidistant;
 		}
 	}
 

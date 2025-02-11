@@ -741,6 +741,7 @@ impl ShapeState {
 		equidistant: bool,
 		responses: &mut VecDeque<Message>,
 		in_viewport_space: bool,
+		opposite_handle_position: Option<DVec2>,
 	) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -792,15 +793,21 @@ impl ShapeState {
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
 				} else {
-					// TODO: Is this equivalent to `transform_to_document_space`? If changed, the before and after should be tested.
-					let transform = document.metadata().document_to_viewport.inverse() * transform_to_viewport_space;
-					let Some(other_position) = other.to_manipulator_point().get_position(&vector_data) else {
-						continue;
-					};
-					let direction = transform.transform_vector2(handle_position - anchor_position).try_normalize();
-					let opposing_handle = opposing_handles.and_then(|handles| handles.get(&other));
-					let length = opposing_handle.copied().unwrap_or_else(|| transform.transform_vector2(other_position - anchor_position).length());
-					direction.map_or(other_position - anchor_position, |direction| transform.inverse().transform_vector2(-direction * length))
+					// If the handle is very close to the anchor, return the original position
+					if (handle_position - anchor_position).length_squared() < f64::EPSILON {
+						let Some(opposite_handle_position) = opposite_handle_position else { continue };
+						opposite_handle_position - anchor_position
+					} else {
+						// TODO: Is this equivalent to `transform_to_document_space`? If changed, the before and after should be tested.
+						let transform = document.metadata().document_to_viewport.inverse() * transform_to_viewport_space;
+						let Some(other_position) = other.to_manipulator_point().get_position(&vector_data) else {
+							continue;
+						};
+						let direction = transform.transform_vector2(handle_position - anchor_position).try_normalize();
+						let opposing_handle = opposing_handles.and_then(|handles| handles.get(&other));
+						let length = opposing_handle.copied().unwrap_or_else(|| transform.transform_vector2(other_position - anchor_position).length());
+						direction.map_or(other_position - anchor_position, |direction| transform.inverse().transform_vector2(-direction * length))
+					}
 				};
 				let modification_type = other.set_relative_position(new_relative);
 
