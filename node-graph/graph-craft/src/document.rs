@@ -576,6 +576,13 @@ impl DocumentNodeImplementation {
 		}
 	}
 
+	pub fn get_proto_node(&self) -> Option<&ProtoNodeIdentifier> {
+		match self {
+			DocumentNodeImplementation::ProtoNode(p) => Some(p),
+			_ => None,
+		}
+	}
+
 	pub const fn proto(name: &'static str) -> Self {
 		Self::ProtoNode(ProtoNodeIdentifier::new(name))
 	}

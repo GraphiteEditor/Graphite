@@ -640,40 +640,28 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 
+					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node
 					if reference == "Splines from Points" {
 						document.network_interface.set_reference(node_id, &[], Some("Spline".to_string()));
 					}
 
+					// Upgrade the old "Spline" node to the new "Spline" node
 					if reference == "Spline" {
-						let node = document.network_interface.document_node(node_id, &[]).unwrap();
-
-						let match_implementation = || {
-							let DocumentNodeImplementation::ProtoNode(identifier) = document.network_interface.implementation(node_id, &[]).unwrap() else {
-								return false;
-							};
-							if identifier.name != "graphene_core::vector::generator_nodes::SplineNode" {
-								return false;
-							};
-							true
-						};
-
-						if !match_implementation() {
+						// Retrieve the proto node identifier and verify it is the old "Spline" node, otherwise skip it if this is the new "Spline" node
+						let identifier = document.network_interface.implementation(node_id, &[]).and_then(|implementation| implementation.get_proto_node());
+						if identifier.map(|identifier| &identifier.name) != Some(&"graphene_core::vector::generator_nodes::SplineNode".into()) {
 							continue;
 						}
 
-						let points = || {
-							let Some(tagged_value) = node.inputs.get(1) else { return None };
-							let Some(TaggedValue::VecDVec2(points)) = tagged_value.as_value() else { return None };
-							Some(points)
-						};
-
-						let Some(points) = points() else {
+						// Obtain the document node for the given node ID, extract the vector points, and create vector data from the list of points
+						let node = document.network_interface.document_node(node_id, &[]).unwrap();
+						let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
 							log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 							continue;
 						};
-
 						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
 
+						// Retrieve the output connectors linked to the "Spline" node's output port
 						let spline_outputs = document
 							.network_interface
 							.outward_wires(&[])
@@ -682,31 +670,42 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.expect("Vec of InputConnector Spline node is connected to its output port 0.")
 							.clone();
 
+						// Get the node's current position in the graph
 						let Some(node_position) = document.network_interface.position(node_id, &[]) else {
 							log::error!("Could not get position of spline node.");
 							continue;
 						};
 
+						// Get the "Path" node definition and fill it in with the vector data and default vector modification
 						let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist.");
 						let path_node = path_node_type.node_template_input_override([
 							Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
 							Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
 						]);
 
+						// Get the "Spline" node definition and wire it up with the "Path" node as input
 						let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist.");
 						let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 
+						// Create a new node group with the "Path" and "Spline" nodes and generate new node IDs for them
 						let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
-						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+						let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
 						let new_spline_id = *new_ids.get(&NodeId(0)).unwrap();
 						let new_path_id = *new_ids.get(&NodeId(1)).unwrap();
 
+						// Remove the old "Spline" node from the document
 						document.network_interface.delete_nodes(vec![*node_id], false, &[]);
+
+						// Insert the new "Path" and "Spline" nodes into the network interface with generated IDs
 						document.network_interface.insert_node_group(nodes.clone(), new_ids, &[]);
 
+						// Reposition the new "Spline" node to match the original "Spline" node's position
 						document.network_interface.shift_node(&new_spline_id, node_position, &[]);
+
+						// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
 						document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), &[]);
 
+						// Redirect each output connection from the old node to the new "Spline" node's output port
 						for input_connector in spline_outputs {
 							document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), &[]);
 						}
