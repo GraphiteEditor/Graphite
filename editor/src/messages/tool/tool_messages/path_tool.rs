@@ -191,14 +191,17 @@ impl LayoutHolder for PathTool {
 			.widget_holder();
 
 		let path_overlay_mode_widget = RadioInput::new(vec![
-			RadioEntryData::new("1")
-				.label("1")
+			RadioEntryData::new("all")
+				.icon("HandleVisibilityAll")
+				.tooltip("Show all handles regardless of selection")
 				.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::AllHandles)).into()),
-			RadioEntryData::new("2")
-				.label("2")
+			RadioEntryData::new("selected")
+				.icon("HandleVisibilitySelected")
+				.tooltip("Show only handles of the segments connected to selected points")
 				.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::SelectedPointHandles)).into()),
-			RadioEntryData::new("3")
-				.label("3")
+			RadioEntryData::new("frontier")
+				.icon("HandleVisibilityFrontier")
+				.tooltip("Show only handles at the frontiers of the segments connected to selected points")
 				.on_update(move |_| PathToolMessage::UpdateOptions(PathOptionsUpdate::OverlayModeType(PathOverlayMode::FrontierHandles)).into()),
 		])
 		.selected_index(Some(self.options.path_overlay_mode as u32))
