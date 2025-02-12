@@ -224,7 +224,6 @@ impl Fsm for RectangleToolFsmState {
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
-						// TODO: make the scale impact the rect node
 						let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
 							return self;
 						};
@@ -240,11 +239,9 @@ impl Fsm for RectangleToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_translation((start + end) / 2.),
-							transform_in: TransformIn::Viewport,
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 
