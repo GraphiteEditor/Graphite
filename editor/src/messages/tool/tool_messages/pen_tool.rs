@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-use crate::messages::tool::common_functionality::utility_functions::should_extend;
+use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
@@ -295,37 +295,19 @@ impl PenToolData {
 		let transform = document.metadata().document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
+			let last_segment = vector_data.segment_domain.ids().last();
+			self.handle_end = None;
+			self.segment_end_before_bent = last_segment.copied();
+
 			if let Some(point) = self.latest_point_mut() {
 				point.in_segment = None;
 			}
 
-			self.handle_end = None;
-			let last_segment = vector_data.segment_domain.ids().last();
-			let Some(last_segment) = last_segment else {
+			if self.modifiers.lock_angle {
+				self.set_lock_angle(&vector_data, self.latest_point().unwrap().id, last_segment.copied());
+			} else {
 				self.handle_mode = HandleMode::Free;
-				return;
-			};
-
-			let handle = ManipulatorPointId::EndHandle(*last_segment).get_position(&vector_data);
-			self.segment_end_before_bent = Some(*last_segment);
-
-			if !self.modifiers.lock_angle {
-				self.handle_mode = HandleMode::Free;
-				return;
 			}
-
-			let Some(handle) = handle else {
-				return;
-			};
-
-			self.angle = -(handle - last_pos).angle_to(DVec2::X);
-			if handle == last_pos {
-				// Tangent is equal to the vector from the endpoint to the one nonzero handle [https://math.stackexchange.com/questions/5032575/finding-the-tangent-direction-of-a-cubic-bezier-at-an-endpoint-shared-by-its-own]
-				if let Some(start) = ManipulatorPointId::PrimaryHandle(*last_segment).get_position(&vector_data) {
-					self.angle = -(start - last_pos).angle_to(DVec2::X);
-				}
-			}
-			self.handle_mode = HandleMode::ColinearEquidistant;
 		}
 	}
 
@@ -627,6 +609,12 @@ impl PenToolData {
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			self.next_point = position;
 			self.next_handle_start = position;
+			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
+
+			if self.modifiers.lock_angle {
+				self.set_lock_angle(&vector_data, point, segment);
+			}
 
 			return;
 		}
@@ -638,6 +626,15 @@ impl PenToolData {
 				// Add point to existing layer
 				responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
 				return;
+			}
+		}
+
+		if let Some((layer, point, position)) = closest_point(&document, viewport, tolerance, document.metadata().all_layers(), |_| false, &preferences) {
+			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
+
+			if self.modifiers.lock_angle {
+				self.set_lock_angle(&vector_data, point, segment);
 			}
 		}
 
@@ -655,6 +652,44 @@ impl PenToolData {
 		responses.add(Message::StartBuffer);
 		// It is necessary to defer this until the transform of the layer can be accurately computed (quite hacky)
 		responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport });
+	}
+
+	fn set_lock_angle(&mut self, vector_data: &VectorData, anchor: PointId, segment: Option<SegmentId>) {
+		let anchor_position = vector_data.point_domain.position_from_id(anchor);
+
+		let Some((anchor_position, segment)) = anchor_position.zip(segment) else {
+			self.handle_mode = HandleMode::Free;
+			return;
+		};
+
+		// Closure to check if a point is the start or end of a segment
+		let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
+
+		let end_handle = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
+		let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data);
+
+		let start_point = if is_start(anchor, segment) {
+			vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
+		} else {
+			vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
+		};
+
+		let required_handle = if is_start(anchor, segment) {
+			start_handle
+				.filter(|&handle| handle != anchor_position)
+				.or(end_handle.filter(|&handle| Some(handle) != start_point))
+				.or(start_point)
+		} else {
+			end_handle
+				.filter(|&handle| handle != anchor_position)
+				.or(start_handle.filter(|&handle| Some(handle) != start_point))
+				.or(start_point)
+		};
+
+		if let Some(required_handle) = required_handle {
+			self.angle = -(required_handle - anchor_position).angle_to(DVec2::X);
+			self.handle_mode = HandleMode::Free;
+		}
 	}
 
 	fn add_point_layer_position(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, viewport: DVec2) {
@@ -1059,7 +1094,21 @@ impl Fsm for PenToolFsmState {
 
 				state
 			}
-			(PenToolFsmState::Ready, PenToolMessage::PointerMove { .. }) => {
+			(
+				PenToolFsmState::Ready,
+				PenToolMessage::PointerMove {
+					snap_angle,
+					break_handle,
+					lock_angle,
+					colinear,
+				},
+			) => {
+				tool_data.modifiers = ModifierState {
+					snap_angle: input.keyboard.key(snap_angle),
+					lock_angle: input.keyboard.key(lock_angle),
+					break_handle: input.keyboard.key(break_handle),
+					colinear: input.keyboard.key(colinear),
+				};
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
