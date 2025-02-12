@@ -962,7 +962,7 @@ impl Fsm for SelectToolFsmState {
 						None,
 					);
 
-					selected.update_transforms(delta);
+					selected.update_transforms(delta, None);
 				}
 
 				SelectToolFsmState::RotatingBounds
