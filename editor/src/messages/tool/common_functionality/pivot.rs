@@ -91,8 +91,8 @@ impl Pivot {
 		layer_transform * bounds_transform
 	}
 
-	pub fn get_position(&self) -> Option<DVec2> {
-		self.pivot
+	pub fn get_compass_position(&self) -> DVec2 {
+		self.transform_from_normalized.transform_point2(DVec2::splat(0.5))
 	}
 
 	/// Recomputes the pivot position and transform.
@@ -138,7 +138,8 @@ impl Pivot {
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, show_hover_ring: bool) {
 		self.recalculate_pivot(document);
 		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot, angle, show_hover_ring);
+			let compass_center = self.get_compass_position();
+			overlay_context.pivot(pivot, compass_center, angle, show_hover_ring);
 		}
 	}
 
@@ -181,14 +182,22 @@ impl Pivot {
 		match self.pivot {
 			None => CompassRoseState::None,
 			Some(pivot) => {
-				let distance_squared = mouse.distance_squared(pivot);
+				let compass_center = self.get_compass_position();
+
+				let compass_distance_squared = mouse.distance_squared(compass_center);
+				let pivot_distance_squared = mouse.distance_squared(pivot);
+
+				if pivot_distance_squared < (COMPASS_ROSE_PIVOT_DIAMETER / 2.).powi(2) {
+					return CompassRoseState::Pivot;
+				}
+
 				let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
 
 				for i in 0..4 {
 					let base_angle = i as f64 * FRAC_PI_2 + angle;
 					let direction = DVec2::from_angle(base_angle);
 
-					let arrow_base = pivot + direction * ring_radius;
+					let arrow_base = compass_center + direction * ring_radius;
 					let arrow_tip = arrow_base + direction * COMPASS_ROSE_ARROW_SIZE;
 
 					let perp = direction.perp() * COMPASS_ROSE_ARROW_SIZE / 2.;
@@ -199,11 +208,9 @@ impl Pivot {
 						return if i % 2 == 0 { CompassRoseState::AxisX } else { CompassRoseState::AxisY };
 					}
 				}
-				if distance_squared < (COMPASS_ROSE_PIVOT_DIAMETER / 2.).powi(2) {
-					CompassRoseState::Pivot
-				} else if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < distance_squared && distance_squared < (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) {
+				if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < compass_distance_squared && compass_distance_squared < (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) {
 					CompassRoseState::MainRing
-				} else if (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) < distance_squared && distance_squared < (COMPASS_ROSE_HOVER_RING_DIAMETER / 2.).powi(2) {
+				} else if (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) < compass_distance_squared && compass_distance_squared < (COMPASS_ROSE_HOVER_RING_DIAMETER / 2.).powi(2) {
 					CompassRoseState::HoverRing
 				} else {
 					CompassRoseState::None
@@ -212,6 +219,7 @@ impl Pivot {
 		}
 	}
 }
+
 fn is_point_in_triangle(p: DVec2, a: DVec2, b: DVec2, c: DVec2) -> bool {
 	// Calculate barycentric coordinates
 	let v0 = c - a;

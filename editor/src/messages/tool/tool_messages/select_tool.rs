@@ -559,11 +559,11 @@ impl Fsm for SelectToolFsmState {
 							.map(|man| man.transform * Quad::from_box(man.bounds))
 							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-						let origin = tool_data.pivot.get_position().unwrap_or(tool_data.drag_start);
+						let origin = tool_data.pivot.get_compass_position();
 						let (direction, color) = match axis {
 							Axis::X => (e0, COLOR_OVERLAY_RED),
 							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
-							_ => panic!("WTF 0"),
+							_ => unreachable!(),
 						};
 
 						let viewport_diagonal = input.viewport_bounds.size().length();

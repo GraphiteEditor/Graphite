@@ -313,14 +313,15 @@ impl OverlayContext {
 		)
 	}
 
-	pub fn pivot(&mut self, position: DVec2, angle: f64, show_hover_ring: bool) {
-		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+	pub fn pivot(&mut self, pivot_position: DVec2, compass_center: DVec2, angle: f64, show_hover_ring: bool) {
+		let (pivot_x, pivot_y) = (pivot_position.round() - DVec2::splat(0.5)).into();
+		let (compass_x, compass_y) = (compass_center.round() - DVec2::splat(0.5)).into();
 		let uv = DVec2::from_angle(angle);
 		self.start_dpi_aware_transform();
 
 		// Center dot
 		self.render_context.begin_path();
-		self.render_context.arc(x, y, COMPASS_ROSE_PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw center dot");
+		self.render_context.arc(pivot_x, pivot_y, COMPASS_ROSE_PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw center dot");
 		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
 		self.render_context.fill();
 
@@ -333,22 +334,23 @@ impl OverlayContext {
 		self.render_context.set_line_cap("round");
 
 		self.render_context.begin_path();
-		self.render_context.move_to(x + crosshair_radius * uv.x, y + crosshair_radius * uv.y);
-		self.render_context.line_to(x - crosshair_radius * uv.x, y - crosshair_radius * uv.y);
+		self.render_context.move_to(pivot_x + crosshair_radius * uv.x, pivot_y + crosshair_radius * uv.y);
+		self.render_context.line_to(pivot_x - crosshair_radius * uv.x, pivot_y - crosshair_radius * uv.y);
 		self.render_context.stroke();
 
 		self.render_context.begin_path();
-		self.render_context.move_to(x - crosshair_radius * uv.y, y + crosshair_radius * uv.x);
-		self.render_context.line_to(x + crosshair_radius * uv.y, y - crosshair_radius * uv.x);
+		self.render_context.move_to(pivot_x - crosshair_radius * uv.y, pivot_y + crosshair_radius * uv.x);
+		self.render_context.line_to(pivot_x + crosshair_radius * uv.y, pivot_y - crosshair_radius * uv.x);
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");
+		let old_line_width = self.render_context.line_width();
 
 		const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
-		const HOVER_RING_INNER_RADIUS: f64 = (COMPASS_ROSE_MAIN_RING_DIAMETER) / 2.;
-		const MAIN_RING_OUTER_RADIUS: f64 = (COMPASS_ROSE_MAIN_RING_DIAMETER) / 2.;
-		const MAIN_RING_INNER_RADIUS: f64 = (COMPASS_ROSE_RING_INNER_DIAMETER) / 2.;
-        const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE/2.;
+		const HOVER_RING_INNER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
+		const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
+		const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
+		const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
 
 		// Hover ring
 		if show_hover_ring {
@@ -360,7 +362,7 @@ impl OverlayContext {
 
 			self.render_context.set_line_width(hover_ring_stroke_width);
 			self.render_context.begin_path();
-			self.render_context.arc(x, y, hover_ring_center_radius, 0., TAU).expect("Failed to draw hover ring");
+			self.render_context.arc(compass_x, compass_y, hover_ring_center_radius, 0., TAU).expect("Failed to draw hover ring");
 			self.render_context.set_stroke_style_str(&fill_color);
 			self.render_context.stroke();
 		}
@@ -371,22 +373,23 @@ impl OverlayContext {
 
 		self.render_context.set_line_width(main_ring_stroke_width);
 		self.render_context.begin_path();
-		self.render_context.arc(x, y, main_ring_center_radius, 0., TAU).expect("Failed to draw main ring");
+		self.render_context.arc(compass_x, compass_y, main_ring_center_radius, 0., TAU).expect("Failed to draw main ring");
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 
 		// Arrows
+		self.render_context.set_line_width(0.01);
 		for i in 0..4 {
 			let base_angle = i as f64 * FRAC_PI_2 + angle;
 			let direction = DVec2::from_angle(base_angle);
 			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
 
-			let center = DVec2::new(x, y);
+			let center = DVec2::new(compass_x, compass_y);
 
 			let tip = center + direction * HOVER_RING_OUTER_RADIUS;
-			let base = center + direction * (MAIN_RING_INNER_RADIUS+MAIN_RING_OUTER_RADIUS)/2.;
+			let base = center + direction * (MAIN_RING_INNER_RADIUS + MAIN_RING_OUTER_RADIUS) / 2.;
 
-			let r = ( ARROW_RADIUS.powi(2) + MAIN_RING_INNER_RADIUS.powi(2) ).sqrt();
+			let r = (ARROW_RADIUS.powi(2) + MAIN_RING_INNER_RADIUS.powi(2)).sqrt();
 			let (cos, sin) = (MAIN_RING_INNER_RADIUS / r, ARROW_RADIUS / r);
 			let side1 = center + r * DVec2::new(cos * direction.x - sin * direction.y, sin * direction.x + direction.y * cos);
 			let side2 = center + r * DVec2::new(cos * direction.x + sin * direction.y, -sin * direction.x + direction.y * cos);
@@ -403,6 +406,7 @@ impl OverlayContext {
 			self.render_context.set_stroke_style_str(color);
 			self.render_context.stroke();
 		}
+		self.render_context.set_line_width(old_line_width);
 
 		self.end_dpi_aware_transform();
 	}
