@@ -7,11 +7,12 @@ use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
 use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, VectorData};
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -551,4 +552,11 @@ pub enum Pivot {
 	Start,
 	Middle,
 	End,
+}
+
+pub enum DrawHandles {
+	All,
+	SelectedAnchors(Vec<SegmentId>),
+	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	None,
 }
