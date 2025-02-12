@@ -2,7 +2,7 @@ use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -27,6 +27,7 @@ pub struct PenOptions {
 	line_weight: f64,
 	fill: ToolColorOptions,
 	stroke: ToolColorOptions,
+	pen_overlay_mode: PenOverlayMode,
 }
 
 impl Default for PenOptions {
@@ -35,6 +36,7 @@ impl Default for PenOptions {
 			line_weight: DEFAULT_STROKE_WIDTH,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
+			pen_overlay_mode: PenOverlayMode::FrontierHandles,
 		}
 	}
 }
@@ -75,6 +77,12 @@ enum PenToolFsmState {
 	GRSHandle,
 }
 
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum PenOverlayMode {
+	AllHandles = 0,
+	FrontierHandles = 1,
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),
@@ -83,6 +91,7 @@ pub enum PenOptionsUpdate {
 	StrokeColor(Option<Color>),
 	StrokeColorType(ToolColorType),
 	WorkingColors(Option<Color>, Option<Color>),
+	OverlayModeType(PenOverlayMode),
 }
 
 impl ToolMetadata for PenTool {
@@ -126,8 +135,27 @@ impl LayoutHolder for PenTool {
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into()),
 			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
+
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
 		widgets.push(create_weight_widget(self.options.line_weight));
+
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+		widgets.push(
+			RadioInput::new(vec![
+				RadioEntryData::new("all")
+					.icon("HandleVisibilityAll")
+					.tooltip("Show all handles regardless of selection")
+					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles)).into()),
+				RadioEntryData::new("frontier")
+					.icon("HandleVisibilityFrontier")
+					.tooltip("Show only handles at the frontiers of the segments connected to selected points")
+					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles)).into()),
+			])
+			.selected_index(Some(self.options.pen_overlay_mode as u32))
+			.widget_holder(),
+		);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -140,6 +168,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 			return;
 		};
 		match action {
+			PenOptionsUpdate::OverlayModeType(overlay_mode_type) => {
+				self.options.pen_overlay_mode = overlay_mode_type;
+				responses.add(OverlaysMessage::Draw);
+			}
 			PenOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			PenOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
@@ -795,7 +827,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::Ready, PenToolMessage::Overlays(mut overlay_context)) => {
-				path_overlays(document, shape_editor, &mut overlay_context);
+				path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
@@ -839,7 +871,19 @@ impl Fsm for PenToolFsmState {
 						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
 					}
 
-					path_overlays(document, shape_editor, &mut overlay_context);
+					match tool_options.pen_overlay_mode {
+						PenOverlayMode::AllHandles => {
+							path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
+						}
+						PenOverlayMode::FrontierHandles => {
+							// Find the last segment ID to have its handles drawn
+							if let Some(latest_segment) = tool_data.latest_point().and_then(|point| point.in_segment) {
+								path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
+							} else {
+								path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
+							};
+						}
+					}
 
 					if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, handle_end) {
 						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
@@ -852,7 +896,7 @@ impl Fsm for PenToolFsmState {
 					}
 				} else {
 					// Draw the whole path and its manipulators when the user is clicking-and-dragging out from the most recently placed anchor to set its outgoing handle, during which it would otherwise not have its overlays drawn
-					path_overlays(document, shape_editor, &mut overlay_context);
+					path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
 				}
 
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, next_handle_start) {
