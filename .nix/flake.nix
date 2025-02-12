@@ -46,7 +46,20 @@
           llvmPackages.libcxxStdenv
           gcc-unwrapped.lib
           llvm
+          libgbm
+          mesa
           libraw
+
+          # Graphics and GPU support
+          mesa
+          mesa.drivers
+          xorg.libX11
+          xorg.libXcursor
+          xorg.libXrandr
+          xorg.libXi
+          libglvnd
+          libdrm
+          wayland
 
           # Tauri dependencies
           at-spi2-atk
