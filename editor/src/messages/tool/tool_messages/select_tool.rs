@@ -563,7 +563,7 @@ impl Fsm for SelectToolFsmState {
 						let (direction, color) = match axis {
 							Axis::X => (e0, COLOR_OVERLAY_RED),
 							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
-							_ => unreachable!(),
+							_ => panic!("WTF 0"),
 						};
 
 						let viewport_diagonal = input.viewport_bounds.size().length();
@@ -801,7 +801,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
-					let axis = compass_rose_state.axis_type();
+					let axis = compass_rose_state.axis_type().unwrap_or(Axis::None);
 					SelectToolFsmState::Dragging{axis}
 				}
 				// Dragging a selection box

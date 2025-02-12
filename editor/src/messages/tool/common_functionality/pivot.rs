@@ -48,12 +48,12 @@ impl CompassRoseState {
 		matches!(self, Self::HoverRing | Self::MainRing)
 	}
 
-	pub fn axis_type(&self) -> Axis {
+	pub fn axis_type(&self) -> Option<Axis> {
 		match self {
-			CompassRoseState::AxisX => Axis::X,
-			CompassRoseState::AxisY => Axis::Y,
-			CompassRoseState::HoverRing => Axis::None,
-			_ => unreachable!(),
+			CompassRoseState::AxisX => Some(Axis::X),
+			CompassRoseState::AxisY => Some(Axis::Y),
+			CompassRoseState::HoverRing => Some(Axis::None),
+			_ => None,
 		}
 	}
 }
