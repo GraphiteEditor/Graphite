@@ -274,7 +274,7 @@ impl ToolTransition for SelectTool {
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
 	Drawing { selection_shape: SelectionShapeType },
-	Dragging { axis: Axis },
+	Dragging { axis: Axis, using_compass: bool },
 	ResizingBounds,
 	SkewingBounds,
 	RotatingBounds,
@@ -546,12 +546,23 @@ impl Fsm for SelectToolFsmState {
 				let angle = bounds
 					.map(|bounds| transform * Quad::from_box(bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
+
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.pivot.compass_rose_state(mouse_position, angle);
-				let show_hover_ring = compass_rose_state.is_ring();
+
+				let show_hover_ring = if let SelectToolFsmState::Dragging { axis, using_compass } = self {
+					using_compass && !axis.is_constraint()
+				} else {
+					compass_rose_state.is_ring()
+				};
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_hover_ring);
-				if let SelectToolFsmState::Dragging { axis } = self {
+				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
+					Some((axis, false))
+				} else {
+					compass_rose_state.axis_type().and_then(|axis| if axis.is_constraint() { Some((axis, true)) } else { None })
+				};
+				if let Some((axis, hover)) = axis_state {
 					if axis.is_constraint() {
 						let e0 = tool_data
 							.bounding_box_manager
@@ -568,7 +579,14 @@ impl Fsm for SelectToolFsmState {
 
 						let viewport_diagonal = input.viewport_bounds.size().length();
 
-						overlay_context.line(origin - direction * viewport_diagonal, origin + direction * viewport_diagonal, Some(color));
+						if hover {
+							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+							let color = &format!("#{}", color_string);
+
+							overlay_context.line(origin - direction * viewport_diagonal, origin + direction * viewport_diagonal, Some(color));
+						} else {
+							overlay_context.line(origin - direction * viewport_diagonal, origin + direction * viewport_diagonal, Some(color));
+						}
 					}
 				}
 
@@ -801,8 +819,11 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
-					let axis = compass_rose_state.axis_type().unwrap_or(Axis::None);
-					SelectToolFsmState::Dragging{axis}
+					let axis = compass_rose_state.axis_type();
+					match axis {
+						Some(axis) => SelectToolFsmState::Dragging{axis, using_compass: true},
+						None => SelectToolFsmState::Dragging{axis: Axis::None, using_compass: false}
+					}
 				}
 				// Dragging a selection box
 				else {
@@ -823,7 +844,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging { axis: Axis::None }
+						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false }
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape }
@@ -839,7 +860,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::Dragging { axis, using_compass }, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.has_dragged = true;
 
 				if input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_none() {
@@ -886,7 +907,7 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				SelectToolFsmState::Dragging { axis }
+				SelectToolFsmState::Dragging { axis, using_compass }
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
@@ -1065,14 +1086,14 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::Dragging { axis, using_compass }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
 				}
 
-				SelectToolFsmState::Dragging { axis }
+				SelectToolFsmState::Dragging { axis, using_compass }
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
@@ -1384,7 +1405,10 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Dragging { axis: Axis::None } if tool_data.has_dragged => {
+			SelectToolFsmState::Dragging {
+				axis: Axis::None,
+				using_compass: false,
+			} if tool_data.has_dragged => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),

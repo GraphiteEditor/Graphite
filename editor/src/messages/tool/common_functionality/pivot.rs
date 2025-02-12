@@ -1,7 +1,9 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
 use super::graph_modification_utils;
-use crate::consts::{COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
+use crate::consts::{
+	COMPASS_ROSE_ANGLE_WIDTH, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER,
+};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -9,13 +11,12 @@ use crate::messages::prelude::*;
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
-use std::f64::consts::FRAC_PI_2;
+use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompassRoseState {
 	Pivot,
-	HoverRing,
-	MainRing,
+	Ring,
 	AxisX,
 	AxisY,
 	None,
@@ -37,7 +38,7 @@ impl Axis {
 
 impl CompassRoseState {
 	pub fn can_grab(&self) -> bool {
-		matches!(self, Self::HoverRing | Self::AxisX | Self::AxisY)
+		matches!(self, Self::Ring | Self::AxisX | Self::AxisY)
 	}
 
 	pub fn is_pivot(&self) -> bool {
@@ -45,14 +46,14 @@ impl CompassRoseState {
 	}
 
 	pub fn is_ring(&self) -> bool {
-		matches!(self, Self::HoverRing | Self::MainRing)
+		matches!(self, Self::Ring)
 	}
 
 	pub fn axis_type(&self) -> Option<Axis> {
 		match self {
 			CompassRoseState::AxisX => Some(Axis::X),
 			CompassRoseState::AxisY => Some(Axis::Y),
-			CompassRoseState::HoverRing => Some(Axis::None),
+			CompassRoseState::Ring => Some(Axis::None),
 			_ => None,
 		}
 	}
@@ -191,51 +192,22 @@ impl Pivot {
 					return CompassRoseState::Pivot;
 				}
 
-				let ring_radius = (COMPASS_ROSE_MAIN_RING_DIAMETER + 1.) / 2.;
+				if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < compass_distance_squared && compass_distance_squared < (COMPASS_ROSE_HOVER_RING_DIAMETER / 2.).powi(2) {
+					let angle = (mouse - compass_center).to_angle().abs();
+					let resolved_angle = (FRAC_PI_2 - angle).abs();
+					let width = COMPASS_ROSE_ANGLE_WIDTH.to_radians();
 
-				for i in 0..4 {
-					let base_angle = i as f64 * FRAC_PI_2 + angle;
-					let direction = DVec2::from_angle(base_angle);
-
-					let arrow_base = compass_center + direction * ring_radius;
-					let arrow_tip = arrow_base + direction * COMPASS_ROSE_ARROW_SIZE;
-
-					let perp = direction.perp() * COMPASS_ROSE_ARROW_SIZE / 2.;
-					let side1 = arrow_base + perp;
-					let side2 = arrow_base - perp;
-
-					if is_point_in_triangle(mouse, arrow_tip, side1, side2) {
-						return if i % 2 == 0 { CompassRoseState::AxisX } else { CompassRoseState::AxisY };
+					if resolved_angle < width {
+						CompassRoseState::AxisY
+					} else if resolved_angle > (FRAC_PI_2 - width) {
+						CompassRoseState::AxisX
+					} else {
+						CompassRoseState::Ring
 					}
-				}
-				if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < compass_distance_squared && compass_distance_squared < (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) {
-					CompassRoseState::MainRing
-				} else if (COMPASS_ROSE_MAIN_RING_DIAMETER / 2.).powi(2) < compass_distance_squared && compass_distance_squared < (COMPASS_ROSE_HOVER_RING_DIAMETER / 2.).powi(2) {
-					CompassRoseState::HoverRing
 				} else {
 					CompassRoseState::None
 				}
 			}
 		}
 	}
-}
-
-fn is_point_in_triangle(p: DVec2, a: DVec2, b: DVec2, c: DVec2) -> bool {
-	// Calculate barycentric coordinates
-	let v0 = c - a;
-	let v1 = b - a;
-	let v2 = p - a;
-
-	let dot00 = v0.dot(v0);
-	let dot01 = v0.dot(v1);
-	let dot02 = v0.dot(v2);
-	let dot11 = v1.dot(v1);
-	let dot12 = v1.dot(v2);
-
-	let inv_denom = 1. / (dot00 * dot11 - dot01 * dot01);
-	let u = (dot11 * dot02 - dot01 * dot12) * inv_denom;
-	let v = (dot00 * dot12 - dot01 * dot02) * inv_denom;
-
-	// Check if point is inside triangle
-	u >= 0. && v >= 0. && u + v <= 1.
 }
