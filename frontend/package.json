@@ -27,7 +27,7 @@
 		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --release --target=web -- --color=always\""
 	},
 	"dependencies": {
-		"@tauri-apps/api": "^1.6.0",
+		"@tauri-apps/api": "^2.2.0",
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.1",
 		"reflect-metadata": "^0.2.2"
