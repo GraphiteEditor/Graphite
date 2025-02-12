@@ -211,10 +211,18 @@ impl Dispatcher {
 					let ipp = &self.message_handlers.input_preprocessor_message_handler;
 					let preferences = &self.message_handlers.preferences_message_handler;
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
+					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 
-					self.message_handlers
-						.portfolio_message_handler
-						.process_message(message, &mut queue, PortfolioMessageData { ipp, preferences, current_tool });
+					self.message_handlers.portfolio_message_handler.process_message(
+						message,
+						&mut queue,
+						PortfolioMessageData {
+							ipp,
+							preferences,
+							current_tool,
+							message_logging_verbosity,
+						},
+					);
 				}
 				Message::Preferences(message) => {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());

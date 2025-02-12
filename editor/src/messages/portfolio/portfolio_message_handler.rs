@@ -3,11 +3,13 @@ use super::document::utility_types::network_interface::{self, InputConnector, Ou
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -27,6 +29,7 @@ pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
 #[derive(Debug, Default)]
@@ -44,7 +47,12 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData { ipp, preferences, current_tool } = data;
+		let PortfolioMessageData {
+			ipp,
+			preferences,
+			current_tool,
+			message_logging_verbosity,
+		} = data;
 
 		match message {
 			// Sub-messages
@@ -54,6 +62,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let mut node_graph_open = false;
 				let mut has_selected_nodes = false;
 				let mut has_selected_layers = false;
+				let mut has_selection_history = (false, false);
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
@@ -62,6 +71,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+					has_selection_history = document
+						.network_interface
+						.network_metadata(&[])
+						.map(|metadata| {
+							let metadata = &metadata.persistent_metadata;
+							(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
+						})
+						.unwrap_or((false, false));
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -72,6 +89,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						node_graph_open,
 						has_selected_nodes,
 						has_selected_layers,
+						has_selection_history,
+						message_logging_verbosity,
 					},
 				);
 			}
@@ -202,9 +221,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				};
 
 				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]);
+					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
 
-					for layer in ordered_last_elements {
+					ordered_last_elements.sort_by_key(|layer| {
+						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
+						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+					});
+
+					for layer in ordered_last_elements.into_iter() {
 						let layer_node_id = layer.to_node();
 
 						let mut copy_ids = HashMap::new();
@@ -394,7 +418,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
+				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
 				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =

@@ -99,7 +99,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -109,7 +109,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -292,7 +292,7 @@ impl Fsm for FreehandToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline"),

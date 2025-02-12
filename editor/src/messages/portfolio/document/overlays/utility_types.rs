@@ -6,11 +6,12 @@ use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
 use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, VectorData};
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 
 use core::borrow::Borrow;
 use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
+use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -45,7 +46,7 @@ impl OverlayContext {
 	}
 
 	pub fn polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>) {
-		self.dashed_polygon(&polygon, color_fill, None, None, None);
+		self.dashed_polygon(polygon, color_fill, None, None, None);
 	}
 
 	pub fn dashed_polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
@@ -481,4 +482,11 @@ pub enum Pivot {
 	Start,
 	Middle,
 	End,
+}
+
+pub enum DrawHandles {
+	All,
+	SelectedAnchors(Vec<SegmentId>),
+	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	None,
 }
