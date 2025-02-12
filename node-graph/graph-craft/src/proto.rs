@@ -203,6 +203,7 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
+
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -212,6 +213,7 @@ impl ProtoNode {
 			ProtoNodeInput::Node(id) => (id, false).hash(&mut hasher),
 			ProtoNodeInput::NodeLambda(id) => (id, true).hash(&mut hasher),
 		};
+
 		Some(NodeId(hasher.finish()))
 	}
 
@@ -653,7 +655,7 @@ impl TypingContext {
 			ConstructionArgs::Value(ref v) => {
 				assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![v.ty()]);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}

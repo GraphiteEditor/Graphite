@@ -2721,7 +2721,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			.zip(first_node_io.inputs.iter())
 			.enumerate()
 			.map(|(index, (field, ty))| {
-				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
+				let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 				match field.value_source {
 					RegistryValueSource::None => {}
