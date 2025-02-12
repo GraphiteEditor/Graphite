@@ -144,11 +144,13 @@ impl LayoutHolder for PenTool {
 
 		widgets.push(
 			RadioInput::new(vec![
-				RadioEntryData::new("1")
-					.label("1")
+				RadioEntryData::new("all")
+					.icon("HandleVisibilityAll")
+					.tooltip("Show all handles regardless of selection")
 					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles)).into()),
-				RadioEntryData::new("2")
-					.label("2")
+				RadioEntryData::new("frontier")
+					.icon("HandleVisibilityFrontier")
+					.tooltip("Show only handles at the frontiers of the segments connected to selected points")
 					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles)).into()),
 			])
 			.selected_index(Some(self.options.pen_overlay_mode as u32))
