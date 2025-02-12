@@ -9,13 +9,6 @@
     "main"
   ],
   "permissions": [
-    "global-shortcut:default",
-    "fs:default",
-    "process:default",
-    "http:default",
-    "clipboard-manager:default",
-    "os:default",
-    "dialog:default",
-    "notification:default"
+    "http:default"
   ]
 }

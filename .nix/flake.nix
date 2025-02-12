@@ -34,7 +34,7 @@
         
         rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
           targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" ];
+          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
         };
 
         # Shared build inputs - system libraries that need to be in LD_LIBRARY_PATH
@@ -46,7 +46,20 @@
           llvmPackages.libcxxStdenv
           gcc-unwrapped.lib
           llvm
+          libgbm
+          mesa
           libraw
+
+          # Graphics and GPU support
+          mesa
+          mesa.drivers
+          xorg.libX11
+          xorg.libXcursor
+          xorg.libXrandr
+          xorg.libXi
+          libglvnd
+          libdrm
+          wayland
 
           # Tauri dependencies
           at-spi2-atk
