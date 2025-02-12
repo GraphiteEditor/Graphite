@@ -23,7 +23,7 @@ meta_description = "Open source free software. A vector graphics creativity suit
 
 <h1 class="balance-text">Your <span>procedural</span> toolbox for 2D content creation</h1>
 
-<p class="balance-text">Graphite is a free, open source vector and raster graphics editor, available now in alpha. Get creative with a nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
+<p class="balance-text">Graphite is a free, open source vector and raster graphics editor, available now in alpha. Get creative with a fully nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
 
 </div>
 </section>
@@ -261,7 +261,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Where's the download? Windows, Mac, and Linux apps should be available in early 2025.
+Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux should be available in early 2025.
 
 Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick, casual usage. It's built for speed with (nearly) no JavaScript. And regardless of platform, your work runs locally and privately on your own hardware. There is no server.
 
