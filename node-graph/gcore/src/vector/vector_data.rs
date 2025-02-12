@@ -294,7 +294,7 @@ impl VectorData {
 		}
 	}
 
-	pub fn get_adjacent_segment(&self, manipulator_id: &ManipulatorPointId) -> Option<(PointId, SegmentId)> {
+	pub fn adjacent_segment(&self, manipulator_id: &ManipulatorPointId) -> Option<(PointId, SegmentId)> {
 		match manipulator_id {
 			ManipulatorPointId::PrimaryHandle(segment_id) => {
 				// For start handle, find segments ending at our start point

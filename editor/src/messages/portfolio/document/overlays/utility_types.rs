@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
@@ -13,6 +11,7 @@ use graphene_std::vector::{PointId, SegmentId, VectorData};
 use core::borrow::Borrow;
 use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
+use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
