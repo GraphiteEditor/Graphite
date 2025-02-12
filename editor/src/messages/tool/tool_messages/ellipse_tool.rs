@@ -225,7 +225,6 @@ impl Fsm for EllipseToolFsmState {
 							return self;
 						};
 
-						let (scale, angle, translation) = (DVec2::ONE, 0., (start + end) / 2.);
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 1),
 							input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
@@ -236,7 +235,7 @@ impl Fsm for EllipseToolFsmState {
 						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(scale, angle, translation),
+							transform: DAffine2::from_translation((start + end) / 2.),
 							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
