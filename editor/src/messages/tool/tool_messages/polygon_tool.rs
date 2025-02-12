@@ -325,11 +325,9 @@ impl Fsm for PolygonToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-							transform_in: TransformIn::Viewport,
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 
