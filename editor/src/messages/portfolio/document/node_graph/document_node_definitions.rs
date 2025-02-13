@@ -2013,29 +2013,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Spline",
-			category: "Vector: Shape",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::SplineNode"),
-					manual_composition: Some(concrete!(())),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						// TODO: Modify the proto node generation macro to accept this default value, then remove this definition for Spline
-						NodeInput::value(TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["None".into(), PropertiesRow::with_override("Points", WidgetOverride::Custom("spline_input".to_string()))],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
 			node_template: NodeTemplate {
