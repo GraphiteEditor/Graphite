@@ -1,4 +1,4 @@
-use super::{ellipse_tool, tool_prelude::*};
+use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type};
@@ -6,7 +6,6 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_endp
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector};
-use crate::messages::tool;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self};
@@ -443,102 +442,7 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 	delete_preview(tool_data, responses);
 
 	// If the points are in different layers, merge them first
-	if current_layer != other_layer {
-		match (is_layer_spline(document, starting_layer), is_layer_spline(document, other_layer)) {
-			(true, true) => {
-				merge_two_spline_layer(document, current_layer, other_layer, responses);
-				let points = [endpoint, join_point];
-				let id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
-				responses.add(GraphOperationMessage::Vector {
-					layer: current_layer,
-					modification_type,
-				});
-			}
-			(false, false) => {
-				let Some(current_vector_data) = document.network_interface.compute_modified_vector(current_layer) else {
-					log::error!("Could not get vector data for current layer");
-					return false;
-				};
-				let Some(starting_vector_data) = document.network_interface.compute_modified_vector(starting_layer) else {
-					log::error!("Could not get vector data for other layer");
-					return false;
-				};
-
-				let Some(starting_layer_endpoint) = starting_vector_data.end_point().last() else {
-					log::error!("Could not get endpoint");
-					return false;
-				};
-
-				let handles = (0..current_vector_data.segment_domain.handles().len())
-					.find_map(|index| {
-						let (start_id, end_id, bezier) = current_vector_data.segment_points_from_index(index);
-						if start_id == endpoint {
-							Some([bezier.handles.start(), bezier.handles.end()])
-						} else if end_id == endpoint {
-							// Reverse the handles if connecting to end point
-							Some([bezier.handles.end(), bezier.handles.start()])
-						} else {
-							None
-						}
-					})
-					.unwrap();
-
-				// Merge the layers first
-				merge_non_spline_layers(document, starting_layer, current_layer, other_layer, responses);
-
-				let points = [endpoint, join_point];
-				let points2 = [start_point, starting_layer_endpoint];
-				let id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment { id, points, handles };
-				responses.add(GraphOperationMessage::Vector {
-					layer: starting_layer,
-					modification_type,
-				});
-
-				let id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment { id, points: points2, handles };
-				responses.add(GraphOperationMessage::Vector {
-					layer: starting_layer,
-					modification_type,
-				});
-			}
-			_ => {
-				let current_vector_data = match document.network_interface.compute_modified_vector(current_layer) {
-					Some(data) => data,
-					None => {
-						log::error!("Could not get vector data for current layer");
-						return false;
-					}
-				};
-
-				let handles = (0..current_vector_data.segment_domain.handles().len()).find_map(|index| {
-					let (start_id, end_id, bezier) = current_vector_data.segment_points_from_index(index);
-					if start_id == endpoint {
-						Some([bezier.handles.start(), bezier.handles.end()])
-					} else if end_id == endpoint {
-						Some([bezier.handles.end(), bezier.handles.start()])
-					} else {
-						None
-					}
-				});
-
-				let Some(handles) = handles else {
-					log::error!("Could not find handles for endpoint");
-					return false;
-				};
-
-				merge_path_spline_layer(document, current_layer, other_layer, responses);
-
-				let points = [endpoint, join_point];
-				let id = SegmentId::generate();
-				responses.add(GraphOperationMessage::Vector {
-					layer: other_layer,
-					modification_type: VectorModificationType::InsertSegment { id, points, handles },
-				});
-			}
-		}
-	} else {
+	if current_layer == other_layer {
 		// If points are in the same layer, just connect them
 		let points = [endpoint, join_point];
 		let id = SegmentId::generate();
@@ -547,7 +451,105 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 			layer: current_layer,
 			modification_type,
 		});
+
+		return true;
 	}
+
+	match (is_layer_spline(document, starting_layer), is_layer_spline(document, other_layer)) {
+		(true, true) => {
+			merge_two_spline_layer(document, current_layer, other_layer, responses);
+			let points = [endpoint, join_point];
+			let id = SegmentId::generate();
+			let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
+			responses.add(GraphOperationMessage::Vector {
+				layer: current_layer,
+				modification_type,
+			});
+		}
+		(false, false) => {
+			let Some(current_vector_data) = document.network_interface.compute_modified_vector(current_layer) else {
+				log::error!("Could not get vector data for current layer");
+				return false;
+			};
+			let Some(starting_vector_data) = document.network_interface.compute_modified_vector(starting_layer) else {
+				log::error!("Could not get vector data for other layer");
+				return false;
+			};
+
+			let Some(starting_layer_endpoint) = starting_vector_data.end_point().last() else {
+				log::error!("Could not get endpoint");
+				return false;
+			};
+
+			let handles = (0..current_vector_data.segment_domain.handles().len())
+				.find_map(|index| {
+					let (start_id, end_id, bezier) = current_vector_data.segment_points_from_index(index);
+					if start_id == endpoint {
+						Some([bezier.handles.start(), bezier.handles.end()])
+					} else if end_id == endpoint {
+						// Reverse the handles if connecting to end point
+						Some([bezier.handles.end(), bezier.handles.start()])
+					} else {
+						None
+					}
+				})
+				.unwrap();
+
+			// Merge the layers first
+			merge_non_spline_layers(document, starting_layer, current_layer, other_layer, responses);
+
+			let points = [endpoint, join_point];
+			let points2 = [start_point, starting_layer_endpoint];
+			let id = SegmentId::generate();
+			let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+			responses.add(GraphOperationMessage::Vector {
+				layer: starting_layer,
+				modification_type,
+			});
+
+			let id = SegmentId::generate();
+			let modification_type = VectorModificationType::InsertSegment { id, points: points2, handles };
+			responses.add(GraphOperationMessage::Vector {
+				layer: starting_layer,
+				modification_type,
+			});
+		}
+		_ => {
+			let current_vector_data = match document.network_interface.compute_modified_vector(current_layer) {
+				Some(data) => data,
+				None => {
+					log::error!("Could not get vector data for current layer");
+					return false;
+				}
+			};
+
+			let handles = (0..current_vector_data.segment_domain.handles().len()).find_map(|index| {
+				let (start_id, end_id, bezier) = current_vector_data.segment_points_from_index(index);
+				if start_id == endpoint {
+					Some([bezier.handles.start(), bezier.handles.end()])
+				} else if end_id == endpoint {
+					Some([bezier.handles.end(), bezier.handles.start()])
+				} else {
+					None
+				}
+			});
+
+			let Some(handles) = handles else {
+				log::error!("Could not find handles for endpoint");
+				return false;
+			};
+
+			merge_path_spline_layer(document, current_layer, other_layer, responses);
+
+			let points = [endpoint, join_point];
+			let id = SegmentId::generate();
+			responses.add(GraphOperationMessage::Vector {
+				layer: other_layer,
+				modification_type: VectorModificationType::InsertSegment { id, points, handles },
+			});
+		}
+	}
+
 	true
 }
 
@@ -597,6 +599,7 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 	tool_data.preview_point = None;
 	tool_data.preview_segment = None;
 }
+
 fn merge_two_spline_layer(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
 	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
@@ -717,6 +720,7 @@ fn merge_two_spline_layer(document: &DocumentMessageHandler, current_layer: Laye
 	responses.add(NodeGraphMessage::RunDocumentGraph);
 	responses.add(Message::StartBuffer);
 }
+
 fn merge_non_spline_layers(
 	document: &DocumentMessageHandler,
 	starting_layer: LayerNodeIdentifier,
@@ -997,6 +1001,7 @@ fn is_layer_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 
 	has_spline
 }
+
 fn is_layer_line(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
 	let nodes = document
 		.network_interface
