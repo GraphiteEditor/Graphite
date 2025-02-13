@@ -2,7 +2,7 @@ use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS,
 };
-use crate::consts::{COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
+use crate::consts::{COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, PIVOT_DIAMETER};
 use crate::messages::prelude::Message;
 
 use bezier_rs::{Bezier, Subpath};
@@ -314,37 +314,9 @@ impl OverlayContext {
 		)
 	}
 
-	pub fn pivot(&mut self, pivot_position: DVec2, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
-		let (pivot_x, pivot_y) = (pivot_position.round() - DVec2::splat(0.5)).into();
+	pub fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
 		let (compass_x, compass_y) = (compass_center.round() - DVec2::splat(0.5)).into();
-		let uv = DVec2::from_angle(angle);
 		self.start_dpi_aware_transform();
-
-		// Center dot
-		self.render_context.begin_path();
-		self.render_context.arc(pivot_x, pivot_y, COMPASS_ROSE_PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw center dot");
-		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
-		self.render_context.fill();
-
-		// Crosshair
-
-		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
-		let crosshair_radius = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
-
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_YELLOW);
-		self.render_context.set_line_cap("round");
-
-		self.render_context.begin_path();
-		self.render_context.move_to(pivot_x + crosshair_radius * uv.x, pivot_y + crosshair_radius * uv.y);
-		self.render_context.line_to(pivot_x - crosshair_radius * uv.x, pivot_y - crosshair_radius * uv.y);
-		self.render_context.stroke();
-
-		self.render_context.begin_path();
-		self.render_context.move_to(pivot_x - crosshair_radius * uv.y, pivot_y + crosshair_radius * uv.x);
-		self.render_context.line_to(pivot_x + crosshair_radius * uv.y, pivot_y - crosshair_radius * uv.x);
-		self.render_context.stroke();
-
-		self.render_context.set_line_cap("butt");
 
 		if let Some(show_hover_ring) = show_compass_with_hover_ring {
 			let old_line_width = self.render_context.line_width();
@@ -411,6 +383,41 @@ impl OverlayContext {
 
 			self.render_context.set_line_width(old_line_width);
 		}
+	}
+
+	pub fn pivot(&mut self, position: DVec2, angle: f64) {
+		let uv = DVec2::from_angle(angle);
+		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+
+		self.start_dpi_aware_transform();
+
+		// Circle
+
+		self.render_context.begin_path();
+		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_YELLOW);
+		self.render_context.fill();
+
+		// Crosshair
+
+		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
+		let crosshair_radius = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
+
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_YELLOW);
+		self.render_context.set_line_cap("round");
+
+		self.render_context.begin_path();
+		self.render_context.move_to(x + crosshair_radius * uv.x, y + crosshair_radius * uv.y);
+		self.render_context.line_to(x - crosshair_radius * uv.x, y - crosshair_radius * uv.y);
+		self.render_context.stroke();
+
+		self.render_context.begin_path();
+		self.render_context.move_to(x - crosshair_radius * uv.y, y + crosshair_radius * uv.x);
+		self.render_context.line_to(x + crosshair_radius * uv.y, y - crosshair_radius * uv.x);
+		self.render_context.stroke();
+
+		self.render_context.set_line_cap("butt");
+
 		self.end_dpi_aware_transform();
 	}
 

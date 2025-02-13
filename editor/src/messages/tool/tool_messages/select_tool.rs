@@ -11,8 +11,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
+use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
-use crate::messages::tool::common_functionality::pivot::{Axis, Pivot};
+use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -304,6 +305,7 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
+	compass_rose: CompassRose,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
 	selected_layers_changed: bool,
@@ -549,7 +551,7 @@ impl Fsm for SelectToolFsmState {
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 
 				let mouse_position = input.mouse.position;
-				let compass_rose_state = tool_data.pivot.compass_rose_state(mouse_position, angle);
+				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
 
 				let show_hover_ring = if let SelectToolFsmState::Dragging { axis, using_compass } = self {
 					using_compass && !axis.is_constraint()
@@ -585,7 +587,11 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_compass_with_ring);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+
+				// Update compass rose
+				let compass_center = tool_data.compass_rose.get_compass_position();
+				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
 					Some((axis, false))
@@ -601,7 +607,7 @@ impl Fsm for SelectToolFsmState {
 							.map(|man| man.transform * Quad::from_box(man.bounds))
 							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-						let origin = tool_data.pivot.get_compass_position();
+						let origin = tool_data.compass_rose.get_compass_position();
 						let (direction, color) = match axis {
 							Axis::X => (e0, COLOR_OVERLAY_RED),
 							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
@@ -632,7 +638,7 @@ impl Fsm for SelectToolFsmState {
 					let other = other.as_str();
 
 					let extension = tool_data.drag_current - tool_data.drag_start;
-					let origin = tool_data.pivot.get_compass_position() - extension;
+					let origin = tool_data.compass_rose.get_compass_position() - extension;
 					let viewport_diagonal = input.viewport_bounds.size().length();
 
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
@@ -777,7 +783,7 @@ impl Fsm for SelectToolFsmState {
 					.as_ref()
 					.map(|man| man.transform * Quad::from_box(man.bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
-				let compass_rose_state = tool_data.pivot.compass_rose_state(input.mouse.position, angle);
+				let compass_rose_state = tool_data.compass_rose.compass_rose_state(input.mouse.position, angle);
 
 				let state =
 				// Dragging the pivot
@@ -790,7 +796,7 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::DraggingPivot
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if let Some(_) = dragging_bounds {
+				else if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.layers_dragging = selected;
@@ -1123,7 +1129,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|man| man.transform * Quad::from_box(man.bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.compass_rose_state(input.mouse.position, angle).is_pivot() {
+				if tool_data.compass_rose.compass_rose_state(input.mouse.position, angle).is_pivot() {
 					cursor = MouseCursorIcon::Move;
 				}
 
