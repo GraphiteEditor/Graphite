@@ -100,6 +100,8 @@ export class UpdateNodeGraph extends JsMessage {
 
 	@Type(() => FrontendNodeWire)
 	readonly wires!: FrontendNodeWire[];
+
+	readonly wiresDirectNotGridAligned!: boolean;
 }
 
 export class UpdateNodeGraphTransform extends JsMessage {
