@@ -360,7 +360,7 @@ impl OverlayContext {
 				let hover_ring_stroke_width = HOVER_RING_OUTER_RADIUS - HOVER_RING_INNER_RADIUS;
 				let hover_ring_center_radius = (HOVER_RING_OUTER_RADIUS + HOVER_RING_INNER_RADIUS) / 2.0;
 
-				let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.3).rgba_hex();
+				let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
 				fill_color.insert(0, '#');
 
 				self.render_context.set_line_width(hover_ring_stroke_width);

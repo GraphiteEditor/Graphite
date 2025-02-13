@@ -568,16 +568,22 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				// Update pivot
-				let can_get_into_other_states = dragging_bounds || rotating_bounds;
+				let might_resize_or_rotate = dragging_bounds || rotating_bounds;
+				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds { .. } | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds);
+				let can_get_into_other_states = might_resize_or_rotate && !matches!(self, SelectToolFsmState::Dragging { .. });
+
+				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
 				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
-					if can_get_into_other_states || matches!(self, SelectToolFsmState::ResizingBounds { .. } | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds) {
-						None
-					} else {
-						quad.contains(mouse_position).then_some(show_hover_ring)
-					}
+					show_compass
+						.then_some(
+							matches!(self, SelectToolFsmState::Dragging { .. })
+								.then_some(show_hover_ring)
+								.or(quad.contains(mouse_position).then_some(show_hover_ring)),
+						)
+						.flatten()
 				});
 
+				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_compass_with_ring);
 
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
