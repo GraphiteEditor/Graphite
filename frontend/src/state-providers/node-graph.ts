@@ -41,6 +41,7 @@ export function createNodeGraphState(editor: Editor) {
 		addExport: undefined as { x: number; y: number } | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
 		wires: [] as FrontendNodeWire[],
+		wiresDirectNotGridAligned: false,
 		wirePathInProgress: undefined as WirePath | undefined,
 		inputTypeDescriptions: new Map<string, string>(),
 		nodeDescriptions: new Map<string, string>(),
@@ -123,6 +124,7 @@ export function createNodeGraphState(editor: Editor) {
 				state.nodes.set(node.id, node);
 			});
 			state.wires = updateNodeGraph.wires;
+			state.wiresDirectNotGridAligned = updateNodeGraph.wiresDirectNotGridAligned;
 			return state;
 		});
 	});
