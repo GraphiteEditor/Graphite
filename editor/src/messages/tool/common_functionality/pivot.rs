@@ -1,9 +1,7 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
 use super::graph_modification_utils;
-use crate::consts::{
-	COMPASS_ROSE_ANGLE_WIDTH, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER,
-};
+use crate::consts::{COMPASS_ROSE_ANGLE_WIDTH, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_PIVOT_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -11,7 +9,7 @@ use crate::messages::prelude::*;
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
-use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
+use std::f64::consts::FRAC_PI_2;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CompassRoseState {
@@ -136,11 +134,11 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, show_hover_ring: bool) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64, show_compass_with_hover_ring: Option<bool>) {
 		self.recalculate_pivot(document);
 		if let Some(pivot) = self.pivot {
 			let compass_center = self.get_compass_position();
-			overlay_context.pivot(pivot, compass_center, angle, show_hover_ring);
+			overlay_context.pivot(pivot, compass_center, angle, show_compass_with_hover_ring);
 		}
 	}
 
@@ -193,7 +191,7 @@ impl Pivot {
 				}
 
 				if (COMPASS_ROSE_RING_INNER_DIAMETER / 2.).powi(2) < compass_distance_squared && compass_distance_squared < (COMPASS_ROSE_HOVER_RING_DIAMETER / 2.).powi(2) {
-					let angle = (mouse - compass_center).to_angle().abs();
+					let angle = (mouse - compass_center).angle_to(DVec2::from_angle(angle)).abs();
 					let resolved_angle = (FRAC_PI_2 - angle).abs();
 					let width = COMPASS_ROSE_ANGLE_WIDTH.to_radians();
 

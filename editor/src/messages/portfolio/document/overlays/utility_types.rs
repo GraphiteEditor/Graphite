@@ -314,7 +314,7 @@ impl OverlayContext {
 		)
 	}
 
-	pub fn pivot(&mut self, pivot_position: DVec2, compass_center: DVec2, angle: f64, show_hover_ring: bool) {
+	pub fn pivot(&mut self, pivot_position: DVec2, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
 		let (pivot_x, pivot_y) = (pivot_position.round() - DVec2::splat(0.5)).into();
 		let (compass_x, compass_y) = (compass_center.round() - DVec2::splat(0.5)).into();
 		let uv = DVec2::from_angle(angle);
@@ -345,70 +345,72 @@ impl OverlayContext {
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");
-		let old_line_width = self.render_context.line_width();
 
-		const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
-		const HOVER_RING_INNER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
-		const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
-		const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
-		const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
+		if let Some(show_hover_ring) = show_compass_with_hover_ring {
+			let old_line_width = self.render_context.line_width();
 
-		// Hover ring
-		if show_hover_ring {
-			let hover_ring_stroke_width = HOVER_RING_OUTER_RADIUS - HOVER_RING_INNER_RADIUS;
-			let hover_ring_center_radius = (HOVER_RING_OUTER_RADIUS + HOVER_RING_INNER_RADIUS) / 2.0;
+			const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
+			const HOVER_RING_INNER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
+			const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
+			const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
+			const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
 
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.3).rgba_hex();
-			fill_color.insert(0, '#');
+			// Hover ring
+			if show_hover_ring {
+				let hover_ring_stroke_width = HOVER_RING_OUTER_RADIUS - HOVER_RING_INNER_RADIUS;
+				let hover_ring_center_radius = (HOVER_RING_OUTER_RADIUS + HOVER_RING_INNER_RADIUS) / 2.0;
 
-			self.render_context.set_line_width(hover_ring_stroke_width);
+				let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.3).rgba_hex();
+				fill_color.insert(0, '#');
+
+				self.render_context.set_line_width(hover_ring_stroke_width);
+				self.render_context.begin_path();
+				self.render_context.arc(compass_x, compass_y, hover_ring_center_radius, 0., TAU).expect("Failed to draw hover ring");
+				self.render_context.set_stroke_style_str(&fill_color);
+				self.render_context.stroke();
+			}
+
+			// Main ring
+			let main_ring_stroke_width = MAIN_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
+			let main_ring_center_radius = (MAIN_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.0;
+
+			self.render_context.set_line_width(main_ring_stroke_width);
 			self.render_context.begin_path();
-			self.render_context.arc(compass_x, compass_y, hover_ring_center_radius, 0., TAU).expect("Failed to draw hover ring");
-			self.render_context.set_stroke_style_str(&fill_color);
+			self.render_context.arc(compass_x, compass_y, main_ring_center_radius, 0., TAU).expect("Failed to draw main ring");
+			self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 			self.render_context.stroke();
+
+			// Arrows
+			self.render_context.set_line_width(0.01);
+			for i in 0..4 {
+				let base_angle = i as f64 * FRAC_PI_2 + angle;
+				let direction = DVec2::from_angle(base_angle);
+				let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
+
+				let center = DVec2::new(compass_x, compass_y);
+
+				let tip = center + direction * HOVER_RING_OUTER_RADIUS;
+				let base = center + direction * (MAIN_RING_INNER_RADIUS + MAIN_RING_OUTER_RADIUS) / 2.;
+
+				let r = (ARROW_RADIUS.powi(2) + MAIN_RING_INNER_RADIUS.powi(2)).sqrt();
+				let (cos, sin) = (MAIN_RING_INNER_RADIUS / r, ARROW_RADIUS / r);
+				let side1 = center + r * DVec2::new(cos * direction.x - sin * direction.y, sin * direction.x + direction.y * cos);
+				let side2 = center + r * DVec2::new(cos * direction.x + sin * direction.y, -sin * direction.x + direction.y * cos);
+
+				self.render_context.begin_path();
+				self.render_context.move_to(tip.x, tip.y);
+				self.render_context.line_to(side1.x, side1.y);
+				self.render_context.line_to(base.x, base.y);
+				self.render_context.line_to(side2.x, side2.y);
+				self.render_context.close_path();
+
+				self.render_context.set_fill_style_str(color);
+				self.render_context.fill();
+				self.render_context.set_stroke_style_str(color);
+				self.render_context.stroke();
+			}
+			self.render_context.set_line_width(old_line_width);
 		}
-
-		// Main ring
-		let main_ring_stroke_width = MAIN_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
-		let main_ring_center_radius = (MAIN_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.0;
-
-		self.render_context.set_line_width(main_ring_stroke_width);
-		self.render_context.begin_path();
-		self.render_context.arc(compass_x, compass_y, main_ring_center_radius, 0., TAU).expect("Failed to draw main ring");
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.stroke();
-
-		// Arrows
-		self.render_context.set_line_width(0.01);
-		for i in 0..4 {
-			let base_angle = i as f64 * FRAC_PI_2 + angle;
-			let direction = DVec2::from_angle(base_angle);
-			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
-
-			let center = DVec2::new(compass_x, compass_y);
-
-			let tip = center + direction * HOVER_RING_OUTER_RADIUS;
-			let base = center + direction * (MAIN_RING_INNER_RADIUS + MAIN_RING_OUTER_RADIUS) / 2.;
-
-			let r = (ARROW_RADIUS.powi(2) + MAIN_RING_INNER_RADIUS.powi(2)).sqrt();
-			let (cos, sin) = (MAIN_RING_INNER_RADIUS / r, ARROW_RADIUS / r);
-			let side1 = center + r * DVec2::new(cos * direction.x - sin * direction.y, sin * direction.x + direction.y * cos);
-			let side2 = center + r * DVec2::new(cos * direction.x + sin * direction.y, -sin * direction.x + direction.y * cos);
-
-			self.render_context.begin_path();
-			self.render_context.move_to(tip.x, tip.y);
-			self.render_context.line_to(side1.x, side1.y);
-			self.render_context.line_to(base.x, base.y);
-			self.render_context.line_to(side2.x, side2.y);
-			self.render_context.close_path();
-
-			self.render_context.set_fill_style_str(color);
-			self.render_context.fill();
-			self.render_context.set_stroke_style_str(color);
-			self.render_context.stroke();
-		}
-		self.render_context.set_line_width(old_line_width);
-
 		self.end_dpi_aware_transform();
 	}
 

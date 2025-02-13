@@ -556,7 +556,10 @@ impl Fsm for SelectToolFsmState {
 					compass_rose_state.is_ring()
 				};
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_hover_ring);
+				let show_compass_with_ring = bounds
+					.map(|bounds| transform * Quad::from_box(bounds))
+					.and_then(|quad| if quad.contains(mouse_position) { Some(show_hover_ring) } else { None });
+				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_compass_with_ring);
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
 					Some((axis, false))
 				} else {
