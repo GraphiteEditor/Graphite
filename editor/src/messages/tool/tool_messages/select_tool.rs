@@ -631,7 +631,8 @@ impl Fsm for SelectToolFsmState {
 					other.insert(0, '#');
 					let other = other.as_str();
 
-					let origin = tool_data.pivot.get_compass_position();
+					let extension = tool_data.drag_current - tool_data.drag_start;
+					let origin = tool_data.pivot.get_compass_position() - extension;
 					let viewport_diagonal = input.viewport_bounds.size().length();
 
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
@@ -1195,6 +1196,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
+				tool_data.axis_align = false;
 
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
