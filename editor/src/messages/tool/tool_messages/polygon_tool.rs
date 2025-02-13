@@ -279,8 +279,7 @@ impl Fsm for PolygonToolFsmState {
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = tool_data.data.layer {
-						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
-
+						// TODO: We need to determine how to allow the polygon node to make irregular shapes
 						update_radius_sign(end, start, layer, document, responses);
 
 						let dimensions = (start - end).abs();
@@ -326,11 +325,9 @@ impl Fsm for PolygonToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-							transform_in: TransformIn::Viewport,
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 

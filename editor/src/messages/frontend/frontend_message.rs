@@ -250,6 +250,8 @@ pub enum FrontendMessage {
 	UpdateNodeGraph {
 		nodes: Vec<FrontendNode>,
 		wires: Vec<FrontendNodeWire>,
+		#[serde(rename = "wiresDirectNotGridAligned")]
+		wires_direct_not_grid_aligned: bool,
 	},
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]

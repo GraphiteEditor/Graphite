@@ -13,8 +13,8 @@
 
 	$: iconSizeClass = ((icon: IconName) => {
 		const iconData = ICONS[icon];
-		// eslint-disable-next-line no-console
 		if (!iconData) {
+			// eslint-disable-next-line no-console
 			console.warn(`Icon "${icon}" does not exist.`);
 			return "size-24";
 		}

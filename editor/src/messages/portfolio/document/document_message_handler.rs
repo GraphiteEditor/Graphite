@@ -42,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -172,6 +173,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			persistent_data,
 			executor,
 			current_tool,
+			preferences,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -222,6 +224,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
+						preferences,
 					},
 				);
 			}
@@ -1208,9 +1211,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						insert_index: folder_index,
 					});
 
-					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(child);
-					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
-					let transform = undo_transform * layer_local_transform;
+					let metadata = self.network_interface.document_metadata();
+					let layer_local_transform = metadata.transform_to_viewport(child);
+					let undo_parent_transform = if parent == LayerNodeIdentifier::ROOT_PARENT {
+						// This is functionally the same as transform_to_viewport for the root, however to_node cannot run on the root in debug mode.
+						metadata.document_to_viewport.inverse()
+					} else {
+						metadata.transform_to_viewport(parent).inverse()
+					};
+					let transform = undo_parent_transform * layer_local_transform;
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: child,
 						transform,
