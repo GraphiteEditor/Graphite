@@ -106,16 +106,6 @@ fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: DVec2, #[defaul
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
 }
 
-#[node_macro::node(category("Vector: Shape"))]
-fn spline(_: impl Ctx, _primary: (), points: Vec<DVec2>) -> VectorDataTable {
-	let mut spline = VectorData::from_subpath(Subpath::new_cubic_spline(points));
-	for pair in spline.segment_domain.ids().windows(2) {
-		spline.colinear_manipulators.push([HandleId::end(pair[0]), HandleId::primary(pair[1])]);
-	}
-
-	VectorDataTable::new(spline)
-}
-
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
 #[node_macro::node(category(""))]
 fn path(_: impl Ctx, path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> VectorDataTable {

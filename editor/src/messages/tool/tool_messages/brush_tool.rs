@@ -156,7 +156,7 @@ impl LayoutHolder for BrushTool {
 			false,
 			|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
-			|color: &ColorButton| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value.as_solid())).into(),
+			|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value.as_solid())).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
@@ -425,7 +425,7 @@ impl Fsm for BrushToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			BrushToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),

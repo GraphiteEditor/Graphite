@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext};
+use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -77,7 +77,7 @@ impl LayoutHolder for RectangleTool {
 			true,
 			|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -87,7 +87,7 @@ impl LayoutHolder for RectangleTool {
 			true,
 			|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -224,11 +224,22 @@ impl Fsm for RectangleToolFsmState {
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
-						// TODO: make the scale impact the rect node
+						let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
+							return self;
+						};
+
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 1),
+							input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 2),
+							input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
+						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
-							transform_in: TransformIn::Viewport,
+							transform: DAffine2::from_translation((start + end) / 2.),
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
 					}
@@ -288,7 +299,7 @@ impl Fsm for RectangleToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			RectangleToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),

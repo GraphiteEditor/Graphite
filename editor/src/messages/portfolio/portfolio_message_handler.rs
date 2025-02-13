@@ -3,21 +3,26 @@ use super::document::utility_types::network_interface::{self, InputConnector, Ou
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
+use bezier_rs::Subpath;
+use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
+use graphene_std::vector::{VectorData, VectorDataTable};
 use interpreted_executor::dynamic_executor::IntrospectError;
 
 use std::sync::Arc;
@@ -27,6 +32,7 @@ pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
 #[derive(Debug, Default)]
@@ -44,7 +50,12 @@ pub struct PortfolioMessageHandler {
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
-		let PortfolioMessageData { ipp, preferences, current_tool } = data;
+		let PortfolioMessageData {
+			ipp,
+			preferences,
+			current_tool,
+			message_logging_verbosity,
+		} = data;
 
 		match message {
 			// Sub-messages
@@ -54,6 +65,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let mut node_graph_open = false;
 				let mut has_selected_nodes = false;
 				let mut has_selected_layers = false;
+				let mut has_selection_history = (false, false);
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
@@ -62,6 +74,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+					has_selection_history = document
+						.network_interface
+						.network_metadata(&[])
+						.map(|metadata| {
+							let metadata = &metadata.persistent_metadata;
+							(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
+						})
+						.unwrap_or((false, false));
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -72,6 +92,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						node_graph_open,
 						has_selected_nodes,
 						has_selected_layers,
+						has_selection_history,
+						message_logging_verbosity,
 					},
 				);
 			}
@@ -84,6 +106,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
 							current_tool,
+							preferences,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -99,6 +122,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
 						current_tool,
+						preferences,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -202,9 +226,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				};
 
 				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					let ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]);
+					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
 
-					for layer in ordered_last_elements {
+					ordered_last_elements.sort_by_key(|layer| {
+						let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
+						DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+					});
+
+					for layer in ordered_last_elements.into_iter() {
 						let layer_node_id = layer.to_node();
 
 						let mut copy_ids = HashMap::new();
@@ -393,7 +422,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `upgrade_from_before_editable_subgraphs` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
+				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
 				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =
@@ -456,6 +485,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::raster::VibranceNode", "graphene_core::raster::adjustments::VibranceNode"),
 					("graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"),
 					("graphene_core::transform::SetTransformNode", "graphene_core::transform::ReplaceTransformNode"),
+					("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
 					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
@@ -464,7 +494,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						"graphene_core::vector::generator_nodes::RegularPolygonGenerator",
 						"graphene_core::vector::generator_nodes::RegularPolygonNode",
 					),
-					("graphene_core::vector::generator_nodes::SplineGenerator", "graphene_core::vector::generator_nodes::SplineNode"),
 					("graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"),
 					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
@@ -610,6 +639,77 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									.network_interface
 									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
 							}
+						}
+					}
+
+					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node
+					if reference == "Splines from Points" {
+						document.network_interface.set_reference(node_id, &[], Some("Spline".to_string()));
+					}
+
+					// Upgrade the old "Spline" node to the new "Spline" node
+					if reference == "Spline" {
+						// Retrieve the proto node identifier and verify it is the old "Spline" node, otherwise skip it if this is the new "Spline" node
+						let identifier = document.network_interface.implementation(node_id, &[]).and_then(|implementation| implementation.get_proto_node());
+						if identifier.map(|identifier| &identifier.name) != Some(&"graphene_core::vector::generator_nodes::SplineNode".into()) {
+							continue;
+						}
+
+						// Obtain the document node for the given node ID, extract the vector points, and create vector data from the list of points
+						let node = document.network_interface.document_node(node_id, &[]).unwrap();
+						let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
+							log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
+							continue;
+						};
+						let vector_data = VectorData::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+
+						// Retrieve the output connectors linked to the "Spline" node's output port
+						let spline_outputs = document
+							.network_interface
+							.outward_wires(&[])
+							.unwrap()
+							.get(&OutputConnector::node(*node_id, 0))
+							.expect("Vec of InputConnector Spline node is connected to its output port 0.")
+							.clone();
+
+						// Get the node's current position in the graph
+						let Some(node_position) = document.network_interface.position(node_id, &[]) else {
+							log::error!("Could not get position of spline node.");
+							continue;
+						};
+
+						// Get the "Path" node definition and fill it in with the vector data and default vector modification
+						let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist.");
+						let path_node = path_node_type.node_template_input_override([
+							Some(NodeInput::value(TaggedValue::VectorData(VectorDataTable::new(vector_data)), true)),
+							Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
+						]);
+
+						// Get the "Spline" node definition and wire it up with the "Path" node as input
+						let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist.");
+						let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
+
+						// Create a new node group with the "Path" and "Spline" nodes and generate new node IDs for them
+						let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
+						let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+						let new_spline_id = *new_ids.get(&NodeId(0)).unwrap();
+						let new_path_id = *new_ids.get(&NodeId(1)).unwrap();
+
+						// Remove the old "Spline" node from the document
+						document.network_interface.delete_nodes(vec![*node_id], false, &[]);
+
+						// Insert the new "Path" and "Spline" nodes into the network interface with generated IDs
+						document.network_interface.insert_node_group(nodes.clone(), new_ids, &[]);
+
+						// Reposition the new "Spline" node to match the original "Spline" node's position
+						document.network_interface.shift_node(&new_spline_id, node_position, &[]);
+
+						// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
+						document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), &[]);
+
+						// Redirect each output connection from the old node to the new "Spline" node's output port
+						for input_connector in spline_outputs {
+							document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), &[]);
 						}
 					}
 

@@ -9,13 +9,15 @@
 	export let width: string | undefined;
 	export let height: string | undefined;
 	export let tooltip: string | undefined = undefined;
+	// Callbacks
+	export let action: (e?: MouseEvent) => void;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
 </script>
 
-<img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} title={tooltip} alt="" />
+<img src={IMAGE_BASE64_STRINGS[image]} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} title={tooltip} alt="" on:click={action} />
 
 <style lang="scss" global>
 	.image-label {

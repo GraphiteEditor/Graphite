@@ -35,6 +35,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
 	pub navigation_handler: &'a NavigationMessageHandler,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +94,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
 			navigation_handler,
+			preferences,
 		} = data;
 
 		match message {
@@ -1229,44 +1231,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.auto_panning.stop(&messages, responses);
 				}
 			}
-			NodeGraphMessage::PrintSelectedNodeCoordinates => {
-				// TODO: This will also have to print all metadata
-				// for (_, node_to_print) in network
-				// 	.nodes
-				// 	.iter()
-				// 	.filter(|node_id| selected_nodes.selected_nodes().any(|selected_id| selected_id == node_id.0))
-				// {
-				// 	if let DocumentNodeImplementation::Network(network) = &node_to_print.implementation {
-				// 		let mut output = "\r\n\r\n".to_string();
-				// 		output += &node_to_print.name;
-				// 		output += ":\r\n\r\n";
-				// 		let mut nodes = network.nodes.iter().collect::<Vec<_>>();
-				// 		nodes.sort_by_key(|(a, _)| a.0);
-				// 		output += &nodes
-				// 			.iter()
-				// 			.map(|(_, node)| {
-				// 				format!(
-				// 					"metadata: DocumentNodeMetadata {{ position: glam::IVec2::new({}, {}) }}, // {}",
-				// 					node.metadata().position.x, node.metadata().position.y, node.name
-				// 				)
-				// 			})
-				// 			.collect::<Vec<_>>()
-				// 			.join("\r\n");
-				// 		output += "\r\n";
-				// 		output += &format!(
-				// 			"imports_metadata: (NodeId::new(), ({}, {}).into()),\r\n",
-				// 			network.imports_metadata.1.x, network.imports_metadata.1.y
-				// 		);
-				// 		output += &format!(
-				// 			"exports_metadata: (NodeId::new(), ({}, {}).into()),",
-				// 			network.exports_metadata.1.x, network.exports_metadata.1.y
-				// 		);
-				// 		output += "\r\n\r\n";
-				// 		// KEEP THIS `debug!()` - Someday we can remove this once this development utility is no longer needed
-				// 		log::debug!("{output}");
-				// 	}
-				// }
-			}
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1331,8 +1295,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
+					let wires_direct_not_grid_aligned = preferences.graph_wire_style.is_direct();
+
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
+					responses.add(FrontendMessage::UpdateNodeGraph {
+						nodes,
+						wires,
+						wires_direct_not_grid_aligned,
+					});
 					responses.add(FrontendMessage::UpdateLayerWidths {
 						layer_widths,
 						chain_widths,
@@ -1738,7 +1708,6 @@ impl NodeGraphMessageHandler {
 				ToggleSelectedAsLayersOrNodes,
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
-				PrintSelectedNodeCoordinates,
 				ShiftSelectedNodes,
 			));
 		}
@@ -1861,7 +1830,7 @@ impl NodeGraphMessageHandler {
 		// If only one node is selected then show the preview or stop previewing button
 		if let Some(node_id) = previewing {
 			let button = TextButton::new("End Preview")
-				.icon(Some("Rescale".to_string()))
+				.icon(Some("FrameAll".to_string()))
 				.tooltip("Restore preview to the graph output")
 				.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 				.widget_holder();
@@ -1873,7 +1842,7 @@ impl NodeGraphMessageHandler {
 				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
 			if selection_is_not_already_the_output && no_other_selections {
 				let button = TextButton::new("Preview")
-					.icon(Some("Rescale".to_string()))
+					.icon(Some("FrameAll".to_string()))
 					.tooltip("Preview selected node/layer (Shortcut: Alt-click node/layer)")
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 					.widget_holder();

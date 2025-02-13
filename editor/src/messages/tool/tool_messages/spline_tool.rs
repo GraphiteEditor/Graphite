@@ -1,12 +1,14 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
@@ -102,7 +104,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -112,7 +114,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -195,6 +197,7 @@ struct SplineToolData {
 	extend: bool,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
+	starting_layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
 }
@@ -206,6 +209,7 @@ impl SplineToolData {
 		self.preview_segment = None;
 		self.extend = false;
 		self.points = Vec::new();
+		self.starting_layer = None;
 	}
 
 	/// Get the snapped point while ignoring current layer
@@ -249,6 +253,19 @@ impl Fsm for SplineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
+				// Check if we're starting from an endpoint of any layer, even if not extending
+				let closest_endpoint = closest_point(
+					document,
+					viewport,
+					PATH_JOIN_THRESHOLD,
+					LayerNodeIdentifier::ROOT_PARENT.descendants(document.metadata()),
+					|_| false, // Don't exclude any points
+					preferences,
+				);
+				if let Some((start_layer, _, _)) = closest_endpoint {
+					tool_data.starting_layer = Some(start_layer);
+				}
+
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
 				if let Some((layer, point, position)) = should_extend(document, viewport, SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata()), preferences) {
@@ -283,7 +300,7 @@ impl Fsm for SplineToolFsmState {
 
 				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
-				let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist");
+				let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
@@ -381,7 +398,7 @@ impl Fsm for SplineToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
@@ -405,29 +422,133 @@ impl Fsm for SplineToolFsmState {
 /// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
 fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 	let Some(&(endpoint, _)) = tool_data.points.last() else { return false };
-
+	let Some(&(start_point, _)) = tool_data.points.first() else { return false };
+	let Some(starting_layer) = tool_data.starting_layer else { return false };
+	let Some(current_layer) = tool_data.layer else { return false };
 	let preview_point = tool_data.preview_point;
-	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-	let selected_layers = selected_nodes.selected_layers(document.metadata());
 
 	// Get the closest point to mouse position which is not preview_point or end_point.
 	let closest_point = closest_point(
 		document,
 		mouse_pos,
 		PATH_JOIN_THRESHOLD,
-		selected_layers,
+		LayerNodeIdentifier::ROOT_PARENT.descendants(document.metadata()),
 		|cp| preview_point.is_some_and(|pp| pp == cp) || cp == endpoint,
 		preferences,
 	);
-	let Some((layer, join_point, _)) = closest_point else { return false };
+	let Some((other_layer, join_point, _)) = closest_point else { return false };
 
 	// Last end point inserted was the preview point and segment therefore we delete it before joining the end_point & join_point.
 	delete_preview(tool_data, responses);
 
-	let points = [endpoint, join_point];
-	let id = SegmentId::generate();
-	let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	// If the points are in different layers, merge them first
+	if current_layer == other_layer {
+		// If points are in the same layer, just connect them
+		let points = [endpoint, join_point];
+		let id = SegmentId::generate();
+		let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
+		responses.add(GraphOperationMessage::Vector {
+			layer: current_layer,
+			modification_type,
+		});
+
+		return true;
+	}
+
+	match (is_layer_spline(document, starting_layer), is_layer_spline(document, other_layer)) {
+		(true, true) => {
+			merge_two_spline_layer(document, current_layer, other_layer, responses);
+			let points = [endpoint, join_point];
+			let id = SegmentId::generate();
+			let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
+			responses.add(GraphOperationMessage::Vector {
+				layer: current_layer,
+				modification_type,
+			});
+		}
+		(false, false) => {
+			let Some(current_vector_data) = document.network_interface.compute_modified_vector(current_layer) else {
+				log::error!("Could not get vector data for current layer");
+				return false;
+			};
+			let Some(starting_vector_data) = document.network_interface.compute_modified_vector(starting_layer) else {
+				log::error!("Could not get vector data for other layer");
+				return false;
+			};
+
+			let Some(starting_layer_endpoint) = starting_vector_data.end_point().last() else {
+				log::error!("Could not get endpoint");
+				return false;
+			};
+
+			let handles = (0..current_vector_data.segment_domain.handles().len())
+				.find_map(|index| {
+					let (start_id, end_id, bezier) = current_vector_data.segment_points_from_index(index);
+					if start_id == endpoint {
+						Some([bezier.handles.start(), bezier.handles.end()])
+					} else if end_id == endpoint {
+						// Reverse the handles if connecting to end point
+						Some([bezier.handles.end(), bezier.handles.start()])
+					} else {
+						None
+					}
+				})
+				.unwrap();
+
+			// Merge the layers first
+			merge_non_spline_layers(document, starting_layer, current_layer, other_layer, responses);
+
+			let points = [endpoint, join_point];
+			let points2 = [start_point, starting_layer_endpoint];
+			let id = SegmentId::generate();
+			let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+			responses.add(GraphOperationMessage::Vector {
+				layer: starting_layer,
+				modification_type,
+			});
+
+			let id = SegmentId::generate();
+			let modification_type = VectorModificationType::InsertSegment { id, points: points2, handles };
+			responses.add(GraphOperationMessage::Vector {
+				layer: starting_layer,
+				modification_type,
+			});
+		}
+		_ => {
+			let current_vector_data = match document.network_interface.compute_modified_vector(current_layer) {
+				Some(data) => data,
+				None => {
+					log::error!("Could not get vector data for current layer");
+					return false;
+				}
+			};
+
+			let handles = (0..current_vector_data.segment_domain.handles().len()).find_map(|index| {
+				let (start_id, end_id, bezier) = current_vector_data.segment_points_from_index(index);
+				if start_id == endpoint {
+					Some([bezier.handles.start(), bezier.handles.end()])
+				} else if end_id == endpoint {
+					Some([bezier.handles.end(), bezier.handles.start()])
+				} else {
+					None
+				}
+			});
+
+			let Some(handles) = handles else {
+				log::error!("Could not find handles for endpoint");
+				return false;
+			};
+
+			merge_path_spline_layer(document, current_layer, other_layer, responses);
+
+			let points = [endpoint, join_point];
+			let id = SegmentId::generate();
+			responses.add(GraphOperationMessage::Vector {
+				layer: other_layer,
+				modification_type: VectorModificationType::InsertSegment { id, points, handles },
+			});
+		}
+	}
 
 	true
 }
@@ -477,4 +598,427 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 
 	tool_data.preview_point = None;
 	tool_data.preview_segment = None;
+}
+
+fn merge_two_spline_layer(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
+	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+
+	// Represents the change in position that would occur if the other layer was moved below the current layer
+	let transform_delta = current_transform * other_transform.inverse();
+	let offset = transform_delta.inverse();
+	responses.add(GraphOperationMessage::TransformChange {
+		layer: other_layer,
+		transform: offset,
+		transform_in: TransformIn::Local,
+		skip_rerender: false,
+	});
+
+	// First find their IDs
+	let current_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(
+			vec![current_layer.to_node()],
+			&[],
+			crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
+		)
+		.collect::<Vec<_>>();
+
+	let other_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![other_layer.to_node()], &[], FlowType::HorizontalFlow)
+		.collect::<Vec<_>>();
+
+	// Add merge node and insert between path and spline
+	let merge_node_id = NodeId::new();
+	let merge_node = document_node_definitions::resolve_document_node_type("Merge")
+		.expect("Failed to create merge node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: merge_node_id,
+		node_template: merge_node,
+	});
+	responses.add(NodeGraphMessage::SetToNodeOrLayer {
+		node_id: merge_node_id,
+		is_layer: false,
+	});
+
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: merge_node_id,
+		parent: current_layer,
+	});
+
+	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector::node(other_layer.to_node(), 1),
+		input_connector: InputConnector::node(merge_node_id, 1),
+	});
+
+	// Add flatten vector elements node after merge
+	let flatten_node_id = NodeId::new();
+	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+		.expect("Failed to create flatten node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: flatten_node_id,
+		node_template: flatten_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: flatten_node_id,
+		parent: current_layer,
+	});
+
+	let path_node_id = NodeId::new();
+	let path_node = document_node_definitions::resolve_document_node_type("Path")
+		.expect("Failed to create path node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: path_node_id,
+		node_template: path_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: path_node_id,
+		parent: current_layer,
+	});
+
+	let spline_node_id = NodeId::new();
+	let spline_node = document_node_definitions::resolve_document_node_type("Splines from Points")
+		.expect("Failed to create spline node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: spline_node_id,
+		node_template: spline_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: spline_node_id,
+		parent: current_layer,
+	});
+
+	let stroke_node_id = NodeId::new();
+	let stroke_node = document_node_definitions::resolve_document_node_type("Stroke")
+		.expect("Failed to create stroke node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: stroke_node_id,
+		node_template: stroke_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: stroke_node_id,
+		parent: current_layer,
+	});
+
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: current_layer_nodes[1..3].to_vec(),
+		delete_children: false,
+	});
+
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: other_layer_nodes[..3].to_vec(),
+		delete_children: false,
+	});
+
+	responses.add(NodeGraphMessage::RunDocumentGraph);
+	responses.add(Message::StartBuffer);
+}
+
+fn merge_non_spline_layers(
+	document: &DocumentMessageHandler,
+	starting_layer: LayerNodeIdentifier,
+	current_layer: LayerNodeIdentifier,
+	other_layer: LayerNodeIdentifier,
+	responses: &mut VecDeque<Message>,
+) {
+	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
+	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+
+	// Represents the change in position that would occur if the other layer was moved below the current layer
+	let transform_delta = current_transform * other_transform.inverse();
+	let offset = transform_delta.inverse();
+	responses.add(GraphOperationMessage::TransformChange {
+		layer: other_layer,
+		transform: offset,
+		transform_in: TransformIn::Local,
+		skip_rerender: false,
+	});
+
+	// Delete spline and stroke nodes from both layers
+	// First find their IDs
+	let starting_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(
+			vec![starting_layer.to_node()],
+			&[],
+			crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
+		)
+		.collect::<Vec<_>>();
+
+	let current_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(
+			vec![current_layer.to_node()],
+			&[],
+			crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
+		)
+		.collect::<Vec<_>>();
+
+	let other_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![other_layer.to_node()], &[], FlowType::HorizontalFlow)
+		.collect::<Vec<_>>();
+
+	// Add merge node and insert between path and spline
+	let merge_node_id = NodeId::new();
+	let merge_node = document_node_definitions::resolve_document_node_type("Merge")
+		.expect("Failed to create merge node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: merge_node_id,
+		node_template: merge_node,
+	});
+	responses.add(NodeGraphMessage::SetToNodeOrLayer {
+		node_id: merge_node_id,
+		is_layer: false,
+	});
+
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: merge_node_id,
+		parent: starting_layer,
+	});
+	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector::node(other_layer.to_node(), 1),
+		input_connector: InputConnector::node(merge_node_id, 1),
+	});
+
+	let merge_node_id2 = NodeId::new();
+	let merge_node2 = document_node_definitions::resolve_document_node_type("Merge")
+		.expect("Failed to create merge node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: merge_node_id2,
+		node_template: merge_node2,
+	});
+	responses.add(NodeGraphMessage::SetToNodeOrLayer {
+		node_id: merge_node_id2,
+		is_layer: false,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: merge_node_id2,
+		parent: starting_layer,
+	});
+	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector::node(current_layer.to_node(), 1),
+		input_connector: InputConnector::node(merge_node_id2, 1),
+	});
+	// Add flatten vector elements node after merge
+	let flatten_node_id2 = NodeId::new();
+	let flatten_node2 = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+		.expect("Failed to create flatten node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: flatten_node_id2,
+		node_template: flatten_node2,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: flatten_node_id2,
+		parent: starting_layer,
+	});
+
+	let path_node_id = NodeId::new();
+	let path_node = document_node_definitions::resolve_document_node_type("Path")
+		.expect("Failed to create path node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: path_node_id,
+		node_template: path_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: path_node_id,
+		parent: starting_layer,
+	});
+
+	let stroke_node_id = NodeId::new();
+	let stroke_node = document_node_definitions::resolve_document_node_type("Stroke")
+		.expect("Failed to create stroke node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: stroke_node_id,
+		node_template: stroke_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: stroke_node_id,
+		parent: starting_layer,
+	});
+
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: starting_layer_nodes[1..(if is_layer_line(document, starting_layer) { 2 } else { 3 })].to_vec(),
+		delete_children: false,
+	});
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: other_layer_nodes[..(if is_layer_line(document, other_layer) { 2 } else { 3 })].to_vec(),
+		delete_children: false,
+	});
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: current_layer_nodes[..2].to_vec(),
+		delete_children: false,
+	});
+
+	responses.add(NodeGraphMessage::RunDocumentGraph);
+	responses.add(Message::StartBuffer);
+}
+
+fn merge_path_spline_layer(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
+	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+
+	// Represents the change in position that would occur if the other layer was moved below the current layer
+	let transform_delta = current_transform * other_transform.inverse();
+	let offset = transform_delta.inverse();
+	responses.add(GraphOperationMessage::TransformChange {
+		layer: other_layer,
+		transform: offset,
+		transform_in: TransformIn::Local,
+		skip_rerender: false,
+	});
+
+	// First find their IDs
+	let current_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(
+			vec![current_layer.to_node()],
+			&[],
+			crate::messages::portfolio::document::utility_types::network_interface::FlowType::HorizontalFlow,
+		)
+		.collect::<Vec<_>>();
+
+	let other_layer_nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![other_layer.to_node()], &[], FlowType::HorizontalFlow)
+		.collect::<Vec<_>>();
+
+	// Add merge node and insert between path and spline
+	let merge_node_id = NodeId::new();
+	let merge_node = document_node_definitions::resolve_document_node_type("Merge")
+		.expect("Failed to create merge node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: merge_node_id,
+		node_template: merge_node,
+	});
+	responses.add(NodeGraphMessage::SetToNodeOrLayer {
+		node_id: merge_node_id,
+		is_layer: false,
+	});
+
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: merge_node_id,
+		parent: other_layer,
+	});
+
+	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
+		downstream_input: InputConnector::node(current_layer.to_node(), 1),
+		input_connector: InputConnector::node(merge_node_id, 1),
+	});
+
+	// Add flatten vector elements node after merge
+	let flatten_node_id = NodeId::new();
+	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+		.expect("Failed to create flatten node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: flatten_node_id,
+		node_template: flatten_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: flatten_node_id,
+		parent: other_layer,
+	});
+
+	let path_node_id = NodeId::new();
+	let path_node = document_node_definitions::resolve_document_node_type("Path")
+		.expect("Failed to create path node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: path_node_id,
+		node_template: path_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: path_node_id,
+		parent: other_layer,
+	});
+
+	let stroke_node_id = NodeId::new();
+	let stroke_node = document_node_definitions::resolve_document_node_type("Stroke")
+		.expect("Failed to create stroke node")
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode {
+		node_id: stroke_node_id,
+		node_template: stroke_node,
+	});
+	responses.add(NodeGraphMessage::MoveNodeToChainStart {
+		node_id: stroke_node_id,
+		parent: other_layer,
+	});
+
+	let node_range = if is_layer_line(document, other_layer) {
+		1..2 // transform node is not deleted
+	} else {
+		1..3
+	};
+
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: other_layer_nodes[node_range].to_vec(),
+		delete_children: false,
+	});
+
+	responses.add(NodeGraphMessage::DeleteNodes {
+		node_ids: current_layer_nodes[..2].to_vec(),
+		delete_children: false,
+	});
+
+	responses.add(NodeGraphMessage::RunDocumentGraph);
+	responses.add(Message::StartBuffer);
+}
+
+fn is_layer_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
+	let nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
+		.collect::<Vec<NodeId>>();
+
+	// Check node types in the chain
+	let mut has_spline = false;
+
+	for node in nodes {
+		if let Some(reference) = document.network_interface.reference(&node, &[]) {
+			match reference.as_deref() {
+				Some("Splines from Points") => has_spline = true,
+				_ => continue,
+			}
+		}
+	}
+
+	has_spline
+}
+
+fn is_layer_line(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> bool {
+	let nodes = document
+		.network_interface
+		.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
+		.collect::<Vec<NodeId>>();
+
+	// Check node types in the chain
+	let mut has_line = false;
+
+	for node in nodes {
+		if let Some(reference) = document.network_interface.reference(&node, &[]) {
+			match reference.as_deref() {
+				Some("Line") => has_line = true,
+				_ => continue,
+			}
+		}
+	}
+
+	has_line
 }

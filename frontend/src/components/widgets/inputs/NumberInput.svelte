@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
+	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
 	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
+	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
 	const BUTTONS_LEFT = 0b0000_0001;
@@ -60,6 +62,9 @@
 	let inputRangeElement: HTMLInputElement | undefined;
 	let text = displayText(value, unit);
 	let editing = false;
+	let isDragging = false;
+	let pressingArrow = false;
+	let repeatTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 	// Stays in sync with a binding to the actual input range slider element.
 	let rangeSliderValue = value !== undefined ? value : 0;
 	// Value used to render the position of the fake slider when applicable, and length of the progress colored region to the slider's left.
@@ -187,6 +192,8 @@
 		editing = true;
 
 		self?.selectAllText(text);
+		// Workaround for weird behavior in Firefox: <https://github.com/GraphiteEditor/Graphite/issues/2215>
+		if (isDragging) self?.unFocus();
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -227,8 +234,8 @@
 	// INCREMENT MODE: ARROW BUTTONS
 	// =============================
 
-	function onIncrement(direction: "Decrease" | "Increase") {
-		if (value === undefined) return;
+	function onIncrementPointerDown(e: PointerEvent, direction: "Decrease" | "Increase") {
+		if (value === undefined || e.button !== BUTTON_LEFT) return;
 
 		const actions: Record<NumberInputIncrementBehavior, () => void> = {
 			Add: () => {
@@ -247,7 +254,41 @@
 			},
 			None: () => {},
 		};
-		actions[incrementBehavior]();
+
+		const sendAction = () => {
+			if (!pressingArrow) return;
+
+			actions[incrementBehavior]();
+
+			if (afterInitialDelay) repeatTimeout = setTimeout(sendAction, PRESS_REPEAT_INTERVAL_MS);
+			afterInitialDelay = true;
+		};
+
+		pressingArrow = true;
+		initialValueBeforeDragging = value;
+		let afterInitialDelay = false;
+		sendAction();
+		repeatTimeout = setTimeout(sendAction, PRESS_REPEAT_DELAY_MS);
+		addEventListener("keydown", incrementPressAbort);
+	}
+
+	function onIncrementPointerUp() {
+		pressingArrow = false;
+		clearTimeout(repeatTimeout);
+	}
+
+	function onIncrementMouseDown(e: MouseEvent) {
+		if (e.button === BUTTON_RIGHT) incrementPressAbort();
+	}
+
+	function incrementPressAbort() {
+		const element = self?.element() || undefined;
+		if (element) preventEscapeClosingParentFloatingMenu(element);
+
+		pressingArrow = false;
+		clearTimeout(repeatTimeout);
+		updateValue(initialValueBeforeDragging);
+		removeEventListener("keydown", onIncrementPointerUp);
 	}
 
 	// =======================================
@@ -281,7 +322,7 @@
 		const onMove = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
-
+			isDragging = true;
 			beginDrag(e);
 			removeEventListener("pointermove", onMove);
 		};
@@ -289,7 +330,7 @@
 		const onUp = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
-
+			isDragging = false;
 			self?.focus();
 			removeEventListener("pointerup", onUp);
 		};
@@ -396,8 +437,8 @@
 		if (rangeSliderClickDragState === "Aborted") {
 			// If we've just aborted the drag by right clicking, but the user hasn't yet released the left mouse button, Firefox treats
 			// some subsequent interactions with the slider (like that right mouse button release, or maybe mouse movement in some cases)
-			// as input changes to the slider position. Thus, until we leave the "Aborted" state by releasing all mouse buttons,
-			// we have to set the slider position back to currently intended value to fight against Firefox's attempts to let the user move it.
+			// as input changes to the slider position. Thus, until we leave the "Aborted" state by releasing all mouse buttons, we have
+			// to set the slider position back to the currently intended value to fight against Firefox's attempts to let the user move it.
 			updateValue(rangeSliderValueAsRendered);
 
 			// Now we exit early because we're ignoring further user input until the user releases all mouse buttons, which gets us back to the "Ready" state.
@@ -508,10 +549,7 @@
 		// Logic for aborting from pressing Escape.
 		if (e instanceof KeyboardEvent) {
 			// Detect if the user pressed Escape and abort the slider drag.
-			if (e.key === "Escape") {
-				// Call the abort helper function.
-				sliderAbort();
-			}
+			if (e.key === "Escape") sliderAbort(true);
 		}
 
 		// Logic for aborting from a right click.
@@ -519,7 +557,7 @@
 		// This handler's "pointermove" event will be fired upon right click even if the cursor didn't move, which is why it's okay to check in this event handler.
 		if (e instanceof PointerEvent && e.buttons & BUTTONS_RIGHT) {
 			// Call the abort helper function
-			sliderAbort();
+			sliderAbort(false);
 		}
 
 		// Recovery from the window losing focus while dragging the slider.
@@ -540,9 +578,11 @@
 	// During this momentary step, the slider hasn't moved yet but we want to allow aborting from this limbo state.
 	function sliderAbortFromMousedown(e: MouseEvent | KeyboardEvent) {
 		// Logic for aborting from a right click or pressing Escape.
-		if ((e instanceof KeyboardEvent && e.key === "Escape") || (e instanceof MouseEvent && e.button === BUTTON_RIGHT)) {
+		const abortWithEscape = e instanceof KeyboardEvent && e.key === "Escape";
+		const abortWithRightClick = e instanceof MouseEvent && e.button === BUTTON_RIGHT;
+		if (abortWithEscape || abortWithRightClick) {
 			// Call the abort helper function
-			sliderAbort();
+			sliderAbort(abortWithEscape);
 
 			// Clean up these event listeners because they were for getting us into this function and now we're done with them.
 			removeEventListener("mousedown", sliderAbortFromMousedown);
@@ -551,7 +591,10 @@
 	}
 
 	// Helper function that performs the state management and cleanup for aborting the slider drag.
-	function sliderAbort() {
+	function sliderAbort(abortWithEscape: boolean) {
+		const element = self?.element() || undefined;
+		if (abortWithEscape && element) preventEscapeClosingParentFloatingMenu(element);
+
 		// End the user's drag by instantaneously disabling and re-enabling the range input element
 		if (inputRangeElement) inputRangeElement.disabled = true;
 		setTimeout(() => {
@@ -577,9 +620,7 @@
 			// dragging the slider, hitting Escape, then releasing the mouse button. This results in being transferred by `onSliderInput()` to the
 			// "Deciding" state when we should remain in the "Ready" state as set here. (For debugging, this can be visualized in CSS by
 			// recoloring the fake slider handle, which is shown in the "Deciding" state.)
-			setTimeout(() => {
-				rangeSliderClickDragState = "Ready";
-			}, 0);
+			setTimeout(() => (rangeSliderClickDragState = "Ready"), 0);
 
 			// Clean up the event listener that was used to call this function.
 			removeEventListener("pointerup", sliderResetAbort);
@@ -614,8 +655,22 @@
 >
 	{#if value !== undefined}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
-			<button class="arrow left" on:click={() => onIncrement("Decrease")} tabindex="-1" />
-			<button class="arrow right" on:click={() => onIncrement("Increase")} tabindex="-1" />
+			<button
+				class="arrow left"
+				on:pointerdown={(e) => onIncrementPointerDown(e, "Decrease")}
+				on:mousedown={onIncrementMouseDown}
+				on:pointerup={onIncrementPointerUp}
+				on:pointerleave={onIncrementPointerUp}
+				tabindex="-1"
+			></button>
+			<button
+				class="arrow right"
+				on:pointerdown={(e) => onIncrementPointerDown(e, "Increase")}
+				on:mousedown={onIncrementMouseDown}
+				on:pointerup={onIncrementPointerUp}
+				on:pointerleave={onIncrementPointerUp}
+				tabindex="-1"
+			></button>
 		{/if}
 		{#if mode === "Range"}
 			<input
@@ -681,6 +736,8 @@
 				border: none;
 				border-radius: 2px;
 				background: rgba(var(--color-1-nearblack-rgb), 0.5);
+				// An outline can appear when pressing the arrow button with left click then hitting Escape, so this stops that from showing
+				outline: none;
 
 				&:hover {
 					background: var(--color-4-dimgray);
