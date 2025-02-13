@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_INCREMENT, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -935,7 +935,7 @@ impl Fsm for SelectToolFsmState {
 					};
 
 					let snapped_angle = if input.keyboard.key(modifier_keys.snap_angle) {
-						let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
+						let snap_resolution = ROTATE_INCREMENT.to_radians();
 						(angle / snap_resolution).round() * snap_resolution
 					} else {
 						angle
@@ -1194,24 +1194,27 @@ impl Fsm for SelectToolFsmState {
 				};
 
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
-				if new_selected != current_selected {
-					// Negative selection when both Shift and Ctrl are pressed
-					if input.keyboard.key(remove_from_selection) {
-						let updated_selection = current_selected
-							.into_iter()
-							.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
-							.collect();
-						tool_data.layers_dragging = updated_selection;
-					} else {
-						let parent_selected: HashSet<_> = new_selected
-							.into_iter()
-							.map(|layer| {
-								// Find the parent node
-								layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
-							})
-							.collect();
-						tool_data.layers_dragging.extend(parent_selected.iter().copied());
-					}
+				let negative_selection = input.keyboard.key(remove_from_selection);
+				let selection_modified = new_selected != current_selected;
+				// Negative selection when both Shift and Ctrl are pressed
+				if negative_selection {
+					let updated_selection = current_selected
+						.into_iter()
+						.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
+						.collect();
+					tool_data.layers_dragging = updated_selection;
+				} else if selection_modified {
+					let parent_selected: HashSet<_> = new_selected
+						.into_iter()
+						.map(|layer| {
+							// Find the parent node
+							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
+						})
+						.collect();
+					tool_data.layers_dragging.extend(parent_selected.iter().copied());
+				}
+
+				if negative_selection || selection_modified {
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: tool_data
 							.layers_dragging
@@ -1354,7 +1357,25 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			_ => {}
+			SelectToolFsmState::Drawing { .. } | SelectToolFsmState::Dragging => {}
+			SelectToolFsmState::ResizingBounds => {
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+				]);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			}
+			SelectToolFsmState::RotatingBounds => {
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+				]);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			}
+			SelectToolFsmState::DraggingPivot | SelectToolFsmState::SkewingBounds => {
+				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			}
 		}
 	}
 

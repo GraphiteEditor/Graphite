@@ -105,7 +105,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -115,7 +115,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -301,7 +301,7 @@ impl Fsm for SplineToolFsmState {
 
 				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
-				let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist");
+				let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 

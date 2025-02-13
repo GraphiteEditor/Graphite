@@ -37,7 +37,7 @@ pub fn input_mappings() -> Mapping {
 		// ===============
 		//
 		// NavigationMessage
-		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigationMessage::PointerMove { snap: Control }),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NavigationMessage::PointerMove { snap: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
 		entry!(KeyUp(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
 		entry!(KeyUp(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
@@ -96,7 +96,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt })),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, remove_from_selection: Alt, select_deepest: Accel, lasso_select: Control, skew: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
@@ -389,8 +389,9 @@ pub fn input_mappings() -> Mapping {
 		//
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(MouseMiddle); modifiers=[Shift], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseLeft); modifiers=[Shift, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
+		entry!(KeyDown(MouseLeft); modifiers=[Alt, Space], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom),
+		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),

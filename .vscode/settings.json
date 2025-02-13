@@ -43,7 +43,8 @@
 		"css-unused-selector": "ignore",
 		"vite-plugin-svelte-css-no-scopable-elements": "ignore",
 		"a11y-no-static-element-interactions": "ignore",
-		"a11y-no-noninteractive-element-interactions": "ignore"
+		"a11y-no-noninteractive-element-interactions": "ignore",
+		"a11y-click-events-have-key-events": "ignore"
 	},
 	// VS Code config
 	"html.format.wrapLineLength": 200,
