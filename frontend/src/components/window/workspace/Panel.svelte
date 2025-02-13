@@ -14,11 +14,11 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -27,6 +27,8 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+
+	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
 
@@ -100,7 +102,7 @@
 					}}
 					on:auxclick={(e) => {
 						// Middle mouse button click
-						if (e.button === 1) {
+						if (e.button === BUTTON_MIDDLE) {
 							e.stopPropagation();
 							closeAction?.(tabIndex);
 						}
@@ -110,7 +112,7 @@
 						// https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event#browser_compatibility
 						// The downside of using mouseup is that the mousedown didn't have to originate in the same element.
 						// A possible future improvement could save the target element during mousedown and check if it's the same here.
-						if (!isEventSupported("auxclick") && e.button === 1) {
+						if (!isEventSupported("auxclick") && e.button === BUTTON_MIDDLE) {
 							e.stopPropagation();
 							closeAction?.(tabIndex);
 						}

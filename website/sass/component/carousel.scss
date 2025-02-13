@@ -1,0 +1,189 @@
+.carousel.carousel {
+	margin-top: calc(80 * var(--variable-px));
+	transform: translate(0);
+
+	.carousel-slide {
+		display: flex;
+		white-space: nowrap;
+		touch-action: pan-y pinch-zoom;
+		cursor: grab;
+
+		img {
+			position: relative;
+			display: inline-block;
+			user-select: none;
+			flex: 0 0 auto;
+			height: auto;
+			padding: 0 20px;
+
+			&:first-child,
+			&:last-child {
+				--fade-factor: Min(calc(var(--over-slide-factor, 0) / 1.5 + 0.5), 1);
+				// Fade to white (combining invert and brightness, see <https://stackoverflow.com/a/78478074/775283>) and desaturate
+				filter: Invert(calc(var(--fade-factor) / 2)) Brightness(calc(1 + var(--fade-factor))) Grayscale(var(--fade-factor));
+			}
+
+			&:first-child {
+				margin-left: -20px;
+			}
+
+			&:last-child {
+				margin-right: -20px;
+			}
+		}
+	}
+
+	&:not(.dragging, .jostling) .carousel-slide img {
+		transition: transform 500ms;
+	}
+
+	.carousel-slide:not(.torn) {
+		overflow: hidden;
+	}
+
+	.carousel-slide.torn {
+		position: fixed;
+		top: 0;
+		z-index: -1;
+		// Torn edge mask
+		-webkit-mask-repeat: no-repeat;
+		mask-repeat: no-repeat;
+		-webkit-mask-size: contain;
+		mask-size: contain;
+
+		&.left {
+			padding-left: 160px;
+			margin-left: -160px;
+			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left__2.png");
+			mask-image: url("https://static.graphite.rs/textures/torn-edge-left__2.png");
+			-webkit-mask-position: top left;
+			mask-position: top left;
+		}
+
+		&.right {
+			padding-right: 160px;
+			margin-right: -160px;
+			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right__2.png");
+			mask-image: url("https://static.graphite.rs/textures/torn-edge-right__2.png");
+			-webkit-mask-position: top right;
+			mask-position: top right;
+		}
+	}
+
+	.screenshot-details {
+		display: flex;
+		margin: 20px 0;
+		gap: 20px 40px;
+
+		@media screen and (max-width: 800px) {
+			flex-wrap: wrap;
+			justify-content: center;
+		}
+
+		.carousel-controls {
+			display: flex;
+			align-items: center;
+			flex: 0 0 auto;
+
+			button {
+				outline: none;
+				background: none;
+				border: none;
+				padding: 0;
+				color: inherit;
+				cursor: pointer;
+
+				svg {
+					display: block;
+				}
+
+				+ button {
+					margin-left: 20px;
+				}
+			}
+
+			.direction {
+				fill: currentColor;
+			}
+
+			.dot {
+				width: 16px;
+				height: 16px;
+				box-sizing: border-box;
+				border-radius: 50%;
+				border: 2px solid currentColor;
+
+				&.active {
+					border: none;
+					background: var(--color-crimson);
+				}
+			}
+		}
+
+		.screenshot-description {
+			display: flex;
+			align-items: center;
+			min-height: calc(2em * 1.5);
+
+			p + p {
+				margin: 0;
+			}
+
+			p:not(.active) {
+				display: none;
+			}
+		}
+	}
+
+	&.center {
+		.screenshot-details {
+			justify-content: center;
+		}
+	}
+
+	&.window-size-1 .carousel-slide img {
+		width: 100%;
+	}
+
+	&.window-size-2 .carousel-slide img {
+		width: calc((100% / 2) - 10px);
+		padding: 0 10px;
+
+		&:first-child {
+			margin-left: -10px;
+		}
+
+		&:last-child {
+			margin-right: -10px;
+		}
+	}
+
+	&.window-size-3 .carousel-slide img {
+		width: calc((100% / 3) - 10px * (4 / 3));
+		padding: 0 10px;
+
+		&:first-child {
+			margin-left: -10px;
+		}
+
+		&:last-child {
+			margin-right: -10px;
+		}
+	}
+
+	@media screen and (max-width: 1000px) {
+		margin-left: calc(-1 * var(--page-edge-padding));
+		margin-right: calc(-1 * var(--page-edge-padding));
+
+		.screenshot-details {
+			margin-left: var(--page-edge-padding);
+			margin-right: var(--page-edge-padding);
+		}
+	}
+
+	@media screen and (max-width: /* The value of --max-width-plus-padding: */ 1280px) {
+		.carousel-slide.torn {
+			display: none;
+		}
+	}
+}

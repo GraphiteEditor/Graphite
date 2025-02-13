@@ -1,11 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { DocumentState } from "@graphite/state-providers/document";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
-	import type { Editor } from "@graphite/wasm-communication/editor";
+	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
@@ -19,7 +15,11 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		isWidgetSpanRow,
-	} from "@graphite/wasm-communication/messages";
+	} from "@graphite/messages";
+	import type { DocumentState } from "@graphite/state-providers/document";
+	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -75,7 +75,8 @@
 	let canvasSvgWidth: number | undefined = undefined;
 	let canvasSvgHeight: number | undefined = undefined;
 
-	// Used to set the canvas rendering dimensions.
+	let devicePixelRatio: number | undefined;
+
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
 	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
 	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
@@ -83,6 +84,13 @@
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
+
+	$: canvasWidthScaled = canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio);
+	$: canvasHeightScaled = canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio);
+
+	// Used to set the canvas rendering dimensions.
+	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
+	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
@@ -159,16 +167,6 @@
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
 		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
-	}
-
-	function pageX(delta: number) {
-		const move = delta < 0 ? 1 : -1;
-		editor.handle.panCanvasByFraction(move, 0);
-	}
-
-	function pageY(delta: number) {
-		const move = delta < 0 ? 1 : -1;
-		editor.handle.panCanvasByFraction(0, move);
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -275,17 +273,17 @@
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
 		if (cursor === "custom-rotate") {
 			const svg = `
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-						<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
-						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-						" />
-						<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
-						<path transform="translate(2 2)" fill="white" d="
-						M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-						" />
-						<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
-					</svg>
-					`
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+					<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
+					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+					" />
+					<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
+					<path transform="translate(2 2)" fill="white" d="
+					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
+					" />
+					<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+				</svg>
+				`
 				.split("\n")
 				.map((line) => line.trim())
 				.join("");
@@ -296,11 +294,17 @@
 		canvasCursor = cursorString;
 	}
 
+	function preventTextEditingScroll(e: Event) {
+		if (!(e.target instanceof HTMLElement)) return;
+		e.target.scrollTop = 0;
+		e.target.scrollLeft = 0;
+	}
+
 	// Text entry
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.handle.onChangeText(textCleaned);
+		editor.handle.onChangeText(textCleaned, false);
 	}
 
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
@@ -317,8 +321,9 @@
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
-		textInput.style.height = "auto";
+		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.height = displayEditableTextbox.maxHeight ? `${displayEditableTextbox.maxHeight}px` : "auto";
+		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
 
@@ -355,6 +360,22 @@
 	}
 
 	onMount(() => {
+		// Not compatible with Safari:
+		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
+		// <https://bugs.webkit.org/show_bug.cgi?id=124862>
+		let removeUpdatePixelRatio: (() => void) | undefined = undefined;
+		const updatePixelRatio = () => {
+			removeUpdatePixelRatio?.();
+			const mediaQueryList = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+			// The event is one-time use, so we have to set up a new listener and remove the old one every time
+			mediaQueryList.addEventListener("change", updatePixelRatio);
+			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
+
+			devicePixelRatio = window.devicePixelRatio;
+			editor.handle.setDevicePixelRatio(devicePixelRatio);
+		};
+		updatePixelRatio();
+
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
 			await tick();
@@ -437,18 +458,18 @@
 </script>
 
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
-	<LayoutRow class="options-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
+	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
 			<WidgetLayout layout={$document.toolOptionsLayout} />
 			<LayoutRow class="spacer" />
 			<WidgetLayout layout={$document.documentBarLayout} />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
-		class="shelf-and-table"
+		class="tool-shelf-and-viewport-area"
 		styles={toolShelfTotalToolsAndSeparators && {
 			"--total-separators": toolShelfTotalToolsAndSeparators.totalSeparators,
 			"--total-tool-rows-for-1-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor1Columns,
@@ -456,7 +477,7 @@
 			"--total-tool-rows-for-3-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor3Columns,
 		}}
 	>
-		<LayoutCol class="shelf">
+		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
 					<WidgetLayout layout={$document.toolShelfLayout} />
@@ -464,24 +485,24 @@
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
-			<LayoutCol class="shelf-bottom-widgets">
+			<LayoutCol class="tool-shelf-bottom-widgets">
 				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
-		<LayoutCol class="table">
+		<LayoutCol class="viewport-container">
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
 					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 				</LayoutRow>
 			{/if}
-			<LayoutRow class="viewport-container">
+			<LayoutRow class="viewport-container-inner">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
 						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 					</LayoutCol>
 				{/if}
-				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container-inner" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -498,10 +519,17 @@
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
-						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
+						<canvas
+							class="overlays"
+							width={canvasWidthScaledRoundedToEven}
+							height={canvasHeightScaledRoundedToEven}
+							style:width={canvasWidthCSS}
+							style:height={canvasHeightCSS}
+							data-overlays-canvas
+						>
 						</canvas>
 					</div>
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
@@ -511,21 +539,25 @@
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<ScrollbarInput
 						direction="Vertical"
-						handleLength={scrollbarSize.y}
-						handlePosition={scrollbarPos.y}
-						on:handlePosition={({ detail }) => panCanvasY(detail)}
-						on:pressTrack={({ detail }) => pageY(detail)}
+						thumbLength={scrollbarSize.y}
+						thumbPosition={scrollbarPos.y}
+						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
+						on:thumbPosition={({ detail }) => panCanvasY(detail)}
+						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
+						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
 			<LayoutRow class="ruler-or-scrollbar bottom-scrollbar">
 				<ScrollbarInput
 					direction="Horizontal"
-					handleLength={scrollbarSize.x}
-					handlePosition={scrollbarPos.x}
-					on:handlePosition={({ detail }) => panCanvasX(detail)}
-					on:pressTrack={({ detail }) => pageX(detail)}
-					on:pointerup={() => editor.handle.setGridAlignedEdges()}
+					thumbLength={scrollbarSize.x}
+					thumbPosition={scrollbarPos.x}
+					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
+					on:thumbPosition={({ detail }) => panCanvasX(detail)}
+					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
+					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
+					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>
@@ -540,7 +572,7 @@
 			padding-bottom: 0;
 		}
 
-		.options-bar {
+		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
@@ -554,7 +586,7 @@
 			}
 		}
 
-		.shelf-and-table {
+		.tool-shelf-and-viewport-area {
 			// Enables usage of the `100cqh` unit to reference the height of this container element.
 			container-type: size;
 
@@ -579,7 +611,7 @@
 			--columns-width: calc(var(--columns) * var(--tool-width));
 			--columns-width-max: calc(3px * var(--tool-width));
 
-			.shelf {
+			.tool-shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
 				// A precaution in case the variables above somehow fail
@@ -637,7 +669,7 @@
 					}
 				}
 
-				.shelf-bottom-widgets {
+				.tool-shelf-bottom-widgets {
 					flex: 0 0 auto;
 					align-items: center;
 
@@ -657,7 +689,7 @@
 				}
 			}
 
-			.table {
+			.viewport-container {
 				flex: 1 1 100%;
 
 				.ruler-or-scrollbar {
@@ -692,7 +724,7 @@
 					margin-right: 16px;
 				}
 
-				.viewport-container {
+				.viewport-container-inner {
 					flex: 1 1 100%;
 					position: relative;
 
@@ -721,14 +753,21 @@
 							}
 						}
 
+						.text-input {
+							word-break: break-all;
+						}
+
 						.text-input div {
 							cursor: text;
 							background: none;
 							border: none;
 							margin: 0;
 							padding: 0;
-							overflow: visible;
+							overflow-x: visible;
+							overflow-y: hidden;
+							overflow-wrap: anywhere;
 							white-space: pre-wrap;
+							word-break: normal;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;

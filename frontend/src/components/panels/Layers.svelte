@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelControlBarLayout } from "@graphite/messages";
+	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -43,16 +43,16 @@
 	// Interactive dragging
 	let draggable = true;
 	let draggingData: undefined | DraggingData = undefined;
-	let fakeHighlight: undefined | bigint = undefined;
+	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let dragInPanel = false;
 
 	// Layouts
-	let layersPanelOptionsLayout = defaultWidgetLayout();
+	let layersPanelControlBarLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelOptionsLayout, (updateLayersPanelOptionsLayout) => {
-			patchWidgetLayout(layersPanelOptionsLayout, updateLayersPanelOptionsLayout);
-			layersPanelOptionsLayout = layersPanelOptionsLayout;
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLayout, (updateLayersPanelControlBarLayout) => {
+			patchWidgetLayout(layersPanelControlBarLayout, updateLayersPanelControlBarLayout);
+			layersPanelControlBarLayout = layersPanelControlBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -285,7 +285,7 @@
 		const layer = listing.entry;
 		dragInPanel = true;
 		if (!$nodeGraph.selected.includes(layer.id)) {
-			fakeHighlight = layer.id;
+			fakeHighlightOfNotYetSelectedLayerBeingDragged = layer.id;
 		}
 		const select = () => {
 			if (!$nodeGraph.selected.includes(layer.id)) selectLayer(listing, false, false);
@@ -358,7 +358,7 @@
 		}
 
 		draggingData = undefined;
-		fakeHighlight = undefined;
+		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
 	}
 
@@ -403,17 +403,20 @@
 </script>
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
-	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelOptionsLayout} />
+	<LayoutRow class="control-bar" scrollableX={true}>
+		<WidgetLayout layout={layersPanelControlBarLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
 			{#each layers as listing, index}
+				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
 				<LayoutRow
 					class="layer"
 					classes={{
-						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
-						"full-highlight": listing.entry.inSelectedNetwork && !listing.entry.selectedParent,
+						selected,
+						"ancestor-of-selected": listing.entry.ancestorOfSelected,
+						"descendant-of-selected": listing.entry.descendantOfSelected,
+						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
@@ -429,9 +432,10 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
+							title={listing.entry.expanded ? "Collapse" : `Expand${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
 							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
 							tabindex="0"
-						/>
+						></button>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -457,22 +461,22 @@
 					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
 						<IconButton
 							class={"status-toggle"}
-							classes={{ inactive: !listing.entry.parentsUnlocked }}
+							classes={{ inherited: !listing.entry.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							tooltip={listing.entry.unlocked ? "Lock" : "Unlock"}
+							tooltip={(listing.entry.unlocked ? "Lock" : "Unlock") + (!listing.entry.parentsUnlocked ? "\n(A parent of this layer is locked and that status is being inherited)" : "")}
 						/>
 					{/if}
 					<IconButton
 						class={"status-toggle"}
-						classes={{ inactive: !listing.entry.parentsVisible }}
+						classes={{ inherited: !listing.entry.parentsVisible }}
 						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltip={listing.entry.visible ? "Hide" : "Show"}
+						tooltip={(listing.entry.visible ? "Hide" : "Show") + (!listing.entry.parentsVisible ? "\n(A parent of this layer is hidden and that status is being inherited)" : "")}
 					/>
 				</LayoutRow>
 			{/each}
@@ -485,8 +489,8 @@
 
 <style lang="scss" global>
 	.layers {
-		// Options bar
-		.options-bar {
+		// Control bar
+		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
@@ -537,13 +541,19 @@
 
 				// Dimming
 				&.selected {
-					// 1/3 between 3-darkgray and 4-dimgray (this interpolation approach only works on grayscale values)
-					--component: calc((Max(var(--color-3-darkgray-rgb)) * 2 + Max(var(--color-4-dimgray-rgb))) / 3);
-					background: rgb(var(--component), var(--component), var(--component));
+					background: var(--color-4-dimgray);
+				}
 
-					&.full-highlight {
-						background: var(--color-4-dimgray);
-					}
+				&.ancestor-of-selected .expand-arrow:not(.expanded) {
+					background-image: var(--inheritance-stripes-background);
+				}
+
+				&.descendant-of-selected {
+					background-image: var(--inheritance-dots-background);
+				}
+
+				&.selected-but-not-in-selected-network {
+					background: rgba(var(--color-4-dimgray-rgb), 0.5);
 				}
 
 				&.insert-folder {
@@ -664,8 +674,8 @@
 					align-items: center;
 					height: 100%;
 
-					&.inactive {
-						background-image: var(--background-inactive-stripes);
+					&.inherited {
+						background-image: var(--inheritance-stripes-background);
 					}
 
 					.icon-button {

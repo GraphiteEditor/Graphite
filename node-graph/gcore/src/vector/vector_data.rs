@@ -4,13 +4,34 @@ pub use attributes::*;
 pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
-use crate::{AlphaBlending, Color};
+use crate::instances::Instances;
+use crate::{AlphaBlending, Color, GraphicGroupTable};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
+
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	#[allow(clippy::large_enum_variant)]
+	enum EitherFormat {
+		VectorData(VectorData),
+		VectorDataTable(VectorDataTable),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
+	})
+}
+
+pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
@@ -29,7 +50,7 @@ pub struct VectorData {
 	pub region_domain: RegionDomain,
 
 	// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
-	pub upstream_graphic_group: Option<crate::GraphicGroup>,
+	pub upstream_graphic_group: Option<GraphicGroupTable>,
 }
 
 impl core::hash::Hash for VectorData {
@@ -243,14 +264,12 @@ impl VectorData {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
-	/// Points connected to a single segment
-	pub fn single_connected_points(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.point_domain
-			.ids()
-			.iter()
-			.enumerate()
-			.filter(|(index, _)| self.segment_domain.connected_count(*index) == 1)
-			.map(|(_, &id)| id)
+	/// Points that can be extended from.
+	///
+	/// This is usually only points with exactly one connection unless vector meshes are enabled.
+	pub fn extendable_points(&self, vector_meshes: bool) -> impl Iterator<Item = PointId> + '_ {
+		let point_ids = self.point_domain.ids().iter().enumerate();
+		point_ids.filter(move |(index, _)| vector_meshes || self.segment_domain.connected_count(*index) == 1).map(|(_, &id)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.
@@ -274,6 +293,26 @@ impl VectorData {
 			None
 		}
 	}
+
+	pub fn adjacent_segment(&self, manipulator_id: &ManipulatorPointId) -> Option<(PointId, SegmentId)> {
+		match manipulator_id {
+			ManipulatorPointId::PrimaryHandle(segment_id) => {
+				// For start handle, find segments ending at our start point
+				let (start_point_id, _, _) = self.segment_points_from_id(*segment_id)?;
+				let start_index = self.point_domain.resolve_id(start_point_id)?;
+
+				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id))
+			}
+			ManipulatorPointId::EndHandle(segment_id) => {
+				// For end handle, find segments starting at our end point
+				let (_, end_point_id, _) = self.segment_points_from_id(*segment_id)?;
+				let end_index = self.point_domain.resolve_id(end_point_id)?;
+
+				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id))
+			}
+			ManipulatorPointId::Anchor(_) => None,
+		}
+	}
 }
 
 impl Default for VectorData {
@@ -282,7 +321,7 @@ impl Default for VectorData {
 	}
 }
 
-/// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curviture).
+/// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ManipulatorPointId {
@@ -303,6 +342,13 @@ impl ManipulatorPointId {
 			ManipulatorPointId::Anchor(id) => vector_data.point_domain.position_from_id(*id),
 			ManipulatorPointId::PrimaryHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
 			ManipulatorPointId::EndHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+		}
+	}
+
+	pub fn get_anchor_position(&self, vector_data: &VectorData) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector_data).and_then(|id| vector_data.point_domain.position_from_id(id)),
+			_ => self.get_position(vector_data),
 		}
 	}
 
@@ -394,6 +440,13 @@ impl HandleId {
 			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
 			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
 		}
+	}
+
+	/// Calculate the magnitude of the handle from the anchor.
+	pub fn length(self, vector_data: &VectorData) -> f64 {
+		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let handle_position = self.to_manipulator_point().get_position(vector_data);
+		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
 	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.

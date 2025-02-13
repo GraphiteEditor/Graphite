@@ -17,4 +17,4 @@ anyhow = { workspace = true }
 futures = { workspace = true }
 
 # Required dependencies
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.6", features = ["cors"] }

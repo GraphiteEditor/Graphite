@@ -118,8 +118,9 @@ tagged_value! {
 	String(String),
 	U32(u32),
 	U64(u64),
-	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias document upgrade code
 	F64(f64),
+	OptionalF64(Option<f64>),
 	Bool(bool),
 	UVec2(UVec2),
 	IVec2(IVec2),
@@ -128,7 +129,8 @@ tagged_value! {
 	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image<Color>),
 	ImaginateCache(ImaginateCache),
-	ImageFrame(graphene_core::raster::ImageFrame<Color>),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
 	BlendMode(BlendMode),
@@ -136,11 +138,12 @@ tagged_value! {
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateController(ImaginateController),
-	VectorData(graphene_core::vector::VectorData),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
+	VectorData(graphene_core::vector::VectorDataTable),
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),
-	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
 	VecU64(Vec<u64>),
 	NodePath(Vec<NodeId>),
@@ -160,17 +163,17 @@ tagged_value! {
 	FillChoice(graphene_core::vector::style::FillChoice),
 	Gradient(graphene_core::vector::style::Gradient),
 	GradientType(graphene_core::vector::style::GradientType),
-	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))] // TODO: Eventually remove this alias document upgrade code
 	GradientStops(graphene_core::vector::style::GradientStops),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
-	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))] // TODO: Eventually remove this alias document upgrade code
 	PointIds(Vec<graphene_core::vector::PointId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
-	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
-	GraphicGroup(graphene_core::GraphicGroup),
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
+	GraphicGroup(graphene_core::GraphicGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
 	ArtboardGroup(graphene_core::ArtboardGroup),
 	Curve(graphene_core::raster::curve::Curve),

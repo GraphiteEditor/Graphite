@@ -8,6 +8,7 @@ author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q2 2024 update introduces boolean path operations, a new gradient picker, layer locking, and more improvements."
 reddit = "https://www.reddit.com/r/graphite/comments/1ei9ps2/blog_post_graphite_progress_report_q2_2024/"
 twitter = "https://x.com/GraphiteEditor/status/1819360794028462569"
+css = ["/component/demo-artwork.css"]
 +++
 
 [Graphite](/), a new open source 2D procedural graphics editor, has spent April–June introducing **boolean path operations, a new gradient picker, layer locking**, and more improvements.

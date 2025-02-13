@@ -80,7 +80,7 @@ impl LayoutMessageHandler {
 				};
 				responses.add(callback_message);
 			}
-			Widget::ColorButton(color_button) => {
+			Widget::ColorInput(color_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
@@ -99,7 +99,7 @@ impl LayoutMessageHandler {
 						};
 
 						(|| {
-							let update_value = value.as_object().expect("ColorButton update was not of type: object");
+							let update_value = value.as_object().expect("ColorInput update was not of type: object");
 
 							// None
 							let is_none = update_value.get("none").and_then(|x| x.as_bool());
@@ -139,7 +139,7 @@ impl LayoutMessageHandler {
 								return (color_button.on_update.callback)(color_button);
 							}
 
-							panic!("ColorButton update was not able to be parsed with color data: {color_button:?}");
+							panic!("ColorInput update was not able to be parsed with color data: {color_button:?}");
 						})()
 					}
 				};
@@ -201,10 +201,18 @@ impl LayoutMessageHandler {
 					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => (icon_button.on_update.callback)(icon_button),
 				};
+
+				responses.add(callback_message);
+			}
+			Widget::ImageButton(image_label) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (image_label.on_commit.callback)(&()),
+					WidgetValueAction::Update => (image_label.on_update.callback)(&()),
+				};
+
 				responses.add(callback_message);
 			}
 			Widget::IconLabel(_) => {}
-			Widget::ImageLabel(_) => {}
 			Widget::InvisibleStandinInput(invisible) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (invisible.on_commit.callback)(&()),
@@ -401,9 +409,9 @@ impl LayoutMessageHandler {
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
-			LayoutTarget::LayersPanelOptions => FrontendMessage::UpdateLayersPanelOptionsLayout { layout_target, diff },
+			LayoutTarget::LayersPanelControlBar => FrontendMessage::UpdateLayersPanelControlBarLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
-			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout { layout_target, diff },
+			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },

@@ -5,8 +5,9 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
-use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::Font;
+use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::BlendMode;
+use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
@@ -93,9 +94,7 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		text: String,
 		font: Font,
-		size: f64,
-		line_height_ratio: f64,
-		character_spacing: f64,
+		typesetting: TypesettingConfig,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
@@ -104,7 +103,7 @@ pub enum GraphOperationMessage {
 		location: IVec2,
 		dimensions: IVec2,
 	},
-	ClearArtboards,
+	RemoveArtboards,
 	NewSvg {
 		id: NodeId,
 		svg: String,

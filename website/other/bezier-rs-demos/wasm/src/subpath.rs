@@ -443,6 +443,21 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{subpath_svg}{rectangle_svg}{intersections_svg}"))
 	}
 
+	pub fn inside_subpath(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let points = array.iter().map(|p| parse_point(&p));
+		let other = Subpath::<EmptyId>::from_anchors(points, true);
+
+		let is_inside = self.0.is_inside_subpath(&other, Some(error), Some(minimum_separation));
+		let color = if is_inside { RED } else { BLACK };
+
+		let self_svg = self.to_default_svg();
+		let mut other_svg = String::new();
+		other.curve_to_svg(&mut other_svg, CURVE_ATTRIBUTES.replace(BLACK, color));
+
+		wrap_svg_tag(format!("{self_svg}{other_svg}"))
+	}
+
 	pub fn curvature(&self, t: f64, t_variant: String) -> String {
 		let subpath = self.to_default_svg();
 		let t = parse_t_variant(&t_variant, t);

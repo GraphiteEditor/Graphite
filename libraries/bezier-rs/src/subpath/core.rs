@@ -1,5 +1,6 @@
 use super::*;
 use crate::consts::*;
+use crate::utils::format_point;
 
 use glam::DVec2;
 use std::fmt::Write;
@@ -163,8 +164,10 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		if self.is_empty() {
 			return Ok(());
 		}
+
 		let start = transform.transform_point2(self[0].anchor);
-		write!(svg, "{SVG_ARG_MOVE}{:.6},{:.6}", start.x, start.y)?;
+		format_point(svg, SVG_ARG_MOVE, start.x, start.y)?;
+
 		for bezier in self.iter() {
 			bezier.apply_transformation(|pos| transform.transform_point2(pos)).write_curve_argument(svg)?;
 			svg.push(' ');

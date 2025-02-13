@@ -5,13 +5,13 @@ mod layer_snapper;
 mod snap_results;
 pub use {alignment_snapper::*, distribution_snapper::*, grid_snapper::*, layer_snapper::*, snap_results::*};
 
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 
-use bezier_rs::{Subpath, TValue};
+use bezier_rs::TValue;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
@@ -23,7 +23,7 @@ use std::cmp::Ordering;
 /// Configuration for the relevant snap type
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SnapTypeConfiguration {
-	pub only_geometry: bool,
+	pub only_path: bool,
 	pub use_existing_candidates: bool,
 	pub accept_distribution: bool,
 	pub bbox: Option<Rect>,
@@ -111,7 +111,7 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 		(None, None) => None,
 		(Some(result), None) | (None, Some(result)) => Some(result),
 		(Some(mut result), Some(align)) => {
-			let SnapTarget::Distribution(distribution) = result.target else { return Some(result) };
+			let SnapTarget::DistributeEvenly(distribution) = result.target else { return Some(result) };
 			if distribution.is_x() && align.alignment_target_x.is_some() {
 				result.snapped_point_document.y = align.snapped_point_document.y;
 				result.alignment_target_x = align.alignment_target_x;
@@ -126,7 +126,7 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 	}
 }
 fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
-	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Geometry(GeometrySnapTarget::Path);
+	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Path(PathSnapTarget::AlongPath);
 	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
 }
 fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
@@ -135,14 +135,7 @@ fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for curve_i in curves {
-		if curve_i.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge) {
-			continue;
-		}
-
 		for curve_j in curves {
-			if curve_j.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge) {
-				continue;
-			}
 			if curve_i.start == curve_j.start && curve_i.layer == curve_j.layer {
 				continue;
 			}
@@ -156,9 +149,9 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 					best = Some(SnappedPoint {
 						snapped_point_document,
 						distance,
-						target: SnapTarget::Geometry(GeometrySnapTarget::Intersection),
+						target: SnapTarget::Path(PathSnapTarget::IntersectionPoint),
 						tolerance: close.point.tolerance,
-						curves: [Some(close.document_curve), Some(far.document_curve)],
+						outline_layers: [Some(close.layer), Some(far.layer)],
 						source: close.point.source,
 						at_intersection: true,
 						constrained: true,
@@ -262,7 +255,7 @@ impl SnapManager {
 		if let Some(closest_point) = get_closest_point(snap_results.points) {
 			snapped_points.push(closest_point);
 		}
-		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path));
+		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath));
 		if let Some(closest_curve) = get_closest_curve(&snap_results.curves, exclude_paths) {
 			snapped_points.push(closest_curve.clone());
 		}
@@ -274,7 +267,7 @@ impl SnapManager {
 		}
 
 		if !constrained {
-			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) {
+			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) {
 				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
 					snapped_points.push(closest_curves_intersection);
 				}
@@ -287,7 +280,7 @@ impl SnapManager {
 		}
 
 		if to_path {
-			snapped_points.retain(|i| matches!(i.target, SnapTarget::Geometry(_)));
+			snapped_points.retain(|i| matches!(i.target, SnapTarget::Path(_)));
 		}
 
 		let mut best_point = None;
@@ -382,7 +375,7 @@ impl SnapManager {
 		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 
-		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, config.only_geometry)
+		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, config.only_path)
 	}
 
 	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, config: SnapTypeConfiguration) -> SnappedPoint {
@@ -408,7 +401,7 @@ impl SnapManager {
 		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 
-		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, config.only_geometry)
+		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, config.only_path)
 	}
 
 	fn alignment_x_overlay(boxes: &VecDeque<Rect>, transform: DAffine2, overlay_context: &mut OverlayContext) {
@@ -450,9 +443,9 @@ impl SnapManager {
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
 		let to_viewport = snap_data.document.metadata().document_to_viewport;
 		if let Some(ind) = &self.indicator {
-			for curve in &ind.curves {
-				let Some(curve) = curve else { continue };
-				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
+			for layer in &ind.outline_layers {
+				let &Some(layer) = layer else { continue };
+				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer));
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad, None);
@@ -468,16 +461,16 @@ impl SnapManager {
 				overlay_context.line(viewport, target, None);
 			}
 			for &target in align.iter().flatten() {
-				overlay_context.manipulator_handle(target, false);
+				overlay_context.manipulator_handle(target, false, None);
 			}
 			if any_align {
-				overlay_context.manipulator_handle(viewport, false);
+				overlay_context.manipulator_handle(viewport, false, None);
 			}
 
 			if !any_align && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
-				let text = format!("{:?} to {:?}", ind.source, ind.target);
-				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 5.));
-				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 5., [Pivot::Start, Pivot::End]);
+				let text = format!("[{}] from [{}]", ind.target, ind.source);
+				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 4.));
+				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_LABEL_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}
 		}

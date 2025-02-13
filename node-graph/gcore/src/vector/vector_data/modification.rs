@@ -1,4 +1,5 @@
 use super::*;
+use crate::transform::Footprint;
 use crate::uuid::generate_uuid;
 
 use bezier_rs::BezierHandles;
@@ -421,7 +422,6 @@ impl core::hash::Hash for VectorModification {
 	}
 }
 
-use crate::transform::Footprint;
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
 async fn path_modify<F: 'n + Send + Sync + Clone>(
@@ -431,15 +431,18 @@ async fn path_modify<F: 'n + Send + Sync + Clone>(
 	)]
 	input: F,
 	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
+		() -> VectorDataTable,
+		Footprint -> VectorDataTable,
 	)]
-	vector_data: impl Node<F, Output = VectorData>,
+	vector_data: impl Node<F, Output = VectorDataTable>,
 	modification: Box<VectorModification>,
-) -> VectorData {
+) -> VectorDataTable {
 	let mut vector_data = vector_data.eval(input).await;
-	modification.apply(&mut vector_data);
-	vector_data
+	let vector_data = vector_data.one_item_mut();
+
+	modification.apply(vector_data);
+
+	VectorDataTable::new(vector_data.clone())
 }
 
 #[test]
@@ -501,7 +504,7 @@ fn modify_existing() {
 }
 
 // Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

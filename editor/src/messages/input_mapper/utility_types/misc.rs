@@ -1,4 +1,4 @@
-use super::input_keyboard::{all_required_modifiers_pressed, KeysGroup, LayoutKeysGroup};
+use super::input_keyboard::{all_required_modifiers_pressed, Key, KeysGroup, LayoutKeysGroup};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;
@@ -134,7 +134,29 @@ impl ActionKeys {
 	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> String {
 		match self {
 			Self::Action(action) => {
-				if let Some(keys) = action_input_mapping(action).get_mut(0) {
+				// Take the shortest sequence of keys
+				let mut key_sequences = action_input_mapping(action);
+				key_sequences.sort_by_key(|keys| keys.0.len());
+				let mut secondary_key_sequence = key_sequences.get(1).cloned();
+				let mut key_sequence = key_sequences.get_mut(0);
+
+				// TODO: Replace this exception with a per-action choice of canonical hotkey
+				if let Some(key_sequence) = &mut key_sequence {
+					if key_sequence.0.as_slice() == [Key::MouseBack] {
+						if let Some(replacement) = &mut secondary_key_sequence {
+							std::mem::swap(*key_sequence, replacement);
+						}
+					}
+				}
+				if let Some(key_sequence) = &mut key_sequence {
+					if key_sequence.0.as_slice() == [Key::MouseForward] {
+						if let Some(replacement) = &mut secondary_key_sequence {
+							std::mem::swap(*key_sequence, replacement);
+						}
+					}
+				}
+
+				if let Some(keys) = key_sequence {
 					let mut taken_keys = KeysGroup::default();
 					std::mem::swap(keys, &mut taken_keys);
 					let description = taken_keys.to_string();

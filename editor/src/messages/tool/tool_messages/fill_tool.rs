@@ -81,10 +81,7 @@ impl Fsm for FillToolFsmState {
 			document, global_tool_data, input, ..
 		} = handler_data;
 
-		let ToolMessage::Fill(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(FillToolFsmState::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input) else {
@@ -111,7 +108,7 @@ impl Fsm for FillToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),

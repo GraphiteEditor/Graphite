@@ -47,7 +47,7 @@ pub enum FreehandToolMessage {
 	WorkingColorChanged,
 
 	// Tool-specific messages
-	DragStart,
+	DragStart { append_to_selected: Key },
 	DragStop,
 	PointerMove,
 	UpdateOptions(FreehandOptionsUpdate),
@@ -99,7 +99,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -109,7 +109,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -191,19 +191,18 @@ impl Fsm for FreehandToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
+			preferences,
 			..
 		} = tool_action_data;
 
-		let ToolMessage::Freehand(event) = event else {
-			return self;
-		};
+		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays(mut overlay_context)) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context, tool_action_data.preferences);
 
 				self
 			}
-			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
+			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
 				tool_data.dragged = false;
@@ -212,18 +211,34 @@ impl Fsm for FreehandToolFsmState {
 
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata())) {
+				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
-					extend_path_with_next_segment(tool_data, position, responses);
+					extend_path_with_next_segment(tool_data, position, true, responses);
 
 					return FreehandToolFsmState::Drawing;
 				}
 
+				if input.keyboard.key(append_to_selected) {
+					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+					if let Some(layer) = existing_layer {
+						tool_data.layer = Some(layer);
+
+						let transform = document.metadata().transform_to_viewport(layer);
+						let position = transform.inverse().transform_point2(input.mouse.position);
+
+						extend_path_with_next_segment(tool_data, position, false, responses);
+
+						return FreehandToolFsmState::Drawing;
+					}
+				}
+
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_parent(true);
+				let parent = document.new_layer_bounding_artboard(input);
 
 				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
@@ -242,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let position = transform.inverse().transform_point2(input.mouse.position);
 
-					extend_path_with_next_segment(tool_data, position, responses);
+					extend_path_with_next_segment(tool_data, position, true, responses);
 				}
 
 				FreehandToolFsmState::Drawing
@@ -277,9 +292,13 @@ impl Fsm for FreehandToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
-			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline")])]),
+			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline"),
+				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
+				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+			])]),
 			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
@@ -291,7 +310,7 @@ impl Fsm for FreehandToolFsmState {
 	}
 }
 
-fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVec2, responses: &mut VecDeque<Message>) {
+fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVec2, extend: bool, responses: &mut VecDeque<Message>) {
 	if !tool_data.end_point.map_or(true, |(last_pos, _)| position != last_pos) || !position.is_finite() {
 		return;
 	}
@@ -304,18 +323,20 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 		modification_type: VectorModificationType::InsertPoint { id, position },
 	});
 
-	if let Some((_, previous_position)) = tool_data.end_point {
-		let next_id = SegmentId::generate();
-		let points = [previous_position, id];
+	if extend {
+		if let Some((_, previous_position)) = tool_data.end_point {
+			let next_id = SegmentId::generate();
+			let points = [previous_position, id];
 
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: VectorModificationType::InsertSegment {
-				id: next_id,
-				points,
-				handles: [None, None],
-			},
-		});
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::InsertSegment {
+					id: next_id,
+					points,
+					handles: [None, None],
+				},
+			});
+		}
 	}
 
 	tool_data.dragged = true;

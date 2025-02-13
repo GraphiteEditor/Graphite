@@ -241,10 +241,7 @@ impl Fsm for GradientToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let ToolMessage::Gradient(event) = event else {
-			return self;
-		};
-
+		let ToolMessage::Gradient(event) = event else { return self };
 		match (self, event) {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
@@ -260,15 +257,15 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
 					overlay_context.line(start, end, None);
-					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start));
-					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End));
+					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
+					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
 
 					for (index, (position, _)) in stops.0.into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
 
-						overlay_context.manipulator_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)));
+						overlay_context.manipulator_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), None);
 					}
 				}
 
@@ -495,15 +492,15 @@ impl Fsm for GradientToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"),
-				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
+				HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
 			])]),
 			GradientToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 			]),
 		};
 

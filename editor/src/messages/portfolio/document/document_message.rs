@@ -1,4 +1,4 @@
-use super::utility_types::misc::SnappingState;
+use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -13,7 +13,6 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::VectorData;
 
 use glam::DAffine2;
 
@@ -38,13 +37,9 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	ClearArtboards,
+	RemoveArtboards,
 	ClearLayersPanel,
-	InsertBooleanOperation {
-		operation: graphene_core::vector::misc::BooleanOperation,
-	},
 	CreateEmptyFolder,
-	DebugPrintDocument,
 	DeleteNode {
 		node_id: NodeId,
 	},
@@ -72,7 +67,9 @@ pub enum DocumentMessage {
 	GridOptions(GridSnapping),
 	GridOverlays(OverlayContext),
 	GridVisibility(bool),
-	GroupSelectedLayers,
+	GroupSelectedLayers {
+		group_folder_type: GroupFolderType,
+	},
 	ImaginateGenerate {
 		imaginate_node: Vec<NodeId>,
 	},
@@ -117,6 +114,7 @@ pub enum DocumentMessage {
 	SelectedLayersLowerToBack,
 	SelectedLayersRaise,
 	SelectedLayersRaiseToFront,
+	SelectedLayersReverse,
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},
@@ -180,9 +178,6 @@ pub enum DocumentMessage {
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
-	},
-	UpdateVectorModify {
-		vector_modify: HashMap<NodeId, VectorData>,
 	},
 	Undo,
 	UngroupSelectedLayers,

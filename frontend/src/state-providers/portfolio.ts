@@ -2,24 +2,20 @@
 
 import { writable } from "svelte/store";
 
-import { copyToClipboardFileURL } from "@graphite/io-managers/clipboard";
-import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
-import { extractPixelData, imageToPNG, rasterizeSVG } from "@graphite/utility-functions/rasterization";
-import { type Editor } from "@graphite/wasm-communication/editor";
+import { type Editor } from "@graphite/editor";
 import {
 	type FrontendDocumentDetails,
-	TriggerCopyToClipboardBlobUrl,
 	TriggerFetchAndOpenDocument,
-	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerImport,
 	TriggerOpenDocument,
-	TriggerRevokeBlobUrl,
 	TriggerUpgradeDocumentToVectorManipulationFormat,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
-} from "@graphite/wasm-communication/messages";
+} from "@graphite/messages";
+import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
+import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
@@ -85,18 +81,6 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerDownloadBlobUrl, async (triggerDownloadBlobUrl) => {
-		const data = await fetch(triggerDownloadBlobUrl.blobUrl);
-		const blob = await data.blob();
-
-		// TODO: Remove this if/when we end up returning PNG directly from the backend
-		const pngBlob = await imageToPNG(blob);
-
-		downloadFileBlob(triggerDownloadBlobUrl.layerName, pngBlob);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerCopyToClipboardBlobUrl, (triggerDownloadBlobUrl) => {
-		copyToClipboardFileURL(triggerDownloadBlobUrl.blobUrl);
-	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadImage, async (triggerDownloadImage) => {
 		const { svg, name, mime, size } = triggerDownloadImage;
 
@@ -113,11 +97,8 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
-		URL.revokeObjectURL(triggerRevokeBlobUrl.url);
-	});
 	editor.subscriptions.subscribeJsMessage(TriggerUpgradeDocumentToVectorManipulationFormat, async (triggerUpgradeDocumentToVectorManipulationFormat) => {
-		// TODO: Eventually remove this (probably starting late 2024)
+		// TODO: Eventually remove this document upgrade code
 		const { documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent } = triggerUpgradeDocumentToVectorManipulationFormat;
 		editor.handle.triggerUpgradeDocumentToVectorManipulationFormat(documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent);
 	});

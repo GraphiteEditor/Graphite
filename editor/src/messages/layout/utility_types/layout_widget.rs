@@ -33,11 +33,11 @@ pub enum LayoutTarget {
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
 	/// Options for opacity seen at the top of the Layers panel.
-	LayersPanelOptions,
+	LayersPanelControlBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
-	NodeGraphBar,
+	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesSections,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
@@ -327,13 +327,13 @@ impl LayoutGroup {
 		for widget in &mut widgets {
 			let val = match &mut widget.widget {
 				Widget::CheckboxInput(x) => &mut x.tooltip,
-				Widget::ColorButton(x) => &mut x.tooltip,
+				Widget::ColorInput(x) => &mut x.tooltip,
 				Widget::CurveInput(x) => &mut x.tooltip,
 				Widget::DropdownInput(x) => &mut x.tooltip,
 				Widget::FontInput(x) => &mut x.tooltip,
 				Widget::IconButton(x) => &mut x.tooltip,
 				Widget::IconLabel(x) => &mut x.tooltip,
-				Widget::ImageLabel(x) => &mut x.tooltip,
+				Widget::ImageButton(x) => &mut x.tooltip,
 				Widget::NumberInput(x) => &mut x.tooltip,
 				Widget::ParameterExposeButton(x) => &mut x.tooltip,
 				Widget::PopoverButton(x) => &mut x.tooltip,
@@ -498,13 +498,13 @@ impl<T> Default for WidgetCallback<T> {
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
-	ColorButton(ColorButton),
+	ColorInput(ColorInput),
 	CurveInput(CurveInput),
 	DropdownInput(DropdownInput),
 	FontInput(FontInput),
 	IconButton(IconButton),
 	IconLabel(IconLabel),
-	ImageLabel(ImageLabel),
+	ImageButton(ImageButton),
 	InvisibleStandinInput(InvisibleStandinInput),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
@@ -571,7 +571,7 @@ impl DiffUpdate {
 			let mut tooltip_shortcut = match &mut widget_holder.widget {
 				Widget::BreadcrumbTrailButtons(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::ColorButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+				Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::DropdownInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::FontInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
@@ -579,8 +579,8 @@ impl DiffUpdate {
 				Widget::ParameterExposeButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+				Widget::ImageButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconLabel(_)
-				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
 				| Widget::NodeCatalog(_)

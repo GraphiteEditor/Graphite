@@ -8,6 +8,7 @@ author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q1 2024 update introduces a precise snapping system and a customizable grid for enhanced design control. The update also includes improved procedural scattering with the 'Copy to Points' node, demonstrated in new demo artwork."
 reddit = "https://www.reddit.com/r/graphite/comments/1coa0if/blog_post_graphite_progress_report_q1_2024/"
 twitter = "https://twitter.com/GraphiteEditor/status/1788698448348266946"
+css = ["/component/demo-artwork.css"]
 +++
 
 [Graphite](/) is a new 2D vector graphics editor bringing a modern, nondestructive approach to creative workflows with node-based procedural generation. The project is currently three years into development, with a focus on streamlining the creative process for procedural vector artwork. See the [roadmap](/features#roadmap) for a more in-depth summary of the goals for 2024 and beyond.

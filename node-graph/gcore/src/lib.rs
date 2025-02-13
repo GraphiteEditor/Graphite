@@ -15,6 +15,7 @@ pub use ctor;
 
 pub mod consts;
 pub mod generic;
+pub mod instances;
 pub mod logic;
 pub mod ops;
 pub mod structural;
@@ -53,7 +54,7 @@ pub use raster::Color;
 pub use types::Cow;
 
 // pub trait Node: for<'n> NodeIO<'n> {
-/// The node trait allows for defining any node. Nodes can only take one input, however they can store references to other nodes inside the struct.
+/// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
 /// See `node-graph/README.md` for information on how to define a new node.
 pub trait Node<'i, Input: 'i>: 'i {
 	type Output: 'i;

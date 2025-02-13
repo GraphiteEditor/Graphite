@@ -91,9 +91,7 @@ impl Fsm for ImaginateToolFsmState {
 	) -> Self {
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Imaginate(event) = event else {
-			return self;
-		};
+		let ToolMessage::Imaginate(event) = event else { return self };
 		match (self, event) {
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
 				shape_data.start(document, input);
@@ -167,7 +165,7 @@ impl Fsm for ImaginateToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			ImaginateToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Repaint Frame"),

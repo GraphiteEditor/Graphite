@@ -135,7 +135,7 @@ impl LayoutHolder for PolygonTool {
 			true,
 			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -145,7 +145,7 @@ impl LayoutHolder for PolygonTool {
 			true,
 			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -234,9 +234,7 @@ impl Fsm for PolygonToolFsmState {
 
 		let polygon_data = &mut tool_data.data;
 
-		let ToolMessage::Polygon(event) = event else {
-			return self;
-		};
+		let ToolMessage::Polygon(event) = event else { return self };
 		match (self, event) {
 			(_, PolygonToolMessage::Overlays(mut overlay_context)) => {
 				polygon_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -264,7 +262,7 @@ impl Fsm for PolygonToolFsmState {
 
 				let nodes = vec![(NodeId(0), node)];
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_parent(false), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
 				responses.add(Message::StartBuffer);
 				responses.add(GraphOperationMessage::TransformSet {
 					layer,
@@ -281,13 +279,53 @@ impl Fsm for PolygonToolFsmState {
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = tool_data.data.layer {
-						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
-
+						// TODO: We need to determine how to allow the polygon node to make irregular shapes
 						update_radius_sign(end, start, layer, document, responses);
+
+						let dimensions = (start - end).abs();
+						let mut scale = DVec2::ONE;
+						let radius: f64;
+
+						// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
+						if dimensions.x > dimensions.y {
+							scale.x = dimensions.x / dimensions.y;
+							radius = dimensions.y / 2.;
+						} else {
+							scale.y = dimensions.y / dimensions.x;
+							radius = dimensions.x / 2.;
+						}
+
+						match tool_options.polygon_type {
+							PolygonType::Convex => {
+								let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) else {
+									return self;
+								};
+
+								responses.add(NodeGraphMessage::SetInput {
+									input_connector: InputConnector::node(node_id, 2),
+									input: NodeInput::value(TaggedValue::F64(radius), false),
+								});
+							}
+							PolygonType::Star => {
+								let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) else {
+									return self;
+								};
+
+								responses.add(NodeGraphMessage::SetInput {
+									input_connector: InputConnector::node(node_id, 2),
+									input: NodeInput::value(TaggedValue::F64(radius), false),
+								});
+								responses.add(NodeGraphMessage::SetInput {
+									input_connector: InputConnector::node(node_id, 3),
+									input: NodeInput::value(TaggedValue::F64(radius / 2.), false),
+								});
+							}
+						}
+
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
-							transform_in: TransformIn::Viewport,
+							transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
 					}
@@ -347,7 +385,7 @@ impl Fsm for PolygonToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			PolygonToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),

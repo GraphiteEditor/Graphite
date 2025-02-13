@@ -1,6 +1,22 @@
 <script lang="ts" context="module">
 	export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
+
+	/// Prevents the escape key from closing the parent floating menu of the given element.
+	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
+	/// After checking for the Escape key, it checks (in one `setTimeout`) for the attribute and ignores the key if it's present.
+	/// Then after two calls of `setTimeout`, we can safely remove the attribute here.
+	export function preventEscapeClosingParentFloatingMenu(element: HTMLElement) {
+		const floatingMenuParent = element.closest("[data-floating-menu-content]") || undefined;
+		if (floatingMenuParent instanceof HTMLElement) {
+			floatingMenuParent.setAttribute("data-escape-does-not-close", "");
+			setTimeout(() => {
+				setTimeout(() => {
+					floatingMenuParent.removeAttribute("data-escape-does-not-close");
+				}, 0);
+			}, 0);
+		}
+	}
 </script>
 
 <script lang="ts">
@@ -10,6 +26,7 @@
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 
+	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
 
 	const dispatch = createEventDispatcher<{ open: boolean; naturalWidth: number }>();
@@ -302,7 +319,8 @@
 		}
 
 		// Clean up any messes from lost pointerup events
-		const eventIncludesLmb = Boolean(e.buttons & 1);
+		const BUTTONS_LEFT = 0b0000_0001;
+		const eventIncludesLmb = Boolean(e.buttons & BUTTONS_LEFT);
 		if (!open && !eventIncludesLmb) {
 			pointerStillDown = false;
 			window.removeEventListener("pointerup", pointerUpHandler);
@@ -377,8 +395,15 @@
 	}
 
 	function keyDownHandler(e: KeyboardEvent) {
-		if (escapeCloses && e.key.toLowerCase() === "escape") {
-			dispatch("open", false);
+		if (escapeCloses && e.key === "Escape") {
+			setTimeout(() => {
+				if (!floatingMenuContainer?.querySelector("[data-floating-menu-content][data-escape-does-not-close]")) {
+					dispatch("open", false);
+				}
+			}, 0);
+
+			// Find the parent floating menu and prevent it from also closing with the escape key when this floating menu does
+			if (self) preventEscapeClosingParentFloatingMenu(self);
 		}
 	}
 
@@ -388,13 +413,13 @@
 			dispatch("open", false);
 
 			// Track if the left pointer button is now down so its later click event can be canceled
-			const eventIsForLmb = e.button === 0;
+			const eventIsForLmb = e.button === BUTTON_LEFT;
 			if (eventIsForLmb) pointerStillDown = true;
 		}
 	}
 
 	function pointerUpHandler(e: PointerEvent) {
-		const eventIsForLmb = e.button === 0;
+		const eventIsForLmb = e.button === BUTTON_LEFT;
 		if (pointerStillDown && eventIsForLmb) {
 			// Clean up self
 			pointerStillDown = false;
@@ -473,7 +498,7 @@
 
 			.floating-menu-content {
 				background: var(--color-2-mildblack);
-				box-shadow: rgba(var(--color-0-black-rgb), 50%) 0 2px 4px;
+				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
 				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;

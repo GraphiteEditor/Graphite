@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
 	import { debouncer } from "@graphite/utility-functions/debounce";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/wasm-communication/messages";
-	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/wasm-communication/messages";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
-	import ColorButton from "@graphite/components/widgets/buttons/ColorButton.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import ImageButton from "@graphite/components/widgets/buttons/ImageButton.svelte";
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
+	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
@@ -24,7 +25,6 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import WorkingColorsInput from "@graphite/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
@@ -87,9 +87,9 @@
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
-		{@const colorInput = narrowWidgetProps(component.props, "ColorButton")}
+		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
-			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
+			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
@@ -124,9 +124,9 @@
 		{#if iconLabel}
 			<IconLabel {...exclude(iconLabel)} />
 		{/if}
-		{@const imageLabel = narrowWidgetProps(component.props, "ImageLabel")}
-		{#if imageLabel}
-			<ImageLabel {...exclude(imageLabel)} />
+		{@const imageButton = narrowWidgetProps(component.props, "ImageButton")}
+		{#if imageButton}
+			<ImageButton {...exclude(imageButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const nodeCatalog = narrowWidgetProps(component.props, "NodeCatalog")}
 		{#if nodeCatalog}

@@ -183,7 +183,9 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgba_hex())),
-			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length()),
+			Some(1.),
+			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
+			None,
 		);
 	}
 }
@@ -227,7 +229,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
-		update_val::<ColorButton>(grid, move |grid, color| {
+		update_val::<ColorInput>(grid, move |grid, color| {
 			if let FillChoice::Solid(color) = color.value {
 				if let Some(update_color) = update(grid) {
 					*update_color = color;
@@ -278,7 +280,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 	]);
 	color_widgets.push(
-		ColorButton::new(FillChoice::Solid(grid.grid_color))
+		ColorInput::new(FillChoice::Solid(grid.grid_color))
 			.tooltip("Grid display color")
 			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))

@@ -1,15 +1,15 @@
 #![allow(clippy::too_many_arguments)]
 
 #[cfg(feature = "alloc")]
-use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
+use crate::raster::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
-use super::ImageFrame;
-use super::{Channel, Color, Pixel};
+use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::transform::Footprint;
 use crate::vector::style::GradientStops;
-use crate::vector::VectorData;
-use crate::GraphicGroup;
+use crate::vector::VectorDataTable;
+use crate::{GraphicElement, GraphicGroupTable};
 
 use dyn_any::DynAny;
 
@@ -294,10 +294,10 @@ async fn luminance<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -328,10 +328,10 @@ async fn extract_channel<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -361,10 +361,10 @@ async fn make_opaque<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -395,10 +395,10 @@ async fn levels<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -472,10 +472,10 @@ async fn black_and_white<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -554,10 +554,10 @@ async fn hue_saturation<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -598,10 +598,10 @@ async fn invert<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -630,10 +630,10 @@ async fn threshold<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -666,7 +666,6 @@ async fn threshold<F: 'n + Send, T: Adjust<Color>>(
 trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
 }
-
 impl Blend<Color> for Color {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		blend_fn(*self, *under)
@@ -681,24 +680,28 @@ impl Blend<Color> for Option<Color> {
 		}
 	}
 }
-
-impl Blend<Color> for ImageFrame<Color> {
+impl Blend<Color> for ImageFrameTable<Color> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let data = self.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+		let mut result = self.clone();
 
-		ImageFrame {
-			image: super::Image {
-				data,
-				width: self.image.width,
-				height: self.image.height,
-				base64_string: None,
-			},
-			transform: self.transform,
-			alpha_blending: self.alpha_blending,
+		for (over, under) in result.instances_mut().zip(under.instances()) {
+			let data = over.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+
+			*over = ImageFrame {
+				image: super::Image {
+					data,
+					width: over.image.width,
+					height: over.image.height,
+					base64_string: None,
+				},
+				transform: over.transform,
+				alpha_blending: over.alpha_blending,
+			};
 		}
+
+		result
 	}
 }
-
 impl Blend<Color> for GradientStops {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
@@ -730,20 +733,20 @@ async fn blend<F: 'n + Send + Copy, T: Blend<Color> + Send>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	over: impl Node<F, Output = T>,
 	#[expose]
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	under: impl Node<F, Output = T>,
@@ -753,7 +756,7 @@ async fn blend<F: 'n + Send + Copy, T: Blend<Color> + Send>(
 	let over = over.eval(footprint).await;
 	let under = under.eval(footprint).await;
 
-	Blend::blend(&over, &under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
+	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
 }
 
 #[node_macro::node(category(""))]
@@ -800,8 +803,8 @@ pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendM
 	}
 }
 
-trait Adjust<C> {
-	fn adjust(&mut self, map_fn: impl Fn(&C) -> C);
+trait Adjust<P> {
+	fn adjust(&mut self, map_fn: impl Fn(&P) -> P);
 }
 impl Adjust<Color> for Color {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
@@ -822,10 +825,17 @@ impl Adjust<Color> for GradientStops {
 		}
 	}
 }
-impl<C: Pixel> Adjust<C> for ImageFrame<C> {
-	fn adjust(&mut self, map_fn: impl Fn(&C) -> C) {
-		for c in self.image.data.iter_mut() {
-			*c = map_fn(c);
+impl<P: Pixel> Adjust<P> for ImageFrameTable<P>
+where
+	P: dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
+	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
+		for instance in self.instances_mut() {
+			for c in instance.image.data.iter_mut() {
+				*c = map_fn(c);
+			}
 		}
 	}
 }
@@ -857,10 +867,10 @@ async fn gradient_map<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -896,10 +906,10 @@ async fn vibrance<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -1185,7 +1195,7 @@ impl DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"))]
 async fn channel_mixer<F: 'n + Send, T: Adjust<Color>>(
 	#[implementations(
 		(),
@@ -1196,10 +1206,10 @@ async fn channel_mixer<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -1357,10 +1367,10 @@ async fn selective_color<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -1490,19 +1500,30 @@ impl MultiplyAlpha for Color {
 		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
-impl MultiplyAlpha for VectorData {
+impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		self.alpha_blending.opacity *= factor as f32;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.opacity *= factor as f32;
+		}
 	}
 }
-impl MultiplyAlpha for GraphicGroup {
+impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		self.alpha_blending.opacity *= factor as f32;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.opacity *= factor as f32;
+		}
 	}
 }
-impl<P: Pixel> MultiplyAlpha for ImageFrame<P> {
+impl<P: Pixel> MultiplyAlpha for ImageFrameTable<P>
+where
+	P: dyn_any::StaticType,
+	P::Static: Pixel,
+	GraphicElement: From<ImageFrame<P>>,
+{
 	fn multiply_alpha(&mut self, factor: f64) {
-		self.alpha_blending.opacity *= factor as f32;
+		for instance in self.instances_mut() {
+			instance.alpha_blending.opacity *= factor as f32;
+		}
 	}
 }
 
@@ -1523,10 +1544,10 @@ async fn posterize<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -1555,7 +1576,7 @@ async fn posterize<F: 'n + Send, T: Adjust<Color>>(
 //
 // Algorithm based on:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"))]
 async fn exposure<F: 'n + Send, T: Adjust<Color>>(
 	#[implementations(
 		(),
@@ -1566,10 +1587,10 @@ async fn exposure<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	input: impl Node<F, Output = T>,
@@ -1649,10 +1670,10 @@ async fn color_overlay<F: 'n + Send, T: Adjust<Color>>(
 	footprint: F,
 	#[implementations(
 		() -> Color,
-		() -> ImageFrame<Color>,
+		() -> ImageFrameTable<Color>,
 		() -> GradientStops,
 		Footprint -> Color,
-		Footprint -> ImageFrame<Color>,
+		Footprint -> ImageFrameTable<Color>,
 		Footprint -> GradientStops,
 	)]
 	image: impl Node<F, Output = T>,
@@ -1675,27 +1696,34 @@ async fn color_overlay<F: 'n + Send, T: Adjust<Color>>(
 	input
 }
 
-#[cfg(feature = "alloc")]
-pub use index_node::IndexNode;
+// #[cfg(feature = "alloc")]
+// pub use index_node::IndexNode;
 
-#[cfg(feature = "alloc")]
-mod index_node {
-	use crate::raster::{Color, ImageFrame};
+// #[cfg(feature = "alloc")]
+// mod index_node {
+// 	use crate::raster::{Color, ImageFrame};
 
-	#[node_macro::node(category(""))]
-	pub fn index<T: Default + Clone>(_: (), #[implementations(Vec<ImageFrame<Color>>, Vec<Color>)] input: Vec<T>, index: u32) -> T {
-		if (index as usize) < input.len() {
-			input[index as usize].clone()
-		} else {
-			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
-			Default::default()
-		}
-	}
-}
+// 	#[node_macro::node(category(""))]
+// 	pub fn index<T: Default + Clone>(
+// 		_: (),
+// 		#[implementations(Vec<ImageFrame<Color>>, Vec<Color>)]
+// 		#[widget(ParsedWidgetOverride::Hidden)]
+// 		input: Vec<T>,
+// 		index: u32,
+// 	) -> T {
+// 		if (index as usize) < input.len() {
+// 			input[index as usize].clone()
+// 		} else {
+// 			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
+// 			Default::default()
+// 		}
+// 	}
+// }
 
 #[cfg(test)]
 mod test {
-	use crate::raster::{BlendMode, Image, ImageFrame};
+	use crate::raster::image::{ImageFrame, ImageFrameTable};
+	use crate::raster::{BlendMode, Image};
 	use crate::{Color, Node};
 	use std::pin::Pin;
 
@@ -1724,7 +1752,8 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), &FutureWrapperNode(image), overlay_color, BlendMode::Multiply, opacity).await;
+		let result = super::color_overlay((), &FutureWrapperNode(ImageFrameTable::new(image.clone())), overlay_color, BlendMode::Multiply, opacity).await;
+		let result = result.one_item();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
