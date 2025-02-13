@@ -555,16 +555,37 @@ impl Fsm for SelectToolFsmState {
 				} else {
 					compass_rose_state.is_ring()
 				};
+
+				let dragging_bounds = tool_data
+					.bounding_box_manager
+					.as_mut()
+					.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+					.is_some();
+
+				let rotating_bounds = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
+					.unwrap_or_default();
+
 				// Update pivot
-				let show_compass_with_ring = bounds
-					.map(|bounds| transform * Quad::from_box(bounds))
-					.and_then(|quad| if quad.contains(mouse_position) { Some(show_hover_ring) } else { None });
+				let can_get_into_other_states = dragging_bounds || rotating_bounds;
+				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
+					if can_get_into_other_states || matches!(self, SelectToolFsmState::ResizingBounds { .. } | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds) {
+						None
+					} else {
+						quad.contains(mouse_position).then_some(show_hover_ring)
+					}
+				});
+
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle, show_compass_with_ring);
+
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
 					Some((axis, false))
 				} else {
-					compass_rose_state.axis_type().and_then(|axis| if axis.is_constraint() { Some((axis, true)) } else { None })
+					compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
 				};
+
 				if let Some((axis, hover)) = axis_state {
 					if axis.is_constraint() {
 						let e0 = tool_data
