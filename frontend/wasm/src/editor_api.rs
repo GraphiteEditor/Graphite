@@ -26,11 +26,11 @@ use wasm_bindgen::prelude::*;
 
 // /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
 // /// This avoids creating a json with a list millions of numbers long.
-// #[wasm_bindgen(module = "/../src/editor.ts")]
-// extern "C" {
-// 	// fn dispatchTauri(message: String) -> String;
-// 	fn dispatchTauri(message: String);
-// }
+#[wasm_bindgen(module = "/../src/editor.ts")]
+extern "C" {
+	fn dispatchTauri(message: String) -> String;
+	// fn dispatchTauri(message: String);
+}
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -86,7 +86,16 @@ impl EditorHandle {
 		}
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
+		#[cfg(not(feature = "tauri"))]
 		let frontend_messages = editor(|editor| editor.handle_message(message.into()));
+		#[cfg(feature = "tauri")]
+		let frontend_messages: Vec<FrontendMessage> = {
+			let message: Message = message.into();
+			let message = ron::to_string(&message).unwrap();
+
+			let response = dispatchTauri(message);
+			ron::from_str(&response).unwrap()
+		};
 
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for message in frontend_messages.into_iter() {
@@ -139,16 +148,19 @@ impl EditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
+				#[cfg(not(feature = "tauri"))]
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
+						#[cfg(not(feature = "tauri"))]
 						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
 						}) {
 							handle.send_frontend_message_to_js(message);
 						}
 
+						#[cfg(not(feature = "tauri"))]
 						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
@@ -168,6 +180,7 @@ impl EditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move || {
+				#[cfg(not(feature = "tauri"))]
 				auto_save_all_documents();
 
 				// Schedule ourself for another setTimeout callback
@@ -178,20 +191,20 @@ impl EditorHandle {
 		}
 	}
 
-	// #[wasm_bindgen(js_name = tauriResponse)]
-	// pub fn tauri_response(&self, _message: JsValue) {
-	// 	#[cfg(feature = "tauri")]
-	// 	match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
-	// 		Ok(response) => {
-	// 			for message in response {
-	// 				self.send_frontend_message_to_js(message);
-	// 			}
-	// 		}
-	// 		Err(error) => {
-	// 			log::error!("tauri response: {error:?}\n{_message:?}");
-	// 		}
-	// 	}
-	// }
+	#[wasm_bindgen(js_name = tauriResponse)]
+	pub fn tauri_response(&self, _message: JsValue) {
+		#[cfg(feature = "tauri")]
+		match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
+			Ok(response) => {
+				for message in response {
+					self.send_frontend_message_to_js(message);
+				}
+			}
+			Err(error) => {
+				log::error!("tauri response: {error:?}\n{_message:?}");
+			}
+		}
+	}
 
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
@@ -745,6 +758,7 @@ impl EditorHandle {
 
 	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
+	#[cfg(not(feature = "tauri"))]
 	pub async fn upgrade_document_to_vector_manipulation_format(
 		&self,
 		document_id: u64,
@@ -1020,6 +1034,7 @@ pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut Edito
 	});
 }
 
+#[cfg(not(feature = "tauri"))]
 async fn poll_node_graph_evaluation() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -1053,6 +1068,7 @@ async fn poll_node_graph_evaluation() {
 	});
 }
 
+#[cfg(not(feature = "tauri"))]
 fn auto_save_all_documents() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
