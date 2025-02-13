@@ -37,6 +37,7 @@ pub struct TransformLayerMessageHandler {
 	original_transforms: OriginalTransforms,
 	pivot: ViewportPosition,
 	local_pivot: DocumentPosition,
+	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
 	ptz: PTZ,
 	initial_transform: DAffine2,
@@ -160,6 +161,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					*selected.pivot = new_pivot;
 
 					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
+
 					self.grab_target = grab_target;
 
 					self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
@@ -171,6 +173,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			*mouse_position = input.mouse.position;
 			*start_mouse = input.mouse.position;
 			*transform = document_to_viewport;
+			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 			selected.original_transforms.clear();
 
@@ -196,6 +199,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 					};
 
+					// Ensure removing this and adding this doesn't change the position of layers under PTZ ops
 					//responses.add(TransformLayerMessage::PointerMove {
 					//	slow_key: SLOW_KEY,
 					//	increments_key: INCREMENTS_KEY,
@@ -261,16 +265,17 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::Rotating(rotation) => {
 							let angle = rotation.to_f64(self.increments);
 							let pivot = document_to_viewport.transform_point2(self.local_pivot);
+							let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
 							let offset_angle = if self.grs_pen_handle {
 								self.handle - self.last_point
 							} else if using_path_tool {
-								self.start_mouse - pivot
+								start_mouse - pivot
 							} else {
 								self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
 							};
 							let offset_angle = offset_angle.to_angle();
 							let width = viewport_box.max_element();
-							let radius = self.start_mouse.distance(pivot);
+							let radius = start_mouse.distance(pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
 							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
 							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
@@ -326,6 +331,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(handle);
 				self.pivot = last_point;
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(self.pivot);
+				self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(self.start_mouse);
 				self.handle = handle;
 
 				// Operation-specific logic
