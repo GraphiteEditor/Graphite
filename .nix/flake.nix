@@ -16,7 +16,8 @@
   description = "Development environment and build configuration";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
+    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,11 +25,14 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
+  outputs = { nixpkgs, nixpkgs-unstable, rust-overlay, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
+          inherit system overlays;
+        };
+        pkgs-unstable = import nixpkgs-unstable {
           inherit system overlays;
         };
         
@@ -46,7 +50,7 @@
           llvmPackages.libcxxStdenv
           gcc-unwrapped.lib
           llvm
-          libgbm
+          # libgbm
           mesa
           libraw
 
@@ -77,21 +81,21 @@
         ];
 
         # Development tools that don't need to be in LD_LIBRARY_PATH
-        buildTools = with pkgs; [
+        buildTools =  [
           rustc-wasm
-          cargo
-          nodejs
-          nodePackages.npm
-          binaryen
-          wasm-bindgen-cli
-          wasm-pack
-          pkg-config
-          git
-          gobject-introspection
-          cargo-tauri
+          pkgs.cargo
+          pkgs.nodejs
+          pkgs.nodePackages.npm
+          pkgs.binaryen
+          pkgs.wasm-bindgen-cli
+          pkgs-unstable.wasm-pack
+          pkgs.pkg-config
+          pkgs.git
+          pkgs.gobject-introspection
+          pkgs-unstable.cargo-tauri
 
           # Linker
-          mold
+          pkgs.mold
         ];
         # Development tools that don't need to be in LD_LIBRARY_PATH
         devTools = with pkgs; [

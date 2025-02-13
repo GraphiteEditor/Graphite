@@ -12,6 +12,19 @@ export type Editor = {
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
 let wasmImport: WebAssembly.Memory | undefined;
 
+const tauri = "__TAURI_METADATA__" in window && import("@tauri-apps/api");
+export async function dispatchTauri(message: unknown) {
+	if (!tauri) return;
+	try {
+		const response = await (await tauri).invoke("handle_message", { message });
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		(window as any).editorInstance?.tauriResponse(response);
+	} catch {
+		// eslint-disable-next-line no-console
+		console.error("Failed to dispatch Tauri message");
+	}
+}
+
 // Should be called asynchronously before `createEditor()`.
 export async function initWasm() {
 	// Skip if the WASM module is already initialized
@@ -32,6 +45,8 @@ export async function initWasm() {
 	const randomSeedFloat = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 	const randomSeed = BigInt(randomSeedFloat);
 	setRandomSeed(randomSeed);
+	// if (!tauri) return;
+	// await (await tauri).invoke("set_random_seed", { seed: randomSeedFloat });
 }
 
 // Should be called after running `initWasm()` and its promise resolving.

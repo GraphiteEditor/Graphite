@@ -19,6 +19,8 @@
 		"lint-fix": "eslint . --fix && tsc --noEmit",
 		"---------- INTERNAL ----------": "",
 		"setup": "node package-installer.js",
+		"tauri:dev": "vite",
+		"tauri:build": "wasm-pack build ./wasm --release --target=web --features=tauri",
 		"wasm:build-dev": "wasm-pack build ./wasm --dev --target=web",
 		"wasm:build-profiling": "wasm-pack build ./wasm --profiling --target=web",
 		"wasm:build-production": "wasm-pack build ./wasm --release --target=web",
