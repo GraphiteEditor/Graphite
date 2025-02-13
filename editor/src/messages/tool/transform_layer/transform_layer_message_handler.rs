@@ -249,7 +249,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let scale = scale.to_f64(self.increments);
 							let text = format!("{}x", format_rounded(scale, 3));
 							let pivot = document_to_viewport.transform_point2(self.local_pivot);
-							let local_edge = self.start_mouse - pivot;
+							let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
+							let local_edge = start_mouse - pivot;
 							let local_edge = project_edge_to_quad(local_edge, &self.layer_bounding_box, self.local, axis_constraint);
 							let boundary_point = pivot + local_edge * scale.min(1.);
 							let end_point = pivot + local_edge * scale.max(1.);
