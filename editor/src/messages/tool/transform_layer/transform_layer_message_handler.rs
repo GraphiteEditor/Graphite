@@ -274,7 +274,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							} else {
 								self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
 							};
-							let offset_angle = offset_angle.to_angle();
+							let tilt_offset = document.document_ptz.unmodified_tilt();
+							let offset_angle = offset_angle.to_angle() + tilt_offset;
 							let width = viewport_box.max_element();
 							let radius = start_mouse.distance(pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
@@ -576,6 +577,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						TransformOperation::None => unreachable!(),
 						TransformOperation::Grabbing(translation) => {
 							let delta_pos = input.mouse.position - self.mouse_position;
+							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
 							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
 							self.transform_operation.apply_transform_operation(
