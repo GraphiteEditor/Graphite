@@ -159,11 +159,13 @@
 		return { nodeOutput, nodeInput };
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean): WirePath {
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean, directNotGridAligned: boolean): WirePath {
 		const inputPortRect = inputPort.getBoundingClientRect();
 		const outputPortRect = outputPort.getBoundingClientRect();
 
-		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
+		const pathString = directNotGridAligned
+			? buildCurvedWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn)
+			: buildStraightWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
 		const thick = verticalIn && verticalOut;
 
@@ -184,7 +186,7 @@
 			const wireEndNode = wire.wireEnd.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireEnd.nodeId) : undefined;
 			const wireEnd = (wireEndNode?.isLayer && Number(wire.wireEnd.index) === 0) || false;
 
-			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed)];
+			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed, $nodeGraph.wiresDirectNotGridAligned)];
 		});
 	}
 
@@ -198,7 +200,270 @@
 		return iconMap[icon] || "NodeNodes";
 	}
 
-	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+	function buildStraightWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+		if (!nodesContainer) return [];
+
+		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
+		const LINE_WIDTH = 2;
+
+		// Calculate coordinates for input and output connectors
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
+		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
+		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
+
+		// Adjust for scale
+		const containerBounds = nodesContainer.getBoundingClientRect();
+		const scale = $nodeGraph.transform.scale;
+		const inConnectorX = Math.round((inX - containerBounds.x) / scale);
+		const inConnectorY = Math.round((inY - containerBounds.y) / scale);
+		const outConnectorX = Math.round((outX - containerBounds.x) / scale);
+		const outConnectorY = Math.round((outY - containerBounds.y) / scale);
+
+		// Helper functions for calculating coordinates
+		const calculateMidX = () => (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
+		const calculateMidY = () => (inConnectorY + outConnectorY) / 2 + (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+		const calculateMidYAlternate = () => (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+
+		// Define X coordinate calculations
+		const x1 = () => outConnectorX;
+		const x2 = () => outConnectorX + gridSpacing;
+		const x3 = () => inConnectorX - 2 * gridSpacing;
+		const x4 = () => inConnectorX;
+		const x5 = () => inConnectorX - 2 * gridSpacing + LINE_WIDTH;
+		const x6 = () => outConnectorX + gridSpacing + LINE_WIDTH;
+		const x7 = () => outConnectorX + 2 * gridSpacing + LINE_WIDTH;
+		const x8 = () => inConnectorX + LINE_WIDTH;
+		const x9 = () => outConnectorX + 2 * gridSpacing;
+		const x10 = () => calculateMidX() + LINE_WIDTH;
+		const x11 = () => outConnectorX - gridSpacing;
+		const x12 = () => outConnectorX - 4 * gridSpacing;
+		const x13 = () => calculateMidX();
+		const x14 = () => inConnectorX + gridSpacing;
+		const x15 = () => inConnectorX - 4 * gridSpacing;
+		const x16 = () => inConnectorX + 8 * gridSpacing;
+		const x17 = () => calculateMidX() - 2 * LINE_WIDTH;
+		const x18 = () => outConnectorX + gridSpacing - 2 * LINE_WIDTH;
+		const x19 = () => outConnectorX - 2 * LINE_WIDTH;
+		const x20 = () => calculateMidX() - LINE_WIDTH;
+
+		// Define Y coordinate calculations
+		const y1 = () => outConnectorY;
+		const y2 = () => outConnectorY - gridSpacing;
+		const y3 = () => inConnectorY;
+		const y4 = () => outConnectorY - gridSpacing + 5.5 * LINE_WIDTH;
+		const y5 = () => inConnectorY - 2 * gridSpacing;
+		const y6 = () => outConnectorY + 4 * LINE_WIDTH;
+		const y7 = () => outConnectorY + 5 * LINE_WIDTH;
+		const y8 = () => outConnectorY - 2 * gridSpacing + 5.5 * LINE_WIDTH;
+		const y9 = () => outConnectorY + 6 * LINE_WIDTH;
+		const y10 = () => inConnectorY + 2 * gridSpacing;
+		const y111 = () => inConnectorY + gridSpacing + 6.5 * LINE_WIDTH;
+		const y12 = () => inConnectorY + gridSpacing - 5.5 * LINE_WIDTH;
+		const y13 = () => inConnectorY - gridSpacing;
+		const y14 = () => inConnectorY + gridSpacing;
+		const y15 = () => calculateMidY();
+		const y16 = () => calculateMidYAlternate();
+
+		// Helper function for constructing coordinate pairs
+		const construct = (...coords: [() => number, () => number][]) => coords.map(([x, y]) => ({ x: x(), y: y() }));
+
+		// Define wire path shapes that get used more than once
+		const wire1 = () => construct([x1, y1], [x1, y4], [x5, y4], [x5, y3], [x4, y3]);
+		const wire2 = () => construct([x1, y1], [x1, y16], [x3, y16], [x3, y3], [x4, y3]);
+		const wire3 = () => construct([x1, y1], [x1, y4], [x12, y4], [x12, y10], [x3, y10], [x3, y3], [x4, y3]);
+		const wire4 = () => construct([x1, y1], [x1, y4], [x13, y4], [x13, y10], [x3, y10], [x3, y3], [x4, y3]);
+
+		// `outConnector` point and `inConnector` point lying on the same horizontal grid line and `outConnector` point lies to the right of `inConnector` point
+		if (outConnectorY === inConnectorY && outConnectorX > inConnectorX && (verticalOut || !verticalIn)) return construct([x1, y1], [x2, y1], [x2, y2], [x3, y2], [x3, y3], [x4, y3]);
+
+		// Handle straight lines
+		if (outConnectorY === inConnectorY || (outConnectorX === inConnectorX && verticalOut)) return construct([x1, y1], [x4, y3]);
+
+		// Handle standard right-angle paths
+		// Start vertical, then horizontal
+
+		// `outConnector` point lies to the left of `inConnector` point
+		if (verticalOut && inConnectorX > outConnectorX) {
+			// `outConnector` point lies above `inConnector` point
+			if (outConnectorY < inConnectorY) {
+				// `outConnector` point lies on the vertical grid line 4 units to the left of `inConnector` point point
+				if (-4 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX < -3 * gridSpacing) return wire1();
+
+				// `outConnector` point lying on vertical grid lines 3 and 2 units to the left of `inConnector` point
+				if (-3 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= -1 * gridSpacing) {
+					if (-2 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) return construct([x1, y1], [x1, y2], [x2, y2], [x2, y3], [x4, y3]);
+
+					if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) return construct([x1, y1], [x1, y4], [x6, y4], [x6, y3], [x4, y3]);
+
+					return construct([x1, y1], [x1, y4], [x7, y4], [x7, y5], [x3, y5], [x3, y3], [x4, y3]);
+				}
+
+				// `outConnector` point lying on vertical grid line 1 units to the left of `inConnector` point
+				if (-1 * gridSpacing < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 0 * gridSpacing) {
+					// `outConnector` point lying on horizontal grid line 1 unit above `inConnector` point
+					if (-2 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) return construct([x1, y6], [x2, y6], [x8, y3]);
+
+					// `outConnector` point lying on the same horizontal grid line as `inConnector` point
+					if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) return construct([x1, y7], [x4, y3]);
+
+					return construct([x1, y1], [x1, y2], [x9, y2], [x9, y5], [x3, y5], [x3, y3], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x1, y4], [x10, y4], [x10, y3], [x4, y3]);
+			}
+
+			// `outConnector` point lies below `inConnector` point
+			// `outConnector` point lying on vertical grid line 1 unit to the left of `inConnector` point
+			if (-1 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 0 * gridSpacing) {
+				// `outConnector` point lying on the horizontal grid lines 1 and 2 units below the `inConnector` point
+				if (0 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 2 * gridSpacing) construct([x1, y6], [x11, y6], [x11, y3], [x4, y3]);
+
+				return wire2();
+			}
+
+			return construct([x1, y1], [x1, y3], [x4, y3]);
+		}
+
+		// `outConnector` point lies to the right of `inConnector` point
+		if (verticalOut && inConnectorX <= outConnectorX) {
+			// `outConnector` point lying on any horizontal grid line above `inConnector` point
+			if (outConnectorY < inConnectorY) {
+				// `outConnector` point lying on horizontal grid line 1 unit above `inConnector` point
+				if (-2 * gridSpacing < outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) return wire1();
+
+				// `outConnector` point lying on the same horizontal grid line as `inConnector` point
+				if (-1 * gridSpacing < outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) return construct([x1, y1], [x1, y8], [x5, y8], [x5, y3], [x4, y3]);
+
+				// `outConnector` point lying on vertical grid lines 1 and 2 units to the right of `inConnector` point
+				if (gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 3 * gridSpacing) {
+					return construct([x1, y1], [x1, y4], [x9, y4], [x9, y5], [x3, y5], [x3, y3], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x1, y4], [x10, y4], [x10, y5], [x5, y5], [x5, y3], [x4, y3]);
+			}
+
+			// `outConnector` point lies below `inConnector` point
+			if (outConnectorY - inConnectorY <= gridSpacing) {
+				// `outConnector` point lies on the horizontal grid line 1 unit below the `inConnector` Point
+				if (0 <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 13 * gridSpacing) return construct([x1, y9], [x3, y9], [x3, y3], [x4, y3]);
+
+				if (13 < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 18 * gridSpacing) return wire3();
+
+				return wire4();
+			}
+
+			// `outConnector` point lies on the horizontal grid line 2 units below `outConnector` point
+			if (gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 2 * gridSpacing) {
+				if (0 <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 13 * gridSpacing) return construct([x1, y7], [x5, y7], [x5, y3], [x4, y3]);
+
+				if (13 < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 18 * gridSpacing) return wire3();
+
+				return wire4();
+			}
+
+			// 0 to 4 units below the `outConnector` Point
+			if (outConnectorY - inConnectorY <= 4 * gridSpacing) return wire1();
+
+			return wire2();
+		}
+
+		// Start horizontal, then vertical
+		if (verticalIn) {
+			// when `outConnector` lies below `inConnector`
+			if (outConnectorY > inConnectorY) {
+				// `outConnectorX` lies to the left of `inConnectorX`
+				if (outConnectorX < inConnectorX) return construct([x1, y1], [x4, y1], [x4, y3]);
+
+				// `outConnectorX` lies to the right of `inConnectorX`
+				if (outConnectorY - inConnectorY <= gridSpacing) {
+					// `outConnector` point directly below `inConnector` point
+					if (0 <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= gridSpacing) return construct([x1, y1], [x14, y1], [x14, y2], [x4, y2], [x4, y3]);
+
+					// `outConnector` point lies below `inConnector` point and strictly to the right of `inConnector` point
+					return construct([x1, y1], [x2, y1], [x2, y111], [x4, y111], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x2, y1], [x2, y2], [x4, y2], [x4, y3]);
+			}
+
+			// `outConnectorY` lies on or above the `inConnectorY` point
+			if (-6 * gridSpacing < inConnectorX - outConnectorX && inConnectorX - outConnectorX < 4 * gridSpacing) {
+				// edge case: `outConnector` point lying on vertical grid lines ranging from 4 units to left to 5 units to right of `inConnector` point
+				if (-1 * gridSpacing < inConnectorX - outConnectorX && inConnectorX - outConnectorX < 4 * gridSpacing) {
+					return construct([x1, y1], [x2, y1], [x2, y2], [x15, y2], [x15, y12], [x4, y12], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x16, y1], [x16, y12], [x4, y12], [x4, y3]);
+			}
+
+			// left of edge case: `outConnector` point lying on vertical grid lines more than 4 units to left of `inConnector` point
+			if (4 * gridSpacing < inConnectorX - outConnectorX) return construct([x1, y1], [x17, y1], [x17, y12], [x4, y12], [x4, y3]);
+
+			// right of edge case: `outConnector` point lying on the vertical grid lines more than 5 units to right of `inConnector` point
+			if (6 * gridSpacing > inConnectorX - outConnectorX) return construct([x1, y1], [x18, y1], [x18, y12], [x4, y12], [x4, y3]);
+		}
+
+		// Both horizontal - use horizontal middle point
+		// When `inConnector` point is one of the two closest diagonally opposite points
+		if (0 <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= gridSpacing && inConnectorY - outConnectorY >= -1 * gridSpacing && inConnectorY - outConnectorY <= gridSpacing) {
+			return construct([x19, y1], [x19, y3], [x4, y3]);
+		}
+
+		// When `inConnector` point lies on the horizontal line 1 unit above and below the `outConnector` point
+		if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= gridSpacing && outConnectorX > inConnectorX) {
+			// Horizontal line above `outConnectorY`
+			if (inConnectorY < outConnectorY) return construct([x1, y1], [x2, y1], [x2, y13], [x3, y13], [x3, y3], [x4, y3]);
+
+			// Horizontal line below `outConnectorY`
+			return construct([x1, y1], [x2, y1], [x2, y14], [x3, y14], [x3, y3], [x4, y3]);
+		}
+
+		// `outConnector` point to the right of `inConnector` point
+		if (outConnectorX > inConnectorX - gridSpacing) return construct([x1, y1], [x18, y1], [x18, y15], [x5, y15], [x5, y3], [x4, y3]);
+
+		// When `inConnector` point lies on the vertical grid line two units to the right of `outConnector` point
+		if (gridSpacing <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= 2 * gridSpacing) return construct([x1, y1], [x18, y1], [x18, y3], [x4, y3]);
+
+		return construct([x1, y1], [x20, y1], [x20, y3], [x4, y3]);
+	}
+
+	function buildStraightWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		const locations = buildStraightWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+		if (locations.length === 0) return "[error]";
+		if (locations.length === 2) return `M${locations[0].x},${locations[0].y} L${locations[1].x},${locations[1].y}`;
+
+		const CORNER_RADIUS = 10;
+
+		// Create path with rounded corners
+		let path = `M${locations[0].x},${locations[0].y}`;
+
+		for (let i = 1; i < locations.length - 1; i++) {
+			const prev = locations[i - 1];
+			const curr = locations[i];
+			const next = locations[i + 1];
+
+			// Calculate corner points
+			const isVertical = curr.x === prev.x;
+			const cornerStart = {
+				x: curr.x + (isVertical ? 0 : prev.x < curr.x ? -CORNER_RADIUS : CORNER_RADIUS),
+				y: curr.y + (isVertical ? (prev.y < curr.y ? -CORNER_RADIUS : CORNER_RADIUS) : 0),
+			};
+			const cornerEnd = {
+				x: curr.x + (isVertical ? (next.x < curr.x ? -CORNER_RADIUS : CORNER_RADIUS) : 0),
+				y: curr.y + (isVertical ? 0 : next.y < curr.y ? -CORNER_RADIUS : CORNER_RADIUS),
+			};
+
+			// Add line to corner start, quadratic curve for corner, then continue to next point
+			path += ` L${cornerStart.x},${cornerStart.y}`;
+			path += ` Q${curr.x},${curr.y} ${cornerEnd.x},${cornerEnd.y}`;
+		}
+
+		path += ` L${locations[locations.length - 1].x},${locations[locations.length - 1].y}`;
+		return path;
+	}
+
+	function buildCurvedWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
@@ -217,19 +482,6 @@
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
-		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
-		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
-		// if ((verticalOut && verticalIn) || (!verticalOut && !verticalIn && verticalGap === 0)) {
-		// 	return [
-		// 		{ x: outConnectorX, y: outConnectorY },
-		// 		{ x: inConnectorX, y: inConnectorY },
-		// 	];
-		// }
-
-		// // L-shape bend
-		// if (verticalOut !== verticalIn) {
-		// }
-
 		const curveLength = 24;
 		const curveFalloffRate = curveLength * Math.PI * 2;
 
@@ -246,12 +498,14 @@
 		];
 	}
 
-	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
-		const locations = buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+	function buildCurvedWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		const locations = buildCurvedWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
 		if (locations.length === 0) return "[error]";
+
 		const SMOOTHING = 0.5;
 		const delta01 = { x: (locations[1].x - locations[0].x) * SMOOTHING, y: (locations[1].y - locations[0].y) * SMOOTHING };
 		const delta23 = { x: (locations[3].x - locations[2].x) * SMOOTHING, y: (locations[3].y - locations[2].y) * SMOOTHING };
+
 		return `
 			M${locations[0].x},${locations[0].y}
 			L${locations[1].x},${locations[1].y}
@@ -335,31 +589,20 @@
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
-		if (output.connectedTo.length === 0) {
-			return "Connected to nothing";
-		} else {
-			return output.connectedTo
-				.map((inputConnector) => {
-					if ((inputConnector as Node).nodeId === undefined) {
-						return `Connected to export index ${inputConnector.index}`;
-					} else {
-						return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
-					}
-				})
-				.join("\n");
-		}
+		if (output.connectedTo.length === 0) return "Connected to nothing";
+
+		return output.connectedTo
+			.map((inputConnector) => {
+				if ((inputConnector as Node).nodeId === undefined) return `Connected to export index ${inputConnector.index}`;
+				return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
+			})
+			.join("\n");
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		if (input.connectedTo === undefined) {
-			return "Connected to nothing";
-		} else {
-			if ((input.connectedTo as Node).nodeId === undefined) {
-				return `Connected to import index ${input.connectedTo.index}`;
-			} else {
-				return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
-			}
-		}
+		if (input.connectedTo === undefined) return "Connected to nothing";
+		if ((input.connectedTo as Node).nodeId === undefined) return `Connected to import index ${input.connectedTo.index}`;
+		return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
