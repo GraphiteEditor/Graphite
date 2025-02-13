@@ -35,6 +35,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
 	pub navigation_handler: &'a NavigationMessageHandler,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +94,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
 			navigation_handler,
+			preferences,
 		} = data;
 
 		match message {
@@ -1293,8 +1295,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
+					let wires_direct_not_grid_aligned = preferences.graph_wire_style.is_direct();
+
 					responses.add(NodeGraphMessage::UpdateImportsExports);
-					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
+					responses.add(FrontendMessage::UpdateNodeGraph {
+						nodes,
+						wires,
+						wires_direct_not_grid_aligned,
+					});
 					responses.add(FrontendMessage::UpdateLayerWidths {
 						layer_widths,
 						chain_widths,

@@ -106,6 +106,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
 							current_tool,
+							preferences,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -121,6 +122,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
 						current_tool,
+						preferences,
 					};
 					document.process_message(message, responses, document_inputs)
 				}

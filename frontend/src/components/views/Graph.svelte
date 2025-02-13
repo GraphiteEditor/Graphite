@@ -159,11 +159,13 @@
 		return { nodeOutput, nodeInput };
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean): WirePath {
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean, directNotGridAligned: boolean): WirePath {
 		const inputPortRect = inputPort.getBoundingClientRect();
 		const outputPortRect = outputPort.getBoundingClientRect();
 
-		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
+		const pathString = directNotGridAligned
+			? buildCurvedWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn)
+			: buildStraightWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
 		const thick = verticalIn && verticalOut;
 
@@ -184,7 +186,7 @@
 			const wireEndNode = wire.wireEnd.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireEnd.nodeId) : undefined;
 			const wireEnd = (wireEndNode?.isLayer && Number(wire.wireEnd.index) === 0) || false;
 
-			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed)];
+			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed, $nodeGraph.wiresDirectNotGridAligned)];
 		});
 	}
 
@@ -198,7 +200,7 @@
 		return iconMap[icon] || "NodeNodes";
 	}
 
-	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+	function buildStraightWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
@@ -426,8 +428,8 @@
 		return construct([x1, y1], [x20, y1], [x20, y3], [x4, y3]);
 	}
 
-	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
-		const locations = buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+	function buildStraightWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		const locations = buildStraightWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
 		if (locations.length === 0) return "[error]";
 		if (locations.length === 2) return `M${locations[0].x},${locations[0].y} L${locations[1].x},${locations[1].y}`;
 
@@ -459,6 +461,62 @@
 
 		path += ` L${locations[locations.length - 1].x},${locations[locations.length - 1].y}`;
 		return path;
+	}
+
+	function buildCurvedWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+		if (!nodesContainer) return [];
+
+		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
+
+		const containerBounds = nodesContainer.getBoundingClientRect();
+
+		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
+		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
+		const outConnectorX = (outX - containerBounds.x) / $nodeGraph.transform.scale;
+		const outConnectorY = (outY - containerBounds.y) / $nodeGraph.transform.scale;
+
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
+		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
+		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
+		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
+		const verticalGap = Math.abs(outConnectorY - inConnectorY);
+
+		const curveLength = 24;
+		const curveFalloffRate = curveLength * Math.PI * 2;
+
+		const horizontalCurveAmount = -(2 ** ((-10 * horizontalGap) / curveFalloffRate)) + 1;
+		const verticalCurveAmount = -(2 ** ((-10 * verticalGap) / curveFalloffRate)) + 1;
+		const horizontalCurve = horizontalCurveAmount * curveLength;
+		const verticalCurve = verticalCurveAmount * curveLength;
+
+		return [
+			{ x: outConnectorX, y: outConnectorY },
+			{ x: verticalOut ? outConnectorX : outConnectorX + horizontalCurve, y: verticalOut ? outConnectorY - verticalCurve : outConnectorY },
+			{ x: verticalIn ? inConnectorX : inConnectorX - horizontalCurve, y: verticalIn ? inConnectorY + verticalCurve : inConnectorY },
+			{ x: inConnectorX, y: inConnectorY },
+		];
+	}
+
+	function buildCurvedWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		const locations = buildCurvedWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+		if (locations.length === 0) return "[error]";
+
+		const SMOOTHING = 0.5;
+		const delta01 = { x: (locations[1].x - locations[0].x) * SMOOTHING, y: (locations[1].y - locations[0].y) * SMOOTHING };
+		const delta23 = { x: (locations[3].x - locations[2].x) * SMOOTHING, y: (locations[3].y - locations[2].y) * SMOOTHING };
+
+		return `
+			M${locations[0].x},${locations[0].y}
+			L${locations[1].x},${locations[1].y}
+			C${locations[1].x + delta01.x},${locations[1].y + delta01.y}
+			${locations[2].x - delta23.x},${locations[2].y - delta23.y}
+			${locations[2].x},${locations[2].y}
+			L${locations[3].x},${locations[3].y}
+			`
+			.split("\n")
+			.map((line) => line.trim())
+			.join(" ");
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
