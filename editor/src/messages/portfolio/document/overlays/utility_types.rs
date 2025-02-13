@@ -350,15 +350,14 @@ impl OverlayContext {
 			let old_line_width = self.render_context.line_width();
 
 			const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
-			const HOVER_RING_INNER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
 			const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
 			const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
 			const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
 
 			// Hover ring
 			if show_hover_ring {
-				let hover_ring_stroke_width = HOVER_RING_OUTER_RADIUS - HOVER_RING_INNER_RADIUS;
-				let hover_ring_center_radius = (HOVER_RING_OUTER_RADIUS + HOVER_RING_INNER_RADIUS) / 2.0;
+				let hover_ring_stroke_width = HOVER_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
+				let hover_ring_center_radius = (HOVER_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.0;
 
 				let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
 				fill_color.insert(0, '#');
@@ -369,16 +368,6 @@ impl OverlayContext {
 				self.render_context.set_stroke_style_str(&fill_color);
 				self.render_context.stroke();
 			}
-
-			// Main ring
-			let main_ring_stroke_width = MAIN_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
-			let main_ring_center_radius = (MAIN_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.0;
-
-			self.render_context.set_line_width(main_ring_stroke_width);
-			self.render_context.begin_path();
-			self.render_context.arc(compass_x, compass_y, main_ring_center_radius, 0., TAU).expect("Failed to draw main ring");
-			self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-			self.render_context.stroke();
 
 			// Arrows
 			self.render_context.set_line_width(0.01);
@@ -409,6 +398,17 @@ impl OverlayContext {
 				self.render_context.set_stroke_style_str(color);
 				self.render_context.stroke();
 			}
+
+			// Main ring
+			let main_ring_stroke_width = MAIN_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
+			let main_ring_center_radius = (MAIN_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.0;
+
+			self.render_context.set_line_width(main_ring_stroke_width);
+			self.render_context.begin_path();
+			self.render_context.arc(compass_x, compass_y, main_ring_center_radius, 0., TAU).expect("Failed to draw main ring");
+			self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+			self.render_context.stroke();
+
 			self.render_context.set_line_width(old_line_width);
 		}
 		self.end_dpi_aware_transform();
