@@ -2,7 +2,6 @@ use dyn_any::{DynFuture, StaticType};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
-use graphene_core::ops::IdentityNode;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;

@@ -1,4 +1,4 @@
-use crate::raster::{blend_image_closure, BlendImageTupleNode, EmptyImageNode, ExtendImageToBoundsNode};
+use crate::raster::{blend_image_closure, BlendImageTupleNode, ExtendImageToBoundsNode};
 
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
@@ -7,7 +7,7 @@ use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::{Alpha, BlendColorPairNode, Color, Image, Pixel, Sample};
+use graphene_core::raster::{Alpha, Color, Image, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
@@ -138,11 +138,11 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
 	use crate::raster::empty_image;
 	let blank_texture = empty_image((), transform, Color::TRANSPARENT);
-	let normal_blend = BlendColorPairNode::new(
-		FutureWrapperNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal))),
-		FutureWrapperNode::new(ValueNode::new(CopiedNode::new(100.))),
-	);
-	normal_blend.eval((Color::default(), Color::default()));
+	// let normal_blend = BlendColorPairNode::new(
+	// 	FutureWrapperNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal))),
+	// 	FutureWrapperNode::new(ValueNode::new(CopiedNode::new(100.))),
+	// );
+	// normal_blend.eval((Color::default(), Color::default()));
 	// use crate::raster::blend_image_tuple;
 	// blend_image_tuple((blank_texture, stamp), &normal_blend).await.image;
 	crate::raster::blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 100.)).image
@@ -257,7 +257,7 @@ async fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTab
 			let stroke_origin_in_layer = bbox.start - snap_offset - DVec2::splat(stroke.style.diameter / 2.);
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
-			let normal_blend = BlendColorPairNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal)), ValueNode::new(CopiedNode::new(100.)));
+			// let normal_blend = BlendColorPairNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal)), ValueNode::new(CopiedNode::new(100.)));
 			let normal_blend = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Normal, 100.));
 			let blit_node = BlitNode::new(
 				FutureWrapperNode::new(ClonedNode::new(brush_texture)),

@@ -404,6 +404,10 @@ async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: 
 	// let foot = ctx.footprint();
 	// log::debug!("{:?}", foot);
 	// Get the penultimate element of the node path, or None if the path is too short
+
+	// TODO: Delete this line
+	let _ctx = ctx;
+
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	artboards.append_artboard(artboard, encapsulating_node_id);
 

@@ -188,12 +188,12 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident> + #graphene_core::WasmNotSync
 				)
 			}
-			(ParsedField::Node { input_type, output_type, .. }, false) => {
+			(ParsedField::Node { input_type: _, output_type: _, .. }, false) => {
 				unreachable!();
-				quote!(
-					// #name: 'n,
-					#name:  #graphene_core::Node<'n, #input_type, Output = #output_type> + #graphene_core::WasmNotSync
-				)
+				// quote!(
+				// 	// #name: 'n,
+				// 	#name:  #graphene_core::Node<'n, #input_type, Output = #output_type> + #graphene_core::WasmNotSync
+				// )
 			}
 			(ParsedField::Node { input_type, output_type, .. }, true) => {
 				let id = future_idents.len();
@@ -413,7 +413,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			true => parsed.input.ty.clone(),
 			false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
 		};
-		let node_io = if (parsed.is_async || true) { quote!(to_async_node_io) } else { quote!(to_node_io) };
+		let node_io = if parsed.is_async || true { quote!(to_async_node_io) } else { quote!(to_node_io) };
 		constructors.push(quote!(
 			(
 				|args| {
