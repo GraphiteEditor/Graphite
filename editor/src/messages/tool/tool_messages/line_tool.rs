@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::{document_metadata::LayerNodeIdentifier, network_interface::InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name, NodeGraphLayer};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
@@ -120,7 +120,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 		match self.fsm_state {
 			LineToolFsmState::Ready => actions!(LineToolMessageDiscriminant; DragStart, PointerMove),
 			LineToolFsmState::Drawing => actions!(LineToolMessageDiscriminant; DragStop, PointerMove, Abort),
-			LineToolFsmState::Editing => actions!(LineToolMessageDiscriminant; DragStop, PointerMove, Abort),
 		}
 	}
 }
@@ -141,7 +140,6 @@ enum LineToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
-	Editing,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -150,11 +148,10 @@ struct LineToolData {
 	drag_current: DVec2,
 	angle: f64,
 	weight: f64,
-	layer: Option<LayerNodeIdentifier>,
+	selected_layers_with_position: HashMap<LayerNodeIdentifier, [DVec2; 2]>,
+	editing_layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
-	line_start: Option<DVec2>,
-	line_end: Option<DVec2>,
 	start_click: bool,
 	end_click: bool,
 }
@@ -173,45 +170,41 @@ impl Fsm for LineToolFsmState {
 			(_, LineToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-				if let Some(layer) = tool_data.layer {
-					let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
-					let node_inputs = graph_layer.find_node_inputs("Line").expect("Tool data layer should have a Line node");
-					let transform_inputs = graph_layer.find_node_inputs("Transform");
-					let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
-						return self;
-					};
+				tool_data.selected_layers_with_position = document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter_map(|layer| {
+						let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+						let node_inputs = graph_layer.find_node_inputs("Line")?;
+						let transform_inputs = graph_layer.find_node_inputs("Transform");
 
-					let mut transform = document.metadata().document_to_viewport;
-
-					if let Some(transform_inputs) = transform_inputs {
-						let Some(&TaggedValue::DVec2(translation)) = transform_inputs[1].as_value() else {
-							return self;
-						};
-						let Some(&TaggedValue::F64(angle)) = transform_inputs[2].as_value() else {
-							return self;
-						};
-						let Some(&TaggedValue::DVec2(scale)) = transform_inputs[3].as_value() else {
-							return self;
+						let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+							return None;
 						};
 
-						transform = transform * DAffine2::from_scale_angle_translation(scale, angle, translation);
-					}
+						let mut document_transform = DAffine2::IDENTITY;
+						if let Some(transform_inputs) = transform_inputs {
+							let (Some(&TaggedValue::DVec2(translation)), Some(&TaggedValue::F64(angle)), Some(&TaggedValue::DVec2(scale))) =
+								(transform_inputs[1].as_value(), transform_inputs[2].as_value(), transform_inputs[3].as_value())
+							else {
+								return None;
+							};
 
-					tool_data.line_start = Some(start);
-					tool_data.line_end = Some(end);
+							document_transform = DAffine2::from_scale_angle_translation(scale, angle, translation);
+						}
 
-					if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
-						overlay_context.square(transform.transform_point2(start), Some(6.), None, None);
-						overlay_context.square(transform.transform_point2(end), Some(6.), None, None);
-					}
-				} else {
-					tool_data.layer = document
-						.network_interface
-						.selected_nodes(&[])
-						.unwrap()
-						.selected_visible_and_unlocked_layers(&document.network_interface)
-						.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Line"));
-				}
+						let viewport_transform = document.metadata().document_to_viewport;
+						let transform = document_transform * viewport_transform;
+						if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
+							overlay_context.square(transform.transform_point2(start), Some(6.), None, None);
+							overlay_context.square(transform.transform_point2(end), Some(6.), None, None);
+						}
+
+						Some((layer, [start, end]))
+					})
+					.collect::<HashMap<LayerNodeIdentifier, [DVec2; 2]>>();
 
 				self
 			}
@@ -220,22 +213,35 @@ impl Fsm for LineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
 
-				if let (Some(start), Some(end)) = (tool_data.line_start, tool_data.line_end) {
-					let transform = document.metadata().document_to_viewport;
-
+				for (layer, [start, end]) in tool_data.selected_layers_with_position.iter() {
+					let transform = document.metadata().transform_to_viewport(*layer);
 					let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
 					let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
 					let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
 					let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
 
+					let graph_layer = NodeGraphLayer::new(*layer, &document.network_interface);
+					let transform_inputs = graph_layer.find_node_inputs("Transform");
+
+					let mut transform = DAffine2::IDENTITY;
+					if let Some(transform_inputs) = transform_inputs {
+						if let (Some(&TaggedValue::DVec2(translation)), Some(&TaggedValue::F64(angle)), Some(&TaggedValue::DVec2(scale))) =
+							(transform_inputs[1].as_value(), transform_inputs[2].as_value(), transform_inputs[3].as_value())
+						{
+							transform = DAffine2::from_scale_angle_translation(scale, angle, translation);
+						};
+					}
+
+					let [start, end] = [start, end].map(|point| transform.transform_point2(*point));
 					tool_data.start_click = (tool_data.drag_start.y - start.y).abs() < threshold_y && (tool_data.drag_start.x - start.x).abs() < threshold_x;
 					tool_data.end_click = (tool_data.drag_start.y - end.y).abs() < threshold_y && (tool_data.drag_start.x - end.x).abs() < threshold_x;
 
 					if tool_data.start_click || tool_data.end_click {
 						tool_data.drag_start = if tool_data.start_click { end } else { start };
-						return LineToolFsmState::Editing;
+						tool_data.editing_layer = Some(*layer);
+						return LineToolFsmState::Drawing;
 					}
-				};
+				}
 
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -258,17 +264,21 @@ impl Fsm for LineToolFsmState {
 
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 
-				tool_data.layer = Some(layer);
+				tool_data.editing_layer = Some(layer);
 				tool_data.angle = 0.;
 				tool_data.weight = tool_options.line_weight;
 
 				LineToolFsmState::Drawing
 			}
-			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
-				tool_data.drag_current = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
+				if tool_data.editing_layer.is_none() {
+					return LineToolFsmState::Ready;
+				}
+
+				tool_data.drag_current = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position); // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let keyboard = &input.keyboard;
-				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
+				let ignore = vec![tool_data.editing_layer.unwrap()];
 				let snap_data = SnapData::ignore(document, input, &ignore);
 				let mut document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
@@ -276,7 +286,7 @@ impl Fsm for LineToolFsmState {
 					document_points.swap(0, 1);
 				}
 
-				let Some(node_id) = graph_modification_utils::get_line_id(tool_data.layer.unwrap(), &document.network_interface) else {
+				let Some(node_id) = graph_modification_utils::get_line_id(tool_data.editing_layer.unwrap(), &document.network_interface) else {
 					return LineToolFsmState::Ready;
 				};
 
@@ -304,7 +314,7 @@ impl Fsm for LineToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::PointerOutsideViewport { .. }) => {
+			(LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
@@ -320,21 +330,18 @@ impl Fsm for LineToolFsmState {
 
 				state
 			}
-			(LineToolFsmState::Drawing | LineToolFsmState::Editing, LineToolMessage::DragStop) => {
+			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.editing_layer.take();
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
-				tool_data.layer.take();
 				LineToolFsmState::Ready
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.layer.take();
-				LineToolFsmState::Ready
-			}
-			(LineToolFsmState::Editing, LineToolMessage::Abort) => {
-				tool_data.snap_manager.cleanup(responses);
-				tool_data.layer.take();
+				tool_data.editing_layer.take();
+				if !tool_data.start_click && !tool_data.end_click {
+					responses.add(DocumentMessage::AbortTransaction);
+				}
 				LineToolFsmState::Ready
 			}
 			(_, LineToolMessage::WorkingColorChanged) => {
@@ -364,14 +371,6 @@ impl Fsm for LineToolFsmState {
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
 			]),
-			LineToolFsmState::Editing => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					HintInfo::keys([Key::Shift], "15° Increments"),
-					HintInfo::keys([Key::Alt], "From Center"),
-					HintInfo::keys([Key::Control], "Lock Angle"),
-				]),
-			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -383,8 +382,7 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
-	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
+	let mut document_points = [tool_data.drag_start, tool_data.drag_current];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
