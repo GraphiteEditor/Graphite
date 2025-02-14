@@ -555,9 +555,10 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
 				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}, found: {_found}", index + 1);
-				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
+				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n").replace("Option<Arc<OwnedContextImpl>>", "Context");
 				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
 				errors.sort();
+				let inputs = inputs.replace("Option<Arc<OwnedContextImpl>>", "Context");
 				write!(
 					f,
 					"This node isn't compatible with the com-\n\
