@@ -71,7 +71,7 @@ impl KeyMappingEntries {
 	pub fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
 		for mapping in self.0.iter() {
 			if (keyboard_state.key(Key::Accel) || keyboard_state.key(Key::Shift) || keyboard_state.key(Key::Alt)) && mapping.modifiers.is_empty() {
-    			continue;  
+				continue;
 			}
 			// Skip this entry if any of the required modifiers are missing
 			if all_required_modifiers_pressed(keyboard_state, &mapping.modifiers) {
