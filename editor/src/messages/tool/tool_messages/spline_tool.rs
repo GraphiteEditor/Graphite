@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
@@ -405,29 +405,39 @@ impl Fsm for SplineToolFsmState {
 /// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
 fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 	let Some(&(endpoint, _)) = tool_data.points.last() else { return false };
-
 	let preview_point = tool_data.preview_point;
-	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-	let selected_layers = selected_nodes.selected_layers(document.metadata());
+
+	let layers = LayerNodeIdentifier::ROOT_PARENT
+		.descendants(document.metadata())
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
 	// Get the closest point to mouse position which is not preview_point or end_point.
 	let closest_point = closest_point(
 		document,
 		mouse_pos,
 		PATH_JOIN_THRESHOLD,
-		selected_layers,
+		layers,
 		|cp| preview_point.is_some_and(|pp| pp == cp) || cp == endpoint,
 		preferences,
 	);
-	let Some((layer, join_point, _)) = closest_point else { return false };
 
-	// Last end point inserted was the preview point and segment therefore we delete it before joining the end_point & join_point.
+	let Some((other_layer, other_layer_endpoint, _)) = closest_point else { return false };
+	let Some(current_layer) = tool_data.layer else { return false };
+
+	// Last end point inserted was the preview point and segment therefore we delete it before joining the endpoints.
 	delete_preview(tool_data, responses);
 
-	let points = [endpoint, join_point];
+	if current_layer != other_layer {
+		merge_layers(document, current_layer, other_layer, responses);
+	}
+
+	let points = [endpoint, other_layer_endpoint];
 	let id = SegmentId::generate();
 	let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	responses.add(GraphOperationMessage::Vector {
+		layer: current_layer,
+		modification_type,
+	});
 
 	true
 }

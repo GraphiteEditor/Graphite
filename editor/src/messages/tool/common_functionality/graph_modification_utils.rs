@@ -27,6 +27,7 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 		.map(|node| node.1)
 }
 
+/// Merge other_layer to the current_layer.
 pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
 	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
@@ -45,7 +46,6 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	let mut current_and_other_layer_is_spline = false;
 
 	if let (Some(current_layer_spline), Some(other_layer_spline)) = (find_spline(document, current_layer), find_spline(document, other_layer)) {
-		log::info!("both layer is spline");
 		responses.add(NodeGraphMessage::DeleteNodes {
 			node_ids: [current_layer_spline, other_layer_spline].to_vec(),
 			delete_children: false,
