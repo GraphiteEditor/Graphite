@@ -16,6 +16,17 @@ use graphene_core::Color;
 use glam::DVec2;
 use std::collections::VecDeque;
 
+/// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
+pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> Option<NodeId> {
+	document
+		.network_interface
+		.upstream_flow_back_from_nodes([layer.to_node()].to_vec(), &[], FlowType::HorizontalFlow)
+		.map(|node_id| (document.network_interface.reference(&node_id, &[]).unwrap(), node_id))
+		.take_while(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref != "Path"))
+		.find(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref == "Spline"))
+		.map(|node| node.1)
+}
+
 pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
 	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
