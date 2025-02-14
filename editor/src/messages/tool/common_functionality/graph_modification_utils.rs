@@ -42,6 +42,17 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 		skip_rerender: false,
 	});
 
+	let mut current_and_other_layer_is_spline = false;
+
+	if let (Some(current_layer_spline), Some(other_layer_spline)) = (find_spline(document, current_layer), find_spline(document, other_layer)) {
+		log::info!("both layer is spline");
+		responses.add(NodeGraphMessage::DeleteNodes {
+			node_ids: [current_layer_spline, other_layer_spline].to_vec(),
+			delete_children: false,
+		});
+		current_and_other_layer_is_spline = true;
+	}
+
 	// Move the other layer below the current layer for positioning purposes
 	let current_layer_parent = current_layer.parent(document.metadata()).unwrap();
 	let current_layer_index = current_layer_parent.children(document.metadata()).position(|child| child == current_layer).unwrap();
@@ -104,6 +115,22 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 		node_id: path_node_id,
 		parent: current_layer,
 	});
+
+	// Add a Spline node after the Path node if both the layers we are merging is spline.
+	if current_and_other_layer_is_spline {
+		let spline_node_id = NodeId::new();
+		let spline_node = document_node_definitions::resolve_document_node_type("Spline")
+			.expect("Failed to create Spline node")
+			.default_node_template();
+		responses.add(NodeGraphMessage::InsertNode {
+			node_id: spline_node_id,
+			node_template: spline_node,
+		});
+		responses.add(NodeGraphMessage::MoveNodeToChainStart {
+			node_id: spline_node_id,
+			parent: current_layer,
+		});
+	}
 
 	// Add a transform node to ensure correct tooling modifications
 	let transform_node_id = NodeId::new();
