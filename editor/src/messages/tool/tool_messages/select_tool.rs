@@ -588,6 +588,7 @@ impl Fsm for SelectToolFsmState {
 
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+				tool_data.compass_rose.change_transform(document);
 
 				// Update compass rose
 				let compass_center = tool_data.compass_rose.get_compass_position();
@@ -783,11 +784,13 @@ impl Fsm for SelectToolFsmState {
 					.as_ref()
 					.map(|man| man.transform * Quad::from_box(man.bounds))
 					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
-				let compass_rose_state = tool_data.compass_rose.compass_rose_state(input.mouse.position, angle);
+				let mouse_position = input.mouse.position;
+				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
+				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let state =
 				// Dragging the pivot
-				if compass_rose_state.is_pivot() {
+				if is_over_pivot {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
@@ -1123,13 +1126,8 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
-				let angle = tool_data
-					.bounding_box_manager
-					.as_ref()
-					.map(|man| man.transform * Quad::from_box(man.bounds))
-					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				// Dragging the pivot overrules the other operations
-				if tool_data.compass_rose.compass_rose_state(input.mouse.position, angle).is_pivot() {
+				if tool_data.pivot.is_over(input.mouse.position) {
 					cursor = MouseCursorIcon::Move;
 				}
 

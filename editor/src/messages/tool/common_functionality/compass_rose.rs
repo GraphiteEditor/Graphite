@@ -1,9 +1,10 @@
 use glam::{DAffine2, DVec2};
 
 use crate::consts::{COMPASS_ROSE_ANGLE_WIDTH, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
+use crate::messages::prelude::DocumentMessageHandler;
 use std::f64::consts::FRAC_PI_2;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct CompassRose {
 	/// Transform to get from normalized pivot to viewspace
 	transform_from_normalized: DAffine2,
@@ -12,6 +13,11 @@ pub struct CompassRose {
 impl CompassRose {
 	pub fn get_compass_position(&self) -> DVec2 {
 		self.transform_from_normalized.transform_point2(DVec2::splat(0.5))
+	}
+
+	pub fn change_transform(&mut self, document: &DocumentMessageHandler) {
+		let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 	}
 
 	/// Answers if the pointer is currently positioned over the pivot.
