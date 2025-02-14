@@ -42,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -172,6 +173,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			persistent_data,
 			executor,
 			current_tool,
+			preferences,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -222,6 +224,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
+						preferences,
 					},
 				);
 			}
