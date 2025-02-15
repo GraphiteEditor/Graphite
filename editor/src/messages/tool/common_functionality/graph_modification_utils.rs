@@ -45,12 +45,15 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 
 	let mut current_and_other_layer_is_spline = false;
 
-	if let (Some(current_layer_spline), Some(other_layer_spline)) = (find_spline(document, current_layer), find_spline(document, other_layer)) {
-		responses.add(NodeGraphMessage::DeleteNodes {
-			node_ids: [current_layer_spline, other_layer_spline].to_vec(),
-			delete_children: false,
-		});
-		current_and_other_layer_is_spline = true;
+	match (find_spline(document, current_layer), find_spline(document, other_layer)) {
+		(Some(current_layer_spline), Some(other_layer_spline)) => {
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: [current_layer_spline, other_layer_spline].to_vec(),
+				delete_children: false,
+			});
+			current_and_other_layer_is_spline = true;
+		}
+		_ => {}
 	}
 
 	// Move the other layer below the current layer for positioning purposes

@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::utility_functions::{closest_poi
 
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 
 #[derive(Default)]
 pub struct SplineTool {
@@ -424,16 +424,65 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 	let Some((other_layer, other_layer_endpoint, _)) = closest_point else { return false };
 	let Some(current_layer) = tool_data.layer else { return false };
 
-	// Last end point inserted was the preview point and segment therefore we delete it before joining the endpoints.
-	delete_preview(tool_data, responses);
+	let Some(vector_data) = document.network_interface.compute_modified_vector(other_layer) else {
+		return false;
+	};
+	extend_spline(tool_data, false, responses);
 
 	if current_layer != other_layer {
 		merge_layers(document, current_layer, other_layer, responses);
 	}
 
-	let points = [endpoint, other_layer_endpoint];
+	let transform = document.metadata().transform_to_document(other_layer);
+
+	let Some((last_segment, _, mut start_point, mut end_point)) = vector_data
+		.segment_bezier_iter()
+		.find(|(_, _, start, end)| *end == other_layer_endpoint || *start == other_layer_endpoint)
+	else {
+		log::info!("Could not get the segment id for other layer endpoint.");
+		return false;
+	};
+
+	let mut handles = [None; 2];
+	if let Some(pos) = ManipulatorPointId::PrimaryHandle(last_segment).get_position(&vector_data) {
+		let anchor_pos = ManipulatorPointId::Anchor(start_point).get_position(&vector_data).unwrap();
+		let pos = -(anchor_pos - pos);
+		let pos = transform.transform_point2(pos);
+		handles[0] = Some(pos);
+	}
+	if let Some(pos) = ManipulatorPointId::EndHandle(last_segment).get_position(&vector_data) {
+		let anchor_pos = ManipulatorPointId::Anchor(end_point).get_position(&vector_data).unwrap();
+		let pos = -(anchor_pos - pos);
+		let pos = transform.transform_point2(pos);
+		handles[1] = Some(pos);
+	}
+
+	if start_point == other_layer_endpoint {
+		core::mem::swap(&mut start_point, &mut end_point);
+		let t = handles[1];
+		handles[1] = handles[0];
+		handles[0] = t;
+	}
+
+	let modification_type = VectorModificationType::RemovePoint { id: other_layer_endpoint };
+	responses.add(GraphOperationMessage::Vector {
+		layer: current_layer,
+		modification_type,
+	});
+	let modification_type = VectorModificationType::RemoveSegment { id: last_segment };
+	responses.add(GraphOperationMessage::Vector {
+		layer: current_layer,
+		modification_type,
+	});
+
+	let Some((endpoint, _)) = tool_data.points.last() else {
+		log::error!("count not get endpoint");
+		return false;
+	};
+
+	let points = [start_point, *endpoint];
 	let id = SegmentId::generate();
-	let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
+	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 	responses.add(GraphOperationMessage::Vector {
 		layer: current_layer,
 		modification_type,
