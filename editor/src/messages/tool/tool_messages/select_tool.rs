@@ -588,10 +588,10 @@ impl Fsm for SelectToolFsmState {
 
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
-				tool_data.compass_rose.change_transform(document);
 
 				// Update compass rose
-				let compass_center = tool_data.compass_rose.get_compass_position();
+				tool_data.compass_rose.refresh_transform(document);
+				let compass_center = tool_data.compass_rose.compass_rose_position();
 				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
@@ -608,7 +608,6 @@ impl Fsm for SelectToolFsmState {
 							.map(|man| man.transform * Quad::from_box(man.bounds))
 							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-						let origin = tool_data.compass_rose.get_compass_position();
 						let (direction, color) = match axis {
 							Axis::X => (e0, COLOR_OVERLAY_RED),
 							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
@@ -617,14 +616,13 @@ impl Fsm for SelectToolFsmState {
 
 						let viewport_diagonal = input.viewport_bounds.size().length();
 
-						if hover {
-							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
-							let color = &format!("#{}", color_string);
-
-							overlay_context.line(origin - direction * viewport_diagonal, origin + direction * viewport_diagonal, Some(color));
+						let color = if !hover {
+							color
 						} else {
-							overlay_context.line(origin - direction * viewport_diagonal, origin + direction * viewport_diagonal, Some(color));
-						}
+							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+							&format!("#{}", color_string)
+						};
+						overlay_context.line(compass_center - direction * viewport_diagonal, compass_center + direction * viewport_diagonal, Some(color));
 					}
 				}
 
@@ -639,7 +637,7 @@ impl Fsm for SelectToolFsmState {
 					let other = other.as_str();
 
 					let extension = tool_data.drag_current - tool_data.drag_start;
-					let origin = tool_data.compass_rose.get_compass_position() - extension;
+					let origin = compass_center - extension;
 					let viewport_diagonal = input.viewport_bounds.size().length();
 
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
@@ -882,8 +880,8 @@ impl Fsm for SelectToolFsmState {
 					tool_data.get_snap_candidates(document, input);
 					let axis = compass_rose_state.axis_type();
 					match axis {
-						Some(axis) => SelectToolFsmState::Dragging{axis, using_compass: true},
-						None => SelectToolFsmState::Dragging{axis: Axis::None, using_compass: false}
+						Some(axis) => SelectToolFsmState::Dragging { axis, using_compass: true },
+						None => SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false }
 					}
 				}
 				// Dragging a selection box

@@ -61,11 +61,12 @@ pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
 pub const PIVOT_DIAMETER: f64 = 5.;
 
 // COMPASS ROSE
-pub const COMPASS_ROSE_ANGLE_WIDTH: f64 = 20.; // Must be less than 45
 pub const COMPASS_ROSE_RING_INNER_DIAMETER: f64 = 13.;
 pub const COMPASS_ROSE_MAIN_RING_DIAMETER: f64 = 15.;
 pub const COMPASS_ROSE_HOVER_RING_DIAMETER: f64 = 23.;
 pub const COMPASS_ROSE_ARROW_SIZE: f64 = 5.;
+// Angle to either side of the compass arrows where they are targetted by the cursor (in degrees, must be less than 45°)
+pub const COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE: f64 = 20.;
 
 // TRANSFORM OVERLAY
 pub const ANGLE_MEASURE_RADIUS_FACTOR: f64 = 0.04;
