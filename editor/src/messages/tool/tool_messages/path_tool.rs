@@ -779,6 +779,10 @@ impl Fsm for PathToolFsmState {
 					}
 					PathOverlayMode::FrontierHandles => {
 						let selected_segments = selected_segments(document, shape_editor);
+						let selected_points = shape_editor.selected_points();
+						let selected_anchors = selected_points
+							.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(*p) } else { None })
+							.collect::<Vec<_>>();
 
 						// Match the behavior of `PathOverlayMode::SelectedPointHandles` when only one point is selected
 						if shape_editor.selected_points().count() == 1 {
@@ -802,6 +806,9 @@ impl Fsm for PathToolFsmState {
 								for (point, attached_segments) in selected_segments_by_point {
 									if attached_segments.len() == 1 {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
+									} else if !selected_anchors.contains(&point) {
+										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
+										segment_endpoints.entry(attached_segments[1]).or_default().push(point);
 									}
 								}
 							}
