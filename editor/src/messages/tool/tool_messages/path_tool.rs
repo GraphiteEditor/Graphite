@@ -1117,6 +1117,13 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
+
+					tool_data.saved_points_before_handle_drag.clear();
+					tool_data.handle_drag_toggle = false;
+				}
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
