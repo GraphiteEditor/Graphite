@@ -1,6 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER,
+	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
 
@@ -9,7 +10,7 @@ use graphene_core::renderer::Quad;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 
 use core::borrow::Borrow;
-use core::f64::consts::TAU;
+use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
@@ -294,9 +295,15 @@ impl OverlayContext {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
+		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
+			.unwrap()
+			.with_alpha(0.05)
+			.rgba_hex();
+		fill_color.insert(0, '#');
+		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
-		self.circle(start, radius, Some(COLOR_OVERLAY_TRANSPARENT), None);
-		self.circle(start, radius * scale.abs(), Some(COLOR_OVERLAY_TRANSPARENT), None);
+		self.circle(start, radius, fill_color, None);
+		self.circle(start, radius * scale.abs(), fill_color, None);
 		self.text(
 			text,
 			COLOR_OVERLAY_BLUE,
@@ -307,7 +314,77 @@ impl OverlayContext {
 		)
 	}
 
-	pub fn pivot(&mut self, position: DVec2) {
+	pub fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
+		const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
+		const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
+		const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
+		const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
+		const HOVER_RING_STROKE_WIDTH: f64 = HOVER_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
+		const HOVER_RING_CENTERLINE_RADIUS: f64 = (HOVER_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.;
+		const MAIN_RING_STROKE_WIDTH: f64 = MAIN_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
+		const MAIN_RING_CENTERLINE_RADIUS: f64 = (MAIN_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.;
+
+		let Some(show_hover_ring) = show_compass_with_hover_ring else { return };
+
+		self.start_dpi_aware_transform();
+
+		let center = compass_center.round() - DVec2::splat(0.5);
+
+		// Save the old line width to restore it later
+		let old_line_width = self.render_context.line_width();
+
+		// Hover ring
+		if show_hover_ring {
+			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
+			fill_color.insert(0, '#');
+
+			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);
+			self.render_context.begin_path();
+			self.render_context.arc(center.x, center.y, HOVER_RING_CENTERLINE_RADIUS, 0., TAU).expect("Failed to draw hover ring");
+			self.render_context.set_stroke_style_str(&fill_color);
+			self.render_context.stroke();
+		}
+
+		// Arrows
+		self.render_context.set_line_width(0.01);
+		for i in 0..4 {
+			let direction = DVec2::from_angle(i as f64 * FRAC_PI_2 + angle);
+			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
+
+			let tip = center + direction * HOVER_RING_OUTER_RADIUS;
+			let base = center + direction * (MAIN_RING_INNER_RADIUS + MAIN_RING_OUTER_RADIUS) / 2.;
+
+			let r = (ARROW_RADIUS.powi(2) + MAIN_RING_INNER_RADIUS.powi(2)).sqrt();
+			let (cos, sin) = (MAIN_RING_INNER_RADIUS / r, ARROW_RADIUS / r);
+			let side1 = center + r * DVec2::new(cos * direction.x - sin * direction.y, sin * direction.x + direction.y * cos);
+			let side2 = center + r * DVec2::new(cos * direction.x + sin * direction.y, -sin * direction.x + direction.y * cos);
+
+			self.render_context.begin_path();
+			self.render_context.move_to(tip.x, tip.y);
+			self.render_context.line_to(side1.x, side1.y);
+			self.render_context.line_to(base.x, base.y);
+			self.render_context.line_to(side2.x, side2.y);
+			self.render_context.close_path();
+
+			self.render_context.set_fill_style_str(color);
+			self.render_context.fill();
+			self.render_context.set_stroke_style_str(color);
+			self.render_context.stroke();
+		}
+
+		// Main ring
+		self.render_context.set_line_width(MAIN_RING_STROKE_WIDTH);
+		self.render_context.begin_path();
+		self.render_context.arc(center.x, center.y, MAIN_RING_CENTERLINE_RADIUS, 0., TAU).expect("Failed to draw main ring");
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.stroke();
+
+		// Restore the old line width
+		self.render_context.set_line_width(old_line_width);
+	}
+
+	pub fn pivot(&mut self, position: DVec2, angle: f64) {
+		let uv = DVec2::from_angle(angle);
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
 		self.start_dpi_aware_transform();
@@ -322,19 +399,19 @@ impl OverlayContext {
 		// Crosshair
 
 		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
-		let crosshair_radius = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
+		const CROSSHAIR_RADIUS: f64 = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
 
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_YELLOW);
 		self.render_context.set_line_cap("round");
 
 		self.render_context.begin_path();
-		self.render_context.move_to(x - crosshair_radius, y);
-		self.render_context.line_to(x + crosshair_radius, y);
+		self.render_context.move_to(x + CROSSHAIR_RADIUS * uv.x, y + CROSSHAIR_RADIUS * uv.y);
+		self.render_context.line_to(x - CROSSHAIR_RADIUS * uv.x, y - CROSSHAIR_RADIUS * uv.y);
 		self.render_context.stroke();
 
 		self.render_context.begin_path();
-		self.render_context.move_to(x, y - crosshair_radius);
-		self.render_context.line_to(x, y + crosshair_radius);
+		self.render_context.move_to(x - CROSSHAIR_RADIUS * uv.y, y + CROSSHAIR_RADIUS * uv.x);
+		self.render_context.line_to(x + CROSSHAIR_RADIUS * uv.y, y - CROSSHAIR_RADIUS * uv.x);
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");
