@@ -113,31 +113,56 @@ impl Bezier {
 		match self.handles {
 			BezierHandles::Linear => Vec::new(),
 			BezierHandles::Quadratic { handle } => {
-				// Represent the quadratic in standard form:
-				// p(t) = p0 + 2(p1 - p0)t + (p0 - 2*p1 + p2)t²
-				let a = self.start - 2. * handle + self.end;
-				let b = 2. * (handle - self.start);
-				let c = self.start - point;
-
-				// Our polynomial is: (a.cross(b)) t² - 2*(d.cross(a)) t - (d.cross(b)) = 0.
-				let c2 = a.perp_dot(b);
-				let c1 = -2. * c.perp_dot(a);
-				let c0 = b.perp_dot(c);
+				// For quadratic Bezier:
+				// Let P0 = self.start, P1 = handle, P2 = self.end.
+				// Express the curve as p(t) = P0 + 2t*(P1–P0) + t²*(P2 – 2P1 + P0)
+				// Its derivative is p′(t) = 2*(P1–P0) + 2t*(P2 – 2P1 + P0).
+				// A point lies on the tangent at p(t) if (p(t) – point)×p′(t) = 0.
+				// After algebra, we can write the equation as:
+				//  c0 + c1*t + c2*t² = 0,
+				// where:
+				//  c0 = (P0 – point)×(P1–P0)
+				//  c1 = (P0 – point)×(P2 – 2*P1 + P0)
+				//  c2 = (P1–P0)×(P2 – 2*P1 + P0)
+				let a = self.end - 2. * handle + self.start; // (P2 – 2P1 + P0)
+				let c = handle - self.start; // (P1 – P0)
+				let q = self.start - point;
+				let c0 = q.perp_dot(c);
+				let c1 = q.perp_dot(a);
+				let c2 = c.perp_dot(a);
 
 				crate::quartic_solver2::solve_quadratic(c0, c1, c2).iter().copied().flatten().filter(|t| *t >= 0. && *t <= 1.).collect()
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let d = self.start - point;
-				let c = (handle_start - self.start) * 3.;
-				let b = (handle_end - handle_start) * 3. - c;
-				let a = self.end - self.start - c - b;
-
-				// coefficients of x(t) \cross x'(t)
-				let c0 = d.perp_dot(c);
-				let c1 = 2. * d.perp_dot(b);
-				let c2 = c.perp_dot(b) + 3. * d.perp_dot(a);
-				let c3 = 2. * c.perp_dot(a);
-				let c4 = b.perp_dot(a);
+				// For cubic Bezier:
+				// Let P0 = self.start, P1 = handle_start, P2 = handle_end, P3 = self.end.
+				// Write the curve in power form:
+				//  p(t) = P0 + 3t*(P1–P0) + 3t²*(P2 – 2*P1 + P0) + t³*(P3 – 3*P2 + 3*P1 – P0)
+				// and its derivative:
+				//  p′(t) = 3*(P1–P0) + 6t*(P2 – 2*P1 + P0) + 3t²*(P3 – 3*P2 + 3*P1 – P0).
+				// The condition for an external point to lie on the tangent is:
+				//  (p(t) – point)×p′(t) = 0.
+				// After expanding and collecting like powers, we express the equation as:
+				//  c0 + c1*t + c2*t² + c3*t³ + c4*t⁴ = 0,
+				// where:
+				//  Let D = P1–P0,
+				//    E = P2 – 2·P1 + P0,
+				//     F = P3 – 3·P2 + 3·P1 – P0,
+				// then
+				//  c0 = 3·( (P0 – point)×D )
+				//  c1 = 6·((P0 – point)×E)
+				//  c2 = 3·( (P0 – point)×F + 5·(D×E) )
+				//  c3 = 6·(D×F)
+				//  c4 = 3·(E×F)
+				let d = handle_start - self.start;
+				let e = handle_end - 2. * handle_start + self.start;
+				let f = self.end - 3. * handle_end + 3. * handle_start - self.start;
+				let q = self.start - point;
+				let c0 = 3. * q.perp_dot(d);
+				let c1 = 6. * q.perp_dot(e);
+				let c2 = 3. * (q.perp_dot(f) + 3. * d.perp_dot(e));
+				let c3 = 6. * d.perp_dot(f);
+				let c4 = 3. * e.perp_dot(f);
 
 				crate::quartic_solver2::solve_quartic(c0, c1, c2, c3, c4)
 					.iter()
@@ -168,37 +193,58 @@ impl Bezier {
 				}
 
 				let t = point_a.dot(point_b) / point_b.length_squared();
-				if !(0.0..=1.).contains(&t) {
-					return Vec::new();
-				}
-
-				vec![t]
+				std::iter::once(t).filter(|t| *t >= 0. && *t <= 1.).collect()
 			}
 			BezierHandles::Quadratic { handle } => {
-				let a = self.start - 2. * handle + self.end;
-				let b = 2. * (handle - self.start);
-				let c = self.start - point;
+				// Replace the todo!() block in the Quadratic branch of normals_to_point with:
 
-				let c2 = a.dot(b);
-				let c1 = -2. * c.dot(a);
-				let c0 = b.dot(c);
+				let A = handle - self.start;
+				let B = self.end - 2. * handle + self.start;
+				let q = point - self.start;
+				let c0 = q.dot(A);
+				let c1 = q.dot(B) - 2. * A.dot(A);
+				let c2 = -3. * A.dot(B);
+				let c3 = -B.dot(B);
 
-				crate::quartic_solver2::solve_quadratic(c0, c1, c2).iter().copied().flatten().filter(|t| *t >= 0. && *t <= 1.).collect()
+				crate::quartic_solver2::solve_cubic(c0, c1, c2, c3).iter().copied().flatten().filter(|t| *t >= 0. && *t <= 1.).collect()
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let d = self.start - point;
-				let c = (handle_start - self.start) * 3.;
-				let b = (handle_end - handle_start) * 3. - c;
-				let a = self.end - self.start - c - b;
+				// For a cubic Bézier with:
+				// P0 = self.start, P1 = handle_start, P2 = handle_end, P3 = self.end,
+				// we can express the curve as:
+				//  p(t) = P0 + 3t*(P1 - P0) + 3t²*(P2 - 2P1 + P0) + t³*(P3 - 3P2 + 3P1 - P0)
+				// and its derivative as:
+				//  p′(t) = 3*(P1 - P0) + 6t*(P2 - 2P1 + P0) + 3t²*(P3 - 3P2 + 3P1 - P0)
+				//
+				// The normal condition is (p(t) - point) · p′(t) = 0.
+				// Let:
+				//  d = handle_start - self.start
+				//  e = handle_end - 2. * handle_start + self.start
+				//  f = self.end - 3. * handle_end + 3. * handle_start - self.start
+				//  q = point - self.start
+				//
+				// Expanding (p(t)-point)·p'(t)=0 yields a quintic:
+				//  c₀ + c₁*t + c₂*t² + c₃*t³ + c₄*t⁴ + c₅*t⁵ = 0,
+				// with:
+				//  c₀ = -3. * q.dot(d)
+				//  c₁ = 9. * d.dot(d) - 6. * q.dot(e)
+				//  c₂ = 27. * d.dot(e) - 3. * q.dot(f)
+				//  c₃ = 12. * d.dot(f) + 18. * e.dot(e)
+				//  c₄ = 15. * e.dot(f)
+				//  c₅ = 3. * f.dot(f)
+				let d = handle_start - self.start;
+				let e = handle_end - 2. * handle_start + self.start;
+				let f = self.end - 3. * handle_end + 3. * handle_start - self.start;
+				let q = point - self.start;
 
-				// coefficients of x(t) \cdot x'(t)
-				let c0 = d.dot(c);
-				let c1 = 2. * d.dot(b);
-				let c2 = c.dot(b) + 3. * d.dot(a);
-				let c3 = 2. * c.dot(a);
-				let c4 = b.dot(a);
+				let c0 = -3. * q.dot(d);
+				let c1 = 9. * d.dot(d) - 6. * q.dot(e);
+				let c2 = 27. * d.dot(e) - 3. * q.dot(f);
+				let c3 = 12. * d.dot(f) + 18. * e.dot(e);
+				let c4 = 15. * e.dot(f);
+				let c5 = 3. * f.dot(f);
 
-				crate::quartic_solver2::solve_quartic(c0, c1, c2, c3, c4)
+				crate::quartic_solver2::solve_quintic(c0, c1, c2, c3, c4, c5)
 					.iter()
 					.copied()
 					.flatten()
