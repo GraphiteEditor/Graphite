@@ -7,6 +7,8 @@ mod bezier;
 mod consts;
 mod poisson_disk;
 mod polynomial;
+mod quartic_solver;
+mod quartic_solver2;
 mod subpath;
 mod symmetrical_basis;
 mod utils;

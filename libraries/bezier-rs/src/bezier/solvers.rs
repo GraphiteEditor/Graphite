@@ -110,10 +110,43 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/tangents-to-point/solo" title="Tangents to Point Demo"></iframe>
 	#[must_use]
 	pub fn tangents_to_point(self, point: DVec2) -> Vec<f64> {
-		let sbasis: crate::SymmetricalBasisPair = to_symmetrical_basis_pair(self);
-		let derivative = sbasis.derivative();
-		let cross = (sbasis - point).cross(&derivative);
-		SymmetricalBasis::roots(&cross)
+		match self.handles {
+			BezierHandles::Linear => Vec::new(),
+			BezierHandles::Quadratic { handle } => {
+				// Represent the quadratic in standard form:
+				// p(t) = p0 + 2(p1 - p0)t + (p0 - 2*p1 + p2)t²
+				let a = self.start - 2. * handle + self.end;
+				let b = 2. * (handle - self.start);
+				let c = self.start - point;
+
+				// Our polynomial is: (a.cross(b)) t² - 2*(d.cross(a)) t - (d.cross(b)) = 0.
+				let c2 = a.perp_dot(b);
+				let c1 = -2. * c.perp_dot(a);
+				let c0 = b.perp_dot(c);
+
+				crate::quartic_solver2::solve_quadratic(c0, c1, c2).iter().copied().flatten().filter(|t| *t >= 0. && *t <= 1.).collect()
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let d = self.start - point;
+				let c = (handle_start - self.start) * 3.;
+				let b = (handle_end - handle_start) * 3. - c;
+				let a = self.end - self.start - c - b;
+
+				// coefficients of x(t) \cross x'(t)
+				let c0 = d.perp_dot(c);
+				let c1 = 2. * d.perp_dot(b);
+				let c2 = c.perp_dot(b) + 3. * d.perp_dot(a);
+				let c3 = 2. * c.perp_dot(a);
+				let c4 = b.perp_dot(a);
+
+				crate::quartic_solver2::solve_quartic(c0, c1, c2, c3, c4)
+					.iter()
+					.copied()
+					.flatten()
+					.filter(|t| *t >= 0. && *t <= 1.)
+					.collect()
+			}
+		}
 	}
 
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
@@ -126,10 +159,53 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/normals-to-point/solo" title="Normals to Point Demo"></iframe>
 	#[must_use]
 	pub fn normals_to_point(self, point: DVec2) -> Vec<f64> {
-		let sbasis = to_symmetrical_basis_pair(self);
-		let derivative = sbasis.derivative();
-		let cross = (sbasis - point).dot(&derivative);
-		SymmetricalBasis::roots(&cross)
+		match self.handles {
+			BezierHandles::Linear => {
+				let point_a = point - self.start;
+				let point_b = self.end - self.start;
+				if point_b.length_squared() < MAX_ABSOLUTE_DIFFERENCE * MAX_ABSOLUTE_DIFFERENCE {
+					return Vec::new();
+				}
+
+				let t = point_a.dot(point_b) / point_b.length_squared();
+				if !(0.0..=1.).contains(&t) {
+					return Vec::new();
+				}
+
+				vec![t]
+			}
+			BezierHandles::Quadratic { handle } => {
+				let a = self.start - 2. * handle + self.end;
+				let b = 2. * (handle - self.start);
+				let c = self.start - point;
+
+				let c2 = a.dot(b);
+				let c1 = -2. * c.dot(a);
+				let c0 = b.dot(c);
+
+				crate::quartic_solver2::solve_quadratic(c0, c1, c2).iter().copied().flatten().filter(|t| *t >= 0. && *t <= 1.).collect()
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let d = self.start - point;
+				let c = (handle_start - self.start) * 3.;
+				let b = (handle_end - handle_start) * 3. - c;
+				let a = self.end - self.start - c - b;
+
+				// coefficients of x(t) \cdot x'(t)
+				let c0 = d.dot(c);
+				let c1 = 2. * d.dot(b);
+				let c2 = c.dot(b) + 3. * d.dot(a);
+				let c3 = 2. * c.dot(a);
+				let c4 = b.dot(a);
+
+				crate::quartic_solver2::solve_quartic(c0, c1, c2, c3, c4)
+					.iter()
+					.copied()
+					.flatten()
+					.filter(|t| *t >= 0. && *t <= 1.)
+					.collect()
+			}
+		}
 	}
 
 	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
