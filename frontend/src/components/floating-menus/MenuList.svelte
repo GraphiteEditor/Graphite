@@ -297,6 +297,9 @@
 			// Keep the menu stack open
 			return false;
 		}
+		//Close menu with right click
+		
+		
 
 		// Click on a highlighted entry with the enter key
 		if (menuOpen && highlighted && e.key === "Enter") {
@@ -425,6 +428,7 @@
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					{tooltip}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
+					on:mouseup={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
 				>
