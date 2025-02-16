@@ -591,7 +591,7 @@ impl<'a> Selected<'a> {
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 			if let Some((id, initial)) = handle.mirror {
-				// When the handle is scaled to zero,don't update the mirror handle
+				// When the handle is scaled to zero, don't update the mirror handle
 				if (new_pos_viewport - relative).length_squared() > f64::EPSILON {
 					let direction = viewspace.transform_vector2(new_pos_viewport - relative).try_normalize();
 					let length = viewspace.transform_vector2(initial - relative).length();

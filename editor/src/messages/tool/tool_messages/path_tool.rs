@@ -554,7 +554,7 @@ impl PathToolData {
 				layer_manipulators.insert(anchor);
 				let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) else { continue };
 				let Some(handle) = point.as_handle() else { continue };
-				//Check which handle is selected and which is opposite
+				// Check which handle is selected and which is opposite
 				let opposite = if handle == handle1 { handle2 } else { handle1 };
 
 				self.opposite_handle_position = if self.opposite_handle_position.is_none() {
@@ -754,7 +754,7 @@ impl PathToolData {
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		let opposite = if lock_angle { None } else { self.opposite_handle_position };
-		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses, true, opposite);
+		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
 		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
@@ -1267,9 +1267,9 @@ impl Fsm for PathToolFsmState {
 					document,
 					(delta_x, delta_y).into(),
 					true,
-					responses,
 					false,
 					tool_data.opposite_handle_position,
+					responses,
 				);
 
 				PathToolFsmState::Ready
