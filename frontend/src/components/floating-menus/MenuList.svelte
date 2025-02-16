@@ -56,10 +56,12 @@
 	onMount(async () => {
 		await tick();
 		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+		if (open && !inNestedMenuList()) addEventListener("contextmenu", handleRightClick);
 	});
 	onDestroy(async () => {
 		await tick();
 		if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+		if (!inNestedMenuList()) removeEventListener("contextmenu", handleRightClick);
 	});
 
 	function inNestedMenuList(): boolean {
@@ -119,6 +121,9 @@
 	function watchOpen(open: boolean) {
 		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
 		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+
+		if (open && !inNestedMenuList()) addEventListener("contextmenu", handleRightClick);
+		else if (!inNestedMenuList()) removeEventListener("contextmenu", handleRightClick);
 
 		highlighted = activeEntry;
 		dispatch("open", open);
@@ -229,6 +234,17 @@
 		return true;
 	}
 
+	function handleRightClick(e: MouseEvent) {
+		e.preventDefault();
+		// Close menu with escape key
+		if (e.button === 2) {
+			open = false;
+
+			// Reset active to before open
+			setHighlighted(activeEntry);
+		}
+	}
+
 	/// Handles keyboard navigation for the menu.
 	// Returns a boolean indicating whether the entire menu stack should be dismissed.
 	export function keydown(e: KeyboardEvent, submenu = false): boolean {
@@ -297,9 +313,6 @@
 			// Keep the menu stack open
 			return false;
 		}
-		//Close menu with right click
-		
-		
 
 		// Click on a highlighted entry with the enter key
 		if (menuOpen && highlighted && e.key === "Enter") {
@@ -589,5 +602,5 @@
 			}
 		}
 	}
-	// paddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpadding
+	// paddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpadding
 </style>

@@ -63,7 +63,12 @@
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
 		on:click={onClick}
-		on:mousedown={onClick}
+		on:mousedown={(e) => {
+			if (e.button === 0) {
+				// Only trigger for left mouse button
+				onClick(e);
+			}
+		}}
 	>
 		{#if icon}
 			<IconLabel {icon} />
