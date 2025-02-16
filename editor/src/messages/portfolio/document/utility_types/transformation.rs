@@ -14,6 +14,7 @@ use graphene_std::vector::{HandleId, PointId};
 
 use glam::{DAffine2, DMat2, DVec2};
 use std::collections::{HashMap, VecDeque};
+use std::f64::consts::PI;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct AnchorPoint {
@@ -305,17 +306,17 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
-	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
 		if self != &TransformOperation::None {
 			let transformation = match self {
 				TransformOperation::Grabbing(translation) => {
-					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(transform, increment_mode)));
+					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(local_transform, increment_mode)));
 					if local {
 						let resolved_angle = if local_axis_transform_angle > 0. {
-							local_axis_transform_angle - std::f64::consts::PI
-						} else {
 							local_axis_transform_angle
+						} else {
+							local_axis_transform_angle - PI
 						};
 						DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
 					} else {
@@ -333,7 +334,7 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation);
+			selected.update_transforms(transformation, Some(pivot));
 			self.hints(selected.responses, local);
 		}
 	}
@@ -350,7 +351,7 @@ impl TransformOperation {
 		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
 	}
 
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2) -> bool {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) -> bool {
 		(*self, local) = match self {
 			TransformOperation::Grabbing(translation) => {
 				let (translation, local) = translation.with_constraint(axis, local);
@@ -362,11 +363,11 @@ impl TransformOperation {
 			}
 			_ => (*self, false),
 		};
-		self.apply_transform_operation(selected, increment_mode, local, quad, transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
 		local
 	}
 
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -374,7 +375,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, increment_mode, local, quad, transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
@@ -456,7 +457,7 @@ impl TransformOperation {
 		}
 	}
 
-	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2) {
+	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
@@ -464,7 +465,7 @@ impl TransformOperation {
 				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, increment_mode, local, quad, transform);
+			self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
 		}
 	}
 }
@@ -627,8 +628,8 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2) {
-		let pivot = DAffine2::from_translation(*self.pivot);
+	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>) {
+		let pivot = DAffine2::from_translation(pivot.unwrap_or_else(|| *self.pivot));
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),
