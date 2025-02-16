@@ -199,11 +199,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 					};
 
-					// Ensure removing this and adding this doesn't change the position of layers under PTZ ops
-					//responses.add(TransformLayerMessage::PointerMove {
-					//	slow_key: SLOW_KEY,
-					//	increments_key: INCREMENTS_KEY,
-					//});
+					// TODO: Ensure removing this and adding this doesn't change the position of layers under PTZ ops
+					// responses.add(TransformLayerMessage::PointerMove {
+					// 	slow_key: SLOW_KEY,
+					// 	increments_key: INCREMENTS_KEY,
+					// });
 
 					match self.transform_operation {
 						TransformOperation::None => (),
@@ -506,6 +506,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				self.local = self.transform_operation.constrain_axis(
 					Axis::X,
 					&mut selected,
@@ -513,7 +514,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.local,
 					self.layer_bounding_box,
 					document_to_viewport,
-					document_to_viewport.transform_point2(self.local_pivot),
+					pivot,
 					self.initial_transform,
 				);
 				self.transform_operation.grs_typed(
@@ -523,11 +524,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.local,
 					self.layer_bounding_box,
 					document_to_viewport,
-					document_to_viewport.transform_point2(self.local_pivot),
+					pivot,
 					self.initial_transform,
 				);
 			}
 			TransformLayerMessage::ConstrainY => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				self.local = self.transform_operation.constrain_axis(
 					Axis::Y,
 					&mut selected,
@@ -535,7 +537,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.local,
 					self.layer_bounding_box,
 					document_to_viewport,
-					document_to_viewport.transform_point2(self.local_pivot),
+					pivot,
 					self.initial_transform,
 				);
 				self.transform_operation.grs_typed(
@@ -545,7 +547,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.local,
 					self.layer_bounding_box,
 					document_to_viewport,
-					document_to_viewport.transform_point2(self.local_pivot),
+					pivot,
 					self.initial_transform,
 				);
 			}
@@ -558,18 +560,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					return;
 				}
 
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
+
 				let new_increments = input.keyboard.get(increments_key as usize);
 				if new_increments != self.increments {
 					self.increments = new_increments;
-					self.transform_operation.apply_transform_operation(
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						document_to_viewport.transform_point2(self.local_pivot),
-						self.initial_transform,
-					);
+					self.transform_operation
+						.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
 				}
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
@@ -586,12 +583,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								self.local,
 								self.layer_bounding_box,
 								document_to_viewport,
-								document_to_viewport.transform_point2(self.local_pivot),
+								pivot,
 								self.initial_transform,
 							);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let pivot = document_to_viewport.transform_point2(self.local_pivot);
 							let start_offset = pivot - self.mouse_position;
 							let end_offset = pivot - input.mouse.position;
 							let angle = start_offset.angle_to(end_offset);
@@ -605,12 +601,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								self.local,
 								self.layer_bounding_box,
 								document_to_viewport,
-								document_to_viewport.transform_point2(self.local_pivot),
+								pivot,
 								self.initial_transform,
 							);
 						}
 						TransformOperation::Scaling(mut scale) => {
-							let pivot = document_to_viewport.transform_point2(self.local_pivot);
 							let axis_constraint = scale.constraint;
 							let to_mouse_final = self.mouse_position - pivot;
 							let to_mouse_final_old = input.mouse.position - pivot;
@@ -637,7 +632,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								self.local,
 								self.layer_bounding_box,
 								document_to_viewport,
-								document_to_viewport.transform_point2(self.local_pivot),
+								pivot,
 								self.initial_transform,
 							);
 						}
@@ -651,16 +646,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.typing.digits.is_empty() && self.typing.negative {
-					self.transform_operation.negate(
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						document_to_viewport.transform_point2(self.local_pivot),
-						self.initial_transform,
-					);
+					self.transform_operation
+						.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
 					self.typing.type_negate();
 				}
 				self.transform_operation.grs_typed(
@@ -670,11 +659,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.local,
 					self.layer_bounding_box,
 					document_to_viewport,
-					document_to_viewport.transform_point2(self.local_pivot),
+					pivot,
 					self.initial_transform,
 				);
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.transform_operation.can_begin_typing() {
 					self.transform_operation.grs_typed(
 						self.typing.type_decimal_point(),
@@ -683,13 +673,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						self.local,
 						self.layer_bounding_box,
 						document_to_viewport,
-						document_to_viewport.transform_point2(self.local_pivot),
+						pivot,
 						self.initial_transform,
 					)
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
+					let pivot = document_to_viewport.transform_point2(self.local_pivot);
 					self.transform_operation.grs_typed(
 						self.typing.type_number(digit),
 						&mut selected,
@@ -697,22 +688,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						self.local,
 						self.layer_bounding_box,
 						document_to_viewport,
-						document_to_viewport.transform_point2(self.local_pivot),
+						pivot,
 						self.initial_transform,
 					)
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.typing.digits.is_empty() {
-					self.transform_operation.negate(
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						document_to_viewport.transform_point2(self.local_pivot),
-						self.initial_transform,
-					);
+					self.transform_operation
+						.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
 				}
 				self.transform_operation.grs_typed(
 					self.typing.type_negate(),
@@ -721,7 +706,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.local,
 					self.layer_bounding_box,
 					document_to_viewport,
-					document_to_viewport.transform_point2(self.local_pivot),
+					pivot,
 					self.initial_transform,
 				)
 			}
