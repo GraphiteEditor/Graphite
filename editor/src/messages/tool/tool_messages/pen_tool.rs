@@ -626,15 +626,49 @@ impl PenToolData {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		if let Some((layer, point, position)) = should_extend(document, viewport, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
 			// Perform extension of an existing path
+			let vector_data = document.network_interface.compute_modified_vector(layer);
+			let (handle_start, in_segment) = if let Some(vector_data) = &vector_data {
+				vector_data
+					.segment_bezier_iter()
+					.find_map(|(segment_id, bezier, start, end)| {
+						let is_end = point == end;
+						let is_start = point == start;
+						if is_end || is_start {
+							let handle = match bezier.handles {
+								BezierHandles::Cubic { handle_start, handle_end, .. } => {
+									if is_start {
+										handle_start
+									} else {
+										handle_end
+									}
+								}
+								BezierHandles::Quadratic { handle } => handle,
+								_ => return None,
+							};
+							Some((segment_id, is_end, handle))
+						} else {
+							None
+						}
+					})
+					.map(|(segment_id, is_end, handle)| {
+						let mirrored_handle = position * 2.0 - handle;
+						let in_segment = if is_end { Some(segment_id) } else { None };
+						(mirrored_handle, in_segment)
+					})
+					.unwrap_or_else(|| (position, None))
+			} else {
+				(position, None)
+			};
+
 			self.add_point(LastPoint {
 				id: point,
 				pos: position,
-				in_segment: None,
-				handle_start: position,
+				in_segment: in_segment,
+				handle_start: handle_start,
 			});
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			self.next_point = position;
-			self.next_handle_start = position;
+			self.next_handle_start = handle_start;
 
 			return;
 		}
