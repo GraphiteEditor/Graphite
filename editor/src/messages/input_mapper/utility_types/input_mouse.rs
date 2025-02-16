@@ -6,6 +6,7 @@ use glam::DVec2;
 use std::collections::VecDeque;
 
 // Origin is top left
+pub type DocumentPosition = DVec2;
 pub type ViewportPosition = DVec2;
 pub type EditorPosition = DVec2;
 

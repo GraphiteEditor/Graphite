@@ -1085,7 +1085,7 @@ impl Fsm for SelectToolFsmState {
 						None,
 					);
 
-					selected.update_transforms(delta);
+					selected.update_transforms(delta, None);
 				}
 
 				SelectToolFsmState::RotatingBounds
@@ -1189,6 +1189,7 @@ impl Fsm for SelectToolFsmState {
 					true => DocumentMessage::AbortTransaction,
 					false => DocumentMessage::EndTransaction,
 				};
+				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 				responses.add_front(response);
 
@@ -1380,6 +1381,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.axis_align = false;
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
