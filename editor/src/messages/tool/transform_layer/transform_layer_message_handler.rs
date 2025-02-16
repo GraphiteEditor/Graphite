@@ -235,7 +235,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								overlay_context.line(quad[0], end, None);
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
-								let pivot_selection = if x_parameter >= 0. { Pivot::Start } else { Pivot::End };
+								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
 								if axis_constraint != Axis::Both || self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
