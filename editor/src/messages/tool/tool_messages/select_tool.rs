@@ -590,7 +590,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
 
 				// Update compass rose
-				tool_data.compass_rose.refresh_transform(document);
+				tool_data.compass_rose.refresh_position(document);
 				let compass_center = tool_data.compass_rose.compass_rose_position();
 				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
