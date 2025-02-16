@@ -385,6 +385,6 @@ We're excited to be participating in [Nodevember](https://nodevember.io/) next m
 
 ### Community art contest
 
-Congratulations to [VDawg](https://www.instagram.com/vdawg.jpg/), the winner of the community art contest, whose work is featured below. The next contest is open now! Submit before the end of the year to be featured in the Q4 progress report by posting your creations in the `#🎨art-showcase` channel in [our Discord](https://discord.graphite.rs).
+Congratulations to [VDawg](https://www.instagram.com/vdawg.jpg/), the winner of the community art contest, whose work is featured below.
 
 <img src="https://static.graphite.rs/content/blog/2024-10-15-graphite-progress-report-q3-2024/art-contest-winner.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Winning artwork depicts a dark landscape with an ethereal diamond forming a constellation with the stars above" />
