@@ -29,6 +29,9 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 
 /// Merge other_layer to the current_layer.
 pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	if current_layer == other_layer {
+		return;
+	}
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
 	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
 	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
