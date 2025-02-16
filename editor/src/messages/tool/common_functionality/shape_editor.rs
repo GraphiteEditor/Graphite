@@ -794,7 +794,7 @@ impl ShapeState {
 					-(handle_position - anchor_position)
 				} else {
 					// If the handle is very close to the anchor, return the original position
-					if (handle_position - anchor_position).length_squared() < f64::EPSILON {
+					if (handle_position - anchor_position).length_squared() < f64::EPSILON * 100000. {
 						let Some(opposite_handle_position) = opposite_handle_position else { continue };
 						opposite_handle_position - anchor_position
 					} else {
