@@ -457,7 +457,7 @@ fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mu
 		let first_layer = current_layer;
 		let second_layer = if current_layer == merge_layer { current_layer } else { merge_layer };
 
-		merge_points(document, current_layer, second_layer, *start_endpoint, merge_layer_endpoint, responses);
+		merge_points(document, first_layer, second_layer, *start_endpoint, merge_layer_endpoint, responses);
 		tool_data.merge_layer = None;
 	}
 

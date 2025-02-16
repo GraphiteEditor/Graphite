@@ -27,20 +27,20 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 		.map(|node| node.1)
 }
 
-/// Merge other_layer to the current_layer.
-pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if current_layer == other_layer {
+/// Merge `second_layer` to the `first_layer`.
+pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIdentifier, second_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	if first_layer == second_layer {
 		return;
 	}
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
-	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
-	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+	let first_layer_transform = document.metadata().downstream_transform_to_document(first_layer);
+	let second_layer_transform = document.metadata().downstream_transform_to_document(second_layer);
 
 	// Represents the change in position that would occur if the other layer was moved below the current layer
-	let transform_delta = current_transform * other_transform.inverse();
+	let transform_delta = first_layer_transform * second_layer_transform.inverse();
 	let offset = transform_delta.inverse();
 	responses.add(GraphOperationMessage::TransformChange {
-		layer: other_layer,
+		layer: second_layer,
 		transform: offset,
 		transform_in: TransformIn::Local,
 		skip_rerender: false,
@@ -48,7 +48,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 
 	let mut current_and_other_layer_is_spline = false;
 
-	match (find_spline(document, current_layer), find_spline(document, other_layer)) {
+	match (find_spline(document, first_layer), find_spline(document, second_layer)) {
 		(Some(current_layer_spline), Some(other_layer_spline)) => {
 			responses.add(NodeGraphMessage::DeleteNodes {
 				node_ids: [current_layer_spline, other_layer_spline].to_vec(),
@@ -59,13 +59,13 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 		_ => {}
 	}
 
-	// Move the other layer below the current layer for positioning purposes
-	let current_layer_parent = current_layer.parent(document.metadata()).unwrap();
-	let current_layer_index = current_layer_parent.children(document.metadata()).position(|child| child == current_layer).unwrap();
+	// Move the `second_layer` below the `first_layer` for positioning purposes
+	let first_layer_parent = first_layer.parent(document.metadata()).unwrap();
+	let first_layer_index = first_layer_parent.children(document.metadata()).position(|child| child == first_layer).unwrap();
 	responses.add(NodeGraphMessage::MoveLayerToStack {
-		layer: other_layer,
-		parent: current_layer_parent,
-		insert_index: current_layer_index + 1,
+		layer: second_layer,
+		parent: first_layer_parent,
+		insert_index: first_layer_index + 1,
 	});
 
 	// Merge the inputs of the two layers
@@ -83,14 +83,14 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: merge_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
-		downstream_input: InputConnector::node(other_layer.to_node(), 1),
+		downstream_input: InputConnector::node(second_layer.to_node(), 1),
 		input_connector: InputConnector::node(merge_node_id, 1),
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
-		node_ids: vec![other_layer.to_node()],
+		node_ids: vec![second_layer.to_node()],
 		delete_children: false,
 	});
 
@@ -105,7 +105,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: flatten_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 
 	// Add a path node after the flatten node
@@ -119,7 +119,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: path_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 
 	// Add a Spline node after the Path node if both the layers we are merging is spline.
@@ -134,7 +134,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 		});
 		responses.add(NodeGraphMessage::MoveNodeToChainStart {
 			node_id: spline_node_id,
-			parent: current_layer,
+			parent: first_layer,
 		});
 	}
 
@@ -149,7 +149,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: transform_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 
 	responses.add(NodeGraphMessage::RunDocumentGraph);
