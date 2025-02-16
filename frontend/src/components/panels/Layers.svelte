@@ -435,7 +435,7 @@
 							title={listing.entry.expanded ? "Collapse" : `Expand${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
 							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
 							tabindex="0"
-						/>
+						></button>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}

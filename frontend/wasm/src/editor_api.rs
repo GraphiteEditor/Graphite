@@ -558,15 +558,28 @@ impl EditorHandle {
 	}
 
 	/// Translates document (in viewport coords)
+	#[wasm_bindgen(js_name = panCanvasAbortPrepare)]
+	pub fn pan_canvas_abort_prepare(&self, x_not_y_axis: bool) {
+		let message = NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = panCanvasAbort)]
+	pub fn pan_canvas_abort(&self, x_not_y_axis: bool) {
+		let message = NavigationMessage::CanvasPanAbort { x_not_y_axis };
+		self.dispatch(message);
+	}
+
+	/// Translates document (in viewport coords)
 	#[wasm_bindgen(js_name = panCanvas)]
-	pub fn translate_canvas(&self, delta_x: f64, delta_y: f64) {
+	pub fn pan_canvas(&self, delta_x: f64, delta_y: f64) {
 		let message = NavigationMessage::CanvasPan { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 
 	/// Translates document (in viewport coords)
 	#[wasm_bindgen(js_name = panCanvasByFraction)]
-	pub fn translate_canvas_by_fraction(&self, delta_x: f64, delta_y: f64) {
+	pub fn pan_canvas_by_fraction(&self, delta_x: f64, delta_y: f64) {
 		let message = NavigationMessage::CanvasPanByViewportFraction { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}

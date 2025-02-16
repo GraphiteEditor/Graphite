@@ -135,7 +135,7 @@ impl LayoutHolder for PolygonTool {
 			true,
 			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -145,7 +145,7 @@ impl LayoutHolder for PolygonTool {
 			true,
 			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -279,8 +279,7 @@ impl Fsm for PolygonToolFsmState {
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = tool_data.data.layer {
-						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
-
+						// TODO: We need to determine how to allow the polygon node to make irregular shapes
 						update_radius_sign(end, start, layer, document, responses);
 
 						let dimensions = (start - end).abs();
@@ -326,11 +325,9 @@ impl Fsm for PolygonToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-							transform_in: TransformIn::Viewport,
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 

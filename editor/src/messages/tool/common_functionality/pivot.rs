@@ -83,10 +83,10 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64) {
 		self.recalculate_pivot(document);
 		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot);
+			overlay_context.pivot(pivot, angle);
 		}
 	}
 

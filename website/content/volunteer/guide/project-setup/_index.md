@@ -26,10 +26,8 @@ cargo install -f wasm-bindgen-cli@0.2.99
 
 Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
 
-<br />
 <details>
 <summary>Linux users: click here</summary>
-<br />
 
 On Linux, you likely need to install this set of additional packages which are required by Tauri, even if you're just building the web app:
 
@@ -70,10 +68,8 @@ This spins up the dev server at <http://localhost:8080> with a file watcher that
 
 This method compiles Graphite code in debug mode which includes debug symbols for viewing function names in stack traces. But be aware, it runs slower and the Wasm binary is much larger. Having your browser's developer tools open will also significantly impact performance in both debug and release builds, so it's best to close that when not in use.
 
-<br />
 <details>
 <summary>Production build instructions: click here</summary>
-<br />
 
 You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by first installing the additional `cargo-about` dev dependency:
 

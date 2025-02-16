@@ -1,4 +1,5 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
@@ -32,6 +33,29 @@ impl PreferencesDialogMessageHandler {
 	const TITLE: &'static str = "Editor Preferences";
 
 	fn layout(&self, preferences: &PreferencesMessageHandler) -> Layout {
+		// =====
+		// INPUT
+		// =====
+
+		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
+		let input_section = vec![TextLabel::new("Input").italic(true).widget_holder()];
+		let zoom_with_scroll = vec![
+			CheckboxInput::new(preferences.zoom_with_scroll)
+				.tooltip(zoom_with_scroll_tooltip)
+				.on_update(|checkbox_input: &CheckboxInput| {
+					PreferencesMessage::ModifyLayout {
+						zoom_with_scroll: checkbox_input.checked,
+					}
+					.into()
+				})
+				.widget_holder(),
+			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
+		];
+
+		// =========
+		// SELECTION
+		// =========
+
 		let selection_section = vec![TextLabel::new("Selection").italic(true).widget_holder()];
 		let selection_mode = RadioInput::new(vec![
 			RadioEntryData::new(SelectionMode::Touched.to_string())
@@ -65,20 +89,28 @@ impl PreferencesDialogMessageHandler {
 		.selected_index(Some(preferences.selection_mode as u32))
 		.widget_holder();
 
-		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
-		let input_section = vec![TextLabel::new("Input").italic(true).widget_holder()];
-		let zoom_with_scroll = vec![
-			CheckboxInput::new(preferences.zoom_with_scroll)
-				.tooltip(zoom_with_scroll_tooltip)
-				.on_update(|checkbox_input: &CheckboxInput| {
-					PreferencesMessage::ModifyLayout {
-						zoom_with_scroll: checkbox_input.checked,
-					}
-					.into()
-				})
-				.widget_holder(),
-			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
-		];
+		// ================
+		// NODE GRAPH WIRES
+		// ================
+
+		let node_graph_section_tooltip = "Appearance of the wires running between node connections in the graph";
+		let node_graph_section = vec![TextLabel::new("Node Graph Wires").tooltip(node_graph_section_tooltip).italic(true).widget_holder()];
+		let graph_wire_style = RadioInput::new(vec![
+			RadioEntryData::new(GraphWireStyle::GridAligned.to_string())
+				.label(GraphWireStyle::GridAligned.to_string())
+				.tooltip(GraphWireStyle::GridAligned.tooltip_description())
+				.on_update(move |_| PreferencesMessage::GraphWireStyle { style: GraphWireStyle::GridAligned }.into()),
+			RadioEntryData::new(GraphWireStyle::Direct.to_string())
+				.label(GraphWireStyle::Direct.to_string())
+				.tooltip(GraphWireStyle::Direct.tooltip_description())
+				.on_update(move |_| PreferencesMessage::GraphWireStyle { style: GraphWireStyle::Direct }.into()),
+		])
+		.selected_index(Some(preferences.graph_wire_style as u32))
+		.widget_holder();
+
+		// ============
+		// EXPERIMENTAL
+		// ============
 
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
 		let renderer_section = vec![TextLabel::new("Experimental").italic(true).widget_holder()];
@@ -126,10 +158,12 @@ impl PreferencesDialogMessageHandler {
 		// ];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutGroup::Row { widgets: selection_section },
-			LayoutGroup::Row { widgets: vec![selection_mode] },
 			LayoutGroup::Row { widgets: input_section },
 			LayoutGroup::Row { widgets: zoom_with_scroll },
+			LayoutGroup::Row { widgets: selection_section },
+			LayoutGroup::Row { widgets: vec![selection_mode] },
+			LayoutGroup::Row { widgets: node_graph_section },
+			LayoutGroup::Row { widgets: vec![graph_wire_style] },
 			LayoutGroup::Row { widgets: renderer_section },
 			LayoutGroup::Row { widgets: use_vello },
 			LayoutGroup::Row { widgets: vector_meshes },

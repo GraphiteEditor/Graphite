@@ -229,7 +229,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
-		update_val::<ColorButton>(grid, move |grid, color| {
+		update_val::<ColorInput>(grid, move |grid, color| {
 			if let FillChoice::Solid(color) = color.value {
 				if let Some(update_color) = update(grid) {
 					*update_color = color;
@@ -280,7 +280,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 	]);
 	color_widgets.push(
-		ColorButton::new(FillChoice::Solid(grid.grid_color))
+		ColorInput::new(FillChoice::Solid(grid.grid_color))
 			.tooltip("Grid display color")
 			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))

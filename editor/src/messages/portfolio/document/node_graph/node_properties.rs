@@ -140,8 +140,8 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 						Some(x) if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
 						Some(x) if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
-						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(true), true),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(false), true),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(true), true),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
 						Some(x) if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
 						Some(x) if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
@@ -152,7 +152,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 							font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 						}
 						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorButton::default().allow_none(false), true),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(false), true),
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_widget(document_node, node_id, index, name, true).into(),
 						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrame>() => {
 							raster_widget(document_node, node_id, index, name, true).into()
@@ -1067,7 +1067,7 @@ pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 	LayoutGroup::Row { widgets }
 }
 
-pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorButton, blank_assist: bool) -> LayoutGroup {
+pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorInput, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Properties panel
@@ -1080,7 +1080,7 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		TaggedValue::Color(color) => widgets.push(
 			color_button
 				.value(FillChoice::Solid(*color))
-				.on_update(update_value(|x: &ColorButton| TaggedValue::Color(x.value.as_solid().unwrap_or_default()), node_id, index))
+				.on_update(update_value(|x: &ColorInput| TaggedValue::Color(x.value.as_solid().unwrap_or_default()), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		),
@@ -1090,7 +1090,7 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 					Some(color) => FillChoice::Solid(*color),
 					None => FillChoice::None,
 				})
-				.on_update(update_value(|x: &ColorButton| TaggedValue::OptionalColor(x.value.as_solid()), node_id, index))
+				.on_update(update_value(|x: &ColorInput| TaggedValue::OptionalColor(x.value.as_solid()), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		),
@@ -1098,7 +1098,7 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 			color_button
 				.value(FillChoice::Gradient(x.clone()))
 				.on_update(update_value(
-					|x: &ColorButton| TaggedValue::GradientStops(x.value.as_gradient().cloned().unwrap_or_default()),
+					|x: &ColorInput| TaggedValue::GradientStops(x.value.as_gradient().cloned().unwrap_or_default()),
 					node_id,
 					index,
 				))
@@ -1776,7 +1776,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 // 		if let Some(&TaggedValue::F64(seed)) = &input.as_non_exposed_value() {
 // 			widgets.extend_from_slice(&[
 // 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				IconButton::new("Regenerate", 24)
+// 				IconButton::new("Resync", 24)
 // 					.tooltip("Set a new random seed")
 // 					.on_update({
 // 						let imaginate_node = imaginate_node.clone();
@@ -1856,7 +1856,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 // 			widgets.extend_from_slice(&[
 // 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				IconButton::new("Rescale", 24)
+// 				IconButton::new("FrameAll", 24)
 // 					.tooltip("Set the layer dimensions to this resolution")
 // 					.on_update(move |_| DialogMessage::RequestComingSoonDialog { issue: None }.into())
 // 					.widget_holder(),
@@ -2211,9 +2211,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets_first_row.push(
-		ColorButton::default()
+		ColorInput::default()
 			.value(fill.clone().into())
-			.on_update(move |x: &ColorButton| {
+			.on_update(move |x: &ColorInput| {
 				Message::Batched(Box::new([
 					match &fill2 {
 						Fill::None => NodeGraphMessage::SetInputValue {
@@ -2380,7 +2380,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_join_index = 6;
 	let miter_limit_index = 7;
 
-	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
+	let color = color_widget(document_node, node_id, color_index, "Color", ColorInput::default(), true);
 	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit(" px").min(0.), true);
 
 	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {

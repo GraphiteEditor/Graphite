@@ -80,7 +80,7 @@ impl LayoutMessageHandler {
 				};
 				responses.add(callback_message);
 			}
-			Widget::ColorButton(color_button) => {
+			Widget::ColorInput(color_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
@@ -99,7 +99,7 @@ impl LayoutMessageHandler {
 						};
 
 						(|| {
-							let update_value = value.as_object().expect("ColorButton update was not of type: object");
+							let update_value = value.as_object().expect("ColorInput update was not of type: object");
 
 							// None
 							let is_none = update_value.get("none").and_then(|x| x.as_bool());
@@ -139,7 +139,7 @@ impl LayoutMessageHandler {
 								return (color_button.on_update.callback)(color_button);
 							}
 
-							panic!("ColorButton update was not able to be parsed with color data: {color_button:?}");
+							panic!("ColorInput update was not able to be parsed with color data: {color_button:?}");
 						})()
 					}
 				};

@@ -29,6 +29,7 @@ pub struct NavigationMessageHandler {
 	navigation_operation: NavigationOperation,
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
+	abortable_pan_start: Option<f64>,
 }
 
 impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
@@ -139,6 +140,28 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(DocumentMessage::PTZUpdate);
+			}
+			NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis } => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get PTZ in CanvasPanAbortPrepare");
+					return;
+				};
+				self.abortable_pan_start = Some(if x_not_y_axis { ptz.pan.x } else { ptz.pan.y });
+			}
+			NavigationMessage::CanvasPanAbort { x_not_y_axis } => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get PTZ in CanvasPanAbort");
+					return;
+				};
+				if let Some(abortable_pan_start) = self.abortable_pan_start {
+					if x_not_y_axis {
+						ptz.pan.x = abortable_pan_start;
+					} else {
+						ptz.pan.y = abortable_pan_start;
+					}
+				}
+				self.abortable_pan_start = None;
 				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {

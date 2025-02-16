@@ -2,7 +2,7 @@
 name = "graphite-editor"
 publish = false
 version = "0.0.0"
-rust-version = "1.79"
+rust-version = "1.82"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2021"
 readme = "../README.md"

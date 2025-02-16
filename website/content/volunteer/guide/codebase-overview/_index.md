@@ -78,10 +78,9 @@ pub enum DocumentMessage {
 
 As shown above, additional data fields can be included with each message. But as a special case denoted by the `#[child]` attribute, that data can also be a sub-message enum, which enables hierarchical nesting of message handler subsystems.
 
-<br />
 <details>
 <summary>To view the hierarchical subsystem file structure: click here</summary>
-<br />
+
 <!--
 Generated with:
 cd editor/src/messages
@@ -182,7 +181,6 @@ messages
     └── workspace_message_handler.rs
 ```
 
-<br />
 </details>
 
 By convention, regular data must be written as struct-style named fields (shown above), while a sub-message enum must be written as a tuple/newtype-style field (shown below). The `DocumentMessage` enum of the previous example is defined as a child of `PortfolioMessage` which wraps it like this:

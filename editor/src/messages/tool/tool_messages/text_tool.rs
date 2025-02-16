@@ -160,7 +160,7 @@ impl LayoutHolder for TextTool {
 			true,
 			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -504,7 +504,9 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(Self::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
+				let document_points = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
+				let document_to_viewport = document.metadata().document_to_viewport;
+				tool_data.cached_resize_bounds = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
 
 				responses.add(OverlaysMessage::Draw);
 

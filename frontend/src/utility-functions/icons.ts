@@ -133,6 +133,9 @@ import FrameSelected from "@graphite-frontend/assets/icon-16px-solid/frame-selec
 import GraphViewClosed from "@graphite-frontend/assets/icon-16px-solid/graph-view-closed.svg";
 import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-open.svg";
 import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
+import HandleVisibilityAll from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-all.svg";
+import HandleVisibilityFrontier from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-frontier.svg";
+import HandleVisibilitySelected from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-selected.svg";
 import HistoryRedo from "@graphite-frontend/assets/icon-16px-solid/history-redo.svg";
 import HistoryUndo from "@graphite-frontend/assets/icon-16px-solid/history-undo.svg";
 import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
@@ -242,6 +245,9 @@ const SOLID_16PX = {
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
 	GraphViewClosed: { svg: GraphViewClosed, size: 16 },
 	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
+	HandleVisibilityAll: { svg: HandleVisibilityAll, size: 16 },
+	HandleVisibilityFrontier: { svg: HandleVisibilityFrontier, size: 16 },
+	HandleVisibilitySelected: { svg: HandleVisibilitySelected, size: 16 },
 	HistoryRedo: { svg: HistoryRedo, size: 16 },
 	HistoryUndo: { svg: HistoryUndo, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },

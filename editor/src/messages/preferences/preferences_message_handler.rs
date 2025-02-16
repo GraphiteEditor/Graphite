@@ -1,4 +1,5 @@
 use crate::messages::input_mapper::key_mapping::MappingVariant;
+use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
@@ -12,6 +13,7 @@ pub struct PreferencesMessageHandler {
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
 	pub vector_meshes: bool,
+	pub graph_wire_style: GraphWireStyle,
 }
 
 impl PreferencesMessageHandler {
@@ -37,6 +39,7 @@ impl Default for PreferencesMessageHandler {
 			imaginate_hostname: host_name,
 			use_vello,
 		} = Default::default();
+
 		Self {
 			imaginate_server_hostname: host_name,
 			imaginate_refresh_frequency: 1.,
@@ -44,6 +47,7 @@ impl Default for PreferencesMessageHandler {
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello,
 			vector_meshes: false,
+			graph_wire_style: GraphWireStyle::default(),
 		}
 	}
 }
@@ -94,6 +98,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				self.selection_mode = selection_mode;
+			}
+			PreferencesMessage::GraphWireStyle { style } => {
+				self.graph_wire_style = style;
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 		}
 		// TODO: Reenable when Imaginate is restored (and move back up one line since the auto-formatter doesn't like it in that block)

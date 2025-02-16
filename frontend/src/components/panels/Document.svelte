@@ -169,16 +169,6 @@
 		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
-	function pageX(delta: number) {
-		const move = delta < 0 ? 1 : -1;
-		editor.handle.panCanvasByFraction(move, 0);
-	}
-
-	function pageY(delta: number) {
-		const move = delta < 0 ? 1 : -1;
-		editor.handle.panCanvasByFraction(0, move);
-	}
-
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
 
@@ -549,21 +539,25 @@
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<ScrollbarInput
 						direction="Vertical"
-						handleLength={scrollbarSize.y}
-						handlePosition={scrollbarPos.y}
-						on:handlePosition={({ detail }) => panCanvasY(detail)}
-						on:pressTrack={({ detail }) => pageY(detail)}
+						thumbLength={scrollbarSize.y}
+						thumbPosition={scrollbarPos.y}
+						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
+						on:thumbPosition={({ detail }) => panCanvasY(detail)}
+						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
+						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
 			<LayoutRow class="ruler-or-scrollbar bottom-scrollbar">
 				<ScrollbarInput
 					direction="Horizontal"
-					handleLength={scrollbarSize.x}
-					handlePosition={scrollbarPos.x}
-					on:handlePosition={({ detail }) => panCanvasX(detail)}
-					on:pressTrack={({ detail }) => pageX(detail)}
-					on:pointerup={() => editor.handle.setGridAlignedEdges()}
+					thumbLength={scrollbarSize.x}
+					thumbPosition={scrollbarPos.x}
+					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
+					on:thumbPosition={({ detail }) => panCanvasX(detail)}
+					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
+					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
+					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

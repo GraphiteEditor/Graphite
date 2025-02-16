@@ -864,8 +864,8 @@ async fn subpath_segment_lengths<F: 'n + Send>(
 		.collect()
 }
 
-#[node_macro::node(name("Splines from Points"), category("Vector"), path(graphene_core::vector))]
-async fn splines_from_points<F: 'n + Send>(
+#[node_macro::node(name("Spline"), category("Vector"), path(graphene_core::vector))]
+async fn spline<F: 'n + Send>(
 	#[implementations(
 		(),
 		Footprint,
@@ -1431,7 +1431,7 @@ mod test {
 	}
 	#[tokio::test]
 	async fn spline() {
-		let spline = splines_from_points(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.))).await;
+		let spline = super::spline(Footprint::default(), &vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.))).await;
 		let spline = spline.one_item();
 		assert_eq!(spline.stroke_bezier_paths().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);

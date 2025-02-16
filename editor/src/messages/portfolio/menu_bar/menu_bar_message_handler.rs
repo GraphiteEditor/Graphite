@@ -346,8 +346,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							vec![MenuBarEntry {
 								label: "Reverse".into(),
 								icon: Some("StackReverse".into()),
-								// shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersReverse),
-								action: MenuBarEntry::create_action(|_| DialogMessage::RequestComingSoonDialog { issue: Some(2271) }.into()),
+								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersReverse.into()),
 								disabled: no_active_document || !has_selected_layers,
 								..MenuBarEntry::default()
 							}],

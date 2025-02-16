@@ -148,7 +148,7 @@ pub struct ImageButton {
 
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
-pub struct ColorButton {
+pub struct ColorInput {
 	#[widget_builder(constructor)]
 	pub value: FillChoice,
 
@@ -174,7 +174,7 @@ pub struct ColorButton {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<ColorButton>,
+	pub on_update: WidgetCallback<ColorInput>,
 
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

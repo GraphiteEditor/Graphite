@@ -3,21 +3,27 @@
 
 	import { Color, type Gradient } from "@graphite/messages";
 
+	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number | undefined; gradient: Gradient }>();
+	const BUTTON_LEFT = 0;
+	const BUTTON_RIGHT = 2;
+
+	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number | undefined; gradient: Gradient; dragging: boolean }>();
 
 	export let gradient: Gradient;
 	export let activeMarkerIndex = 0 as number | undefined;
 	// export let disabled = false;
 	// export let tooltip: string | undefined = undefined;
 
-	let markerTrack: LayoutRow | undefined;
+	let markerTrack: LayoutRow | undefined = undefined;
+	let positionRestore: number | undefined = undefined;
+	let deletionRestore: boolean | undefined = undefined;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
 		// Left-click to select and begin potentially dragging
-		if (e.button === 0) {
+		if (e.button === BUTTON_LEFT) {
 			activeMarkerIndex = index;
 			dispatch("activeMarkerIndexChange", index);
 			addEvents();
@@ -25,7 +31,7 @@
 		}
 
 		// Right-click to delete
-		if (e.button === 2) {
+		if (e.button === BUTTON_RIGHT && deletionRestore === undefined) {
 			deleteStopByIndex(index);
 			return;
 		}
@@ -41,6 +47,8 @@
 	}
 
 	function insertStop(e: MouseEvent) {
+		if (e.button !== BUTTON_LEFT) return;
+
 		let position = markerPosition(e);
 		if (position === undefined) return;
 
@@ -62,14 +70,20 @@
 
 		gradient.stops.splice(index, 0, { position, color });
 		activeMarkerIndex = index;
+		deletionRestore = true;
 
 		dispatch("activeMarkerIndexChange", index);
 		dispatch("gradient", gradient);
+
+		addEvents();
 	}
 
 	function deleteStop(e: KeyboardEvent) {
-		if (e.key.toLowerCase() !== "delete" && e.key.toLowerCase() !== "backspace") return;
+		if (e.key !== "Delete" && e.key !== "Backspace") return;
 		if (activeMarkerIndex === undefined) return;
+
+		if (positionRestore !== undefined) stopDrag();
+
 		deleteStopByIndex(activeMarkerIndex);
 	}
 
@@ -82,6 +96,7 @@
 		} else {
 			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.length - 1, index));
 		}
+		deletionRestore = undefined;
 
 		dispatch("activeMarkerIndexChange", activeMarkerIndex);
 		dispatch("gradient", gradient);
@@ -89,10 +104,18 @@
 
 	function moveMarker(e: PointerEvent, index: number) {
 		// Just in case the mouseup event is lost
-		if (e.buttons === 0) removeEvents();
+		if (e.buttons === 0) stopDrag();
 
 		let position = markerPosition(e);
 		if (position === undefined) return;
+
+		if (positionRestore === undefined) positionRestore = position;
+		if (deletionRestore === undefined) {
+			deletionRestore = false;
+
+			dispatch("dragging", true);
+		}
+
 		setPosition(index, position);
 	}
 
@@ -107,24 +130,61 @@
 		dispatch("gradient", gradient);
 	}
 
-	function onPointerMove(e: PointerEvent) {
-		if (activeMarkerIndex !== undefined) {
-			moveMarker(e, activeMarkerIndex);
+	function abortDrag() {
+		if (activeMarkerIndex === undefined) return;
+
+		if (deletionRestore) {
+			deleteStopByIndex(activeMarkerIndex);
+		} else if (positionRestore !== undefined) {
+			setPosition(activeMarkerIndex, positionRestore);
 		}
+
+		stopDrag();
+	}
+
+	function stopDrag() {
+		removeEvents();
+
+		positionRestore = undefined;
+		deletionRestore = undefined;
+
+		dispatch("dragging", false);
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		if (activeMarkerIndex !== undefined) moveMarker(e, activeMarkerIndex);
 	}
 
 	function onPointerUp() {
-		removeEvents();
+		stopDrag();
+	}
+
+	function onMouseDown(e: MouseEvent) {
+		const BUTTONS_RIGHT = 0b0000_0010;
+		if (e.buttons & BUTTONS_RIGHT) abortDrag();
+	}
+
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === "Escape") {
+			const element = markerTrack?.div();
+			if (element) preventEscapeClosingParentFloatingMenu(element);
+
+			abortDrag();
+		}
 	}
 
 	function addEvents() {
 		document.addEventListener("pointermove", onPointerMove);
 		document.addEventListener("pointerup", onPointerUp);
+		document.addEventListener("mousedown", onMouseDown);
+		document.addEventListener("keydown", onKeyDown);
 	}
 
 	function removeEvents() {
 		document.removeEventListener("pointermove", onPointerMove);
 		document.removeEventListener("pointerup", onPointerUp);
+		document.removeEventListener("mousedown", onMouseDown);
+		document.removeEventListener("keydown", onKeyDown);
 	}
 
 	document.addEventListener("keydown", deleteStop);
@@ -158,24 +218,22 @@
 		"--gradient-stops": gradient.toLinearGradientCSS(),
 	}}
 >
-	<LayoutRow class="gradient-strip" on:click={insertStop}></LayoutRow>
+	<LayoutRow class="gradient-strip" on:pointerdown={insertStop}></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
 		{#each gradient.stops as marker, index}
 			<svg
-				style:--marker-position={marker.position}
-				style:--marker-color={marker.color.toRgbCSS()}
 				class="marker"
 				class:active={index === activeMarkerIndex}
+				style:--marker-position={marker.position}
+				style:--marker-color={marker.color.toRgbCSS()}
+				on:pointerdown={(e) => markerPointerDown(e, index)}
 				data-gradient-marker
 				xmlns="http://www.w3.org/2000/svg"
 				viewBox="0 0 12 12"
 			>
+				<path class="inner-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
 				<path
-					on:pointerdown={(e) => markerPointerDown(e, index)}
-					d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z"
-				/>
-				<path
-					on:pointerdown={(e) => markerPointerDown(e, index)}
+					class="outer-border"
 					d="M6,1.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h8c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7L6,1.4M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0z"
 				/>
 			</svg>
@@ -216,6 +274,7 @@
 			margin-left: var(--marker-half-width);
 			width: calc(100% - 2 * var(--marker-half-width));
 			position: relative;
+			pointer-events: none;
 
 			.marker {
 				position: absolute;
@@ -223,30 +282,40 @@
 				left: calc(var(--marker-position) * 100%);
 				width: 12px;
 				height: 12px;
+				pointer-events: auto;
+				overflow: visible;
+				padding-top: 12px;
+				margin-top: -12px;
 
-				// Inner fill
-				path:first-child {
+				.inner-fill {
 					fill: var(--marker-color);
 				}
 
-				// Outer border
-				path:last-child {
+				.outer-border {
 					fill: var(--color-5-dullgray);
 				}
 
-				&:not(.active) path:first-child:hover + path:last-child,
-				&:not(.active) path:last-child:hover {
-					fill: var(--color-6-lowergray);
+				&:not(.active) {
+					.inner-fill:hover + .outer-border,
+					.outer-border:hover {
+						fill: var(--color-6-lowergray);
+					}
 				}
 
-				// Outer border when active
-				&.active path:last-child {
-					fill: var(--color-e-nearwhite);
-				}
+				&.active {
+					.inner-fill {
+						filter: drop-shadow(0 0 1px var(--color-2-mildblack)) drop-shadow(0 0 1px var(--color-2-mildblack));
+					}
 
-				&.active path:first-child:hover + path:last-child,
-				&.active path:last-child:hover {
-					fill: var(--color-f-white);
+					// Outer border when active
+					.outer-border {
+						fill: var(--color-e-nearwhite);
+					}
+
+					.inner-fill:hover + .outer-border,
+					.outer-border:hover {
+						fill: var(--color-f-white);
+					}
 				}
 			}
 		}
