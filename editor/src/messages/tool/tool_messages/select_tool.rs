@@ -828,37 +828,6 @@ impl Fsm for SelectToolFsmState {
 					};
 					SelectToolFsmState::Dragging { axis, using_compass }
 				}
-				// Dragging near the transform cage bounding box to rotate it
-				else if rotating_bounds {
-					responses.add(DocumentMessage::StartTransaction);
-
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&selected,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None
-						);
-
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
-					}
-
-					tool_data.layers_dragging = selected;
-
-					SelectToolFsmState::RotatingBounds
-				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if dragging_bounds.is_some() && !is_flat_layer {
 					responses.add(DocumentMessage::StartTransaction);
@@ -896,6 +865,37 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						SelectToolFsmState::ResizingBounds
 					}
+				}
+				// Dragging near the transform cage bounding box to rotate it
+				else if rotating_bounds {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&selected,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Select,
+							None
+						);
+
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
+					}
+
+					tool_data.layers_dragging = selected;
+
+					SelectToolFsmState::RotatingBounds
 				}
 				// Dragging a selection box
 				else {

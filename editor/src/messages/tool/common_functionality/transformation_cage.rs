@@ -438,6 +438,11 @@ impl BoundingBoxManager {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
 	}
 
+	fn is_contained_in_bounds(&self, mouse: DVec2) -> bool {
+		let mouse = self.transform.inverse().transform_point2(mouse);
+		Quad::from_box(self.bounds).contains(mouse)
+	}
+
 	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
 	fn compute_viewport_threshold(&self, scalar: f64) -> [f64; 2] {
 		let inverse = self.transform.inverse();
@@ -511,8 +516,8 @@ impl BoundingBoxManager {
 
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
-		let cursor = self.transform.inverse().transform_point2(cursor);
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
+		let cursor = self.transform.inverse().transform_point2(cursor);
 
 		let flat = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
@@ -527,8 +532,12 @@ impl BoundingBoxManager {
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		let edges = self.check_selected_edges(input.mouse.position);
 
+		if self.is_contained_in_bounds(input.mouse.position) {
+			return MouseCursorIcon::Default;
+		}
+
 		match edges {
-			Some((top, bottom, left, right)) if self.is_bounds_flat() => match (top, bottom, left, right) {
+			Some((top, bottom, left, right)) if !self.is_bounds_flat() => match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
 				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
