@@ -733,14 +733,16 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
+	#[allow(clippy::too_many_arguments)]
 	pub fn move_selected_points(
 		&self,
 		handle_lengths: Option<OpposingHandleLengths>,
 		document: &DocumentMessageHandler,
 		delta: DVec2,
 		equidistant: bool,
-		responses: &mut VecDeque<Message>,
 		in_viewport_space: bool,
+		opposite_handle_position: Option<DVec2>,
+		responses: &mut VecDeque<Message>,
 	) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -791,6 +793,11 @@ impl ShapeState {
 
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
+				}
+				// If the handle is very close to the anchor, return the original position
+				else if (handle_position - anchor_position).length_squared() < f64::EPSILON * 1e5 {
+					let Some(opposite_handle_position) = opposite_handle_position else { continue };
+					opposite_handle_position - anchor_position
 				} else {
 					// TODO: Is this equivalent to `transform_to_document_space`? If changed, the before and after should be tested.
 					let transform = document.metadata().document_to_viewport.inverse() * transform_to_viewport_space;

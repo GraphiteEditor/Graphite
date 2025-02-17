@@ -2321,7 +2321,7 @@ pub struct ClickXRayIter<'a> {
 }
 
 fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
-	quad.edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+	quad.all_edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {

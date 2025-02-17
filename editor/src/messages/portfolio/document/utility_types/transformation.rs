@@ -591,11 +591,14 @@ impl<'a> Selected<'a> {
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 			if let Some((id, initial)) = handle.mirror {
-				let direction = viewspace.transform_vector2(new_pos_viewport - relative).try_normalize();
-				let length = viewspace.transform_vector2(initial - relative).length();
-				let new_relative = direction.map_or(initial - relative, |direction| viewspace.inverse().transform_vector2(-direction * length));
-				let modification_type = id.set_relative_position(new_relative);
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				// When the handle is scaled to zero, don't update the mirror handle
+				if (new_pos_viewport - relative).length_squared() > f64::EPSILON {
+					let direction = viewspace.transform_vector2(new_pos_viewport - relative).try_normalize();
+					let length = viewspace.transform_vector2(initial - relative).length();
+					let new_relative = direction.map_or(initial - relative, |direction| viewspace.inverse().transform_vector2(-direction * length));
+					let modification_type = id.set_relative_position(new_relative);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 			}
 		}
 	}

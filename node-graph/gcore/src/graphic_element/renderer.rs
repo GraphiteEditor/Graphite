@@ -90,7 +90,7 @@ impl ClickTarget {
 		// This bounding box is not very accurate as it is the axis aligned version of the transformed bounding box. However it is fast.
 		if !self
 			.bounding_box
-			.is_some_and(|loose| intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
+			.is_some_and(|loose| (loose[0] - loose[1]).abs().cmpgt(DVec2::splat(1e-4)).all() && intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
 		{
 			return false;
 		}
