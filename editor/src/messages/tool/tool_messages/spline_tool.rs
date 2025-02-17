@@ -413,52 +413,44 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-/// Return `true` only if new segment is inserted to connect two end points otherwise `false`.
 fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
-	let preview_point = tool_data.preview_point;
-	let Some(&(endpoint, _)) = tool_data.points.last() else { return false };
+	let Some((last_endpoint, _)) = tool_data.points.last() else { return false };
+	let Some(preview_point) = tool_data.preview_point else { return false };
+	let Some(current_layer) = tool_data.current_layer else { return false };
 
 	let layers = LayerNodeIdentifier::ROOT_PARENT
 		.descendants(document.metadata())
 		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
-	// Get the closest point to mouse position which is not preview_point or end_point.
-	let closest_point = closest_point(
-		document,
-		mouse_pos,
-		PATH_JOIN_THRESHOLD,
-		layers,
-		|cp| preview_point.is_some_and(|pp| pp == cp) || cp == endpoint,
-		preferences,
-	);
+	let exclude = |point: PointId| point == preview_point || point == *last_endpoint;
+	let closest_point = closest_point(document, mouse_pos, PATH_JOIN_THRESHOLD, layers, exclude, preferences);
 
-	let Some((other_layer, other_endpoint, _)) = closest_point else { return false };
-	let Some(current_layer) = tool_data.current_layer else { return false };
-
+	let merge_layer;
+	let mut merge_endpoints = [None, None];
+	if let Some((other_layer, other_endpoint, _)) = closest_point {
+		if let Some((merge_layer, merge_endpoint)) = tool_data.merge_layer {
+			merge_layers(document, other_layer, merge_layer, responses);
+			merge_endpoints[0] = Some((merge_endpoint, merge_layer));
+		}
+		merge_endpoints[1] = Some((other_endpoint, other_layer));
+		merge_layer = Some(other_layer);
+	} else {
+		return false;
+	}
 	extend_spline(tool_data, false, responses);
 	let (last_endpoint, _) = tool_data.points.last().unwrap();
 	let (start_endpoint, _) = tool_data.points.first().unwrap();
 
-	if current_layer != other_layer {
-		merge_layers(document, current_layer, other_layer, responses);
+	if let Some(merge_layer) = merge_layer {
+		merge_layers(document, current_layer, merge_layer, responses);
 	}
 
-	let first_layer = current_layer;
-	let second_layer = if current_layer == other_layer { current_layer } else { other_layer };
-
-	if !merge_points(document, first_layer, second_layer, *last_endpoint, other_endpoint, responses) {
-		return false;
+	if let Some((merge_endpoint, merge_layer)) = merge_endpoints[0] {
+		merge_points(document, current_layer, merge_layer, *start_endpoint, merge_endpoint, responses);
 	}
 
-	if let Some((merge_layer, merge_layer_endpoint)) = tool_data.merge_layer {
-		if merge_layer != other_layer {
-			merge_layers(document, current_layer, merge_layer, responses);
-		}
-		let first_layer = current_layer;
-		let second_layer = if current_layer == merge_layer { current_layer } else { merge_layer };
-
-		merge_points(document, first_layer, second_layer, *start_endpoint, merge_layer_endpoint, responses);
-		tool_data.merge_layer = None;
+	if let Some((merge_endpoint, merge_layer)) = merge_endpoints[1] {
+		merge_points(document, current_layer, merge_layer, *last_endpoint, merge_endpoint, responses);
 	}
 
 	true
@@ -487,14 +479,18 @@ fn merge_points(
 
 	let mut handles = [None; 2];
 	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(last_segment).get_position(&vector_data) {
-		let anchor_pos = ManipulatorPointId::Anchor(start_point).get_position(&vector_data).unwrap();
-		let anchor_to_handle = handle_position - anchor_pos;
-		handles[0] = Some(transform.transform_point2(anchor_to_handle));
+		let anchor_position = ManipulatorPointId::Anchor(start_point).get_position(&vector_data).unwrap();
+		let handle_position = transform.transform_point2(handle_position);
+		let anchor_position = transform.transform_point2(anchor_position);
+		let anchor_to_handle = handle_position - anchor_position;
+		handles[0] = Some(anchor_to_handle);
 	}
 	if let Some(handle_position) = ManipulatorPointId::EndHandle(last_segment).get_position(&vector_data) {
-		let anchor_pos = ManipulatorPointId::Anchor(end_point).get_position(&vector_data).unwrap();
-		let anchor_to_handle = handle_position - anchor_pos;
-		handles[1] = Some(transform.transform_point2(anchor_to_handle));
+		let anchor_position = ManipulatorPointId::Anchor(end_point).get_position(&vector_data).unwrap();
+		let handle_position = transform.transform_point2(handle_position);
+		let anchor_position = transform.transform_point2(anchor_position);
+		let anchor_to_handle = handle_position - anchor_position;
+		handles[1] = Some(anchor_to_handle);
 	}
 
 	if start_point == second_endpont {
