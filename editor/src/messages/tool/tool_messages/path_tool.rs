@@ -371,6 +371,7 @@ struct PathToolData {
 	dragging_state: DraggingState,
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
+	opposite_handle_position: Option<DVec2>,
 }
 
 impl PathToolData {
@@ -551,6 +552,16 @@ impl PathToolData {
 			for point in state.selected() {
 				let Some(anchor) = point.get_anchor(&vector_data) else { continue };
 				layer_manipulators.insert(anchor);
+				let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) else { continue };
+				let Some(handle) = point.as_handle() else { continue };
+				// Check which handle is selected and which is opposite
+				let opposite = if handle == handle1 { handle2 } else { handle1 };
+
+				self.opposite_handle_position = if self.opposite_handle_position.is_none() {
+					opposite.to_manipulator_point().get_position(&vector_data)
+				} else {
+					self.opposite_handle_position
+				};
 			}
 			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
 				if layer_manipulators.contains(&id) {
@@ -742,7 +753,8 @@ impl PathToolData {
 		};
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
-		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses, true);
+		let opposite = if lock_angle { None } else { self.opposite_handle_position };
+		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
 		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
@@ -1199,6 +1211,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.opposite_handle_position = None;
 
 				PathToolFsmState::Ready
 			}
@@ -1249,7 +1262,15 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), document, (delta_x, delta_y).into(), true, responses, false);
+				shape_editor.move_selected_points(
+					tool_data.opposing_handle_lengths.take(),
+					document,
+					(delta_x, delta_y).into(),
+					true,
+					false,
+					tool_data.opposite_handle_position,
+					responses,
+				);
 
 				PathToolFsmState::Ready
 			}
