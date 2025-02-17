@@ -357,8 +357,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					|| selected_layers.is_empty()
 					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
 				{
-					selected.original_transforms.clear();
-
 					return;
 				}
 
@@ -384,7 +382,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					|| selected_layers.is_empty()
 					|| matches!(self.transform_operation, TransformOperation::Rotating(_))
 				{
-					selected.original_transforms.clear();
 					return;
 				}
 
@@ -438,7 +435,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					|| selected_layers.is_empty()
 					|| matches!(self.transform_operation, TransformOperation::Scaling(_))
 				{
-					selected.original_transforms.clear();
 					return;
 				}
 
