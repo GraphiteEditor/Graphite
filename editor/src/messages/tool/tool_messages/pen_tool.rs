@@ -337,19 +337,22 @@ impl PenToolData {
 		let transform = document.metadata().document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
-			let last_segment = vector_data.segment_domain.ids().last();
 			self.handle_end = None;
 			self.handle_mode = HandleMode::Free;
 
 			// Update `end_point_segment` that was clicked on
 			self.store_clicked_endpoint(document, snap_data.input, preferences);
 
-			if let Some(point) = self.latest_point_mut() {
-				point.in_segment = None;
+			if self.modifiers.lock_angle {
+				self.set_lock_angle(&vector_data, id, self.end_point_segment);
+				let last_segment = self.end_point_segment;
+				let Some(point) = self.latest_point_mut() else { return };
+				point.in_segment = last_segment;
+				return;
 			}
 
-			if self.modifiers.lock_angle {
-				self.set_lock_angle(&vector_data, id, last_segment.copied());
+			if let Some(point) = self.latest_point_mut() {
+				point.in_segment = None;
 			}
 		}
 	}
@@ -548,13 +551,6 @@ impl PenToolData {
 
 	fn update_handle_position(&mut self, new_position: DVec2, anchor_pos: DVec2, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, is_start: bool) {
 		let relative_position = new_position - anchor_pos;
-		let Some(segment) = self.end_point_segment else { return };
-
-		if is_start {
-			let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-			return;
-		}
 
 		if self.draw_mode == DrawMode::ContinuePath {
 			if let Some(handle) = self.handle_end.as_mut() {
@@ -562,7 +558,16 @@ impl PenToolData {
 				return;
 			}
 
+			let Some(segment) = self.end_point_segment else { return };
 			let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			return;
+		}
+
+		let Some(segment) = self.end_point_segment else { return };
+
+		if is_start {
+			let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			return;
 		}
@@ -687,10 +692,11 @@ impl PenToolData {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		if let Some((layer, point, position)) = should_extend(document, viewport, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
 			// Perform extension of an existing path
+			let in_segment = if self.modifiers.lock_angle { self.end_point_segment } else { None };
 			self.add_point(LastPoint {
 				id: point,
 				pos: position,
-				in_segment: None,
+				in_segment,
 				handle_start: position,
 			});
 			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
