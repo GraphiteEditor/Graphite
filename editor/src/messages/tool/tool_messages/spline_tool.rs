@@ -316,10 +316,6 @@ impl Fsm for SplineToolFsmState {
 				if tool_data.current_layer.is_none() {
 					return SplineToolFsmState::Ready;
 				};
-				if join_path(document, input.mouse.position, tool_data, preferences, responses) {
-					responses.add(DocumentMessage::EndTransaction);
-					return SplineToolFsmState::Ready;
-				}
 				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
 				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					extend_spline(tool_data, false, responses);
@@ -371,6 +367,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
 				if tool_data.points.len() >= 2 {
 					delete_preview(tool_data, responses);
+					join_path(document, tool_data, preferences, responses);
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
@@ -413,43 +410,46 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
-	let Some((last_endpoint, _)) = tool_data.points.last() else { return false };
-	let Some(preview_point) = tool_data.preview_point else { return false };
+fn join_path(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+	if tool_data.points.len() < 2 {
+		return false;
+	};
+	let (last_endpoint, last_endpoint_position) = tool_data.points.last().unwrap();
+	let (start_endpoint, _) = tool_data.points.first().unwrap();
 	let Some(current_layer) = tool_data.current_layer else { return false };
 
 	let layers = LayerNodeIdentifier::ROOT_PARENT
 		.descendants(document.metadata())
 		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
-	let exclude = |point: PointId| point == preview_point || point == *last_endpoint;
-	let closest_point = closest_point(document, mouse_pos, PATH_JOIN_THRESHOLD, layers, exclude, preferences);
+	let exclude = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
+	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
 
-	let merge_layer;
-	let mut merge_endpoints = [None, None];
-	if let Some((other_layer, other_endpoint, _)) = closest_point {
-		if let Some((merge_layer, merge_endpoint)) = tool_data.merge_layer {
-			merge_layers(document, other_layer, merge_layer, responses);
-			merge_endpoints[0] = Some((merge_endpoint, merge_layer));
+	let closest_point = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude, preferences);
+
+	let mut endpoints_to_merge = [None, None];
+
+	match (tool_data.merge_layer, closest_point) {
+		(Some(first), Some(last)) => {
+			merge_layers(document, first.0, last.0, responses);
+			merge_layers(document, current_layer, first.0, responses);
+			endpoints_to_merge = [(first.0, first.1), (last.0, last.1)].map(|p| Some(p));
 		}
-		merge_endpoints[1] = Some((other_endpoint, other_layer));
-		merge_layer = Some(other_layer);
-	} else {
-		return false;
-	}
-	extend_spline(tool_data, false, responses);
-	let (last_endpoint, _) = tool_data.points.last().unwrap();
-	let (start_endpoint, _) = tool_data.points.first().unwrap();
-
-	if let Some(merge_layer) = merge_layer {
-		merge_layers(document, current_layer, merge_layer, responses);
+		(Some(first), None) => {
+			endpoints_to_merge[0] = Some((first.0, first.1));
+			merge_layers(document, current_layer, first.0, responses);
+		}
+		(None, Some(last)) => {
+			endpoints_to_merge[1] = Some((last.0, last.1));
+			merge_layers(document, current_layer, last.0, responses);
+		}
+		(None, None) => return false,
 	}
 
-	if let Some((merge_endpoint, merge_layer)) = merge_endpoints[0] {
+	if let Some((merge_layer, merge_endpoint)) = endpoints_to_merge[0] {
 		merge_points(document, current_layer, merge_layer, *start_endpoint, merge_endpoint, responses);
 	}
-
-	if let Some((merge_endpoint, merge_layer)) = merge_endpoints[1] {
+	if let Some((merge_layer, merge_endpoint)) = endpoints_to_merge[1] {
 		merge_points(document, current_layer, merge_layer, *last_endpoint, merge_endpoint, responses);
 	}
 
