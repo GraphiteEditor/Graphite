@@ -53,8 +53,8 @@ impl Quad {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]]]
 	}
 
-	pub fn all_sides_ge(&self, width: f64) -> bool{
-		self.edges().into_iter().all(|[a, b]| (a-b).length_squared() >= width.powi(2) )
+	pub fn all_sides_ge(&self, width: f64) -> bool {
+		self.edges().into_iter().all(|[a, b]| (a - b).length_squared() >= width.powi(2))
 	}
 
 	/// Get all the edges in the quad as linear bezier curves

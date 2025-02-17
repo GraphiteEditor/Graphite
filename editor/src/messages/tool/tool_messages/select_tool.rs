@@ -883,11 +883,11 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
-					let axis = compass_rose_state.axis_type();
-					match axis {
-						Some(axis) => SelectToolFsmState::Dragging { axis, using_compass: true },
-						None => SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false }
-					}
+					let (axis, using_compass) = {
+            let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
+            (axis_state.unwrap_or_default(), axis_state.is_some())
+                    };
+                    SelectToolFsmState::Dragging{axis, using_compass}
 				}
 				// Dragging a selection box
 				else {
