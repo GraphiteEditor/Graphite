@@ -703,6 +703,7 @@ impl PenToolData {
 
 		self.next_point = position;
 		self.next_handle_start = handle_start;
+		self.handle_mode = HandleMode::ColinearEquidistant;
 	}
 
 	fn add_point_layer_position(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, viewport: DVec2) {
