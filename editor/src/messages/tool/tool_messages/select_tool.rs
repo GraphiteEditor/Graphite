@@ -580,11 +580,11 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
 				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
-					show_compass
+					(show_compass && quad.all_sides_ge(COMPASS_ROSE_HOVER_RING_DIAMETER))
 						.then_some(
 							matches!(self, SelectToolFsmState::Dragging { .. })
 								.then_some(show_hover_ring)
-								.or((quad.all_sides_ge(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position)).then_some(show_hover_ring)),
+								.or((quad.contains(mouse_position)).then_some(show_hover_ring)),
 						)
 						.flatten()
 				});
@@ -886,8 +886,8 @@ impl Fsm for SelectToolFsmState {
 					let (axis, using_compass) = {
             let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
             (axis_state.unwrap_or_default(), axis_state.is_some())
-                    };
-                    SelectToolFsmState::Dragging{axis, using_compass}
+          };
+          SelectToolFsmState::Dragging{ axis, using_compass }
 				}
 				// Dragging a selection box
 				else {
