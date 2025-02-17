@@ -580,7 +580,7 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
 				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
-					(show_compass && quad.all_sides_ge(COMPASS_ROSE_HOVER_RING_DIAMETER))
+					(show_compass && quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER))
 						.then_some(
 							matches!(self, SelectToolFsmState::Dragging { .. })
 								.then_some(show_hover_ring)
@@ -788,7 +788,7 @@ impl Fsm for SelectToolFsmState {
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
 				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
-				let show_compass = bounds.is_some_and(|quad| quad.all_sides_ge(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
+				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && show_compass;
 				let is_flat_layer = document
 					.network_interface
@@ -823,10 +823,10 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.get_snap_candidates(document, input);
 					let (axis, using_compass) = {
-					let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
+						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging{ axis, using_compass }
+					SelectToolFsmState::Dragging { axis, using_compass }
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -893,7 +893,7 @@ impl Fsm for SelectToolFsmState {
 
 					if input.keyboard.key(skew) {
 						SelectToolFsmState::SkewingBounds
-					}else{
+					} else {
 						SelectToolFsmState::ResizingBounds
 					}
 				}

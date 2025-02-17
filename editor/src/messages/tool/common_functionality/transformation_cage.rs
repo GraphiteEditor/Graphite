@@ -434,7 +434,7 @@ impl BoundingBoxManager {
 		HandleDisplayCategory::Narrow
 	}
 
-	fn is_bounds_flat(&self) -> bool{
+	fn is_bounds_flat(&self) -> bool {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
 	}
 
@@ -528,15 +528,13 @@ impl BoundingBoxManager {
 		let edges = self.check_selected_edges(input.mouse.position);
 
 		match edges {
-			Some((top, bottom, left, right)) if self.is_bounds_flat() => {
-				match (top, bottom, left, right) {
-					(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
-					(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
-					(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
-					(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
-					_ => MouseCursorIcon::Default,
-				}
-			}
+			Some((top, bottom, left, right)) if self.is_bounds_flat() => match (top, bottom, left, right) {
+				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
+				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
+				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
+				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
+				_ => MouseCursorIcon::Default,
+			},
 			_ if rotate && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
 			_ => MouseCursorIcon::Default,
 		}

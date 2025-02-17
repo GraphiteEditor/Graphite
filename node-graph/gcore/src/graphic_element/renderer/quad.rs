@@ -48,12 +48,13 @@ impl Quad {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
 	}
 
-	/// Get two edges as orthogonal bases
+	/// Get two edges as orthogonal bases.
 	pub fn edges(&self) -> [[DVec2; 2]; 2] {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]]]
 	}
 
-	pub fn all_sides_ge(&self, width: f64) -> bool {
+	/// Returns true only if the width and height are both greater than or equal to the given width.
+	pub fn all_sides_at_least_width(&self, width: f64) -> bool {
 		self.edges().into_iter().all(|[a, b]| (a - b).length_squared() >= width.powi(2))
 	}
 
