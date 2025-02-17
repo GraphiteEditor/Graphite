@@ -411,7 +411,7 @@ impl BoundingBoxManager {
 
 	fn overlay_display_category(&self, quad: Quad) -> HandleDisplayCategory {
 		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
-		if (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any() {
+		if self.is_bounds_flat() {
 			return HandleDisplayCategory::Flat;
 		}
 
@@ -432,6 +432,10 @@ impl BoundingBoxManager {
 		}
 
 		HandleDisplayCategory::Narrow
+	}
+
+	fn is_bounds_flat(&self) -> bool{
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
 	}
 
 	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
@@ -521,18 +525,20 @@ impl BoundingBoxManager {
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
-		if let Some((top, bottom, left, right)) = self.check_selected_edges(input.mouse.position) {
-			match (top, bottom, left, right) {
-				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
-				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
-				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
-				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
-				_ => MouseCursorIcon::Default,
+		let edges = self.check_selected_edges(input.mouse.position);
+
+		match edges {
+			Some((top, bottom, left, right)) if self.is_bounds_flat() => {
+				match (top, bottom, left, right) {
+					(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
+					(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
+					(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
+					(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
+					_ => MouseCursorIcon::Default,
+				}
 			}
-		} else if rotate && self.check_rotate(input.mouse.position) {
-			MouseCursorIcon::Rotate
-		} else {
-			MouseCursorIcon::Default
+			_ if rotate && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
+			_ => MouseCursorIcon::Default,
 		}
 	}
 }

@@ -790,6 +790,14 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_ge(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && show_compass;
+				let is_flat_layer = document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+					.map(|layer| document.metadata().transform_to_viewport(layer))
+					.is_none_or(|transform| transform.matrix2.determinant().abs() <= f64::EPSILON);
 
 				let state =
 				// Dragging the pivot
@@ -801,8 +809,58 @@ impl Fsm for SelectToolFsmState {
 
 					SelectToolFsmState::DraggingPivot
 				}
+				// Dragging the selected layers around to transform them
+				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						tool_data.select_single_layer = intersection;
+					} else {
+						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
+					}
+
+					tool_data.layers_dragging = selected;
+
+					tool_data.get_snap_candidates(document, input);
+					let (axis, using_compass) = {
+					let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
+						(axis_state.unwrap_or_default(), axis_state.is_some())
+					};
+					SelectToolFsmState::Dragging{ axis, using_compass }
+				}
+				// Dragging near the transform cage bounding box to rotate it
+				else if rotating_bounds {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&selected,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Select,
+							None
+						);
+
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
+					}
+
+					tool_data.layers_dragging = selected;
+
+					SelectToolFsmState::RotatingBounds
+				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if dragging_bounds.is_some() {
+				else if dragging_bounds.is_some() && !is_flat_layer {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.layers_dragging = selected;
@@ -838,56 +896,6 @@ impl Fsm for SelectToolFsmState {
 					}else{
 						SelectToolFsmState::ResizingBounds
 					}
-				}
-				// Dragging near the transform cage bounding box to rotate it
-				else if rotating_bounds {
-					responses.add(DocumentMessage::StartTransaction);
-
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&selected,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None
-						);
-
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
-					}
-
-					tool_data.layers_dragging = selected;
-
-					SelectToolFsmState::RotatingBounds
-				}
-				// Dragging the selected layers around to transform them
-				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
-					responses.add(DocumentMessage::StartTransaction);
-
-					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-						tool_data.select_single_layer = intersection;
-					} else {
-						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
-					}
-
-					tool_data.layers_dragging = selected;
-
-					tool_data.get_snap_candidates(document, input);
-					let (axis, using_compass) = {
-            let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
-            (axis_state.unwrap_or_default(), axis_state.is_some())
-          };
-          SelectToolFsmState::Dragging{ axis, using_compass }
 				}
 				// Dragging a selection box
 				else {
