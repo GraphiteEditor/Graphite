@@ -39,7 +39,7 @@ impl Quad {
 	}
 
 	/// Create a box starting at (0, 0) upto [`point`]
-	pub fn from_box_at_zero(point: DVec2) -> Self{
+	pub fn from_box_at_zero(point: DVec2) -> Self {
 		Self::from_box([DVec2::ZERO, point])
 	}
 

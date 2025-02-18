@@ -7,6 +7,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
@@ -19,7 +20,7 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use graphene_core::renderer::Quad;
 
 use bezier_rs::Subpath;
-use glam::IVec2;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
@@ -890,48 +891,68 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
-            let transform = document.metadata().document_to_viewport;
+						let mut layers = Vec::new();
 
-						// Check parent bounds first since children will be pasted at same position
-						if let Some(parent_bounds) = document.metadata().bounding_box_document(parent) {
-							let viewport_bounds = Quad::from_box_at_zero(ipp.viewport_bounds.size());
-							let quad = transform * Quad::from_box(parent_bounds);
+						let mut added_nodes = false;
+						for entry in data.into_iter().rev() {
+							if !added_nodes {
+								responses.add(DocumentMessage::DeselectAllLayers);
+								responses.add(DocumentMessage::AddTransaction);
+								added_nodes = true;
+							}
 
-							// Calculate the translation needed to center the parent
-							let translation = viewport_bounds.center() - quad.center();
-							let centering_transform = quad
-								.0
-								.into_iter()
-								.all(|point| !viewport_bounds.contains(point))
-								.then_some(glam::DAffine2::from_translation(translation.round()));
+							document.load_layer_resources(responses);
+							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
+							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
+							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
+							layers.push(layer);
+						}
 
-							let mut added_nodes = false;
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(PortfolioMessage::CenterPastedLayers { layers });
+					}
+				}
+			}
+			PortfolioMessage::CenterPastedLayers { layers } => {
+				use crate::messages::portfolio::document::graph_operation::transform_utils;
+				if let Some(document) = self.active_document_mut() {
+					let viewport_bounds = Quad::from_box_at_zero(ipp.viewport_bounds.size());
+					let viewport_center = viewport_bounds.center();
 
-							for entry in data.into_iter().rev() {
-								if !added_nodes {
-									responses.add(DocumentMessage::DeselectAllLayers);
-									responses.add(DocumentMessage::AddTransaction);
-									added_nodes = true;
-								}
+					let mut positions = Vec::new();
 
-								document.load_layer_resources(responses);
-								let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-								let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-								responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
-								responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
-
-								// Apply the same translation to all layers
-								if let Some(transform) = centering_transform {
-									responses.add(GraphOperationMessage::TransformChange {
-										layer,
-										transform,
-										transform_in: TransformIn::Viewport,
-										skip_rerender: false,
-									});
+					for layer in &layers {
+						if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(*layer, &mut document.network_interface, responses) {
+							if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
+								if let Some(network) = modify_inputs.network_interface.network(&[]) {
+									if let Some(node) = network.nodes.get(&transform_node_id) {
+										let current_transform = transform_utils::get_current_transform(&node.inputs);
+										positions.push((*layer, current_transform.translation));
+									}
 								}
 							}
-							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
+					}
+
+					if !positions.is_empty() {
+						let mean_pos = positions.iter().fold(glam::DVec2::ZERO, |acc, (_, pos)| acc + *pos) / positions.len() as f64;
+						let mut transform = document.metadata().document_to_viewport;
+
+						// Center each layer maintaining relative positions
+						for (layer, pos) in positions {
+							let offset_from_center = pos - mean_pos;
+							let new_pos = viewport_center + transform.transform_vector2(offset_from_center);
+							transform.translation = new_pos;
+
+							responses.add(GraphOperationMessage::TransformSet {
+								layer,
+								transform,
+								transform_in: TransformIn::Viewport,
+								skip_rerender: false,
+							});
+						}
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 			}
