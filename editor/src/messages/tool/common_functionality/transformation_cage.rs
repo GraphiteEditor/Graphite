@@ -344,6 +344,7 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
+	pub transform_tampered: bool,
 	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
@@ -481,6 +482,10 @@ impl BoundingBoxManager {
 			let height = max.y - min.y;
 
 			if width < edge_min_x || height <= edge_min_y {
+				if self.transform_tampered {
+					return None;
+				}
+
 				if min.x < cursor.x && cursor.x < max.x && cursor.y < max.y && cursor.y > min.y {
 					return None;
 				}
@@ -532,10 +537,6 @@ impl BoundingBoxManager {
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
 		let edges = self.check_selected_edges(input.mouse.position);
 
-		if self.is_contained_in_bounds(input.mouse.position) {
-			return MouseCursorIcon::Default;
-		}
-
 		match edges {
 			Some((top, bottom, left, right)) if !self.is_bounds_flat() => match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
@@ -544,7 +545,7 @@ impl BoundingBoxManager {
 				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
 			},
-			_ if rotate && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
+			_ if rotate && !self.is_contained_in_bounds(input.mouse.position) && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
 			_ => MouseCursorIcon::Default,
 		}
 	}
