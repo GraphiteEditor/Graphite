@@ -36,12 +36,12 @@ pub struct SelectedEdges {
 #[derive(Clone, Debug, Default, PartialEq)]
 enum HandleDisplayCategory {
 	#[default]
-	Full,
-	ReducedLandscape,
-	ReducedPortrait,
-	ReducedBoth,
-	Narrow,
-	Flat,
+	Full,             // https://files.keavon.com/-/OrganicHelplessWalleye/capture.png
+	ReducedLandscape, // https://files.keavon.com/-/AnyGoldenrodHawk/capture.png
+	ReducedPortrait,  // https://files.keavon.com/-/DarkslategrayAcidicFirebelliedtoad/capture.png
+	ReducedBoth,      // https://files.keavon.com/-/GlisteningComplexSeagull/capture.png
+	Narrow,           // https://files.keavon.com/-/InconsequentialCharmingLynx/capture.png
+	Flat,             // https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png
 }
 
 impl SelectedEdges {
@@ -372,7 +372,7 @@ impl BoundingBoxManager {
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
 		let quad = self.transform * Quad::from_box(self.bounds);
-		let category = self.overlay_display_category(quad);
+		let category = self.overlay_display_category();
 
 		let horizontal_edges = [quad.top_right().midpoint(quad.bottom_right()), quad.bottom_left().midpoint(quad.top_left())];
 		let vertical_edges = [quad.top_left().midpoint(quad.top_right()), quad.bottom_right().midpoint(quad.bottom_left())];
@@ -410,7 +410,11 @@ impl BoundingBoxManager {
 		}
 	}
 
-	fn overlay_display_category(&self, quad: Quad) -> HandleDisplayCategory {
+	/// Find the category the bounds held belongs to based on size thresholds.
+	/// For reference check comments on [`HandleDisplayCategory`].
+	fn overlay_display_category(&self) -> HandleDisplayCategory {
+		let quad = self.transform * Quad::from_box(self.bounds);
+
 		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
 		if self.is_bounds_flat() {
 			return HandleDisplayCategory::Flat;
@@ -435,13 +439,16 @@ impl BoundingBoxManager {
 		HandleDisplayCategory::Narrow
 	}
 
+	/// Check if bounds is flat.
+	/// For definition check [`HandleDisplayCategory`].
 	fn is_bounds_flat(&self) -> bool {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
 	}
 
-	fn is_contained_in_bounds(&self, mouse: DVec2) -> bool {
-		let mouse = self.transform.inverse().transform_point2(mouse);
-		Quad::from_box(self.bounds).contains(mouse)
+	/// Check if given point in viewport falls within bounds.
+	fn is_contained_in_bounds(&self, point: DVec2) -> bool {
+		let document_point = self.transform.inverse().transform_point2(point);
+		Quad::from_box(self.bounds).contains(document_point)
 	}
 
 	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
