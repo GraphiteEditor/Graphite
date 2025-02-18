@@ -890,15 +890,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
-						let mut transform = document.metadata().document_to_viewport;
+            let transform = document.metadata().document_to_viewport;
 
 						// Check parent bounds first since children will be pasted at same position
 						if let Some(parent_bounds) = document.metadata().bounding_box_document(parent) {
 							let viewport_bounds = Quad::from_box_at_zero(ipp.viewport_bounds.size());
 							let quad = transform * Quad::from_box(parent_bounds);
 
-							transform.translation = (viewport_bounds.center() - quad.center()).round() + quad.center();
-							let centering_transform = quad.0.into_iter().all(|point| !viewport_bounds.contains(point)).then_some(transform);
+							// Calculate the translation needed to center the parent
+							let translation = viewport_bounds.center() - quad.center();
+							let centering_transform = quad
+								.0
+								.into_iter()
+								.all(|point| !viewport_bounds.contains(point))
+								.then_some(glam::DAffine2::from_translation(translation.round()));
 
 							let mut added_nodes = false;
 
@@ -915,8 +920,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 								responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
 
+								// Apply the same translation to all layers
 								if let Some(transform) = centering_transform {
-									responses.add(GraphOperationMessage::TransformSet {
+									responses.add(GraphOperationMessage::TransformChange {
 										layer,
 										transform,
 										transform_in: TransformIn::Viewport,
