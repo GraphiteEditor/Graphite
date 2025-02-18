@@ -10,8 +10,8 @@ use graphene_core::raster::image::ImageFrame;
 use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
-use graphene_core::vector::PointId;
 use graphene_core::Color;
+use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 
 use glam::DVec2;
 use std::collections::VecDeque;
@@ -155,6 +155,49 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	responses.add(NodeGraphMessage::RunDocumentGraph);
 	responses.add(Message::StartBuffer);
 	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+}
+
+/// Merge the `first_endpoint` with `second_endpoint`.
+pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
+	let transform = document.metadata().transform_to_document(layer);
+	let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+
+	let segment = vector_data.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
+		log::error!("Could not get the segment for second_endpoint.");
+		return;
+	};
+
+	let mut handles = [None; 2];
+	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector_data).unwrap();
+		let handle_position = transform.transform_point2(handle_position);
+		let anchor_position = transform.transform_point2(anchor_position);
+		let anchor_to_handle = handle_position - anchor_position;
+		handles[0] = Some(anchor_to_handle);
+	}
+	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector_data) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector_data).unwrap();
+		let handle_position = transform.transform_point2(handle_position);
+		let anchor_position = transform.transform_point2(anchor_position);
+		let anchor_to_handle = handle_position - anchor_position;
+		handles[1] = Some(anchor_to_handle);
+	}
+
+	if segment_start_point == second_endpont {
+		core::mem::swap(&mut segment_start_point, &mut segment_end_point);
+		handles.reverse();
+	}
+
+	let modification_type = VectorModificationType::RemovePoint { id: second_endpont };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	let modification_type = VectorModificationType::RemoveSegment { id: segment };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	let points = [segment_start_point, first_endpoint];
+	let id = SegmentId::generate();
+	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 }
 
 /// Create a new vector layer.

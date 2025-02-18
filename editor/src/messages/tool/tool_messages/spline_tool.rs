@@ -6,13 +6,13 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
-use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
 #[derive(Default)]
 pub struct SplineTool {
@@ -62,7 +62,7 @@ enum SplineToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
-	Merge,
+	MergingEndpoints,
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -168,7 +168,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 				Confirm,
 				Abort,
 			),
-			SplineToolFsmState::Merge => actions!(SplineToolMessageDiscriminant;
+			SplineToolFsmState::MergingEndpoints => actions!(SplineToolMessageDiscriminant;
 				MergeEndpoints,
 			),
 		}
@@ -201,10 +201,10 @@ struct SplineToolData {
 	weight: f64,
 	/// The layer we are editing.
 	current_layer: Option<LayerNodeIdentifier>,
-	/// The layer and its endpoint we will merge with the start point of the spline.
-	merge_layer: Option<(LayerNodeIdentifier, PointId)>,
-	/// The endpoints to merge after we have finised drawing the spline and merged the layers.
-	merge_points: Vec<(PointId, PointId)>,
+	/// The layer and endpoint to merge with the spline's starting endpoint after drawing is complete.
+	start_merge_layer: Option<(LayerNodeIdentifier, PointId)>,
+	/// The endpoint pairs to merge after we have finished drawing the spline and merged the layers.
+	merge_endpoints: Vec<(PointId, PointId)>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
 }
@@ -212,8 +212,8 @@ struct SplineToolData {
 impl SplineToolData {
 	fn cleanup(&mut self) {
 		self.current_layer = None;
-		self.merge_layer = None;
-		self.merge_points = Vec::new();
+		self.start_merge_layer = None;
+		self.merge_endpoints = Vec::new();
 		self.preview_point = None;
 		self.preview_segment = None;
 		self.extend = false;
@@ -251,14 +251,15 @@ impl Fsm for SplineToolFsmState {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
-			(SplineToolFsmState::Merge, SplineToolMessage::MergeEndpoints) => {
+			(SplineToolFsmState::MergingEndpoints, SplineToolMessage::MergeEndpoints) => {
 				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
 
-				if let Some((first, second)) = tool_data.merge_points.pop() {
+				if let Some((first, second)) = tool_data.merge_endpoints.pop() {
 					merge_points(document, layer, first, second, responses);
 					responses.add(SplineToolMessage::MergeEndpoints);
-					return SplineToolFsmState::Merge;
+					return SplineToolFsmState::MergingEndpoints;
 				}
+				responses.add(DocumentMessage::EndTransaction);
 
 				SplineToolFsmState::Ready
 			}
@@ -291,18 +292,19 @@ impl Fsm for SplineToolFsmState {
 						return SplineToolFsmState::Drawing;
 					} else {
 						// Otherwise we keep the layer identifier and endpoint identifier to merge it with the spline later when we finish drawing the spline.
-						tool_data.merge_layer = Some((layer, point));
+						tool_data.start_merge_layer = Some((layer, point));
 					}
 				}
 
-				// Create new path in the same layer when shift is down
-				if input.keyboard.key(append_to_selected) {
-					// FIX:
-					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
-					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+				let selected_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 
-					if let Some(layer) = existing_layer {
+				let append_to_selected_layer = input.keyboard.key(append_to_selected);
+
+				// Create new path in the selected layer when shift is down
+				match (selected_layer, append_to_selected_layer) {
+					(Some(layer), true) => {
 						tool_data.current_layer = Some(layer);
 
 						let transform = document.metadata().transform_to_viewport(layer);
@@ -311,6 +313,7 @@ impl Fsm for SplineToolFsmState {
 
 						return SplineToolFsmState::Drawing;
 					}
+					_ => {}
 				}
 
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -392,11 +395,10 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm) => {
 				if tool_data.points.len() >= 2 {
 					delete_preview(tool_data, responses);
-					join_path(document, tool_data, preferences, responses);
+					merge_paths_layer(document, tool_data, preferences, responses);
 				}
-				responses.add(DocumentMessage::EndTransaction);
 				responses.add(SplineToolMessage::MergeEndpoints);
-				SplineToolFsmState::Merge
+				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
@@ -424,7 +426,7 @@ impl Fsm for SplineToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
 			]),
-			_ => HintData(vec![]),
+			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -435,7 +437,7 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn join_path(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
+fn merge_paths_layer(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
 	if tool_data.points.len() < 2 {
 		return;
 	};
@@ -451,11 +453,12 @@ fn join_path(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, 
 	let exclude = |p: PointId| preview_point.is_some_and(|pp| pp == p) || *last_endpoint == p;
 	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
 
-	let closest_point = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude, preferences);
+	let start_merge_layer = tool_data.start_merge_layer;
+	let end_merge_layer = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude, preferences);
 
 	let mut endpoints_to_merge = [None, None];
 
-	match (tool_data.merge_layer, closest_point) {
+	match (start_merge_layer, end_merge_layer) {
 		(Some(first), Some(last)) => {
 			merge_layers(document, first.0, last.0, responses);
 			merge_layers(document, current_layer, first.0, responses);
@@ -473,55 +476,11 @@ fn join_path(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, 
 	}
 
 	if let Some(merge_endpoint) = endpoints_to_merge[0] {
-		tool_data.merge_points.push((*start_endpoint, merge_endpoint));
+		tool_data.merge_endpoints.push((*start_endpoint, merge_endpoint));
 	}
 	if let Some(merge_endpoint) = endpoints_to_merge[1] {
-		tool_data.merge_points.push((*last_endpoint, merge_endpoint));
+		tool_data.merge_endpoints.push((*last_endpoint, merge_endpoint));
 	}
-}
-
-/// Merges `first_endpoint` in `first_layer` with `second_endpoint` in `second_layer`.
-/// The layers must be merged before this function is called.
-/// For merging endpoints within the same layer, `first_layer` and `second_layer` will be the same.
-fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
-	let transform = document.metadata().transform_to_document(layer);
-	let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
-
-	let Some((segment, _, mut start_point, mut end_point)) = vector_data.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont) else {
-		log::error!("Could not get the segment for second_endpoint.");
-		return;
-	};
-
-	let mut handles = [None; 2];
-	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data) {
-		let anchor_position = ManipulatorPointId::Anchor(start_point).get_position(&vector_data).unwrap();
-		let handle_position = transform.transform_point2(handle_position);
-		let anchor_position = transform.transform_point2(anchor_position);
-		let anchor_to_handle = handle_position - anchor_position;
-		handles[0] = Some(anchor_to_handle);
-	}
-	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector_data) {
-		let anchor_position = ManipulatorPointId::Anchor(end_point).get_position(&vector_data).unwrap();
-		let handle_position = transform.transform_point2(handle_position);
-		let anchor_position = transform.transform_point2(anchor_position);
-		let anchor_to_handle = handle_position - anchor_position;
-		handles[1] = Some(anchor_to_handle);
-	}
-
-	if start_point == second_endpont {
-		core::mem::swap(&mut start_point, &mut end_point);
-		handles.reverse();
-	}
-
-	let modification_type = VectorModificationType::RemovePoint { id: second_endpont };
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
-	let modification_type = VectorModificationType::RemoveSegment { id: segment };
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
-
-	let points = [start_point, first_endpoint];
-	let id = SegmentId::generate();
-	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 }
 
 fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
