@@ -7,6 +7,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -15,6 +16,7 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
+use graphene_core::renderer::Quad;
 
 use bezier_rs::Subpath;
 use glam::IVec2;
@@ -888,22 +890,42 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
+						let mut transform = document.metadata().document_to_viewport;
 
-						let mut added_nodes = false;
+						// Check parent bounds first since children will be pasted at same position
+						if let Some(parent_bounds) = document.metadata().bounding_box_document(parent) {
+							let viewport_bounds = Quad::from_box_at_zero(ipp.viewport_bounds.size());
+							let quad = transform * Quad::from_box(parent_bounds);
 
-						for entry in data.into_iter().rev() {
-							if !added_nodes {
-								responses.add(DocumentMessage::DeselectAllLayers);
-								responses.add(DocumentMessage::AddTransaction);
-								added_nodes = true;
+							transform.translation = (viewport_bounds.center() - quad.center()).round() + quad.center();
+							let centering_transform = quad.0.into_iter().all(|point| !viewport_bounds.contains(point)).then_some(transform);
+
+							let mut added_nodes = false;
+
+							for entry in data.into_iter().rev() {
+								if !added_nodes {
+									responses.add(DocumentMessage::DeselectAllLayers);
+									responses.add(DocumentMessage::AddTransaction);
+									added_nodes = true;
+								}
+
+								document.load_layer_resources(responses);
+								let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+								let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
+								responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
+								responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
+
+								if let Some(transform) = centering_transform {
+									responses.add(GraphOperationMessage::TransformSet {
+										layer,
+										transform,
+										transform_in: TransformIn::Viewport,
+										skip_rerender: false,
+									});
+								}
 							}
-							document.load_layer_resources(responses);
-							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
-							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
+							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
-						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 			}
