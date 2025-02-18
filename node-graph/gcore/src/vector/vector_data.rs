@@ -1,6 +1,9 @@
 mod attributes;
+mod indexed;
 mod modification;
+
 pub use attributes::*;
+pub use indexed::VectorDataIndex;
 pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
@@ -12,6 +15,7 @@ use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
+use std::borrow::Cow;
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
@@ -69,6 +73,8 @@ pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
+///
+/// Segments are connected if they share end points.
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
@@ -93,6 +99,24 @@ impl core::hash::Hash for VectorData {
 		self.region_domain.hash(state);
 		self.style.hash(state);
 		self.colinear_manipulators.hash(state);
+	}
+}
+
+impl<'a> From<&'a VectorData> for Cow<'a, VectorData> {
+	fn from(value: &'a VectorData) -> Self {
+		Self::Borrowed(value)
+	}
+}
+
+impl<'a> From<&'a mut VectorData> for Cow<'a, VectorData> {
+	fn from(value: &'a mut VectorData) -> Self {
+		Self::Borrowed(value)
+	}
+}
+
+impl From<VectorData> for Cow<'static, VectorData> {
+	fn from(value: VectorData) -> Self {
+		Self::Owned(value)
 	}
 }
 
@@ -264,6 +288,13 @@ impl VectorData {
 	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
 		let index = [self.point_domain.resolve_id(current)].into_iter().flatten();
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
+	}
+
+	/// A slice all segment IDs
+	///
+	/// Convenience function
+	pub fn segment_ids(&self) -> &[SegmentId] {
+		self.segment_domain.ids()
 	}
 
 	/// Enumerate all segments that start at the point.

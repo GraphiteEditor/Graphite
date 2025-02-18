@@ -12,3 +12,5 @@ mod vector_nodes;
 pub use vector_nodes::*;
 
 pub use bezier_rs;
+
+mod merge_by_distance;

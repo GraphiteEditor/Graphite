@@ -2,8 +2,10 @@ use crate::transform::Transform;
 use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
 use crate::vector::ConcatElement;
 
+use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 
+use core::iter::zip;
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -84,7 +86,7 @@ impl core::hash::BuildHasher for NoHashBuilder {
 pub struct PointDomain {
 	id: Vec<PointId>,
 	#[serde(alias = "positions")]
-	position: Vec<DVec2>,
+	pub(crate) position: Vec<DVec2>,
 }
 
 impl core::hash::Hash for PointDomain {
@@ -116,7 +118,8 @@ impl PointDomain {
 				id_map.push(new_index);
 				new_index += 1;
 			} else {
-				id_map.push(usize::MAX); // A placeholder for invalid ids. This is checked after the segment domain is modified.
+				// A placeholder for invalid ids. This is checked after the segment domain is modified.
+				id_map.push(usize::MAX);
 			}
 		}
 
@@ -179,6 +182,11 @@ impl PointDomain {
 		for pos in &mut self.position {
 			*pos = transform.transform_point2(*pos);
 		}
+	}
+
+	/// Iterate over point IDs and positions
+	pub fn iter(&self) -> impl Iterator<Item = (PointId, DVec2)> + '_ {
+		self.ids().iter().copied().zip(self.positions().iter().copied())
 	}
 }
 
@@ -347,6 +355,7 @@ impl SegmentDomain {
 		})
 	}
 
+	/// Get index from ID, `O(n)`
 	fn id_to_index(&self, id: SegmentId) -> Option<usize> {
 		debug_assert_eq!(self.id.len(), self.handles.len());
 		debug_assert_eq!(self.id.len(), self.start_point.len());
@@ -401,11 +410,35 @@ impl SegmentDomain {
 	pub(crate) fn connected_count(&self, point: usize) -> usize {
 		self.all_connected(point).count()
 	}
+
+	/// Iterate over segments in the domain.
+	///
+	/// tuple is: (id, start point, end point, handles)
+	pub(crate) fn iter(&self) -> impl Iterator<Item = (SegmentId, usize, usize, BezierHandles)> + '_ {
+		let ids = self.id.iter().copied();
+		let start_point = self.start_point.iter().copied();
+		let end_point = self.end_point.iter().copied();
+		let handles = self.handles.iter().copied();
+		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
+	}
+
+	/// Iterate over segments in the domain.
+	///
+	/// tuple is: (id, start point, end point, handles)
+	pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&mut SegmentId, &mut usize, &mut usize, &mut BezierHandles)> + '_ {
+		let ids = self.id.iter_mut();
+		let start_point = self.start_point.iter_mut();
+		let end_point = self.end_point.iter_mut();
+		let handles = self.handles.iter_mut();
+		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-region. A region is an enclosed area composed of a range
+/// of segments from the [`SegmentDomain`] that can be given a fill. In future this will
+/// be extendable at runtime with custom attributes.
 pub struct RegionDomain {
 	#[serde(alias = "ids")]
 	id: Vec<RegionId>,
