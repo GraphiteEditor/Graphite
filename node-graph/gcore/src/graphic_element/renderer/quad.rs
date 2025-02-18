@@ -38,6 +38,11 @@ impl Quad {
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
 	}
 
+	/// Create a box starting at (0, 0) upto [`point`]
+	pub fn from_box_at_zero(point: DVec2) -> Self{
+		Self::from_box([DVec2::ZERO, point])
+	}
+
 	/// Create a quad from the center and offset (distance from center to middle of an edge)
 	pub fn from_square(center: DVec2, offset: f64) -> Self {
 		Self::from_box([center - offset, center + offset])
