@@ -574,6 +574,16 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
+				if dragging_bounds {
+					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
+						let edges = bounds.check_selected_edges(input.mouse.position);
+						edges.map(|edges| {
+							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
+							bounds.render_skew_gizmos(&mut overlay_context, closest_edge);
+						});
+					}
+				}
+
 				let might_resize_or_rotate = dragging_bounds || rotating_bounds;
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds { .. } | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds);
 				let can_get_into_other_states = might_resize_or_rotate && !matches!(self, SelectToolFsmState::Dragging { .. });
@@ -809,6 +819,49 @@ impl Fsm for SelectToolFsmState {
 
 					SelectToolFsmState::DraggingPivot
 				}
+				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
+				else if dragging_bounds.is_some() && !is_flat_layer {
+					responses.add(DocumentMessage::StartTransaction);
+
+					tool_data.layers_dragging = selected;
+
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.original_bound_transform = bounds.transform;
+
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
+
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&tool_data.layers_dragging,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Select,
+							None
+						);
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
+
+						// Check if we're hovering over a skew triangle
+						let edges = bounds.check_selected_edges(input.mouse.position);
+						if let Some(edges) = edges {
+							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
+							if bounds.check_skew_handle(input.mouse.position, closest_edge) {
+								tool_data.get_snap_candidates(document, input);
+								return SelectToolFsmState::SkewingBounds;
+							}
+						}
+					}
+					tool_data.get_snap_candidates(document, input);
+					SelectToolFsmState::ResizingBounds
+				}
 				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
@@ -858,44 +911,6 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					SelectToolFsmState::RotatingBounds
-				}
-				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if dragging_bounds.is_some() && !is_flat_layer {
-					responses.add(DocumentMessage::StartTransaction);
-
-					tool_data.layers_dragging = selected;
-
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						bounds.original_bound_transform = bounds.transform;
-
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&tool_data.layers_dragging,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None
-						);
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
-					}
-					tool_data.get_snap_candidates(document, input);
-
-					if input.keyboard.key(skew) {
-						SelectToolFsmState::SkewingBounds
-					} else {
-						SelectToolFsmState::ResizingBounds
-					}
 				}
 				// Dragging a selection box
 				else {

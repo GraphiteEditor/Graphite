@@ -2,6 +2,7 @@ use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY,
 	MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, SELECTION_DRAG_ANGLE,
 };
+use crate::consts::{SKEW_GIZMO_OFFSET, SKEW_GIZMO_SIZE, SKEW_HANDLE_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -14,6 +15,9 @@ use graphene_std::renderer::Rect;
 use glam::{DAffine2, DMat2, DVec2};
 
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
+
+// (top, bottom, left, right)
+type EdgeBool = (bool, bool, bool, bool);
 
 pub struct SizeSnapData<'a> {
 	pub manager: &'a mut SnapManager,
@@ -368,6 +372,113 @@ impl BoundingBoxManager {
 		]
 	}
 
+	pub fn get_closest_edge(&self, edges: EdgeBool, cursor: DVec2) -> EdgeBool {
+		if !edges.0 && !edges.1 && !edges.2 && !edges.3 {
+			return (false, false, false, false);
+		}
+
+		let cursor = self.transform.inverse().transform_point2(cursor);
+		let min = self.bounds[0].min(self.bounds[1]);
+		let max = self.bounds[0].max(self.bounds[1]);
+
+		let distances = [
+			if edges.0 { Some((cursor - DVec2::new(cursor.x, min.y)).length_squared()) } else { None },
+			if edges.1 { Some((cursor - DVec2::new(cursor.x, max.y)).length_squared()) } else { None },
+			if edges.2 { Some((cursor - DVec2::new(min.x, cursor.y)).length_squared()) } else { None },
+			if edges.3 { Some((cursor - DVec2::new(max.x, cursor.y)).length_squared()) } else { None },
+		];
+
+		let min_distance = distances.iter().filter_map(|&x| x).min_by(|a, b| a.partial_cmp(b).unwrap());
+
+		match min_distance {
+			Some(min) => (
+				edges.0 && distances[0].map_or(false, |d| (d - min).abs() < f64::EPSILON),
+				edges.1 && distances[1].map_or(false, |d| (d - min).abs() < f64::EPSILON),
+				edges.2 && distances[2].map_or(false, |d| (d - min).abs() < f64::EPSILON),
+				edges.3 && distances[3].map_or(false, |d| (d - min).abs() < f64::EPSILON),
+			),
+			None => (false, false, false, false),
+		}
+	}
+
+	pub fn check_skew_handle(&mut self, cursor: DVec2, edge: EdgeBool) -> bool {
+		let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
+			let normal = direction.perp();
+			let top = base + direction * SKEW_GIZMO_SIZE;
+			let edge1 = base + normal * SKEW_GIZMO_SIZE / 2.;
+			let edge2 = base - normal * SKEW_GIZMO_SIZE / 2.;
+
+			let v0 = edge1 - top;
+			let v1 = edge2 - top;
+			let v2 = cursor - top;
+
+			let d00 = v0.dot(v0);
+			let d01 = v0.dot(v1);
+			let d11 = v1.dot(v1);
+			let d20 = v2.dot(v0);
+			let d21 = v2.dot(v1);
+
+			let denom = d00 * d11 - d01 * d01;
+			let v = (d11 * d20 - d01 * d21) / denom;
+			let w = (d00 * d21 - d01 * d20) / denom;
+			let u = 1.0 - v - w;
+
+			u >= 0.0 && v >= 0.0 && w >= 0.0
+		};
+
+		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) {
+			let edge_dir = (end - start).normalize();
+			let mid = end.midpoint(start);
+
+			for direction in [edge_dir, -edge_dir] {
+				let base = mid + direction * (3. + SKEW_GIZMO_OFFSET);
+				if touches_triangle(base, direction, cursor) {
+					return true;
+				}
+			}
+		}
+
+		false
+	}
+
+	pub fn edge_endpoints_vector_from_edge_bool(&self, edges: EdgeBool) -> Option<[DVec2; 2]> {
+		let quad = self.transform * Quad::from_box(self.bounds);
+		let category = self.overlay_display_category(quad);
+
+		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
+			if edges.0 {
+				return Some([quad.top_left(), quad.top_right()]);
+			}
+			if edges.1 {
+				return Some([quad.bottom_left(), quad.bottom_right()]);
+			}
+		}
+
+		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedPortrait) {
+			if edges.2 {
+				return Some([quad.top_left(), quad.bottom_left()]);
+			}
+			if edges.3 {
+				return Some([quad.top_right(), quad.bottom_right()]);
+			}
+		}
+		None
+	}
+
+	pub fn render_skew_gizmos(&mut self, overlay_context: &mut OverlayContext, hover_edge: EdgeBool) {
+		let mut draw_edge_triangles = |start: DVec2, end: DVec2| {
+			let edge_dir = (end - start).normalize();
+			let mid = end.midpoint(start);
+
+			for edge in [edge_dir, -edge_dir] {
+				overlay_context.draw_triangle(mid + edge * (3. + SKEW_GIZMO_OFFSET), edge, SKEW_GIZMO_SIZE, None, None);
+			}
+		};
+		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
+			draw_edge_triangles(start, end);
+		}
+	}
+
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
 		let quad = self.transform * Quad::from_box(self.bounds);
@@ -456,7 +567,7 @@ impl BoundingBoxManager {
 	/// Returns which edge in the order:
 	///
 	/// `top, bottom, left, right`
-	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
+	pub fn check_selected_edges(&self, cursor: DVec2) -> Option<EdgeBool> {
 		let cursor = self.transform.inverse().transform_point2(cursor);
 
 		let min = self.bounds[0].min(self.bounds[1]);
