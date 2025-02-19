@@ -540,6 +540,9 @@ impl BoundingBoxManager {
 
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
+		if self.is_contained_in_bounds(cursor) {
+			return false;
+		}
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 		let cursor = self.transform.inverse().transform_point2(cursor);
 
@@ -564,7 +567,7 @@ impl BoundingBoxManager {
 				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
 			},
-			_ if rotate && !self.is_contained_in_bounds(input.mouse.position) && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
+			_ if rotate && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
 			_ => MouseCursorIcon::Default,
 		}
 	}
