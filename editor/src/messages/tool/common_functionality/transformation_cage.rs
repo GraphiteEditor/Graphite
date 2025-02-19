@@ -33,15 +33,23 @@ pub struct SelectedEdges {
 	aspect_ratio: f64,
 }
 
+/// The different possible configurations for how the transform cage is presently viewed, depending on its per-axis sizes and the level of zoom.
+/// See doc comments in each variant for a diagram of the configuration.
 #[derive(Clone, Debug, Default, PartialEq)]
-enum HandleDisplayCategory {
+enum TransformCageSizeCategory {
 	#[default]
-	Full,             // https://files.keavon.com/-/OrganicHelplessWalleye/capture.png
-	ReducedLandscape, // https://files.keavon.com/-/AnyGoldenrodHawk/capture.png
-	ReducedPortrait,  // https://files.keavon.com/-/DarkslategrayAcidicFirebelliedtoad/capture.png
-	ReducedBoth,      // https://files.keavon.com/-/GlisteningComplexSeagull/capture.png
-	Narrow,           // https://files.keavon.com/-/InconsequentialCharmingLynx/capture.png
-	Flat,             // https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png
+	/// - ![Diagram](https://files.keavon.com/-/OrganicHelplessWalleye/capture.png)
+	Full,
+	/// - ![Diagram](https://files.keavon.com/-/AnyGoldenrodHawk/capture.png)
+	ReducedLandscape,
+	/// - ![Diagram](https://files.keavon.com/-/DarkslategrayAcidicFirebelliedtoad/capture.png)
+	ReducedPortrait,
+	/// - ![Diagram](https://files.keavon.com/-/GlisteningComplexSeagull/capture.png)
+	ReducedBoth,
+	/// - ![Diagram](https://files.keavon.com/-/InconsequentialCharmingLynx/capture.png)
+	Narrow,
+	/// - ![Diagram](https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png)
+	Flat,
 }
 
 impl SelectedEdges {
@@ -386,38 +394,43 @@ impl BoundingBoxManager {
 		};
 
 		// Draw the horizontal midpoint drag handles
-		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
+		if matches!(
+			category,
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
+		) {
 			horizontal_edges.map(&mut draw_handle);
 		}
 
 		// Draw the vertical midpoint drag handles
-		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedPortrait) {
+		if matches!(
+			category,
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
+		) {
 			vertical_edges.map(&mut draw_handle);
 		}
 
 		// Draw the corner drag handles
 		if matches!(
 			category,
-			HandleDisplayCategory::Full | HandleDisplayCategory::ReducedBoth | HandleDisplayCategory::ReducedLandscape | HandleDisplayCategory::ReducedPortrait
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::ReducedBoth | TransformCageSizeCategory::ReducedLandscape | TransformCageSizeCategory::ReducedPortrait
 		) {
 			quad.0.map(&mut draw_handle);
 		}
 
 		// Draw the flat line endpoint drag handles
-		if category == HandleDisplayCategory::Flat {
+		if category == TransformCageSizeCategory::Flat {
 			draw_handle(self.transform.transform_point2(self.bounds[0]));
 			draw_handle(self.transform.transform_point2(self.bounds[1]));
 		}
 	}
 
-	/// Find the category the bounds held belongs to based on size thresholds.
-	/// For reference check comments on [`HandleDisplayCategory`].
-	fn overlay_display_category(&self) -> HandleDisplayCategory {
+	/// Find the [`TransformCageSizeCategory`] of this bounding box based on size thresholds.
+	fn overlay_display_category(&self) -> TransformCageSizeCategory {
 		let quad = self.transform * Quad::from_box(self.bounds);
 
 		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
 		if self.is_bounds_flat() {
-			return HandleDisplayCategory::Flat;
+			return TransformCageSizeCategory::Flat;
 		}
 
 		let vertical_length = (quad.top_left() - quad.top_right()).length_squared();
@@ -429,23 +442,22 @@ impl BoundingBoxManager {
 			let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
 
 			return match (vertical_edge_visible, horizontal_edge_visible) {
-				(true, true) => HandleDisplayCategory::Full,
-				(true, false) => HandleDisplayCategory::ReducedPortrait,
-				(false, true) => HandleDisplayCategory::ReducedLandscape,
-				(false, false) => HandleDisplayCategory::ReducedBoth,
+				(true, true) => TransformCageSizeCategory::Full,
+				(true, false) => TransformCageSizeCategory::ReducedPortrait,
+				(false, true) => TransformCageSizeCategory::ReducedLandscape,
+				(false, false) => TransformCageSizeCategory::ReducedBoth,
 			};
 		}
 
-		HandleDisplayCategory::Narrow
+		TransformCageSizeCategory::Narrow
 	}
 
-	/// Check if bounds is flat.
-	/// For definition check [`HandleDisplayCategory`].
+	/// Determine if these bounds are flat ([`TransformCageSizeCategory::Flat`]), which means that the width and/or height is essentially zero and the bounds are a line with effectively no area. This can happen on actual lines (axis-aligned, i.e. drawn horizontally or vertically) or when an element is scaled to zero in X or Y. A flat transform cage can still be rotated by a transformation, but its local space remains flat.
 	fn is_bounds_flat(&self) -> bool {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
 	}
 
-	/// Check if given point in viewport falls within bounds.
+	/// Determine if the given point in viewport space falls within the bounds of `self`.
 	fn is_contained_in_bounds(&self, point: DVec2) -> bool {
 		let document_point = self.transform.inverse().transform_point2(point);
 		Quad::from_box(self.bounds).contains(document_point)
