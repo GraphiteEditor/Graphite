@@ -520,10 +520,12 @@ impl Fsm for SelectToolFsmState {
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 
-				// Check if the matrix is not invertible
 				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
+				let mut transform_tampered = false;
+				// Check if the matrix is not invertible
 				if transform.matrix2.determinant() == 0. {
 					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
+					transform_tampered = true;
 				}
 
 				let bounds = document
@@ -543,6 +545,7 @@ impl Fsm for SelectToolFsmState {
 
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
+					bounding_box_manager.transform_tampered = transform_tampered;
 
 					bounding_box_manager.render_overlays(&mut overlay_context);
 				} else {
@@ -609,7 +612,7 @@ impl Fsm for SelectToolFsmState {
 							let e0 = tool_data
 								.bounding_box_manager
 								.as_ref()
-								.map(|man| man.transform * Quad::from_box(man.bounds))
+								.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 								.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
 							let (direction, color) = match axis {
@@ -781,7 +784,10 @@ impl Fsm for SelectToolFsmState {
 				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 				// If the user clicks on new shape, make that layer their new selection.
 				// Otherwise enter the box select mode
-				let bounds = tool_data.bounding_box_manager.as_ref().map(|man| man.transform * Quad::from_box(man.bounds));
+				let bounds = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds));
 
 				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
@@ -790,14 +796,11 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && show_compass;
-				let is_flat_layer = document
-					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport(layer))
-					.is_none_or(|transform| transform.matrix2.determinant().abs() <= f64::EPSILON);
+				let is_flat_layer = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map(|bounding_box_manager| bounding_box_manager.transform_tampered)
+					.unwrap_or(true);
 
 				let state =
 				// Dragging the pivot
@@ -808,6 +811,44 @@ impl Fsm for SelectToolFsmState {
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
+				}
+				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
+				else if dragging_bounds.is_some() && !is_flat_layer {
+					responses.add(DocumentMessage::StartTransaction);
+
+					tool_data.layers_dragging = selected;
+
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.original_bound_transform = bounds.transform;
+
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
+
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&tool_data.layers_dragging,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Select,
+							None
+						);
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
+					}
+					tool_data.get_snap_candidates(document, input);
+
+					if input.keyboard.key(skew) {
+						SelectToolFsmState::SkewingBounds
+					} else {
+						SelectToolFsmState::ResizingBounds
+					}
 				}
 				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
@@ -858,44 +899,6 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					SelectToolFsmState::RotatingBounds
-				}
-				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if dragging_bounds.is_some() && !is_flat_layer {
-					responses.add(DocumentMessage::StartTransaction);
-
-					tool_data.layers_dragging = selected;
-
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						bounds.original_bound_transform = bounds.transform;
-
-						tool_data.layers_dragging.retain(|layer| {
-							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
-							} else {
-								log::error!("ROOT_PARENT should not be part of layers_dragging");
-								false
-							}
-						});
-
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut bounds.center_of_transformation,
-							&tool_data.layers_dragging,
-							responses,
-							&document.network_interface,
-							None,
-							&ToolType::Select,
-							None
-						);
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
-					}
-					tool_data.get_snap_candidates(document, input);
-
-					if input.keyboard.key(skew) {
-						SelectToolFsmState::SkewingBounds
-					} else {
-						SelectToolFsmState::ResizingBounds
-					}
 				}
 				// Dragging a selection box
 				else {
@@ -953,7 +956,7 @@ impl Fsm for SelectToolFsmState {
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
-					.map(|man| man.transform * Quad::from_box(man.bounds))
+					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 				let mouse_delta = match axis {
 					Axis::X => mouse_delta.project_onto(e0),
