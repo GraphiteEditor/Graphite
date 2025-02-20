@@ -1,7 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_INCREMENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_INCREMENT, SELECTION_DRAG_ANGLE,
+	SELECTION_TOLERANCE,
+};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -517,10 +520,12 @@ impl Fsm for SelectToolFsmState {
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 
-				// Check if the matrix is not invertible
 				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
+				let mut transform_tampered = false;
+				// Check if the matrix is not invertible
 				if transform.matrix2.determinant() == 0. {
 					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
+					transform_tampered = true;
 				}
 
 				let bounds = document
@@ -540,6 +545,7 @@ impl Fsm for SelectToolFsmState {
 
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
+					bounding_box_manager.transform_tampered = transform_tampered;
 
 					bounding_box_manager.render_overlays(&mut overlay_context);
 				} else {
@@ -577,11 +583,11 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
 				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
-					show_compass
+					(show_compass && quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER))
 						.then_some(
 							matches!(self, SelectToolFsmState::Dragging { .. })
 								.then_some(show_hover_ring)
-								.or(quad.contains(mouse_position).then_some(show_hover_ring)),
+								.or((quad.contains(mouse_position)).then_some(show_hover_ring)),
 						)
 						.flatten()
 				});
@@ -590,7 +596,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
 
 				// Update compass rose
-				tool_data.compass_rose.refresh_transform(document);
+				tool_data.compass_rose.refresh_position(document);
 				let compass_center = tool_data.compass_rose.compass_rose_position();
 				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
@@ -600,29 +606,31 @@ impl Fsm for SelectToolFsmState {
 					compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
 				};
 
-				if let Some((axis, hover)) = axis_state {
-					if axis.is_constraint() {
-						let e0 = tool_data
-							.bounding_box_manager
-							.as_ref()
-							.map(|man| man.transform * Quad::from_box(man.bounds))
-							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
+				if show_compass_with_ring.is_some() {
+					if let Some((axis, hover)) = axis_state {
+						if axis.is_constraint() {
+							let e0 = tool_data
+								.bounding_box_manager
+								.as_ref()
+								.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
+								.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-						let (direction, color) = match axis {
-							Axis::X => (e0, COLOR_OVERLAY_RED),
-							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
-							_ => unreachable!(),
-						};
+							let (direction, color) = match axis {
+								Axis::X => (e0, COLOR_OVERLAY_RED),
+								Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+								_ => unreachable!(),
+							};
 
-						let viewport_diagonal = input.viewport_bounds.size().length();
+							let viewport_diagonal = input.viewport_bounds.size().length();
 
-						let color = if !hover {
-							color
-						} else {
-							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
-							&format!("#{}", color_string)
-						};
-						overlay_context.line(compass_center - direction * viewport_diagonal, compass_center + direction * viewport_diagonal, Some(color));
+							let color = if !hover {
+								color
+							} else {
+								let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+								&format!("#{}", color_string)
+							};
+							overlay_context.line(compass_center - direction * viewport_diagonal, compass_center + direction * viewport_diagonal, Some(color));
+						}
 					}
 				}
 
@@ -776,15 +784,23 @@ impl Fsm for SelectToolFsmState {
 				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 				// If the user clicks on new shape, make that layer their new selection.
 				// Otherwise enter the box select mode
-
-				let angle = tool_data
+				let bounds = tool_data
 					.bounding_box_manager
 					.as_ref()
-					.map(|man| man.transform * Quad::from_box(man.bounds))
-					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
+					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds));
+
+				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
 				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
+
+				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
+				let can_grab_compass_rose = compass_rose_state.can_grab() && show_compass;
+				let is_flat_layer = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map(|bounding_box_manager| bounding_box_manager.transform_tampered)
+					.unwrap_or(true);
 
 				let state =
 				// Dragging the pivot
@@ -797,7 +813,7 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::DraggingPivot
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if dragging_bounds.is_some() {
+				else if dragging_bounds.is_some() && !is_flat_layer {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.layers_dragging = selected;
@@ -830,9 +846,28 @@ impl Fsm for SelectToolFsmState {
 
 					if input.keyboard.key(skew) {
 						SelectToolFsmState::SkewingBounds
-					}else{
+					} else {
 						SelectToolFsmState::ResizingBounds
 					}
+				}
+				// Dragging the selected layers around to transform them
+				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						tool_data.select_single_layer = intersection;
+					} else {
+						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
+					}
+
+					tool_data.layers_dragging = selected;
+
+					tool_data.get_snap_candidates(document, input);
+					let (axis, using_compass) = {
+						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
+						(axis_state.unwrap_or_default(), axis_state.is_some())
+					};
+					SelectToolFsmState::Dragging { axis, using_compass }
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -864,25 +899,6 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					SelectToolFsmState::RotatingBounds
-				}
-				// Dragging the selected layers around to transform them
-				else if compass_rose_state.can_grab() || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
-					responses.add(DocumentMessage::StartTransaction);
-
-					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-						tool_data.select_single_layer = intersection;
-					} else {
-						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
-					}
-
-					tool_data.layers_dragging = selected;
-
-					tool_data.get_snap_candidates(document, input);
-					let axis = compass_rose_state.axis_type();
-					match axis {
-						Some(axis) => SelectToolFsmState::Dragging { axis, using_compass: true },
-						None => SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false }
-					}
 				}
 				// Dragging a selection box
 				else {
@@ -940,7 +956,7 @@ impl Fsm for SelectToolFsmState {
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
-					.map(|man| man.transform * Quad::from_box(man.bounds))
+					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 				let mouse_delta = match axis {
 					Axis::X => mouse_delta.project_onto(e0),
@@ -1085,7 +1101,7 @@ impl Fsm for SelectToolFsmState {
 						None,
 					);
 
-					selected.update_transforms(delta);
+					selected.update_transforms(delta, None);
 				}
 
 				SelectToolFsmState::RotatingBounds
@@ -1189,6 +1205,7 @@ impl Fsm for SelectToolFsmState {
 					true => DocumentMessage::AbortTransaction,
 					false => DocumentMessage::EndTransaction,
 				};
+				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 				responses.add_front(response);
 
@@ -1380,6 +1397,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.axis_align = false;
 				responses.add(OverlaysMessage::Draw);
 
 				let selection = tool_data.nested_selection_behavior;
