@@ -1153,153 +1153,157 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
 
+		let mut first_bezier_bool = true;
+
 		let mut iter = vector_data.segment_domain.handles_and_points_mut();
 
+		let mut first_bezier = bezier_rs::Bezier {
+			end: DVec2 { x: 0., y: 0. },
+			start: DVec2 { x: 0., y: 0. },
+			handles: bezier_rs::BezierHandles::Linear,
+		};
+
+		let mut first_start_point_index = &mut 0xffffffff;
+		let mut first_handles = &mut bezier_rs::BezierHandles::Linear;
+
 		let Some((handles, start_point_index, end_point_index)) = iter.next() else { unreachable!() };
+
+		let mut prev_bezier = bezier_rs::Bezier {
+			start: vector_data.point_domain.positions()[*start_point_index],
+			end: vector_data.point_domain.positions()[*end_point_index],
+			handles: *handles,
+		};
 
 		let mut prev_handles = handles;
 		let mut prev_start_point_index = start_point_index;
 		let mut prev_end_point_index = end_point_index;
+		let mut prev_original_length = prev_bezier.length(None);
+		let mut prev_length = prev_original_length;
+		let mut first_original_length = prev_original_length;
+		let mut first_length = prev_original_length;
 
 		while let Some((handles, start_point_index, end_point_index)) = iter.next() {
-			let mut bezier1 = bezier_rs::Bezier {
-				start: vector_data.point_domain.positions()[*prev_start_point_index],
-				end: vector_data.point_domain.positions()[*prev_end_point_index],
-				handles: *prev_handles,
-			};
-
-			let mut bezier2 = bezier_rs::Bezier {
+			let mut bezier = bezier_rs::Bezier {
 				start: vector_data.point_domain.positions()[*start_point_index],
 				end: vector_data.point_domain.positions()[*end_point_index],
 				handles: *handles,
 			};
 
-			let angel_rad = calculate_angle(bezier1.start, bezier1.end, bezier2.end);
+			debug!("{:?}", prev_bezier);
+			debug!("{:?}", bezier);
+
+			let angel_rad = calculate_angle(prev_bezier.start, prev_bezier.end, bezier.end);
 
 			let spilt_distance = calculate_distance_to_spilt(distance, angel_rad);
 
-			if bezier1.is_linear() {
-				bezier1.handles = bezier_rs::BezierHandles::Linear;
+			if prev_bezier.is_linear() {
+				prev_bezier.handles = bezier_rs::BezierHandles::Linear;
 			}
 
-			if bezier2.is_linear() {
-				bezier2.handles = bezier_rs::BezierHandles::Linear;
+			if bezier.is_linear() {
+				bezier.handles = bezier_rs::BezierHandles::Linear;
 			}
 
-			bezier1 = bezier1.apply_transformation(|p| vector_data.transform.transform_point2(p));
-			bezier2 = bezier2.apply_transformation(|p| vector_data.transform.transform_point2(p));
+			prev_bezier = prev_bezier.apply_transformation(|p| vector_data.transform.transform_point2(p));
+			bezier = bezier.apply_transformation(|p| vector_data.transform.transform_point2(p));
 
 			let inverse_transform = (vector_data.transform.matrix2.determinant() != 0.).then(|| vector_data.transform.inverse()).unwrap_or_default();
 
-			let original_length = bezier1.length(None);
-			let length = original_length;
-
 			// Only split if the length is big enough to make it worthwhile
-			let valid_length = length > 1e-10;
+			let valid_length = prev_length > 1e-10;
 			if segments_connected[*prev_end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
-				let distance = spilt_distance.min(original_length / 2.);
-				bezier1 = split_distance(bezier1.reversed(), distance, length).reversed();
+				let distance = spilt_distance.min(prev_original_length / 2.);
+				prev_bezier = split_distance(prev_bezier.reversed(), distance, prev_length).reversed();
+				if first_bezier_bool {
+					first_length = (first_length - distance).max(0.);
+				}
 				// Update the end position
-				let pos = inverse_transform.transform_point2(bezier1.end);
+				let pos = inverse_transform.transform_point2(prev_bezier.end);
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, prev_end_point_index, &mut next_id, &mut new_segments);
 			}
 			// Update the handles
-			*prev_handles = bezier1.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
+			*prev_handles = prev_bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
 
-			let original_length = bezier2.length(None);
-			let length = original_length;
+			let original_length = bezier.length(None);
+			let mut length = original_length;
 
 			// Only split if the length is big enough to make it worthwhile
 			let valid_length = length > 1e-10;
 			if segments_connected[*start_point_index] > 0 && valid_length {
 				// Apply the bevel to the start
 				let distance = spilt_distance.min(original_length / 2.);
-				bezier2 = split_distance(bezier2, distance, length);
+				bezier = split_distance(bezier, distance, length);
+				length = (length - distance).max(0.);
 				// Update the start position
-				let pos = inverse_transform.transform_point2(bezier2.start);
+				let pos = inverse_transform.transform_point2(bezier.start);
 
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
 
 				// Update the handles
-				*handles = bezier2.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
+				*handles = bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
 			}
 
+			if first_bezier_bool {
+				first_bezier = prev_bezier;
+				first_start_point_index = prev_start_point_index;
+				first_handles = prev_handles;
+				first_original_length = prev_original_length;
+				first_bezier_bool = false;
+			}
+
+			prev_bezier = bezier;
 			prev_start_point_index = start_point_index;
 			prev_end_point_index = end_point_index;
 			prev_handles = handles;
+			prev_original_length = original_length;
+			prev_length = length;
 		}
 
-		drop(iter);
-
-		let mut iter = vector_data.segment_domain.handles_and_points_mut();
-		let Some((handles, start_point_index, end_point_index)) = iter.next() else { unreachable!() };
-		let Some((prev_handles, prev_start_point_index, prev_end_point_index)) = iter.last() else {
-			unreachable!()
-		};
-
-		if prev_end_point_index == start_point_index {
-			let mut bezier1 = bezier_rs::Bezier {
-				start: vector_data.point_domain.positions()[*prev_start_point_index],
-				end: vector_data.point_domain.positions()[*prev_end_point_index],
-				handles: *prev_handles,
-			};
-
-			let mut bezier2 = bezier_rs::Bezier {
-				start: vector_data.point_domain.positions()[*start_point_index],
-				end: vector_data.point_domain.positions()[*end_point_index],
-				handles: *handles,
-			};
-
-			let angel_rad = calculate_angle(bezier1.start, bezier1.end, bezier2.end);
+		if prev_end_point_index == first_start_point_index {
+			let angel_rad = calculate_angle(prev_bezier.start, prev_bezier.end, first_bezier.end);
 
 			let spilt_distance = calculate_distance_to_spilt(distance, angel_rad);
 
-			if bezier1.is_linear() {
-				bezier1.handles = bezier_rs::BezierHandles::Linear;
+			if prev_bezier.is_linear() {
+				prev_bezier.handles = bezier_rs::BezierHandles::Linear;
 			}
 
-			if bezier2.is_linear() {
-				bezier2.handles = bezier_rs::BezierHandles::Linear;
+			if first_bezier.is_linear() {
+				first_bezier.handles = bezier_rs::BezierHandles::Linear;
 			}
 
-			bezier1 = bezier1.apply_transformation(|p| vector_data.transform.transform_point2(p));
-			bezier2 = bezier2.apply_transformation(|p| vector_data.transform.transform_point2(p));
+			prev_bezier = prev_bezier.apply_transformation(|p| vector_data.transform.transform_point2(p));
+			first_bezier = first_bezier.apply_transformation(|p| vector_data.transform.transform_point2(p));
 
 			let inverse_transform = (vector_data.transform.matrix2.determinant() != 0.).then(|| vector_data.transform.inverse()).unwrap_or_default();
 
-			let original_length = bezier1.length(None);
-			let length = original_length;
-
 			// Only split if the length is big enough to make it worthwhile
-			let valid_length = length > 1e-10;
+			let valid_length = prev_length > 1e-10;
 			if segments_connected[*prev_end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
-				let distance = spilt_distance.min(original_length / 2.);
-				bezier1 = split_distance(bezier1.reversed(), distance, length).reversed();
+				let distance = spilt_distance.min(prev_original_length / 2.);
+				prev_bezier = split_distance(prev_bezier.reversed(), distance, prev_length).reversed();
 				// Update the end position
-				let pos = inverse_transform.transform_point2(bezier1.end);
+				let pos = inverse_transform.transform_point2(prev_bezier.end);
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, prev_end_point_index, &mut next_id, &mut new_segments);
 			}
 			// Update the handles
-			*prev_handles = bezier1.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
-
-			let original_length = bezier2.length(None);
-			let length = original_length;
+			*prev_handles = prev_bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
 
 			// Only split if the length is big enough to make it worthwhile
-			let valid_length = length > 1e-10;
-			if segments_connected[*start_point_index] > 0 && valid_length {
+			let valid_length = first_length > 1e-10;
+			if segments_connected[*first_start_point_index] > 0 && valid_length {
 				// Apply the bevel to the start
-				let distance = spilt_distance.min(original_length / 2.);
-				bezier2 = split_distance(bezier2, distance, length);
+				let distance = spilt_distance.min(first_original_length / 2.);
+				first_bezier = split_distance(first_bezier, distance, first_length);
 				// Update the start position
-				let pos = inverse_transform.transform_point2(bezier2.start);
+				let pos = inverse_transform.transform_point2(first_bezier.start);
 
-				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, first_start_point_index, &mut next_id, &mut new_segments);
 
 				// Update the handles
-				*handles = bezier2.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
+				*first_handles = first_bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
 			}
 		}
 		new_segments
