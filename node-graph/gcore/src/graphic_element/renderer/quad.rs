@@ -44,13 +44,23 @@ impl Quad {
 	}
 
 	/// Get all the edges in the quad.
-	pub fn edges(&self) -> [[DVec2; 2]; 4] {
+	pub fn all_edges(&self) -> [[DVec2; 2]; 4] {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
+	}
+
+	/// Get two edges as orthogonal bases.
+	pub fn edges(&self) -> [[DVec2; 2]; 2] {
+		[[self.0[0], self.0[1]], [self.0[1], self.0[2]]]
+	}
+
+	/// Returns true only if the width and height are both greater than or equal to the given width.
+	pub fn all_sides_at_least_width(&self, width: f64) -> bool {
+		self.edges().into_iter().all(|[a, b]| (a - b).length_squared() >= width.powi(2))
 	}
 
 	/// Get all the edges in the quad as linear bezier curves
 	pub fn bezier_lines(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
-		self.edges().into_iter().map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
+		self.all_edges().into_iter().map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
 	}
 
 	/// Generates the axis aligned bounding box of the quad
@@ -126,9 +136,9 @@ impl Quad {
 
 	pub fn intersects(&self, other: Quad) -> bool {
 		let intersects = self
-			.edges()
+			.all_edges()
 			.into_iter()
-			.any(|[a, b]| other.edges().into_iter().any(|[c, d]| Self::intersect_lines(a, b, c, d).is_some()));
+			.any(|[a, b]| other.all_edges().into_iter().any(|[c, d]| Self::intersect_lines(a, b, c, d).is_some()));
 		self.contains(other.center()) || other.contains(self.center()) || intersects
 	}
 }
