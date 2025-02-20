@@ -54,15 +54,26 @@ pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD: f64 = 15.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
+
+// PIVOT
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
 pub const PIVOT_DIAMETER: f64 = 5.;
+
+// COMPASS ROSE
+pub const COMPASS_ROSE_RING_INNER_DIAMETER: f64 = 13.;
+pub const COMPASS_ROSE_MAIN_RING_DIAMETER: f64 = 15.;
+pub const COMPASS_ROSE_HOVER_RING_DIAMETER: f64 = 23.;
+pub const COMPASS_ROSE_ARROW_SIZE: f64 = 5.;
+// Angle to either side of the compass arrows where they are targetted by the cursor (in degrees, must be less than 45°)
+pub const COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE: f64 = 20.;
 
 // TRANSFORM OVERLAY
 pub const ANGLE_MEASURE_RADIUS_FACTOR: f64 = 0.04;
 pub const ARC_MEASURE_RADIUS_FACTOR_RANGE: (f64, f64) = (0.05, 0.15);
 
 // TRANSFORM CAGE
+pub const RESIZE_HANDLE_SIZE: f64 = 6.;
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
@@ -108,7 +119,6 @@ pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_LABEL_BACKGROUND: &str = "#000000cc";
-pub const COLOR_OVERLAY_TRANSPARENT: &str = "#ffffff00";
 
 // DOCUMENT
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";

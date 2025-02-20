@@ -1679,6 +1679,7 @@ impl DocumentMessageHandler {
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
+		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
 
 		//Update the metadata transform based on document PTZ
 		let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
@@ -2320,7 +2321,7 @@ pub struct ClickXRayIter<'a> {
 }
 
 fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
-	quad.edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+	quad.all_edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
