@@ -2,7 +2,7 @@ use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY,
 	MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, SELECTION_DRAG_ANGLE,
 };
-use crate::consts::{SKEW_GIZMO_OFFSET, SKEW_GIZMO_SIZE, SKEW_HANDLE_THRESHOLD};
+use crate::consts::{SKEW_GIZMO_OFFSET, SKEW_GIZMO_SIZE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -17,7 +17,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
 // (top, bottom, left, right)
-type EdgeBool = (bool, bool, bool, bool);
+pub type EdgeBool = (bool, bool, bool, bool);
 
 pub struct SizeSnapData<'a> {
 	pub manager: &'a mut SnapManager,
@@ -452,9 +452,9 @@ impl BoundingBoxManager {
 
 	pub fn edge_endpoints_vector_from_edge_bool(&self, edges: EdgeBool) -> Option<[DVec2; 2]> {
 		let quad = self.transform * Quad::from_box(self.bounds);
-		let category = self.overlay_display_category(quad);
+		let category = self.overlay_display_category();
 
-		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
+		if matches!(category, TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape) {
 			if edges.0 {
 				return Some([quad.top_left(), quad.top_right()]);
 			}
@@ -463,7 +463,7 @@ impl BoundingBoxManager {
 			}
 		}
 
-		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedPortrait) {
+		if matches!(category, TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait) {
 			if edges.2 {
 				return Some([quad.top_left(), quad.bottom_left()]);
 			}

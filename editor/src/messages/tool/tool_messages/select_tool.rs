@@ -309,6 +309,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	compass_rose: CompassRose,
+	skew_edge: EdgeBool,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
 	selected_layers_changed: bool,
@@ -577,18 +578,21 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				if dragging_bounds {
-					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
-						let edges = bounds.check_selected_edges(input.mouse.position);
+				if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
+					let edges = bounds.check_selected_edges(input.mouse.position);
+					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds);
+					if is_skewing || dragging_bounds {
+						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
+					}
+					if !is_skewing && dragging_bounds {
 						edges.map(|edges| {
-							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
-							bounds.render_skew_gizmos(&mut overlay_context, closest_edge);
+							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 						});
 					}
 				}
 
 				let might_resize_or_rotate = dragging_bounds || rotating_bounds;
-				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds { .. } | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds);
+				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds);
 				let can_get_into_other_states = might_resize_or_rotate && !matches!(self, SelectToolFsmState::Dragging { .. });
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
@@ -857,6 +861,7 @@ impl Fsm for SelectToolFsmState {
 						if let Some(edges) = edges {
 							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
 							if bounds.check_skew_handle(input.mouse.position, closest_edge) {
+								let _is_ctrl_held = input.keyboard.key(skew);
 								tool_data.get_snap_candidates(document, input);
 								return SelectToolFsmState::SkewingBounds;
 							}
@@ -864,6 +869,25 @@ impl Fsm for SelectToolFsmState {
 					}
 					tool_data.get_snap_candidates(document, input);
 					SelectToolFsmState::ResizingBounds
+				}
+                // Dragging the selected layers around to transform them
+				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						tool_data.select_single_layer = intersection;
+					} else {
+						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(document.metadata()).find(|ancestor| selected.contains(ancestor)));
+					}
+
+					tool_data.layers_dragging = selected;
+
+					tool_data.get_snap_candidates(document, input);
+					let (axis, using_compass) = {
+						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
+						(axis_state.unwrap_or_default(), axis_state.is_some())
+					};
+					SelectToolFsmState::Dragging { axis, using_compass }
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
