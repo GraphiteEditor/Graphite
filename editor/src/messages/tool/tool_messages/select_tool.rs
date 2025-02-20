@@ -2,8 +2,8 @@
 
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, ROTATE_INCREMENT, SELECTION_DRAG_ANGLE,
-	SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
+	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -583,8 +583,8 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
 				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
-					// 6/2 px spacing for quad rendering and 4/2 px arbitrary spacing
-					(show_compass && quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER + 3. + 2.))
+					const MIN_ARROWS_TO_RESIZE_HANDLE_DISTANCE: f64 = 4.;
+					(show_compass && quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER + RESIZE_HANDLE_SIZE + MIN_ARROWS_TO_RESIZE_HANDLE_DISTANCE))
 						.then_some(
 							matches!(self, SelectToolFsmState::Dragging { .. })
 								.then_some(show_hover_ring)
