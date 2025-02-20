@@ -583,7 +583,8 @@ impl Fsm for SelectToolFsmState {
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
 				let show_compass_with_ring = bounds.map(|bounds| transform * Quad::from_box(bounds)).and_then(|quad| {
-					(show_compass && quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER))
+					// 6/2 px spacing for quad rendering and 4/2 px arbitrary spacing
+					(show_compass && quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER + 3. + 2.))
 						.then_some(
 							matches!(self, SelectToolFsmState::Dragging { .. })
 								.then_some(show_hover_ring)
@@ -1411,6 +1412,10 @@ impl Fsm for SelectToolFsmState {
 						false
 					}
 				});
+
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_transforms.clear();
+				}
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
