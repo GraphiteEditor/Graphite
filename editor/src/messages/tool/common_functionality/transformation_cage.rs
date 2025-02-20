@@ -454,7 +454,10 @@ impl BoundingBoxManager {
 		let quad = self.transform * Quad::from_box(self.bounds);
 		let category = self.overlay_display_category();
 
-		if matches!(category, TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape) {
+		if matches!(
+			category,
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
+		) {
 			if edges.0 {
 				return Some([quad.top_left(), quad.top_right()]);
 			}
@@ -463,7 +466,10 @@ impl BoundingBoxManager {
 			}
 		}
 
-		if matches!(category, TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait) {
+		if matches!(
+			category,
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
+		) {
 			if edges.2 {
 				return Some([quad.top_left(), quad.bottom_left()]);
 			}
