@@ -1,4 +1,5 @@
 use crate::consts::{COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::DocumentMessageHandler;
 
 use glam::{DAffine2, DVec2};
@@ -10,9 +11,27 @@ pub struct CompassRose {
 }
 
 impl CompassRose {
-	pub fn refresh_transform(&mut self, document: &DocumentMessageHandler) {
-		let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
-		self.compass_center = (DAffine2::from_translation(min) * DAffine2::from_scale(max - min)).transform_point2(DVec2::splat(0.5));
+	fn get_layer_pivot_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
+		let [min, max] = document.metadata().nonzero_bounding_box(layer);
+
+		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+		let layer_transform = document.metadata().transform_to_viewport(layer);
+		layer_transform * bounds_transform
+	}
+	pub fn refresh_position(&mut self, document: &DocumentMessageHandler) {
+		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
+
+		let Some(first) = layers.next() else { return };
+		let count = layers.count() + 1;
+		let transform = if count == 1 {
+			Self::get_layer_pivot_transform(first, document)
+		} else {
+			let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			DAffine2::from_translation(min) * DAffine2::from_scale(max - min)
+		};
+
+		self.compass_center = transform.transform_point2(DVec2::splat(0.5));
 	}
 
 	pub fn compass_rose_position(&self) -> DVec2 {
