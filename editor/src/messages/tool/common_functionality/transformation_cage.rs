@@ -254,7 +254,7 @@ impl SelectedEdges {
 		(DAffine2::from_scale(enlargement_factor), pivot)
 	}
 
-	pub fn skew_transform(&self, mouse: DVec2, to_viewport_transform: DAffine2) -> DAffine2 {
+	pub fn skew_transform(&self, mouse: DVec2, to_viewport_transform: DAffine2, _free_movement: bool) -> DAffine2 {
 		// Skip if the matrix is singular (as it isn't really possible to skew).
 		if !to_viewport_transform.matrix2.determinant().recip().is_finite() {
 			return DAffine2::IDENTITY;
@@ -494,6 +494,29 @@ impl BoundingBoxManager {
 		}
 	}
 
+	pub fn over_extended_edge_midpoint(&self, mouse: DVec2, hover_edge: EdgeBool) -> bool {
+		let quad = self.transform * Quad::from_box(self.bounds);
+		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
+			let point = start.midpoint(end);
+
+			let angle = match hover_edge {
+				(false, true, false, false) | (true, false, false, false) => (quad.top_left() - quad.top_right()).to_angle(),
+				(false, false, true, false) | (false, false, false, true) => (quad.top_left() - quad.bottom_left()).to_angle(),
+				_ => unreachable!(),
+			};
+
+			const HALF_WIDTH: f64 = RESIZE_HANDLE_SIZE / 2.;
+			const SEMI_WIDTH: f64 = RESIZE_HANDLE_SIZE + SKEW_GIZMO_SIZE + SKEW_GIZMO_OFFSET;
+			const CORNER_POINT: DVec2 = DVec2::new(SEMI_WIDTH, HALF_WIDTH);
+
+			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-CORNER_POINT, CORNER_POINT]);
+
+			quad.contains(mouse)
+		} else {
+			false
+		}
+	}
+
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
 		let quad = self.transform * Quad::from_box(self.bounds);
@@ -505,18 +528,20 @@ impl BoundingBoxManager {
 		// Draw the bounding box rectangle
 		overlay_context.quad(quad, None);
 
-		let mut draw_handle = |point: DVec2| {
-			let quad = DAffine2::from_angle_translation((quad.top_left() - quad.top_right()).to_angle(), point)
-				* Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
+		let mut draw_handle = |point: DVec2, angle: f64| {
+			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
 			overlay_context.quad(quad, Some(COLOR_OVERLAY_WHITE));
 		};
+
+		let horizontal_angle = (quad.top_left() - quad.bottom_left()).to_angle();
+		let vertical_angle = (quad.top_left() - quad.top_right()).to_angle();
 
 		// Draw the horizontal midpoint drag handles
 		if matches!(
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
 		) {
-			horizontal_edges.map(&mut draw_handle);
+			horizontal_edges.map(|point| draw_handle(point, horizontal_angle));
 		}
 
 		// Draw the vertical midpoint drag handles
@@ -524,21 +549,28 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
 		) {
-			vertical_edges.map(&mut draw_handle);
+			vertical_edges.map(|point| draw_handle(point, vertical_angle));
 		}
+
+		let angle = quad
+			.edges()
+			.map(|[x, y]| x.distance_squared(y))
+			.into_iter()
+			.reduce(|horizontal_distance, vertical_distance| if horizontal_distance > vertical_distance { horizontal_angle } else { vertical_angle })
+			.unwrap_or_default();
 
 		// Draw the corner drag handles
 		if matches!(
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::ReducedBoth | TransformCageSizeCategory::ReducedLandscape | TransformCageSizeCategory::ReducedPortrait
 		) {
-			quad.0.map(&mut draw_handle);
+			quad.0.map(|point| draw_handle(point, angle));
 		}
 
 		// Draw the flat line endpoint drag handles
 		if category == TransformCageSizeCategory::Flat {
-			draw_handle(self.transform.transform_point2(self.bounds[0]));
-			draw_handle(self.transform.transform_point2(self.bounds[1]));
+			draw_handle(self.transform.transform_point2(self.bounds[0]), angle);
+			draw_handle(self.transform.transform_point2(self.bounds[1]), angle);
 		}
 	}
 
@@ -702,7 +734,7 @@ fn skew_transform_singular() {
 		// The determinant is 0.
 		let transform = DAffine2::from_cols_array(&[2.; 6]);
 		// This shouldn't panic. We don't really care about the behavior in this test.
-		let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform);
+		let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform, false);
 	}
 }
 
@@ -718,7 +750,7 @@ fn skew_transform_correct() {
 		let to_viewport_transform = DAffine2::from_cols_array(&[2., 1., 0., 1., 2., 3.]);
 		// Random mouse position.
 		let mouse = DVec2::new(1.5, 1.5);
-		let final_transform = edge.skew_transform(mouse, to_viewport_transform);
+		let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
 
 		// This is the current handle that goes under the mouse.
 		let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);

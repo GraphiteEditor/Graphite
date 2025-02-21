@@ -280,7 +280,7 @@ enum SelectToolFsmState {
 	Drawing { selection_shape: SelectionShapeType },
 	Dragging { axis: Axis, using_compass: bool },
 	ResizingBounds,
-	SkewingBounds,
+	SkewingBounds { skew: Key },
 	RotatingBounds,
 	DraggingPivot,
 }
@@ -580,8 +580,9 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
 					let edges = bounds.check_selected_edges(input.mouse.position);
-					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds);
-					if is_skewing || dragging_bounds {
+					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
+					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+					if is_skewing || (dragging_bounds && is_near_square) {
 						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 					}
 					if !is_skewing && dragging_bounds {
@@ -592,7 +593,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let might_resize_or_rotate = dragging_bounds || rotating_bounds;
-				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds | SelectToolFsmState::RotatingBounds);
+				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 				let can_get_into_other_states = might_resize_or_rotate && !matches!(self, SelectToolFsmState::Dragging { .. });
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
@@ -862,9 +863,8 @@ impl Fsm for SelectToolFsmState {
 						if let Some(edges) = edges {
 							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
 							if bounds.check_skew_handle(input.mouse.position, closest_edge) {
-								let _is_ctrl_held = input.keyboard.key(skew);
 								tool_data.get_snap_candidates(document, input);
-								return SelectToolFsmState::SkewingBounds;
+								return SelectToolFsmState::SkewingBounds{skew};
 							}
 						}
 					}
@@ -1054,10 +1054,11 @@ impl Fsm for SelectToolFsmState {
 				}
 				SelectToolFsmState::ResizingBounds
 			}
-			(SelectToolFsmState::SkewingBounds, SelectToolMessage::PointerMove(_)) => {
+			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove(_)) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let transformation = movement.skew_transform(input.mouse.position, bounds.original_bound_transform);
+						let free_movement = input.keyboard.key(skew);
+						let transformation = movement.skew_transform(input.mouse.position, bounds.original_bound_transform, free_movement);
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -1083,7 +1084,7 @@ impl Fsm for SelectToolFsmState {
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 					}
 				}
-				SelectToolFsmState::SkewingBounds
+				SelectToolFsmState::SkewingBounds { skew }
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -1186,7 +1187,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::Dragging { axis, using_compass }
 			}
-			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
@@ -1291,7 +1292,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
 					true => DocumentMessage::AbortTransaction,
 					false => DocumentMessage::EndTransaction,
@@ -1543,7 +1544,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::DraggingPivot | SelectToolFsmState::SkewingBounds => {
+			SelectToolFsmState::DraggingPivot | SelectToolFsmState::SkewingBounds { .. } => {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
