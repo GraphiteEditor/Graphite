@@ -410,7 +410,7 @@ impl BoundingBoxManager {
 		}
 	}
 
-	pub fn check_skew_handle(&mut self, cursor: DVec2, edge: EdgeBool) -> bool {
+	pub fn check_skew_handle(&self, cursor: DVec2, edge: EdgeBool) -> bool {
 		let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
 			let normal = direction.perp();
 			let top = base + direction * SKEW_GIZMO_SIZE;
@@ -496,22 +496,43 @@ impl BoundingBoxManager {
 
 	pub fn over_extended_edge_midpoint(&self, mouse: DVec2, hover_edge: EdgeBool) -> bool {
 		let quad = self.transform * Quad::from_box(self.bounds);
+
+		let [_, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
+
 		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
 			let point = start.midpoint(end);
 
-			let angle = match hover_edge {
-				(false, true, false, false) | (true, false, false, false) => (quad.top_left() - quad.top_right()).to_angle(),
-				(false, false, true, false) | (false, false, false, true) => (quad.top_left() - quad.bottom_left()).to_angle(),
-				_ => 0.0
+			let angle = if hover_edge.0 || hover_edge.1 {
+				(quad.top_left() - quad.top_right()).to_angle()
+			} else if hover_edge.2 || hover_edge.3 {
+				(quad.top_left() - quad.bottom_left()).to_angle()
+			} else {
+				return false;
 			};
 
-			const HALF_WIDTH: f64 = RESIZE_HANDLE_SIZE / 2.;
-			const SEMI_WIDTH: f64 = RESIZE_HANDLE_SIZE + SKEW_GIZMO_SIZE + SKEW_GIZMO_OFFSET;
-			const CORNER_POINT: DVec2 = DVec2::new(SEMI_WIDTH, HALF_WIDTH);
+			let semi_height = threshold_y;
+			let semi_width = RESIZE_HANDLE_SIZE / 2. + SKEW_GIZMO_OFFSET;
 
-			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-CORNER_POINT, CORNER_POINT]);
+			let is_compact = if hover_edge.0 || hover_edge.1 {
+				(quad.top_left() - quad.bottom_left()).length() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR
+			} else if hover_edge.2 || hover_edge.3 {
+				(quad.top_left() - quad.top_right()).length() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR
+			} else {
+				return false;
+			};
 
-			quad.contains(mouse)
+			let has_triangle_hover = self.check_skew_handle(mouse, hover_edge);
+			if is_compact {
+				let upper_rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-DVec2::new(semi_width, 0.0), DVec2::new(semi_width, semi_height)]);
+
+				let inter_triangle_quad =
+					DAffine2::from_angle_translation(angle, point) * Quad::from_box([-DVec2::new(SKEW_GIZMO_OFFSET, RESIZE_HANDLE_SIZE / 2.), DVec2::new(SKEW_GIZMO_OFFSET, RESIZE_HANDLE_SIZE / 2.)]);
+
+				upper_rect.contains(mouse) || has_triangle_hover || inter_triangle_quad.contains(mouse)
+			} else {
+				let rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-DVec2::new(semi_width, semi_height), DVec2::new(semi_width, semi_height)]);
+				rect.contains(mouse) || has_triangle_hover
+			}
 		} else {
 			false
 		}
