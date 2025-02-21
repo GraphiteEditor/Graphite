@@ -502,7 +502,7 @@ impl BoundingBoxManager {
 			let angle = match hover_edge {
 				(false, true, false, false) | (true, false, false, false) => (quad.top_left() - quad.top_right()).to_angle(),
 				(false, false, true, false) | (false, false, false, true) => (quad.top_left() - quad.bottom_left()).to_angle(),
-				_ => unreachable!(),
+				_ => 0.0
 			};
 
 			const HALF_WIDTH: f64 = RESIZE_HANDLE_SIZE / 2.;
