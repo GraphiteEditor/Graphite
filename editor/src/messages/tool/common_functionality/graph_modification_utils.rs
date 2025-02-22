@@ -10,34 +10,62 @@ use graphene_core::raster::image::ImageFrame;
 use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
-use graphene_core::vector::PointId;
 use graphene_core::Color;
+use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 
 use glam::DVec2;
 use std::collections::VecDeque;
 
-pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeIdentifier, other_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+/// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
+pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> Option<NodeId> {
+	document
+		.network_interface
+		.upstream_flow_back_from_nodes([layer.to_node()].to_vec(), &[], FlowType::HorizontalFlow)
+		.map(|node_id| (document.network_interface.reference(&node_id, &[]).unwrap(), node_id))
+		.take_while(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref != "Path"))
+		.find(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref == "Spline"))
+		.map(|node| node.1)
+}
+
+/// Merge `second_layer` to the `first_layer`.
+pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIdentifier, second_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	if first_layer == second_layer {
+		return;
+	}
 	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
-	let current_transform = document.metadata().downstream_transform_to_document(current_layer);
-	let other_transform = document.metadata().downstream_transform_to_document(other_layer);
+	let first_layer_transform = document.metadata().downstream_transform_to_document(first_layer);
+	let second_layer_transform = document.metadata().downstream_transform_to_document(second_layer);
 
 	// Represents the change in position that would occur if the other layer was moved below the current layer
-	let transform_delta = current_transform * other_transform.inverse();
+	let transform_delta = first_layer_transform * second_layer_transform.inverse();
 	let offset = transform_delta.inverse();
 	responses.add(GraphOperationMessage::TransformChange {
-		layer: other_layer,
+		layer: second_layer,
 		transform: offset,
 		transform_in: TransformIn::Local,
 		skip_rerender: false,
 	});
 
-	// Move the other layer below the current layer for positioning purposes
-	let current_layer_parent = current_layer.parent(document.metadata()).unwrap();
-	let current_layer_index = current_layer_parent.children(document.metadata()).position(|child| child == current_layer).unwrap();
+	let mut current_and_other_layer_is_spline = false;
+
+	match (find_spline(document, first_layer), find_spline(document, second_layer)) {
+		(Some(current_layer_spline), Some(other_layer_spline)) => {
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: [current_layer_spline, other_layer_spline].to_vec(),
+				delete_children: false,
+			});
+			current_and_other_layer_is_spline = true;
+		}
+		_ => {}
+	}
+
+	// Move the `second_layer` below the `first_layer` for positioning purposes
+	let first_layer_parent = first_layer.parent(document.metadata()).unwrap();
+	let first_layer_index = first_layer_parent.children(document.metadata()).position(|child| child == first_layer).unwrap();
 	responses.add(NodeGraphMessage::MoveLayerToStack {
-		layer: other_layer,
-		parent: current_layer_parent,
-		insert_index: current_layer_index + 1,
+		layer: second_layer,
+		parent: first_layer_parent,
+		insert_index: first_layer_index + 1,
 	});
 
 	// Merge the inputs of the two layers
@@ -55,14 +83,14 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: merge_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
-		downstream_input: InputConnector::node(other_layer.to_node(), 1),
+		downstream_input: InputConnector::node(second_layer.to_node(), 1),
 		input_connector: InputConnector::node(merge_node_id, 1),
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
-		node_ids: vec![other_layer.to_node()],
+		node_ids: vec![second_layer.to_node()],
 		delete_children: false,
 	});
 
@@ -77,7 +105,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: flatten_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 
 	// Add a path node after the flatten node
@@ -91,8 +119,24 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: path_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
+
+	// Add a Spline node after the Path node if both the layers we are merging is spline.
+	if current_and_other_layer_is_spline {
+		let spline_node_id = NodeId::new();
+		let spline_node = document_node_definitions::resolve_document_node_type("Spline")
+			.expect("Failed to create Spline node")
+			.default_node_template();
+		responses.add(NodeGraphMessage::InsertNode {
+			node_id: spline_node_id,
+			node_template: spline_node,
+		});
+		responses.add(NodeGraphMessage::MoveNodeToChainStart {
+			node_id: spline_node_id,
+			parent: first_layer,
+		});
+	}
 
 	// Add a transform node to ensure correct tooling modifications
 	let transform_node_id = NodeId::new();
@@ -105,12 +149,55 @@ pub fn merge_layers(document: &DocumentMessageHandler, current_layer: LayerNodeI
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: transform_node_id,
-		parent: current_layer,
+		parent: first_layer,
 	});
 
 	responses.add(NodeGraphMessage::RunDocumentGraph);
 	responses.add(Message::StartBuffer);
 	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+}
+
+/// Merge the `first_endpoint` with `second_endpoint`.
+pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
+	let transform = document.metadata().transform_to_document(layer);
+	let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+
+	let segment = vector_data.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
+		log::error!("Could not get the segment for second_endpoint.");
+		return;
+	};
+
+	let mut handles = [None; 2];
+	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector_data).unwrap();
+		let handle_position = transform.transform_point2(handle_position);
+		let anchor_position = transform.transform_point2(anchor_position);
+		let anchor_to_handle = handle_position - anchor_position;
+		handles[0] = Some(anchor_to_handle);
+	}
+	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector_data) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector_data).unwrap();
+		let handle_position = transform.transform_point2(handle_position);
+		let anchor_position = transform.transform_point2(anchor_position);
+		let anchor_to_handle = handle_position - anchor_position;
+		handles[1] = Some(anchor_to_handle);
+	}
+
+	if segment_start_point == second_endpont {
+		core::mem::swap(&mut segment_start_point, &mut segment_end_point);
+		handles.reverse();
+	}
+
+	let modification_type = VectorModificationType::RemovePoint { id: second_endpont };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	let modification_type = VectorModificationType::RemoveSegment { id: segment };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	let points = [segment_start_point, first_endpoint];
+	let id = SegmentId::generate();
+	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 }
 
 /// Create a new vector layer.
