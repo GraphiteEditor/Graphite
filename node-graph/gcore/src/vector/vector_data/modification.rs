@@ -1,6 +1,6 @@
 use super::*;
-use crate::transform::Footprint;
 use crate::uuid::generate_uuid;
+use crate::Ctx;
 
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
@@ -424,20 +424,7 @@ impl core::hash::Hash for VectorModification {
 
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify<F: 'n + Send + Sync + Clone>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	input: F,
-	#[implementations(
-		() -> VectorDataTable,
-		Footprint -> VectorDataTable,
-	)]
-	vector_data: impl Node<F, Output = VectorDataTable>,
-	modification: Box<VectorModification>,
-) -> VectorDataTable {
-	let mut vector_data = vector_data.eval(input).await;
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
 	let vector_data = vector_data.one_item_mut();
 
 	modification.apply(vector_data);

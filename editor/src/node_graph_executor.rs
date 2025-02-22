@@ -15,6 +15,7 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
+use graphene_core::Context;
 use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
@@ -286,17 +287,17 @@ impl NodeRuntime {
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::GraphicElement>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::GraphicElement>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>() {
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			}
 			// Insert the vector modify if we are dealing with vector data
-			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorDataTable>>() {
+			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
 				self.vector_modify.insert(parent_network_node_id, record.output.one_item().clone());
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
 				self.vector_modify.insert(parent_network_node_id, record.output.one_item().clone());

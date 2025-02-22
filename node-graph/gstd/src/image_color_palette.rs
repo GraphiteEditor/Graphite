@@ -1,19 +1,10 @@
 use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::transform::Footprint;
-use graphene_core::Color;
+use graphene_core::{Color, Ctx};
 
 #[node_macro::node(category("Raster"))]
-async fn image_color_palette<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ImageFrameTable<Color>,
-		Footprint -> ImageFrameTable<Color>,
-	)]
-	image: impl Node<F, Output = ImageFrameTable<Color>>,
+async fn image_color_palette(
+	_: impl Ctx,
+	image: ImageFrameTable<Color>,
 	#[min(1.)]
 	#[max(28.)]
 	max_size: u32,
@@ -25,7 +16,6 @@ async fn image_color_palette<F: 'n + Send>(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	let image = image.eval(footprint).await;
 	let image = image.one_item();
 
 	for pixel in image.image.data.iter() {

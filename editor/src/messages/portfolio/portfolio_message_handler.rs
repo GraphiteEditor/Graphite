@@ -575,6 +575,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
+						log::error!("could not get reference in deserialize_document");
 						continue;
 					};
 
@@ -583,6 +584,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 					let inputs_count = node.inputs.len();
+
+					// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
+					if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+						document.network_interface.set_manual_compostion(node_id, &[], graph_craft::concrete!(graphene_std::Context).into());
+					}
 
 					// Upgrade Fill nodes to the format change in #1778
 					if reference == "Fill" && inputs_count == 8 {

@@ -19,7 +19,7 @@ use crate::wasm_application_io::WasmApplicationIo;
 
 // TODO: Move to graph-craft
 #[node_macro::node(category("Debug: GPU"))]
-async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
@@ -279,7 +279,7 @@ where
 }
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
+async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
 	let foreground = foreground.one_item();
 	let background = background.one_item();
 
