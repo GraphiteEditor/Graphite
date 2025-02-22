@@ -25,7 +25,7 @@
 			}
 
 			&.section {
-				// If changing this, update `--separator-height` in `Document.svelte`
+				// If changing this, update `--height-of-separator` in `Document.svelte`
 				margin: 12px 0;
 				width: 100%;
 

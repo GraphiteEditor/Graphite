@@ -191,6 +191,7 @@ In addition to the detailed projects above, here are some loose ideas that may b
 - [Node equivalence rewriting](https://github.com/GraphiteEditor/Graphite/issues/2021)
 - Snapping system overhaul
 - Advanced vector editing tool modes (segment editing, mesh vector, and more)
+- Meticulous tooling polishing and gizmo additions
 
 ## Successful past projects
 
