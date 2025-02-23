@@ -257,6 +257,13 @@ pub struct EditingText {
 	transform: DAffine2,
 }
 
+#[derive(Clone, Debug, Copy)]
+struct ResizingLayer {
+	id: LayerNodeIdentifier,
+	/// The transform of the text layer in document space at the start of the transformation.
+	original_transform: DAffine2,
+}
+
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
 	layer: LayerNodeIdentifier,
@@ -270,7 +277,7 @@ struct TextToolData {
 	pivot: Pivot,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
-	layer_dragging: Option<LayerNodeIdentifier>,
+	layer_dragging: Option<ResizingLayer>,
 }
 
 impl TextToolData {
@@ -399,15 +406,11 @@ impl TextToolData {
 			})
 	}
 
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, font_cache: &FontCache) {
+	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, font_cache: &FontCache) {
 		self.snap_candidates.clear();
 
-		if let Some(layer) = self.layer_dragging {
-			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
-				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
-			}
-
-			let quad = document.metadata().transform_to_document(layer) * text_bounding_box(layer, document, font_cache);
+		if let Some(ResizingLayer { id, .. }) = self.layer_dragging {
+			let quad = document.metadata().transform_to_document(id) * text_bounding_box(id, document, font_cache);
 			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 		}
 	}
@@ -510,14 +513,14 @@ impl Fsm for TextToolFsmState {
 							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED));
 						}
 					}
+
+					// The angle is choosen to be parallel to the X axis in the bounds transform.
+					let angle = bounding_box_manager.transform.transform_vector2(DVec2::X).to_angle();
+					// Update pivot
+					tool_data.pivot.update_pivot(&document, &mut overlay_context, angle);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
-
-				// Update pivot
-				let (min, max) = bounds.map(|quad| (quad.0[0], quad.0[2])).unwrap();
-				let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-				tool_data.pivot.update_pivot(&document, &mut overlay_context, 0.);
 
 				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
@@ -557,16 +560,20 @@ impl Fsm for TextToolFsmState {
 				if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
 
-					tool_data.layer_dragging = selected;
+					// Set the original transform
+					if let Some(id) = selected {
+						let original_transform = document.metadata().transform_to_document(id);
+						tool_data.layer_dragging = Some(ResizingLayer { id, original_transform });
+					}
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
 
-						if selected.is_some() {
-							bounds.center_of_transformation = graph_modification_utils::get_viewport_pivot(selected.unwrap(), &document.network_interface);
+						if let Some(selected) = selected {
+							bounds.center_of_transformation = graph_modification_utils::get_viewport_pivot(selected, &document.network_interface);
 						}
 					}
-					tool_data.get_snap_candidates(document, input, font_cache);
+					tool_data.get_snap_candidates(document, font_cache);
 
 					return TextToolFsmState::ResizingBounds;
 				}
@@ -613,36 +620,46 @@ impl Fsm for TextToolFsmState {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = center_bool.then_some(bounds.center_of_transformation);
 
-						let layer = tool_data.layer_dragging;
-						let node_id = layer.map(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface).unwrap());
-
-						if node_id.is_none() || layer.is_none() {
+						let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
+						let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {
+							warn!("Cannot get text node id");
+							tool_data.layer_dragging = None;
 							return TextToolFsmState::Ready;
-						}
+						};
 
-						let selected = Vec::from([layer.unwrap()]);
+						let selected = vec![dragging_layer.id];
 						let snap = Some(SizeSnapData {
 							manager: &mut tool_data.resize.snap_manager,
 							points: &mut tool_data.snap_candidates,
 							snap_data: SnapData::ignore(document, input, &selected),
 						});
 
-						let (mut position, mut size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
-						let [min, max] = [position, position + size].map(|point| bounds.original_bound_transform.transform_point2(point));
-						(position, size) = (min.min(max), (min - max).abs());
-						let transform = DAffine2::from_translation(position);
+						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
+						// Normalise so the size is always positive
+						let (position, size) = (position.min(position + size), size.abs());
+
+						// Compute the offset needed for the top left in bounds space
+						let original_position = movement.bounds[0].min(movement.bounds[1]);
+						let translation_bounds_space = position - original_position;
+
+						// Compute a transformation from bounds->viewport->layer
+						let transform_to_layer = document.metadata().transform_to_viewport(dragging_layer.id).inverse() * bounds.original_bound_transform;
+						let size_layer = transform_to_layer.transform_vector2(size);
+
+						// Find the translation necessary from the original position in viewport space
+						let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
 
 						responses.add(NodeGraphMessage::SetInput {
-							input_connector: InputConnector::node(node_id.unwrap(), 6),
-							input: NodeInput::value(TaggedValue::OptionalF64(Some(size.x)), false),
+							input_connector: InputConnector::node(node_id, 6),
+							input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.x)), false),
 						});
 						responses.add(NodeGraphMessage::SetInput {
-							input_connector: InputConnector::node(node_id.unwrap(), 7),
-							input: NodeInput::value(TaggedValue::OptionalF64(Some(size.y)), false),
+							input_connector: InputConnector::node(node_id, 7),
+							input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.y)), false),
 						});
 						responses.add(GraphOperationMessage::TransformSet {
-							layer: layer.unwrap(),
-							transform: transform,
+							layer: dragging_layer.id,
+							transform: DAffine2::from_translation(translation_viewport) * document.metadata().document_to_viewport * dragging_layer.original_transform,
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
