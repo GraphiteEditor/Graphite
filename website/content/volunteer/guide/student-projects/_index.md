@@ -39,7 +39,7 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 
 *Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube) -->
+- **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube)
 - **Needed Skills:** Rust, computer graphics
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
@@ -53,15 +53,18 @@ This is a key feature in Graphite's evolution to a fully-featured raster editor.
 
 *Generative AI and vision ML models will need to run in Graphite's node graph with a Rust-centric, modular, portable, deployable, scalable environment.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Oliver](https://github.com/otdavies) -->
+- **Possible Mentors:** [Oliver](https://github.com/otdavies)
 - **Needed Skills:** Machine learning (and potentially: Rust, Python, ONNX, Candle, Burn)
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Hard
-- **Expected Outcomes:** Specifics will vary by proposal. In general, a useful end-to-end integration of at least one GenAI or vision model into Graphite's node graph which can run locally and deploy to a server.
+- **Expected Outcomes:** Specifics will vary by proposal. In general, a useful end-to-end integration of at least one GenAI or vision model into Graphite's node graph which can run both locally and deployed to a hosting provider server.
 
-AI is filling a rapidly growing role as a tool in the creative process. Graphite's procedural node-based workflow is uniquely suited to leveraging the power and flexibility of machine learning nodes.
+AI/ML is filling a rapidly growing role as a tool in the creative process. Graphite's procedural node-based workflow is uniquely suited to leveraging the power and flexibility of AI nodes.
 
-[Segment Anything](https://segment-anything.com/) (object segmentation), [Depth Anything](https://depth-anything.github.io/) (depth estimation), and [Stable Diffusion](https://github.com/CompVis/stable-diffusion) (image generation, generative fill, style transfer, etc.) are currently the three models we are most [interested in integrating](https://github.com/GraphiteEditor/Graphite/issues/1694). The challenge is settling on an architecture and tech stack which is well suited for Graphite's requirements.
+[Segment Anything 2](https://ai.meta.com/sam2/) (object segmentation), [Depth Anything](https://depth-anything.github.io/) (depth estimation), and [Stable Diffusion](https://github.com/CompVis/stable-diffusion) (image generation, generative fill, style transfer, etc.) are currently the three models we are most [interested in integrating](https://github.com/GraphiteEditor/Graphite/issues/1694). The challenge is settling on an architecture and tech stack which is well suited for Graphite's requirements.
+
+<details>
+<summary>For additional technical details: click here</summary>
 
 The approach should be extensible to future models. It needs to run fast and natively on the assorted hardware of local user machines with hardware acceleration. It should be a one-click installation process for users to download and run models without requiring dependencies or environment setup. Ideally, it should allow the more lightweight models to run locally in browsers with WebGPU. It needs to also be deployable to servers in a scalable, cost-viable manner that reuses most of the same code that runs locally. Runtime overhead, cold start times, and memory usage should be minimized for quick, frequent switching between models in a node graph pipeline. The tech stack also needs to be permissively licensed and, as much as possible, Rust-centric so it doesn't add complexity to our Wasm and Tauri build processes. For Stable Diffusion, we need the flexability to track the latest research and extensions to the ecosystem like new base models, checkpoint training, DreamBooth, LoRA, ControlNet, IP-Adapter, etc. and expose these functionalities through modular nodes.
 
@@ -73,43 +76,50 @@ Another potential direction is to find a portable, modular, lightweight approach
 
 Based on the experience and insight brought to the table by the student, the nature of the project should be defined through preliminary discussions with the mentors and codified in the proposal. Machine learning and MLOps are fields that Graphite's team lack deep expertise in, so we are looking for a knowledgable student who can bring forth a well-researched and well-architected proposal and then execute on it.
 
+</details>
+
 ### Complex widget layout system
 
 *Graphite's UI needs an upgraded layout system to support more complex and dynamic widget arrangements defined from the backend.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
+- **Possible Mentors:** [Keavon](/about#keavon)
 - **Needed Skills:** Rust, web (Svelte, CSS, TypeScript)
-- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
+- **Project Size:** Small *(GSoC: 90 hours)* or Medium *(GSoC: 175 hours)*
 - **Difficulty:** Medium
 - **Expected Outcomes:** An improved system for defining widget layouts with better control and flexibility over arrangement and dynamic data binding. Reduction in boilerplate and plumbing required to define each new layout. Better control of styling between rows.
 
 The current system for defining the arrangement of widget layouts from the backend, created during a [previous student project](#2022-backend-layout-system), has served us well thus far but has limitations. This project aims to extend the system to better model our evolved requirements.
 
+Students should have a good level of familiarity with Rust design patterns to envision, prototype, propose, and robustly implement a new system that can handle the complexity of Graphite's use cases. The size of this project can vary depending on the proposal's scope and extent of refactoring to these and adjacent systems.
+
+<details>
+<summary>For additional technical details: click here</summary>
+
 The present system is very row-centric, which makes it challenging to create multi-row layouts that distribute their widgets across the space in concert with other rows. It also requires manual updates to the backend data model for each widget, which makes dynamic layouts require extra plumbing and room for mistakes. Defining popover and dialog menus is also cumbersome because each requires several new files in the backend architecture.
 
-Students should have a good level of familiarity with Rust design patterns to envision, prototype, propose, and robustly implement a new system that can handle the complexity of Graphite's use cases. The size of this project can vary depending on the proposal's scope and extent of refactoring to these and adjacent systems.
+</details>
 
 ### Node data table editor
 
 *The node graph data model for procedural content generation can be thought of as a spreadsheet, which needs a dedicated viewer/editor panel.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
+- **Possible Mentors:** [Keavon](/about#keavon)
 - **Needed Skills:** Rust, web (Svelte, TypeScript)
-- **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
+- **Project Size:** Medium *(GSoC: 175 hours)*
 - **Difficulty:** Easy-to-medium
 - **Expected Outcomes:** A functional panel in the editor that displays the selected node output data as a spreadsheet across multiple domains. Connection to the graph engine to read and edit the data. Virtual scrolling and efficient transfer of data to the frontend.
 
-The node graph is a powerful tool for procedural content generation, but it can be difficult to understand the data that flows through it. Node data can be represented as a spreadsheet, where each row presents a domain-specific instance (e.g., a point, segment, or face) and each column displays an attribute (like position, color, or radius).
+The node graph is a powerful tool for procedural content generation, but it can be difficult to understand the data that flows through it. Node data can be represented as a spreadsheet, where each row presents an instance type (e.g., a point, segment, face, or element) and each column displays an attribute (like position, color, or radius).
 
 This project involves implementing the frontend as a cleanly-written Svelte component that can display the data in a tabular format, where virtual scrolling lets it efficiently process only the visible portion of the full data table. Help will be provided in building the frontend component and especially its CSS styling, but the student should be familiar with efficient TypeScript and Rust programming to handle both frontend and backend challenges while maintaining a focus on performance. The backend portion will need to integrate with the node engine and surrounding tooling to query the data coming from the selected node.
 
-A larger-scoped version of the project can expand this to focus also on displaying thumbnail previews of data coming from each node's output. -->
+A larger-scoped version of the project can expand this to focus also on displaying thumbnail previews of data coming from each node's output.
 
 ### Animation system
 
 *Adding a timeline-based animation system to Graphite would begin realizing the vision as a versatile content creation suite supporting motion graphics.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
+- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis)
 - **Needed Skills:** Rust, web (Svelte, CSS, SVG, TypeScript)
 - **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Easy-to-medium
@@ -125,11 +135,11 @@ In the backend, the animation curves need to be evaluated at the playhead positi
 
 *Graphite has many areas that could benefit from better automated testing for bugs and performance regressions.*
 
-<!-- - **Possible Mentors:** [Dennis](/about#dennis), [Hypercube](/about#hypercube) -->
+- **Possible Mentors:** [Dennis](/about#dennis), [Hypercube](/about#hypercube)
 - **Needed Skills:** Rust, unit testing
 - **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Easy
-- **Expected Outcomes:** Specific focus and scope may vary by the student's interests and proposal. In general, a significant increase in the coverage of tests in useful code areas (such as document loading, manipulation, and rendering) and attention towards systems which measure performance metrics and identify bottlenecks and regressions.
+- **Expected Outcomes:** Specific focus and scope may vary by the student's interests and proposal. In general, a significant increase in the coverage of tests in useful code areas (such as document loading, tool manipulation, and rendering) and attention towards systems which measure performance metrics and identify bottlenecks and regressions.
 
 Graphite could benefit from better testing coverage in a number of areas, especially end-to-end testing in the tool, document, and node graph systems. This project is about identifying and addressing areas that are lacking and most vulnerable to suffering from regressions. The student will be responsible for identifying areas that could benefit from better testing.
 
@@ -137,23 +147,28 @@ Graphite could benefit from better testing coverage in a number of areas, especi
 
 *Infrastructure to generate visualizations of Graphite's system architecture would be a valuable addition to the project's documentation and debugging tools.*
 
-<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis) -->
+- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis)
 - **Needed Skills:** Rust (especially proc macros)
 - **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Medium
 - **Expected Outcomes:** A system built from proc macros which can generate useful visualizations of Graphite's system architecture. Depending on proposal scope, this can include static visualizations added to the documentation, dynamic message flow visualizations for debugging, and tools to help identify redundant message traffic.
 
-Graphite's editor architecture, based around a message-passing processing queue, is structured as a hierarchical system of message handlers. Each handler stores its own state, and references to the state data may be passed along to its child handlers they need it.
+Graphite's editor architecture, based around a message-passing processing queue, is structured as a hierarchical system of message handlers. Each handler stores its own state, and references to the state data may be passed along to its child handlers that need it.
 
 It is challenging to document the hierarchy of this system as a tree in the documentation because the code is often changing. Generating a visualization would ensure it remains up to date. Additional visualizations could also be generated with greater detail, such as message flow diagrams for each message.
 
+<details>
+<summary>For additional technical details: click here</summary>
+
 If proposed as part of the project's scope, a runtime component could be added as an extension of the aforementioned documentation visualizations. These would help developers understand and trace the flow of message traffic, essentially becoming a visual debugger for the message system. Instrumentation included with this could help identify message traffic that causes particularly high load, or locate redundant message traffic, to keep Graphite's performance under control. Timing could also be measured for each message and visualized in a custom flame graph. Current debugger tools can't provide this information because the message-passing approach "flattens out" the traditional function call stack.
+
+</details>
 
 ### Your own idea
 
 *If you have an idea for a project that you think would be a good fit, we'd love to hear it!*
 
-<!-- - **Possible Mentors:** Varies -->
+- **Possible Mentors:** Varies
 - **Needed Skills:** Varies
 - **Project Size:** Varies
 - **Difficulty:** Varies
@@ -163,9 +178,9 @@ If none of the projects above suit your interests or experience, we are very ope
 
 As is the case with all projects, please discuss this with us on Discord to flesh out your idea. Unsolicited proposals that have not been discussed with us will almost certainly be rejected.
 
-### More ideas for 2025
+### More ideas
 
-In addition to the detailed projects above, here are some loose ideas that may be expanded into full project descriptions before the 2025 GSoC application period opens:
+In addition to the detailed projects above, here are some loose ideas that may be expanded into full project proposals by means of discussion with the core team:
 
 - Sophisticated text layout and advanced typography features
 - PDF import/export? (scope and viability depends on the state of available libraries)
@@ -175,6 +190,8 @@ In addition to the detailed projects above, here are some loose ideas that may b
 - Image processing algorithms for photography
 - [Node equivalence rewriting](https://github.com/GraphiteEditor/Graphite/issues/2021)
 - Snapping system overhaul
+- Advanced vector editing tool modes (segment editing, mesh vector, and more)
+- Meticulous tooling polishing and gizmo additions
 
 ## Successful past projects
 

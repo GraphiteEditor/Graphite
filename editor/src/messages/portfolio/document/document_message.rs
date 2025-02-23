@@ -37,10 +37,9 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	ClearArtboards,
+	RemoveArtboards,
 	ClearLayersPanel,
 	CreateEmptyFolder,
-	DebugPrintDocument,
 	DeleteNode {
 		node_id: NodeId,
 	},
@@ -115,6 +114,7 @@ pub enum DocumentMessage {
 	SelectedLayersLowerToBack,
 	SelectedLayersRaise,
 	SelectedLayersRaiseToFront,
+	SelectedLayersReverse,
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},

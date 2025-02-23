@@ -202,7 +202,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
-			GraphOperationMessage::ClearArtboards => {
+			GraphOperationMessage::RemoveArtboards => {
 				if network_interface.all_artboards().is_empty() {
 					return;
 				}

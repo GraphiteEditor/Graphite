@@ -37,7 +37,7 @@
 
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
-		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
+		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
 		<ColorPicker
 			open={primaryOpen}
 			on:open={({ detail }) => (primaryOpen = detail)}
@@ -47,7 +47,7 @@
 		/>
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
-		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
+		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
 		<ColorPicker
 			open={secondaryOpen}
 			on:open={({ detail }) => (secondaryOpen = detail)}
@@ -70,27 +70,55 @@
 
 			> button {
 				--swatch-color: #ffffff;
+				--ring-color: var(--color-5-dullgray);
 				width: 100%;
 				height: 100%;
-				border-radius: 50%;
-				border: 2px var(--color-5-dullgray) solid;
-				box-shadow: 0 0 0 2px var(--color-3-darkgray);
 				margin: 0;
 				padding: 0;
+				border: none;
+				outline: none;
+				border-radius: 50%;
 				box-sizing: border-box;
-				background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--color-transparent-checkered-background);
-				background-size:
-					100% 100%,
-					var(--color-transparent-checkered-background-size);
-				background-position:
-					0 0,
-					var(--color-transparent-checkered-background-position);
-				background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 				overflow: hidden;
+				position: relative;
+				// Color of the panel background, used to extend outside the ring and appear to cut out a crescent from the lower circle (by covering it up with the panel background color)
+				box-shadow: 0 0 0 2px var(--color-3-darkgray);
+				background: var(--color-3-darkgray);
+
+				// Main color and checked transparency pattern (inset by 1px to begin inside/below the ring to avoid antialiasing artifacts)
+				&::before {
+					content: "";
+					position: absolute;
+					top: 1px;
+					bottom: 1px;
+					left: 1px;
+					right: 1px;
+					border-radius: 50%;
+					background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--color-transparent-checkered-background);
+					background-size:
+						100% 100%,
+						var(--color-transparent-checkered-background-size);
+					background-position:
+						0 0,
+						var(--color-transparent-checkered-background-position-plus-one);
+					background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
+				}
+
+				// Gray ring outline
+				&::after {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					left: 0;
+					right: 0;
+					border-radius: 50%;
+					box-shadow: inset 0 0 0 2px var(--ring-color);
+				}
 
 				&:hover,
 				&.open {
-					border-color: var(--color-6-lowergray);
+					--ring-color: var(--color-6-lowergray);
 				}
 			}
 

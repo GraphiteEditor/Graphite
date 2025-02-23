@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 
@@ -50,6 +50,7 @@ pub enum SplineToolMessage {
 	Confirm,
 	DragStart { append_to_selected: Key },
 	DragStop,
+	MergeEndpoints,
 	PointerMove,
 	PointerOutsideViewport,
 	Undo,
@@ -61,6 +62,7 @@ enum SplineToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
+	MergingEndpoints,
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -102,7 +104,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -112,7 +114,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -166,6 +168,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 				Confirm,
 				Abort,
 			),
+			SplineToolFsmState::MergingEndpoints => actions!(SplineToolMessageDiscriminant;
+				MergeEndpoints,
+			),
 		}
 	}
 }
@@ -194,14 +199,21 @@ struct SplineToolData {
 	preview_segment: Option<SegmentId>,
 	extend: bool,
 	weight: f64,
-	layer: Option<LayerNodeIdentifier>,
+	/// The layer we are editing.
+	current_layer: Option<LayerNodeIdentifier>,
+	/// The layer and endpoint to merge with the spline's starting endpoint after drawing is complete.
+	start_merge_layer: Option<(LayerNodeIdentifier, PointId)>,
+	/// The endpoint pairs to merge after we have finished drawing the spline and merged the layers.
+	merge_endpoints: Vec<(PointId, PointId)>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
 }
 
 impl SplineToolData {
 	fn cleanup(&mut self) {
-		self.layer = None;
+		self.current_layer = None;
+		self.start_merge_layer = None;
+		self.merge_endpoints = Vec::new();
 		self.preview_point = None;
 		self.preview_segment = None;
 		self.extend = false;
@@ -211,7 +223,7 @@ impl SplineToolData {
 	/// Get the snapped point while ignoring current layer
 	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> SnappedPoint {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-		let ignore = if let Some(layer) = self.layer { vec![layer] } else { vec![] };
+		let ignore = if let Some(layer) = self.current_layer { vec![layer] } else { vec![] };
 		let snap_data = SnapData::ignore(document, input, &ignore);
 		self.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default())
 	}
@@ -239,9 +251,22 @@ impl Fsm for SplineToolFsmState {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
+			(SplineToolFsmState::MergingEndpoints, SplineToolMessage::MergeEndpoints) => {
+				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
+
+				if let Some((first, second)) = tool_data.merge_endpoints.pop() {
+					merge_points(document, layer, first, second, responses);
+					responses.add(SplineToolMessage::MergeEndpoints);
+					return SplineToolFsmState::MergingEndpoints;
+				}
+				responses.add(DocumentMessage::EndTransaction);
+
+				SplineToolFsmState::Ready
+			}
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
+				tool_data.snap_manager.cleanup(responses);
 				tool_data.cleanup();
 				tool_data.weight = tool_options.line_weight;
 
@@ -249,25 +274,38 @@ impl Fsm for SplineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
+				let layers = LayerNodeIdentifier::ROOT_PARENT
+					.descendants(document.metadata())
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+
 				// Extend an endpoint of the selected path
-				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-				if let Some((layer, point, position)) = should_extend(document, viewport, SNAP_POINT_TOLERANCE, selected_nodes.selected_layers(document.metadata()), preferences) {
-					tool_data.layer = Some(layer);
-					tool_data.points.push((point, position));
-					tool_data.next_point = position;
-					tool_data.extend = true;
+				if let Some((layer, point, position)) = should_extend(document, viewport, SNAP_POINT_TOLERANCE, layers, preferences) {
+					if find_spline(document, layer).is_some() {
+						// If the point is the part of Spline then we extend it.
+						tool_data.current_layer = Some(layer);
+						tool_data.points.push((point, position));
+						tool_data.next_point = position;
+						tool_data.extend = true;
 
-					extend_spline(tool_data, true, responses);
+						extend_spline(tool_data, true, responses);
 
-					return SplineToolFsmState::Drawing;
+						return SplineToolFsmState::Drawing;
+					} else {
+						// Otherwise we keep the layer identifier and endpoint identifier to merge it with the spline later when we finish drawing the spline.
+						tool_data.start_merge_layer = Some((layer, point));
+					}
 				}
 
-				// Create new path in the same layer when shift is down
-				if input.keyboard.key(append_to_selected) {
-					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
-					let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
-					if let Some(layer) = existing_layer {
-						tool_data.layer = Some(layer);
+				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+				let selected_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+
+				let append_to_selected_layer = input.keyboard.key(append_to_selected);
+
+				// Create new path in the selected layer when shift is down
+				match (selected_layer, append_to_selected_layer) {
+					(Some(layer), true) => {
+						tool_data.current_layer = Some(layer);
 
 						let transform = document.metadata().transform_to_viewport(layer);
 						let position = transform.inverse().transform_point2(input.mouse.position);
@@ -275,6 +313,7 @@ impl Fsm for SplineToolFsmState {
 
 						return SplineToolFsmState::Drawing;
 					}
+					_ => {}
 				}
 
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -283,14 +322,14 @@ impl Fsm for SplineToolFsmState {
 
 				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
-				let spline_node_type = resolve_document_node_type("Splines from Points").expect("Spline from Points node does not exist");
+				let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
-				tool_data.layer = Some(layer);
+				tool_data.current_layer = Some(layer);
 
 				responses.add(Message::StartBuffer);
 
@@ -302,13 +341,9 @@ impl Fsm for SplineToolFsmState {
 					tool_data.extend = false;
 					return SplineToolFsmState::Drawing;
 				}
-				if tool_data.layer.is_none() {
+				if tool_data.current_layer.is_none() {
 					return SplineToolFsmState::Ready;
 				};
-				if join_path(document, input.mouse.position, tool_data, preferences, responses) {
-					responses.add(DocumentMessage::EndTransaction);
-					return SplineToolFsmState::Ready;
-				}
 				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
 				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					extend_spline(tool_data, false, responses);
@@ -317,7 +352,7 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
-				let Some(layer) = tool_data.layer else { return SplineToolFsmState::Ready };
+				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
 				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore, preferences);
 
@@ -357,17 +392,16 @@ impl Fsm for SplineToolFsmState {
 
 				state
 			}
-			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
+			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm) => {
 				if tool_data.points.len() >= 2 {
 					delete_preview(tool_data, responses);
-					responses.add(DocumentMessage::EndTransaction);
-				} else {
-					responses.add(DocumentMessage::AbortTransaction);
+					merge_paths_layer(document, tool_data, preferences, responses);
 				}
-
-				tool_data.snap_manager.cleanup(responses);
-				tool_data.cleanup();
-
+				responses.add(SplineToolMessage::MergeEndpoints);
+				SplineToolFsmState::MergingEndpoints
+			}
+			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				SplineToolFsmState::Ready
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
@@ -392,6 +426,7 @@ impl Fsm for SplineToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
 			]),
+			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -402,40 +437,56 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-/// Return `true` only if new segment is inserted to connect two end points in the selected layer otherwise `false`.
-fn join_path(document: &DocumentMessageHandler, mouse_pos: DVec2, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> bool {
-	let Some(&(endpoint, _)) = tool_data.points.last() else { return false };
-
+fn merge_paths_layer(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
+	if tool_data.points.len() < 2 {
+		return;
+	};
+	let (last_endpoint, last_endpoint_position) = tool_data.points.last().unwrap();
+	let (start_endpoint, _) = tool_data.points.first().unwrap();
 	let preview_point = tool_data.preview_point;
-	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
-	let selected_layers = selected_nodes.selected_layers(document.metadata());
+	let Some(current_layer) = tool_data.current_layer else { return };
 
-	// Get the closest point to mouse position which is not preview_point or end_point.
-	let closest_point = closest_point(
-		document,
-		mouse_pos,
-		PATH_JOIN_THRESHOLD,
-		selected_layers,
-		|cp| preview_point.is_some_and(|pp| pp == cp) || cp == endpoint,
-		preferences,
-	);
-	let Some((layer, join_point, _)) = closest_point else { return false };
+	let layers = LayerNodeIdentifier::ROOT_PARENT
+		.descendants(document.metadata())
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
-	// Last end point inserted was the preview point and segment therefore we delete it before joining the end_point & join_point.
-	delete_preview(tool_data, responses);
+	let exclude = |p: PointId| preview_point.is_some_and(|pp| pp == p) || *last_endpoint == p;
+	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
 
-	let points = [endpoint, join_point];
-	let id = SegmentId::generate();
-	let modification_type = VectorModificationType::InsertSegment { id, points, handles: [None, None] };
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	let start_merge_layer = tool_data.start_merge_layer;
+	let end_merge_layer = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude, preferences);
 
-	true
+	let mut endpoints_to_merge = [None, None];
+
+	match (start_merge_layer, end_merge_layer) {
+		(Some(first), Some(last)) => {
+			merge_layers(document, first.0, last.0, responses);
+			merge_layers(document, current_layer, first.0, responses);
+			endpoints_to_merge = [first.1, last.1].map(|p| Some(p));
+		}
+		(Some(first), None) => {
+			endpoints_to_merge[0] = Some(first.1);
+			merge_layers(document, current_layer, first.0, responses);
+		}
+		(None, Some(last)) => {
+			endpoints_to_merge[1] = Some(last.1);
+			merge_layers(document, current_layer, last.0, responses);
+		}
+		(None, None) => return,
+	}
+
+	if let Some(merge_endpoint) = endpoints_to_merge[0] {
+		tool_data.merge_endpoints.push((*start_endpoint, merge_endpoint));
+	}
+	if let Some(merge_endpoint) = endpoints_to_merge[1] {
+		tool_data.merge_endpoints.push((*last_endpoint, merge_endpoint));
+	}
 }
 
 fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
 	delete_preview(tool_data, responses);
 
-	let Some(layer) = tool_data.layer else { return };
+	let Some(layer) = tool_data.current_layer else { return };
 
 	let next_point_pos = tool_data.next_point;
 	let next_point_id = PointId::generate();
@@ -464,7 +515,7 @@ fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 }
 
 fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) {
-	let Some(layer) = tool_data.layer else { return };
+	let Some(layer) = tool_data.current_layer else { return };
 
 	if let Some(id) = tool_data.preview_point {
 		let modification_type = VectorModificationType::RemovePoint { id };

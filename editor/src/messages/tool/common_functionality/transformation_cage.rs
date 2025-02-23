@@ -1,6 +1,6 @@
 use crate::consts::{
-	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR,
-	SELECTION_DRAG_ANGLE,
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY,
+	MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -33,14 +33,22 @@ pub struct SelectedEdges {
 	aspect_ratio: f64,
 }
 
+/// The different possible configurations for how the transform cage is presently viewed, depending on its per-axis sizes and the level of zoom.
+/// See doc comments in each variant for a diagram of the configuration.
 #[derive(Clone, Debug, Default, PartialEq)]
-enum HandleDisplayCategory {
+enum TransformCageSizeCategory {
 	#[default]
+	/// - ![Diagram](https://files.keavon.com/-/OrganicHelplessWalleye/capture.png)
 	Full,
+	/// - ![Diagram](https://files.keavon.com/-/AnyGoldenrodHawk/capture.png)
 	ReducedLandscape,
+	/// - ![Diagram](https://files.keavon.com/-/DarkslategrayAcidicFirebelliedtoad/capture.png)
 	ReducedPortrait,
+	/// - ![Diagram](https://files.keavon.com/-/GlisteningComplexSeagull/capture.png)
 	ReducedBoth,
+	/// - ![Diagram](https://files.keavon.com/-/InconsequentialCharmingLynx/capture.png)
 	Narrow,
+	/// - ![Diagram](https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png)
 	Flat,
 }
 
@@ -344,6 +352,7 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
+	pub transform_tampered: bool,
 	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
@@ -371,7 +380,7 @@ impl BoundingBoxManager {
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
 		let quad = self.transform * Quad::from_box(self.bounds);
-		let category = self.overlay_display_category(quad);
+		let category = self.overlay_display_category();
 
 		let horizontal_edges = [quad.top_right().midpoint(quad.bottom_right()), quad.bottom_left().midpoint(quad.top_left())];
 		let vertical_edges = [quad.top_left().midpoint(quad.top_right()), quad.bottom_right().midpoint(quad.bottom_left())];
@@ -379,37 +388,50 @@ impl BoundingBoxManager {
 		// Draw the bounding box rectangle
 		overlay_context.quad(quad, None);
 
-		let mut draw_handle = |point: DVec2| overlay_context.square(point, Some(6.), None, None);
+		let mut draw_handle = |point: DVec2| {
+			let quad = DAffine2::from_angle_translation((quad.top_left() - quad.top_right()).to_angle(), point)
+				* Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
+			overlay_context.quad(quad, Some(COLOR_OVERLAY_WHITE));
+		};
 
 		// Draw the horizontal midpoint drag handles
-		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedLandscape) {
+		if matches!(
+			category,
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
+		) {
 			horizontal_edges.map(&mut draw_handle);
 		}
 
 		// Draw the vertical midpoint drag handles
-		if matches!(category, HandleDisplayCategory::Full | HandleDisplayCategory::Narrow | HandleDisplayCategory::ReducedPortrait) {
+		if matches!(
+			category,
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
+		) {
 			vertical_edges.map(&mut draw_handle);
 		}
 
 		// Draw the corner drag handles
 		if matches!(
 			category,
-			HandleDisplayCategory::Full | HandleDisplayCategory::ReducedBoth | HandleDisplayCategory::ReducedLandscape | HandleDisplayCategory::ReducedPortrait
+			TransformCageSizeCategory::Full | TransformCageSizeCategory::ReducedBoth | TransformCageSizeCategory::ReducedLandscape | TransformCageSizeCategory::ReducedPortrait
 		) {
 			quad.0.map(&mut draw_handle);
 		}
 
 		// Draw the flat line endpoint drag handles
-		if category == HandleDisplayCategory::Flat {
+		if category == TransformCageSizeCategory::Flat {
 			draw_handle(self.transform.transform_point2(self.bounds[0]));
 			draw_handle(self.transform.transform_point2(self.bounds[1]));
 		}
 	}
 
-	fn overlay_display_category(&self, quad: Quad) -> HandleDisplayCategory {
+	/// Find the [`TransformCageSizeCategory`] of this bounding box based on size thresholds.
+	fn overlay_display_category(&self) -> TransformCageSizeCategory {
+		let quad = self.transform * Quad::from_box(self.bounds);
+
 		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
-		if (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any() {
-			return HandleDisplayCategory::Flat;
+		if self.is_bounds_flat() {
+			return TransformCageSizeCategory::Flat;
 		}
 
 		let vertical_length = (quad.top_left() - quad.top_right()).length_squared();
@@ -421,14 +443,25 @@ impl BoundingBoxManager {
 			let horizontal_edge_visible = horizontal_length > MIN_LENGTH_FOR_MIDPOINT_VISIBILITY.powi(2);
 
 			return match (vertical_edge_visible, horizontal_edge_visible) {
-				(true, true) => HandleDisplayCategory::Full,
-				(true, false) => HandleDisplayCategory::ReducedPortrait,
-				(false, true) => HandleDisplayCategory::ReducedLandscape,
-				(false, false) => HandleDisplayCategory::ReducedBoth,
+				(true, true) => TransformCageSizeCategory::Full,
+				(true, false) => TransformCageSizeCategory::ReducedPortrait,
+				(false, true) => TransformCageSizeCategory::ReducedLandscape,
+				(false, false) => TransformCageSizeCategory::ReducedBoth,
 			};
 		}
 
-		HandleDisplayCategory::Narrow
+		TransformCageSizeCategory::Narrow
+	}
+
+	/// Determine if these bounds are flat ([`TransformCageSizeCategory::Flat`]), which means that the width and/or height is essentially zero and the bounds are a line with effectively no area. This can happen on actual lines (axis-aligned, i.e. drawn horizontally or vertically) or when an element is scaled to zero in X or Y. A flat transform cage can still be rotated by a transformation, but its local space remains flat.
+	fn is_bounds_flat(&self) -> bool {
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
+	}
+
+	/// Determine if the given point in viewport space falls within the bounds of `self`.
+	fn is_contained_in_bounds(&self, point: DVec2) -> bool {
+		let document_point = self.transform.inverse().transform_point2(point);
+		Quad::from_box(self.bounds).contains(document_point)
 	}
 
 	/// Compute the threshold in viewport space. This only works with affine transforms as it assumes lines remain parallel.
@@ -469,6 +502,10 @@ impl BoundingBoxManager {
 			let height = max.y - min.y;
 
 			if width < edge_min_x || height <= edge_min_y {
+				if self.transform_tampered {
+					return None;
+				}
+
 				if min.x < cursor.x && cursor.x < max.x && cursor.y < max.y && cursor.y > min.y {
 					return None;
 				}
@@ -504,8 +541,11 @@ impl BoundingBoxManager {
 
 	/// Check if the user is rotating with the bounds
 	pub fn check_rotate(&self, cursor: DVec2) -> bool {
-		let cursor = self.transform.inverse().transform_point2(cursor);
+		if self.is_contained_in_bounds(cursor) {
+			return false;
+		}
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
+		let cursor = self.transform.inverse().transform_point2(cursor);
 
 		let flat = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
@@ -518,18 +558,18 @@ impl BoundingBoxManager {
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
 	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
-		if let Some((top, bottom, left, right)) = self.check_selected_edges(input.mouse.position) {
-			match (top, bottom, left, right) {
+		let edges = self.check_selected_edges(input.mouse.position);
+
+		match edges {
+			Some((top, bottom, left, right)) if !self.is_bounds_flat() => match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
 				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
 				(true, _, _, true) | (_, true, true, _) => MouseCursorIcon::NESWResize,
 				_ => MouseCursorIcon::Default,
-			}
-		} else if rotate && self.check_rotate(input.mouse.position) {
-			MouseCursorIcon::Rotate
-		} else {
-			MouseCursorIcon::Default
+			},
+			_ if rotate && self.check_rotate(input.mouse.position) => MouseCursorIcon::Rotate,
+			_ => MouseCursorIcon::Default,
 		}
 	}
 }

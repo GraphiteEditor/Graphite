@@ -83,20 +83,10 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_box_pivot(&mut self, normalized_pivot: DVec2, layer_transform: DAffine2, bounds_transform: DAffine2, overlay_context: &mut OverlayContext) {
-		self.normalized_pivot = normalized_pivot;
-		self.transform_from_normalized = layer_transform * bounds_transform;
-
-		self.pivot = Some(self.transform_from_normalized.transform_point2(normalized_pivot));
-		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot);
-		}
-	}
-
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64) {
 		self.recalculate_pivot(document);
 		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot);
+			overlay_context.pivot(pivot, angle);
 		}
 	}
 
@@ -121,11 +111,12 @@ impl Pivot {
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 		{
 			let transform = Self::get_layer_pivot_transform(layer, document);
+			// Only update the pivot when computed position is finite.
+			if transform.matrix2.determinant().abs() <= f64::EPSILON {
+				return;
+			};
 			let pivot = transform.inverse().transform_point2(position);
-			// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.
-			if pivot.is_finite() {
-				responses.add(GraphOperationMessage::TransformSetPivot { layer, pivot });
-			}
+			responses.add(GraphOperationMessage::TransformSetPivot { layer, pivot });
 		}
 	}
 

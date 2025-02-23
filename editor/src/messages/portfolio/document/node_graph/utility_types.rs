@@ -200,3 +200,32 @@ pub enum Direction {
 	Left,
 	Right,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum GraphWireStyle {
+	#[default]
+	Direct = 0,
+	GridAligned = 1,
+}
+
+impl std::fmt::Display for GraphWireStyle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			GraphWireStyle::GridAligned => write!(f, "Grid-Aligned"),
+			GraphWireStyle::Direct => write!(f, "Direct"),
+		}
+	}
+}
+
+impl GraphWireStyle {
+	pub fn tooltip_description(&self) -> &'static str {
+		match self {
+			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes",
+			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes",
+		}
+	}
+
+	pub fn is_direct(&self) -> bool {
+		*self == GraphWireStyle::Direct
+	}
+}
