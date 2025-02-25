@@ -1102,9 +1102,9 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
 	}
 
-	/// Produces a list that correspons with the point id. The value is how many segments are connected.
+	/// Produces a list that corresponds with the point id. The value is how many segments are connected.
 	fn segments_connected_count(vector_data: &VectorData) -> Vec<u8> {
-		// Count the number of segments connectign to each point.
+		// Count the number of segments connecting to each point.
 		let mut segments_connected_count = vec![0; vector_data.point_domain.ids().len()];
 		for &point_index in vector_data.segment_domain.start_point().iter().chain(vector_data.segment_domain.end_point()) {
 			segments_connected_count[point_index] += 1;
@@ -1219,6 +1219,29 @@ async fn bevel<F: 'n + Send + Copy>(
 	let source = source.one_item();
 
 	let result = bevel_algorithm(source.clone(), distance);
+
+	VectorDataTable::new(result)
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn merge_by_distance<F: 'n + Send + Copy>(
+	#[implementations(
+		(),
+		Footprint,
+	)]
+	footprint: F,
+	#[implementations(
+		() -> VectorDataTable,
+		Footprint -> VectorDataTable,
+	)]
+	source: impl Node<F, Output = VectorDataTable>,
+	#[default(10.)] distance: Length,
+) -> VectorDataTable {
+	let source = source.eval(footprint).await;
+	let source = source.one_item();
+
+	let mut result = source.clone();
+	result.merge_by_distance(distance);
 
 	VectorDataTable::new(result)
 }
