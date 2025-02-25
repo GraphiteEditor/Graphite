@@ -1,30 +1,31 @@
 +++
 title = "Graphite progress report (Q4 2024)"
-date = 2024-12-30
+date = 2025-03-31
 [extra]
-banner = "..."
-banner_png = "..."
+banner = "https://files.keavon.com/-/BelatedDoubleLonghornbeetle/Dunes.png"
+banner_png = "https://files.keavon.com/-/BelatedDoubleLonghornbeetle/Dunes.png"
 author = "Keavon Chambers & Hypercube"
 summary = "TODO: Summary and date above"
+css = ["/component/demo-artwork.css"]
 +++
 
-[Graphite](/), a new open source 2D procedural graphics editor, has spent October-December on a multitude of smaller quality-of-life features and bug fixes, making Graphite a usable alternative to vector graphics software such as Inkscape for the web.
+[Graphite](/), a new open source 2D procedural graphics editor, has [wrapped up 2024](../year-in-review-2024-highlights-and-a-peek-at-2025) with a fourth quarter (October-December) focused on introducing **quality of life features** for both Graphite's interactive **tools-driven and procedural editing** workflows.
 
 All Q4 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-10-01&until=2024-12-31) and all noteworthy changes are detailed below.
 
 <!-- more -->
 
-This is the forth in our series of quarterly progress reports (congratulations on a full year @Keavon). If you missed the [last one](../graphite-progress-report-q3-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars of GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
+This is the fourth in our 2024 series of quarterly progress reports. If you missed [the previous post](../graphite-progress-report-q3-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars on GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
 
-The new *todo!()* artwork shown here ...
+To showcase the newly introduced feature of converting selected nodes into conveniently reusable subgraphs, the new *Procedural Dunes* artwork is presented below. Each dune layer is controlled just by a color, height, and random seed.
 
 <div class="demo-artwork">
 	<a href="...">
-		<img src="..." onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of ..." />
+		<img src="https://files.keavon.com/-/BelatedDoubleLonghornbeetle/Dunes.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Procedural Dunes" />
 	</a>
 	<p>
 		<span>
-			<em>todo!()</em>
+			<em>Procedural Dunes</em>
 		</span>
 		<br />
 		<span>
@@ -38,8 +39,28 @@ The new *todo!()* artwork shown here ...
 <!--
 EDITOR'S NOTE: The grammatical structure of each bullet point should follow the form: "Check out our new... [Bullet point description]"
 -->
+- Node graph support for making a custom node by merging the selected nodes into a subgraph with the node context menu's "Merge Selected Nodes" option, or the shortcut <kbd>Ctrl</kbd><kbd>M</kbd> (macOS: <kbd>⌘</kbd><kbd>M</kbd>) <small>([#2097](https://github.com/GraphiteEditor/Graphite/pull/2097))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/ProperCoolZorilla/capture_64_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - Text controls for line height, character spacing, and wrappable box areas that can be dragged with the Text tool <small>([#2016](https://github.com/GraphiteEditor/Graphite/pull/2016), [#2118](https://github.com/GraphiteEditor/Graphite/pull/2118))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/ExhaustedBrokenCalf/capture_44_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - Pinable node sections in the Properties panel <small>([commit e6d8c47](https://github.com/GraphiteEditor/Graphite/commit/e6d8c4743d2aff15985c929df2cc7381a61908a0))</small>
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/PaleFrayedGentoopenguin/capture_47_.mp4" type="video/mp4" />
+  	</video>
+  </div>
 - New demo artwork, *Changing Seasons*, featured in the [last blog post](../graphite-progress-report-q3-2024) <small>([commit fa6b5f2](https://github.com/GraphiteEditor/Graphite/commit/fa6b5f298adf395362e1aaa2c07be89fa89eaee2))</small>
 
   <div class="demo-artwork" style="justify-content: left">
@@ -56,32 +77,177 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
   		</span>
   	</p>
   </div>
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/WeePaleAmbushbug/capture_48_.mp4" type="video/mp4" />
+  	</video>
+  </div>
 
 - *Offset Path* node that expands or contracts a vector shape <small>([#2030](https://github.com/GraphiteEditor/Graphite/pull/2030))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/FriendlyDrearyIsopod/capture_49_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - *Flatten Vector Elements* node that turns multiple layers of vector paths into a single combined path; and changes to the *Copy to Points*, *Repeat*, and *Circular Repeat* nodes so they output group data instead of a single vector path, allowing each separate layer to be modified by nodes which operate on groups (like *Assign Colors*), or flattened with *Flatten Vector Elements* to have the prior behavior <small>([#2011](https://github.com/GraphiteEditor/Graphite/pull/2011), [#2045](https://github.com/GraphiteEditor/Graphite/pull/2045))</small>
+
+  <img src="https://files.keavon.com/-/FemaleSafeOx/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="TODO:" />
+
 - Support for *Fill* and *Stroke* nodes with groups, applying to each vector layer within <small>([#2046](https://github.com/GraphiteEditor/Graphite/pull/2046))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/UtterMysteriousHaddock/capture_50_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - *Switch* node that routes one of two data connections based on a true or false value <small>([#2064](https://github.com/GraphiteEditor/Graphite/pull/2064))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/LimpingCadetblueFairybluebird/capture_51_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - *Bevel* node that flattens the corners of vector shapes <small>([#2067](https://github.com/GraphiteEditor/Graphite/pull/2067), [#2096](https://github.com/GraphiteEditor/Graphite/pull/2096))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/LowPointedBorer/capture_53_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - *Jitter Points* node that randomly offsets each point in a vector path <small>([commit 7d86bf4](https://github.com/GraphiteEditor/Graphite/commit/7d86bf4abf7edfe6a5d021075e050614bee07c13))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/DistinctBountifulDove/capture_54_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - Node insertion button, and layer renaming, directly from the Properties panel <small>([#2072](https://github.com/GraphiteEditor/Graphite/pull/2072), [#2081](https://github.com/GraphiteEditor/Graphite/pull/2081))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/PartialAnySturgeon/capture_55_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - Path tool feature where pressing <kbd>Space</kbd> while dragging a handle makes the anchor be dragged as well <small>([#2065](https://github.com/GraphiteEditor/Graphite/pull/2065))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/WhitesmokeCanineWireworm/capture_57_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - Path tool feature where pressing <kbd>Tab</kbd> while dragging a handle makes it swap to the opposite handle <small>([#2058](https://github.com/GraphiteEditor/Graphite/pull/2058))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/MisguidedNegativeGoldeneye/capture_58_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - Pen tool feature allowing the connection of layers by their endpoints so they both get merged into a single layer <small>([#2076](https://github.com/GraphiteEditor/Graphite/pull/2076))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/SkyblueBaggyWeasel/capture_60_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
 - *Clamp* node that limits an input number between a minimum and maximum range <small>([#2087](https://github.com/GraphiteEditor/Graphite/pull/2087))</small>
-- *To U32* and *To U64* node that converts numbers to a positive integer type required by a few nodes, as a workaround for automatic type conversion not being fully supported yet <small>([#2087](https://github.com/GraphiteEditor/Graphite/pull/2087))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/SerpentineBoringLeonberger/capture_63_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- *To U32* and *To U64* nodes that convert numbers to a positive integer type required by a few nodes, as a workaround for automatic type conversion not being fully supported yet <small>([#2087](https://github.com/GraphiteEditor/Graphite/pull/2087))</small>
 - *Dot Product* node that calculates the mathematical dot product between two numerical vectors <small>([#2126](https://github.com/GraphiteEditor/Graphite/pull/2126))</small>
-- *Math* node that calculates a full math expression <small>([#2121](https://github.com/GraphiteEditor/Graphite/pull/2121))</small>
-- Node graph control bar revamp <small>([#2093](https://github.com/GraphiteEditor/Graphite/pull/2093))</small>
-- Node graph support for making a custom node by merging the selected nodes into a subgraph with <kbd>Ctrl</kbd><kbd>M</kbd> (macOS: <kbd>⌘</kbd><kbd>M</kbd>) <small>([#2097](https://github.com/GraphiteEditor/Graphite/pull/2097))</small>
-- Freehand tool feature for drawing new subpaths on an existing vector layer by holding <kbd>Shift</kbd> <small>([commit ed119ad](https://github.com/GraphiteEditor/Graphite/commit/ed119ad3d799030dbc488ccfc8ca9ad057eeff2c))</small>
-- Proper automatic placement of layers into the artboard they're drawn inside of <small>([#2110](https://github.com/GraphiteEditor/Graphite/pull/2110))</small>
-- Menu bar additions of *Layer* > *New Layer*, *Layer* > *Group Selected*, and *Layer* > *Delete Selected* <small>([commit feba874](https://github.com/GraphiteEditor/Graphite/commit/feba87449bb490e47df6f267576bec5ab4238dc3))</small>
-- Select tool box selection feature for subtracting the targetted layers from the active selection with a modifier key as shown in the contextual input hints at the bottom of the editor <small>([#2162](https://github.com/GraphiteEditor/Graphite/pull/2162))</small>
-- Path tool feature for snapping to 15° increments and locking the angles of dragged handles when <kbd>Shift</kbd> and <kbd>Ctrl</kbd> modifier keys are pressed <small>([#2160](https://github.com/GraphiteEditor/Graphite/pull/2160))</small>
-- Support for multiple top output wires connected to the same layer <small>([#2049](https://github.com/GraphiteEditor/Graphite/pull/2049))</small>
-- Style improvements to the Layers panel UI to clarify which layers contain selected children, even if hidden within a collapsed layer which previously obscured where selected layers were within the hierarchy <small>([commit 1264ea8](https://github.com/GraphiteEditor/Graphite/commit/1264ea8246cbb06e0602a93be983762ab17adf30))</small>
-- Revamped quick measurement overlays now supporting every layer arrangement scenario <small>([#2147](https://github.com/GraphiteEditor/Graphite/pull/2147), [#2155](https://github.com/GraphiteEditor/Graphite/pull/2155))</small>
+- *Math* node that calculates a custom math expression with variables "A" and "B" <small>([#2121](https://github.com/GraphiteEditor/Graphite/pull/2121))</small>
+
+  <img src="https://files.keavon.com/-/CommonBountifulIceblueredtopzebra/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="TODO:" />
+
 - Degrees/radians option in the trig-related math nodes and "Always Positive" option in the *Modulo* node for more convenient usage of the math nodes <small>([commit d649052](https://github.com/GraphiteEditor/Graphite/commit/d649052255c10c15754c3a3707f2edf996d2468d))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/DirectShyGnat/capture_76_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Node graph control bar revamp <small>([#2093](https://github.com/GraphiteEditor/Graphite/pull/2093))</small>
+
+  <img src="https://files.keavon.com/-/NewBurlywoodIrishterrier/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="TODO:" />
+
+- Freehand tool feature for drawing new subpaths on an existing vector layer by holding <kbd>Shift</kbd> <small>([commit ed119ad](https://github.com/GraphiteEditor/Graphite/commit/ed119ad3d799030dbc488ccfc8ca9ad057eeff2c))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/AlarmedEnchantedCapeghostfrog/capture_65_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Proper automatic placement of layers into the artboard they're drawn inside of <small>([#2110](https://github.com/GraphiteEditor/Graphite/pull/2110))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/SplendidKlutzyOtter/capture_66_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Menu bar additions of *Layer* > *New*, *Layer* > *Group Selected*, and *Layer* > *Delete Selected* <small>([commit feba874](https://github.com/GraphiteEditor/Graphite/commit/feba87449bb490e47df6f267576bec5ab4238dc3))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/AverageMediumseagreenCat/capture_67_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Select tool box selection feature for subtracting the targetted layers from the active selection with a modifier key as shown in the contextual input hints at the bottom of the editor <small>([#2162](https://github.com/GraphiteEditor/Graphite/pull/2162))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/ShimmeringOptimisticAtlanticsharpnosepuffer/capture_68_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Path tool feature for snapping to 15° increments and locking the angles of dragged handles when <kbd>Shift</kbd> and <kbd>Ctrl</kbd> modifier keys are pressed <small>([#2160](https://github.com/GraphiteEditor/Graphite/pull/2160))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/ConfusedDazzlingPenguin/capture_69_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Support for multiple top output wires extending from the same layer stack <small>([#2049](https://github.com/GraphiteEditor/Graphite/pull/2049))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/UnselfishTepidKob/capture_70_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Style improvements to the Layers panel UI to clarify which layers contain selected children, even if hidden within a collapsed layer which previously obscured where selected layers were within the hierarchy <small>([commit 1264ea8](https://github.com/GraphiteEditor/Graphite/commit/1264ea8246cbb06e0602a93be983762ab17adf30))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/MonthlyNeedyGlobefish/capture_73_.mp4" type="video/mp4" />
+  	</video>
+  </div>
+
+- Revamped quick measurement overlays now supporting every layer arrangement scenario <small>([#2147](https://github.com/GraphiteEditor/Graphite/pull/2147), [#2155](https://github.com/GraphiteEditor/Graphite/pull/2155))</small>
+
+  <div class="video-background">
+  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+  		<source src="https://files.keavon.com/-/UpsetHumiliatingSkink/capture_74_.mp4" type="video/mp4" />
+  	</video>
+  </div>
 
 ## Fixes
 - Fix for viewport tools no longer remaining active in the background when the node graph is open <small>([#2093](https://github.com/GraphiteEditor/Graphite/pull/2093))</small>
