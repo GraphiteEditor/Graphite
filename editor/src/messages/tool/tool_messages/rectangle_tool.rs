@@ -1,14 +1,20 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
+use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
+use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graphene_core::renderer::Quad;
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -131,7 +137,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Rectang
 				DragStart,
 				PointerMove,
 			),
-			RectangleToolFsmState::Drawing => actions!(RectangleToolMessageDiscriminant;
+			_ => actions!(RectangleToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,
@@ -168,12 +174,35 @@ enum RectangleToolFsmState {
 	#[default]
 	Ready,
 	Drawing,
+	DraggingPivot,
+	ResizingBounds,
 }
 
 #[derive(Clone, Debug, Default)]
 struct RectangleToolData {
 	data: Resize,
 	auto_panning: AutoPanning,
+	layer: Option<LayerNodeIdentifier>,
+	drag_start: ViewportPosition,
+	drag_current: ViewportPosition,
+	pivot: Pivot,
+	cursor: MouseCursorIcon,
+	snap_candidates: Vec<SnapCandidatePoint>,
+	bounding_box_manager: Option<BoundingBoxManager>,
+}
+
+impl RectangleToolData {
+	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+		self.snap_candidates.clear();
+
+		if let Some(layer) = self.layer {
+			snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
+			if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
+				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
+				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
+			}
+		}
+	}
 }
 
 impl Fsm for RectangleToolFsmState {
@@ -196,30 +225,128 @@ impl Fsm for RectangleToolFsmState {
 		match (self, event) {
 			(_, RectangleToolMessage::Overlays(mut overlay_context)) => {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+
+				let layer = document
+					.network_interface
+					.selected_nodes(&[])
+					.unwrap()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.find(|layer| graph_modification_utils::get_rectangle_id(*layer, &document.network_interface).is_some());
+				let transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
+				let bounds = layer.and_then(|layer| document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY));
+
+				if let Some(bounds) = bounds {
+					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+
+					bounding_box_manager.bounds = bounds;
+					bounding_box_manager.transform = transform;
+
+					bounding_box_manager.render_overlays(&mut overlay_context);
+
+					tool_data.layer = layer;
+				} else {
+					tool_data.bounding_box_manager.take();
+				}
+
+				let angle = bounds
+					.map(|bounds| transform * Quad::from_box(bounds))
+					.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
+
+				// Update pivot
+				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+
 				self
 			}
 			(RectangleToolFsmState::Ready, RectangleToolMessage::DragStart) => {
-				shape_data.start(document, input);
+				tool_data.drag_start = input.mouse.position;
+				tool_data.drag_current = input.mouse.position;
 
-				responses.add(DocumentMessage::StartTransaction);
+				let dragging_bounds = tool_data.bounding_box_manager.as_mut().and_then(|bounding_box| {
+					let edges = bounding_box.check_selected_edges(input.mouse.position);
 
-				let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
-				let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))]);
-				let nodes = vec![(NodeId(0), node)];
+					bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
+						let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
+						bounding_box.opposite_pivot = selected_edges.calculate_pivot();
+						selected_edges
+					});
 
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
-				responses.add(Message::StartBuffer);
-				responses.add(GraphOperationMessage::TransformSet {
-					layer,
-					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: false,
+					edges
 				});
-				tool_options.fill.apply_fill(layer, responses);
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-				shape_data.layer = Some(layer);
 
-				RectangleToolFsmState::Drawing
+				// Determine the state based on the mouse position
+				// If the mouse is over the pivot, we are dragging the pivot this gets number one priority
+				let state = if tool_data.pivot.is_over(input.mouse.position) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					RectangleToolFsmState::DraggingPivot
+				}
+				// If the bounds are dragged, then the user is trying to resize
+				else if dragging_bounds.is_some() {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.original_bound_transform = bounds.transform;
+						let selected = [tool_data.layer.unwrap()];
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut bounds.center_of_transformation,
+							&selected,
+							responses,
+							&document.network_interface,
+							None,
+							&ToolType::Rectangle,
+							None,
+						);
+						bounds.center_of_transformation = selected.mean_average_of_pivots();
+					}
+					tool_data.get_snap_candidates(document, input);
+
+					RectangleToolFsmState::ResizingBounds
+				}
+				// Finally if nothing else, the user is trying to draw a new shape
+				else {
+					shape_data.start(document, input);
+
+					responses.add(DocumentMessage::StartTransaction);
+
+					let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
+					let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))]);
+					let nodes = vec![(NodeId(0), node)];
+
+					let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
+					responses.add(Message::StartBuffer);
+					responses.add(GraphOperationMessage::TransformSet {
+						layer,
+						transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+						transform_in: TransformIn::Viewport,
+						skip_rerender: false,
+					});
+					tool_options.fill.apply_fill(layer, responses);
+					tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+					shape_data.layer = Some(layer);
+
+					RectangleToolFsmState::Drawing
+				};
+
+				state
+			}
+			(RectangleToolFsmState::Ready, RectangleToolMessage::PointerMove { .. }) => {
+				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+
+				// Dragging the pivot overrules the other operations
+				if tool_data.pivot.is_over(input.mouse.position) {
+					cursor = MouseCursorIcon::Move;
+				}
+
+				if tool_data.cursor != cursor {
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+				}
+
+				responses.add(OverlaysMessage::Draw);
+
+				RectangleToolFsmState::Ready
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
@@ -254,9 +381,58 @@ impl Fsm for RectangleToolFsmState {
 
 				self
 			}
-			(_, RectangleToolMessage::PointerMove { .. }) => {
-				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
-				responses.add(OverlaysMessage::Draw);
+			(RectangleToolFsmState::DraggingPivot, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
+				let mouse_position = input.mouse.position;
+				let snapped_mouse_position = mouse_position;
+				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+
+				// AutoPanning
+				let messages = [
+					RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				RectangleToolFsmState::DraggingPivot
+			}
+			(RectangleToolFsmState::ResizingBounds, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					if let Some(edges) = &mut bounds.selected_edges {
+						let Some(layer) = tool_data.layer else { return RectangleToolFsmState::Ready };
+						let node_id = graph_modification_utils::get_rectangle_id(layer, &document.network_interface).unwrap();
+
+						let (center, lock_ratio) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
+
+						let ignore = [layer];
+						let center = center.then_some(bounds.center_of_transformation);
+						let snap = Some(SizeSnapData {
+							manager: &mut shape_data.snap_manager,
+							points: &mut tool_data.snap_candidates,
+							snap_data: SnapData::ignore(document, input, &ignore),
+						});
+						let (position, size) = edges.new_size(input.mouse.position, bounds.original_bound_transform, center, lock_ratio, snap);
+						let (_delta, pivot) = edges.bounds_to_scale_transform(position, size);
+
+						let (position, size) = (position.min(position + size), size.abs());
+						let transformation = DAffine2::from_translation(pivot) * DAffine2::from_translation(position);
+
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 1),
+							input: NodeInput::value(TaggedValue::F64(size.x), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 2),
+							input: NodeInput::value(TaggedValue::F64(size.y), false),
+						});
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: layer,
+							transform: transformation,
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+					}
+				}
+
 				self
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerOutsideViewport { .. }) => {
@@ -281,10 +457,47 @@ impl Fsm for RectangleToolFsmState {
 
 				RectangleToolFsmState::Ready
 			}
+			(RectangleToolFsmState::DraggingPivot, RectangleToolMessage::DragStop) => {
+				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
+				};
+				responses.add(response);
+
+				shape_data.snap_manager.cleanup(responses);
+
+				RectangleToolFsmState::Ready
+			}
+			(RectangleToolFsmState::ResizingBounds, RectangleToolMessage::DragStop) => {
+				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
+					true => DocumentMessage::AbortTransaction,
+					false => DocumentMessage::EndTransaction,
+				};
+				responses.add(response);
+
+				shape_data.snap_manager.cleanup(responses);
+
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_transforms.clear();
+				}
+
+				RectangleToolFsmState::Ready
+			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				shape_data.cleanup(responses);
+
+				RectangleToolFsmState::Ready
+			}
+			(_, RectangleToolMessage::Abort) => {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_transforms.clear();
+				}
+
+				responses.add(DocumentMessage::AbortTransaction);
+				shape_data.snap_manager.cleanup(responses);
+				responses.add(OverlaysMessage::Draw);
 
 				RectangleToolFsmState::Ready
 			}
@@ -306,10 +519,11 @@ impl Fsm for RectangleToolFsmState {
 				HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			RectangleToolFsmState::Drawing => HintData(vec![
+			RectangleToolFsmState::Drawing | RectangleToolFsmState::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
+			RectangleToolFsmState::DraggingPivot => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
