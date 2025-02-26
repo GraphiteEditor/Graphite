@@ -22,15 +22,11 @@ jobs:
       github.event.issue.pull_request &&
       github.event.comment.author_association == 'MEMBER' &&
       (github.event.comment.body == '!build-dev' || github.event.comment.body == '!build-profiling' || github.event.comment.body == '!build')
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       deployments: write
       pull-requests: write
-    env:
-      RUSTC_WRAPPER: /usr/bin/sccache
-      CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
       - name: 🔎 Find branch for this PR
@@ -50,9 +46,10 @@ jobs:
           repository: ${{ steps.commit_info.outputs.repo }}
           ref: ${{ steps.commit_info.outputs.ref }}
 
-      - name: 🗑 Clear wasm-bindgen cache
-        continue-on-error: true
-        run: rm -r ~/.cache/.wasm-pack
+      - name: 📦 Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
 
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
@@ -71,6 +68,16 @@ jobs:
           rustup update stable
           echo "Latest updated version:"
           rustc --version
+
+      - name: 📜 Prepare to install Rust dependencies
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: 📜 Install Rust dependencies
+        run: |
+          cargo binstall --no-confirm cargo-about
+          cargo binstall --no-confirm cargo-watch
+          cargo binstall --no-confirm wasm-pack
+          cargo binstall --no-confirm wasm-bindgen-cli@0.2.92
 
       - name: ✂ Replace template in <head> of index.html
         run: |
@@ -96,7 +103,7 @@ jobs:
           NODE_ENV: production
         run: |
           cd frontend
-          mold -run npm run ${{ steps.build_command.outputs.command }}
+          PATH=~/.cargo/bin:$PATH npm run ${{ steps.build_command.outputs.command }}
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
