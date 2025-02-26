@@ -34,12 +34,20 @@
 	];
 
 	let entries: MenuListEntry[] = [];
+	let windowWidth = typeof window !== "undefined" ? window.innerWidth : 1000;
 
 	$: docIndex = $portfolio.activeDocumentIndex;
 	$: displayName = $portfolio.documents[docIndex]?.displayName || "";
 	$: windowTitle = `${displayName}${displayName && " - "}Graphite`;
+	$: showTitle = windowWidth >= 820;
 
 	onMount(() => {
+		const handleResize = () => {
+			windowWidth = window.innerWidth;
+		};
+
+		window.addEventListener("resize", handleResize);
+
 		const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
 		const shortcutRequiresLock = (shortcut: LayoutKeysGroup): boolean => {
 			const shortcutKeys = shortcut.map((keyWithLabel) => keyWithLabel.key);
@@ -66,6 +74,10 @@
 
 			entries = updateMenuBarLayout.layout.map(menuBarEntryToMenuListEntry);
 		});
+
+		return () => {
+			window.removeEventListener("resize", handleResize);
+		};
 	});
 </script>
 
@@ -80,11 +92,11 @@
 			{/each}
 		{/if}
 	</LayoutRow>
-	<!-- Document title -->
-	<LayoutRow class="center">
-		<WindowTitle text={windowTitle} />
-	</LayoutRow>
-	<!-- Window buttons (except on Mac) -->
+	{#if showTitle}
+		<LayoutRow class="center">
+			<WindowTitle text={windowTitle} />
+		</LayoutRow>
+	{/if}
 	<LayoutRow class="right">
 		{#if platform === "Windows" || platform === "Linux"}
 			<WindowButtonsWindows {maximized} />
@@ -112,6 +124,13 @@
 
 			&.right {
 				justify-content: flex-end;
+				// Default: can grow, can shrink, fills space
+				flex: 1 1 100%;
+
+				@media (max-width: 819px) {
+					// When narrow: no grow, no shrink, auto width
+					flex: 0 0 auto;
+				}
 			}
 		}
 
