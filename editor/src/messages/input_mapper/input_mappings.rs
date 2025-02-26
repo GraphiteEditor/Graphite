@@ -140,7 +140,7 @@ pub fn input_mappings() -> Mapping {
 		// NavigateToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NavigateToolMessage::ZoomCanvasBegin),
 		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NavigateToolMessage::TiltCanvasBegin),
-		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigateToolMessage::PointerMove { snap: Control }),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NavigateToolMessage::PointerMove { snap: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=NavigateToolMessage::PointerUp { zoom_in: true }),
 		entry!(KeyUp(MouseLeft); modifiers=[Shift], action_dispatch=NavigateToolMessage::PointerUp { zoom_in: false }),
 		//
