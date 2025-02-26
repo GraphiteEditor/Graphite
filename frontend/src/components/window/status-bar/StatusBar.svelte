@@ -3,6 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages";
+	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -10,6 +11,7 @@
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	const editor = getContext<Editor>("editor");
+	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	let hintData: HintData = [];
 
@@ -42,6 +44,10 @@
 			{/each}
 		{/each}
 	</LayoutRow>
+
+	{#if $nodeGraph.isRendering}
+		<div class="spinner" />
+	{/if}
 </LayoutRow>
 
 <style lang="scss" global>
@@ -49,6 +55,8 @@
 		height: 24px;
 		width: 100%;
 		flex: 0 0 auto;
+		justify-content: space-between;
+		padding-right: 8px;
 
 		.hint-groups {
 			flex: 0 0 auto;
@@ -57,7 +65,6 @@
 			overflow: hidden;
 
 			.separator.section {
-				// Width of section separator (12px) minus the margin of the surrounding user input labels (8px)
 				margin: 0 calc(12px - 8px);
 			}
 
@@ -75,6 +82,25 @@
 					margin-left: 0;
 				}
 			}
+		}
+
+		.spinner {
+			width: 14px;
+			height: 14px;
+			border: 3px solid var(--color-a-softgray);
+			border-top-color: transparent;
+			border-radius: 50%;
+			animation: spin 0.75s linear infinite;
+			margin: auto 0;
+		}
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
 		}
 	}
 </style>
