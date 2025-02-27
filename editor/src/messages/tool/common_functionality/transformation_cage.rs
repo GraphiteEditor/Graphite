@@ -530,6 +530,7 @@ impl BoundingBoxManager {
 				upper_rect.contains(mouse) || has_triangle_hover || inter_triangle_quad.contains(mouse)
 			} else {
 				let rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-FULL_QUAD_CORNER, FULL_QUAD_CORNER]);
+
 				rect.contains(mouse) || has_triangle_hover
 			}
 		} else {
@@ -726,8 +727,21 @@ impl BoundingBoxManager {
 	}
 
 	/// Gets the required mouse cursor to show resizing bounds or optionally rotation
-	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool) -> MouseCursorIcon {
+	pub fn get_cursor(&self, input: &InputPreprocessorMessageHandler, rotate: bool, dragging_bounds: bool, skew_edge: Option<EdgeBool>) -> MouseCursorIcon {
 		let edges = self.check_selected_edges(input.mouse.position);
+
+		let is_near_square = edges.is_some_and(|hover_edge| self.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+		if dragging_bounds && is_near_square {
+			if let Some(skew_edge) = skew_edge {
+				if self.check_skew_handle(input.mouse.position, skew_edge) {
+					if skew_edge.0 || skew_edge.1 {
+						return MouseCursorIcon::EWResize;
+					} else if skew_edge.2 || skew_edge.3 {
+						return MouseCursorIcon::NSResize;
+					}
+				}
+			};
+		}
 
 		match edges {
 			Some((top, bottom, left, right)) if !self.is_bounds_flat() => match (top, bottom, left, right) {

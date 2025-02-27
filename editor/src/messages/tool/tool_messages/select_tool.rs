@@ -578,11 +578,13 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
+				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
+
 				if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
 					let edges = bounds.check_selected_edges(input.mouse.position);
 					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
 					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-					if is_skewing || (dragging_bounds && is_near_square) {
+					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
 						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 					}
 					if !is_skewing && dragging_bounds {
@@ -593,7 +595,6 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let might_resize_or_rotate = dragging_bounds || rotating_bounds;
-				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 				let can_get_into_other_states = might_resize_or_rotate && !matches!(self, SelectToolFsmState::Dragging { .. });
 
 				let show_compass = !(can_get_into_other_states || is_resizing_or_rotating);
@@ -1160,7 +1161,16 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Drawing { selection_shape }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+				let dragging_bounds = tool_data
+					.bounding_box_manager
+					.as_mut()
+					.and_then(|bounding_box| bounding_box.check_selected_edges(input.mouse.position))
+					.is_some();
+
+				let mut cursor = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge)));
 
 				// Dragging the pivot overrules the other operations
 				if tool_data.pivot.is_over(input.mouse.position) {

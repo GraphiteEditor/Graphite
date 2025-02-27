@@ -393,7 +393,7 @@ impl Fsm for ArtboardToolFsmState {
 			}
 
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerMove { .. }) => {
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false, false, None));
 
 				if cursor == MouseCursorIcon::Default && !hovered {
 					tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
