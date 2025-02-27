@@ -77,6 +77,7 @@ pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
 pub const MIN_LENGTH_FOR_CORNERS_VISIBILITY: f64 = 12.;
+pub const EDGE_MIDPOINT_PRIORITY_THRESHOLD: f64 = 5.;
 /// When the width or height of the transform cage is less than this value, only the exterior of the bounding box will act as a click target for resizing.
 pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 /// When dragging the edge of a cage with Alt, it centers around the pivot.
