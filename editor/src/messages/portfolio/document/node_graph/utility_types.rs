@@ -204,8 +204,8 @@ pub enum Direction {
 #[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum GraphWireStyle {
 	#[default]
-	GridAligned = 0,
-	Direct = 1,
+	Direct = 0,
+	GridAligned = 1,
 }
 
 impl std::fmt::Display for GraphWireStyle {

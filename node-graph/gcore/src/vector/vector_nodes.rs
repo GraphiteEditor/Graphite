@@ -635,6 +635,9 @@ async fn sample_points<F: 'n + Send + Copy>(
 	)]
 	subpath_segment_lengths: impl Node<F, Output = Vec<f64>>,
 ) -> VectorDataTable {
+	// Limit the smallest spacing to something sensible to avoid freezing the application.
+	let spacing = spacing.max(0.01);
+
 	// Evaluate vector data and subpath segment lengths asynchronously.
 	let vector_data = vector_data.eval(footprint).await;
 	let vector_data = vector_data.one_item();

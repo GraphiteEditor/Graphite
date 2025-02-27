@@ -1,7 +1,6 @@
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, EDGE_MIDPOINT_PRIORITY_THRESHOLD, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY,
-	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, SELECTION_DRAG_ANGLE,
-};
+	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -389,7 +388,8 @@ impl BoundingBoxManager {
 		overlay_context.quad(quad, None);
 
 		let mut draw_handle = |point: DVec2| {
-			let quad = DAffine2::from_angle_translation((quad.top_left() - quad.top_right()).to_angle(), point) * Quad::from_box([DVec2::splat(-3.), DVec2::splat(3.)]);
+			let quad = DAffine2::from_angle_translation((quad.top_left() - quad.top_right()).to_angle(), point)
+				* Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
 			overlay_context.quad(quad, Some(COLOR_OVERLAY_WHITE));
 		};
 
