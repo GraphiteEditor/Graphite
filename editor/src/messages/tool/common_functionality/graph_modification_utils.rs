@@ -48,15 +48,12 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	let mut current_and_other_layer_is_spline = false;
 
-	match (find_spline(document, first_layer), find_spline(document, second_layer)) {
-		(Some(current_layer_spline), Some(other_layer_spline)) => {
-			responses.add(NodeGraphMessage::DeleteNodes {
-				node_ids: [current_layer_spline, other_layer_spline].to_vec(),
-				delete_children: false,
-			});
-			current_and_other_layer_is_spline = true;
-		}
-		_ => {}
+	if let (Some(current_layer_spline), Some(other_layer_spline)) = (find_spline(document, first_layer), find_spline(document, second_layer)) {
+		responses.add(NodeGraphMessage::DeleteNodes {
+			node_ids: [current_layer_spline, other_layer_spline].to_vec(),
+			delete_children: false,
+		});
+		current_and_other_layer_is_spline = true;
 	}
 
 	// Move the `second_layer` below the `first_layer` for positioning purposes

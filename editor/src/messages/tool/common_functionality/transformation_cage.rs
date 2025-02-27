@@ -401,10 +401,10 @@ impl BoundingBoxManager {
 
 		match min_distance {
 			Some(min) => (
-				edges.0 && distances[0].map_or(false, |d| (d - min).abs() < f64::EPSILON),
-				edges.1 && distances[1].map_or(false, |d| (d - min).abs() < f64::EPSILON),
-				edges.2 && distances[2].map_or(false, |d| (d - min).abs() < f64::EPSILON),
-				edges.3 && distances[3].map_or(false, |d| (d - min).abs() < f64::EPSILON),
+				edges.0 && distances[0].is_some_and(|d| (d - min).abs() < f64::EPSILON),
+				edges.1 && distances[1].is_some_and(|d| (d - min).abs() < f64::EPSILON),
+				edges.2 && distances[2].is_some_and(|d| (d - min).abs() < f64::EPSILON),
+				edges.3 && distances[3].is_some_and(|d| (d - min).abs() < f64::EPSILON),
 			),
 			None => (false, false, false, false),
 		}
