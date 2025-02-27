@@ -739,10 +739,6 @@
 				// An outline can appear when pressing the arrow button with left click then hitting Escape, so this stops that from showing
 				outline: none;
 
-				&:hover {
-					background: var(--color-4-dimgray);
-				}
-
 				&.right {
 					right: 0;
 					padding-left: 7px;
@@ -772,6 +768,18 @@
 						border-style: solid;
 						border-width: 3px 3px 3px 0;
 						border-color: transparent var(--color-e-nearwhite) transparent transparent;
+					}
+				}
+
+				&:hover {
+					background: var(--color-4-dimgray);
+
+					&::before {
+						border-color: transparent transparent transparent var(--color-f-white);
+					}
+
+					&::after {
+						border-color: transparent var(--color-f-white) transparent transparent;
 					}
 				}
 			}

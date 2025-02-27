@@ -95,7 +95,7 @@ Lower-left: Godot's presence at GDC;
 Lower-right: Francesco Siddi (1) and Dalai Felinto (2) from the Blender Foundation with me (3) and Oliver (4)
 </em></center>
 
-With March now just around the corner, I am definitely looking forward to the next conference. If you will be in town for GDC 2025 and would like to meet up (or if you have an opportunity to hook us up with spare expo passes), please [get in touch](/contact).
+With March now just around the corner, I am definitely looking forward to the next conference. If you will be in town for GDC 2025 and would like to meet up, please [get in touch](/contact).
 
 ### Blender Conference LA
 
