@@ -371,6 +371,7 @@ struct PathToolData {
 	dragging_state: DraggingState,
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
+	opposite_handle_position: Option<DVec2>,
 }
 
 impl PathToolData {
@@ -551,6 +552,16 @@ impl PathToolData {
 			for point in state.selected() {
 				let Some(anchor) = point.get_anchor(&vector_data) else { continue };
 				layer_manipulators.insert(anchor);
+				let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) else { continue };
+				let Some(handle) = point.as_handle() else { continue };
+				// Check which handle is selected and which is opposite
+				let opposite = if handle == handle1 { handle2 } else { handle1 };
+
+				self.opposite_handle_position = if self.opposite_handle_position.is_none() {
+					opposite.to_manipulator_point().get_position(&vector_data)
+				} else {
+					self.opposite_handle_position
+				};
 			}
 			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
 				if layer_manipulators.contains(&id) {
@@ -742,7 +753,8 @@ impl PathToolData {
 		};
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
-		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses, true);
+		let opposite = if lock_angle { None } else { self.opposite_handle_position };
+		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
 		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
@@ -779,6 +791,10 @@ impl Fsm for PathToolFsmState {
 					}
 					PathOverlayMode::FrontierHandles => {
 						let selected_segments = selected_segments(document, shape_editor);
+						let selected_points = shape_editor.selected_points();
+						let selected_anchors = selected_points
+							.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(*p) } else { None })
+							.collect::<Vec<_>>();
 
 						// Match the behavior of `PathOverlayMode::SelectedPointHandles` when only one point is selected
 						if shape_editor.selected_points().count() == 1 {
@@ -802,6 +818,9 @@ impl Fsm for PathToolFsmState {
 								for (point, attached_segments) in selected_segments_by_point {
 									if attached_segments.len() == 1 {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
+									} else if !selected_anchors.contains(&point) {
+										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
+										segment_endpoints.entry(attached_segments[1]).or_default().push(point);
 									}
 								}
 							}
@@ -1110,6 +1129,13 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
+
+					tool_data.saved_points_before_handle_drag.clear();
+					tool_data.handle_drag_toggle = false;
+				}
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -1185,6 +1211,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.opposite_handle_position = None;
 
 				PathToolFsmState::Ready
 			}
@@ -1235,7 +1262,15 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), document, (delta_x, delta_y).into(), true, responses, false);
+				shape_editor.move_selected_points(
+					tool_data.opposing_handle_lengths.take(),
+					document,
+					(delta_x, delta_y).into(),
+					true,
+					false,
+					tool_data.opposite_handle_position,
+					responses,
+				);
 
 				PathToolFsmState::Ready
 			}

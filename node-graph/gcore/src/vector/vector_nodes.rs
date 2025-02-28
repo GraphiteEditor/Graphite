@@ -449,6 +449,8 @@ impl ConcatElement for GraphicGroupTable {
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
+	// Limit the smallest spacing to something sensible to avoid freezing the application.
+	let spacing = spacing.max(0.01);
 	let vector_data = vector_data.one_item();
 
 	// Create an iterator over the bezier segments with enumeration and peeking capability.

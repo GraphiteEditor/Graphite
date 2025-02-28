@@ -653,6 +653,10 @@ impl PTZ {
 		(((self.tilt + std::f64::consts::PI) % std::f64::consts::TAU) + std::f64::consts::TAU) % std::f64::consts::TAU - std::f64::consts::PI
 	}
 
+	pub fn unmodified_tilt(&self) -> f64 {
+		self.tilt
+	}
+
 	/// Set a new tilt angle in radians.
 	pub fn set_tilt(&mut self, tilt: f64) {
 		self.tilt = tilt;

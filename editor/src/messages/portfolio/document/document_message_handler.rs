@@ -16,6 +16,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -27,7 +28,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeNetwork, OldNodeNetwork};
+use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::image::ImageFrame;
 use graphene_core::raster::BlendMode;
 use graphene_core::vector::style::ViewMode;
@@ -487,7 +488,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					};
 					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
 
-					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type);
+					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface);
 				}
 				// Artboard workflow
 				else {
@@ -509,7 +510,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: child_selected_nodes.0 });
 
-						new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type));
+						new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface));
 					}
 
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
@@ -1679,6 +1680,7 @@ impl DocumentMessageHandler {
 
 		// Set the previous network navigation metadata to the current navigation metadata
 		network_interface.copy_all_navigation_metadata(&self.network_interface);
+		std::mem::swap(&mut network_interface.resolved_types, &mut self.network_interface.resolved_types);
 
 		//Update the metadata transform based on document PTZ
 		let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
@@ -1773,8 +1775,15 @@ impl DocumentMessageHandler {
 			.unwrap_or(0)
 	}
 
-	pub fn group_layers(responses: &mut VecDeque<Message>, insert_index: usize, parent: LayerNodeIdentifier, group_folder_type: GroupFolderType) -> NodeId {
+	pub fn group_layers(
+		responses: &mut VecDeque<Message>,
+		insert_index: usize,
+		parent: LayerNodeIdentifier,
+		group_folder_type: GroupFolderType,
+		network_interface: &mut NodeNetworkInterface,
+	) -> NodeId {
 		let folder_id = NodeId(generate_uuid());
+
 		match group_folder_type {
 			GroupFolderType::Layer => responses.add(GraphOperationMessage::NewCustomLayer {
 				id: folder_id,
@@ -1783,14 +1792,45 @@ impl DocumentMessageHandler {
 				insert_index,
 			}),
 			GroupFolderType::BooleanOperation(operation) => {
-				responses.add(GraphOperationMessage::NewBooleanOperationLayer {
-					id: folder_id,
-					operation,
-					parent,
-					insert_index,
+				// Get the ID of the one selected layer, if exactly one is selected
+				let only_selected_layer = network_interface.selected_nodes(&[]).and_then(|selected_nodes| {
+					let mut layers = selected_nodes.selected_layers(network_interface.document_metadata());
+					match (layers.next(), layers.next()) {
+						(Some(id), None) => Some(id),
+						_ => None,
+					}
 				});
+
+				// If there is a single selected layer, check if there is a boolean operation upstream from it
+				let upstream_boolean_op = only_selected_layer.and_then(|selected_id| {
+					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
+						network_interface
+							.reference(id, &[])
+							.map(|name| name.as_deref().unwrap_or_default() == "Boolean Operation")
+							.unwrap_or_default()
+					})
+				});
+
+				// If there's already a boolean operation on the selected layer, update it with the new operation
+				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
+					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+
+					return only_selected_layer.to_node();
+				}
+				// Otherwise, create a new boolean operation node group
+				else {
+					responses.add(GraphOperationMessage::NewBooleanOperationLayer {
+						id: folder_id,
+						operation,
+						parent,
+						insert_index,
+					});
+				}
 			}
-		};
+		}
+
 		let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
 		// Move the new folder to the correct position
 		responses.add(NodeGraphMessage::MoveLayerToStack {
@@ -2320,7 +2360,7 @@ pub struct ClickXRayIter<'a> {
 }
 
 fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
-	quad.edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+	quad.all_edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
