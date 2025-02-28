@@ -552,6 +552,16 @@ impl PenToolData {
 	fn update_handle_position(&mut self, new_position: DVec2, anchor_pos: DVec2, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, is_start: bool) {
 		let relative_position = new_position - anchor_pos;
 
+		if is_start {
+			let modification_type = VectorModificationType::SetPrimaryHandle {
+				// If is start is true then end_point_segment exists
+				segment: self.end_point_segment.unwrap(),
+				relative_position,
+			};
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			return;
+		}
+
 		if self.draw_mode == DrawMode::ContinuePath {
 			if let Some(handle) = self.handle_end.as_mut() {
 				*handle = new_position;
@@ -565,12 +575,6 @@ impl PenToolData {
 		}
 
 		let Some(segment) = self.end_point_segment else { return };
-
-		if is_start {
-			let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-			return;
-		}
 
 		let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
