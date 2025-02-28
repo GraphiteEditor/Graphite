@@ -946,13 +946,14 @@ impl Fsm for PenToolFsmState {
 					latest_pt.handle_start = final_pos;
 				}
 
+				responses.add(OverlaysMessage::Draw);
+
 				// Making the end handle colinear
 				match tool_data.handle_mode {
 					HandleMode::Free => {}
 					HandleMode::ColinearEquidistant | HandleMode::ColinearLocked => {
 						if let Some((latest, segment)) = tool_data.latest_point().zip(tool_data.end_point_segment) {
 							let Some(direction) = (latest.pos - latest.handle_start).try_normalize() else {
-								responses.add(OverlaysMessage::Draw);
 								return PenToolFsmState::GRSHandle;
 							};
 
