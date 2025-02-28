@@ -1,6 +1,9 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 
+use graphene_core::renderer::Quad;
+use graphene_core::text::{load_face, FontCache};
 use graphene_std::vector::PointId;
 
 use glam::DVec2;
@@ -52,4 +55,14 @@ where
 	}
 
 	best
+}
+
+/// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
+pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
+	let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool");
+
+	let buzz_face = font_cache.get(font).map(|data| load_face(data));
+	let far = graphene_core::text::bounding_box(text, buzz_face.as_ref(), typesetting);
+
+	Quad::from_box([DVec2::ZERO, far])
 }
