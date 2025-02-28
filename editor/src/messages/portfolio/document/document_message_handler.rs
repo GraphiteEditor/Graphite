@@ -931,6 +931,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					name,
 				})
 			}
+			DocumentMessage::SelectParentLayer => {
+				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+				let selected_layers = selected_nodes.selected_layers(self.metadata());
+				let mut parent_layers = HashSet::new();
+				for layer in selected_layers {
+					if let Some(parent) = layer.parent(self.metadata()) {
+						if parent != LayerNodeIdentifier::ROOT_PARENT {
+							parent_layers.insert(parent.to_node());
+						}
+					}
+				}
+				if !parent_layers.is_empty() {
+					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: parent_layers.into_iter().collect() });
+					responses.add(BroadcastEvent::SelectionChanged);
+				}
+			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata.all_layers().filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[])).filter(|&layer| {
