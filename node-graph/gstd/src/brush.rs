@@ -145,7 +145,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	// normal_blend.eval((Color::default(), Color::default()));
 	// use crate::raster::blend_image_tuple;
 	// blend_image_tuple((blank_texture, stamp), &normal_blend).await.image;
-	crate::raster::blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 100.)).image
+	crate::raster::blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.)).image
 	// let blend_executoc = BlendImageTupleNode::new(FutureWrapperNode::new(ValueNode::new(normal_blend)));
 	// blend_executor.eval((blank_texture, stamp)).image
 }
@@ -258,7 +258,7 @@ async fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTab
 			let stroke_to_layer = DAffine2::from_translation(stroke_origin_in_layer) * DAffine2::from_scale(stroke_size);
 
 			// let normal_blend = BlendColorPairNode::new(ValueNode::new(CopiedNode::new(BlendMode::Normal)), ValueNode::new(CopiedNode::new(100.)));
-			let normal_blend = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Normal, 100.));
+			let normal_blend = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Normal, 1.));
 			let blit_node = BlitNode::new(
 				FutureWrapperNode::new(ClonedNode::new(brush_texture)),
 				FutureWrapperNode::new(ClonedNode::new(positions)),
@@ -306,7 +306,7 @@ async fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTab
 
 			match stroke.style.blend_mode {
 				BlendMode::Erase => {
-					let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Erase, 100.));
+					let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Erase, 1.));
 					let blit_node = BlitNode::new(
 						FutureWrapperNode::new(ClonedNode::new(brush_texture)),
 						FutureWrapperNode::new(ClonedNode::new(positions)),
@@ -317,7 +317,7 @@ async fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTab
 
 				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
 				BlendMode::Restore => {
-					let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Restore, 100.));
+					let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Restore, 1.));
 					let blit_node = BlitNode::new(
 						FutureWrapperNode::new(ClonedNode::new(brush_texture)),
 						FutureWrapperNode::new(ClonedNode::new(positions)),
@@ -330,7 +330,7 @@ async fn brush(_: impl Ctx, image: ImageFrameTable<Color>, bounds: ImageFrameTab
 			}
 		}
 
-		let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::MultiplyAlpha, 100.));
+		let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));
 		let blend_executor = BlendImageTupleNode::new(FutureWrapperNode::new(ValueNode::new(blend_params)));
 		actual_image = blend_executor.eval((actual_image, erase_restore_mask)).await;
 	}
