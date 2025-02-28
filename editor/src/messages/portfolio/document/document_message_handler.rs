@@ -1783,6 +1783,7 @@ impl DocumentMessageHandler {
 		network_interface: &mut NodeNetworkInterface,
 	) -> NodeId {
 		let folder_id = NodeId(generate_uuid());
+
 		match group_folder_type {
 			GroupFolderType::Layer => responses.add(GraphOperationMessage::NewCustomLayer {
 				id: folder_id,
@@ -1791,40 +1792,35 @@ impl DocumentMessageHandler {
 				insert_index,
 			}),
 			GroupFolderType::BooleanOperation(operation) => {
-				let only_selected_layer = {
-					network_interface
-						.selected_nodes(&[])
-						.map(|selected_nodes| {
-							let mut layers = selected_nodes.selected_layers(network_interface.document_metadata());
-							match (layers.next(), layers.next()) {
-								(Some(id), None) => Some(id),
-								_ => None,
-							}
-						})
-						.unwrap_or_default()
-				};
+				// Get the ID of the one selected layer, if exactly one is selected
+				let only_selected_layer = network_interface.selected_nodes(&[]).and_then(|selected_nodes| {
+					let mut layers = selected_nodes.selected_layers(network_interface.document_metadata());
+					match (layers.next(), layers.next()) {
+						(Some(id), None) => Some(id),
+						_ => None,
+					}
+				});
 
-				let upstream_boolean_op = only_selected_layer
-					.map(|selected_id| {
+				// If there is a single selected layer, check if there is a boolean operation upstream from it
+				let upstream_boolean_op = only_selected_layer.and_then(|selected_id| {
+					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
-							.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow)
-							.find_map(|id| {
-								network_interface
-									.reference(&id, &[])
-									.map(|name| name.as_deref().unwrap_or_default() == "Boolean Operation")
-									.unwrap_or_default()
-									.then_some(id)
-							})
+							.reference(id, &[])
+							.map(|name| name.as_deref().unwrap_or_default() == "Boolean Operation")
+							.unwrap_or_default()
 					})
-					.unwrap_or_default();
+				});
 
-				if let Some(upstream_boolean_op) = upstream_boolean_op {
+				// If there's already a boolean operation on the selected layer, update it with the new operation
+				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
 					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
-					return only_selected_layer.unwrap().to_node();
-				} else {
+					return only_selected_layer.to_node();
+				}
+				// Otherwise, create a new boolean operation node group
+				else {
 					responses.add(GraphOperationMessage::NewBooleanOperationLayer {
 						id: folder_id,
 						operation,
@@ -1833,7 +1829,8 @@ impl DocumentMessageHandler {
 					});
 				}
 			}
-		};
+		}
+
 		let new_group_folder = LayerNodeIdentifier::new_unchecked(folder_id);
 		// Move the new folder to the correct position
 		responses.add(NodeGraphMessage::MoveLayerToStack {
