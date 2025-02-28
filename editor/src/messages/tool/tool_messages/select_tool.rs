@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
+	COLOR_OVERLAY_BLUE, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
 	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
@@ -617,8 +617,8 @@ impl Fsm for SelectToolFsmState {
 								.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
 							let (direction, color) = match axis {
-								Axis::X => (e0, COLOR_OVERLAY_RED),
-								Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+								Axis::X => (e0, COLOR_OVERLAY_BLUE),
+								Axis::Y => (e0.perp(), COLOR_OVERLAY_BLUE),
 								_ => unreachable!(),
 							};
 
