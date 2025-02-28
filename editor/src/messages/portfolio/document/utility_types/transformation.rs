@@ -334,7 +334,7 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation, Some(pivot));
+			selected.update_transforms(transformation, Some(pivot), Some(*self));
 			self.hints(selected.responses, local);
 		}
 	}
@@ -572,7 +572,14 @@ impl<'a> Selected<'a> {
 		});
 	}
 
-	fn transform_path(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, initial_points: &mut InitialPoints, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+	fn transform_path(
+		document_metadata: &DocumentMetadata,
+		layer: LayerNodeIdentifier,
+		initial_points: &mut InitialPoints,
+		transformation: DAffine2,
+		responses: &mut VecDeque<Message>,
+		transform_operation: Option<TransformOperation>,
+	) {
 		let viewspace = document_metadata.transform_to_viewport(layer);
 		let layerspace_rotation = viewspace.inverse() * transformation;
 
@@ -582,6 +589,10 @@ impl<'a> Selected<'a> {
 			anchor.current += delta;
 			let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && initial_points.anchors.len() > 1 {
+			return;
 		}
 
 		for (&id, handle) in initial_points.handles.iter() {
@@ -610,7 +621,7 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn apply_transformation(&mut self, transformation: DAffine2) {
+	pub fn apply_transformation(&mut self, transformation: DAffine2, transform_operation: Option<TransformOperation>) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer in self.network_interface.shallowest_unique_layers(&[]) {
@@ -620,7 +631,7 @@ impl<'a> Selected<'a> {
 					}
 					OriginalTransforms::Path(path_transforms) => {
 						if let Some(initial_points) = path_transforms.get_mut(&layer) {
-							Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses)
+							Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses, transform_operation)
 						}
 					}
 				}
@@ -628,12 +639,12 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>) {
+	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>, transform_operation: Option<TransformOperation>) {
 		let pivot = DAffine2::from_translation(pivot.unwrap_or_else(|| *self.pivot));
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),
-			_ => self.apply_transformation(transformation),
+			_ => self.apply_transformation(transformation, transform_operation),
 		}
 	}
 

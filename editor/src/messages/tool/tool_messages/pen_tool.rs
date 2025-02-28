@@ -951,17 +951,30 @@ impl Fsm for PenToolFsmState {
 					HandleMode::Free => {}
 					HandleMode::ColinearEquidistant | HandleMode::ColinearLocked => {
 						if let Some((latest, segment)) = tool_data.latest_point().zip(tool_data.end_point_segment) {
-							let handle = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
-							let Some(handle) = handle else { return PenToolFsmState::GRSHandle };
-
 							let Some(direction) = (latest.pos - latest.handle_start).try_normalize() else {
-								log::trace!("Skipping handle adjustment: latest.pos and latest.handle_start are too close!");
+								responses.add(OverlaysMessage::Draw);
 								return PenToolFsmState::GRSHandle;
 							};
 
+							if (latest.pos - latest.handle_start).length_squared() < f64::EPSILON {
+								return PenToolFsmState::GRSHandle;
+							}
+
+							let is_start = vector_data.segment_start_from_id(segment) == Some(latest.id);
+
+							let handle = if is_start {
+								ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data)
+							} else {
+								ManipulatorPointId::EndHandle(segment).get_position(&vector_data)
+							};
+							let Some(handle) = handle else { return PenToolFsmState::GRSHandle };
 							let relative_distance = (handle - latest.pos).length();
 							let relative_position = relative_distance * direction;
-							let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+							let modification_type = if is_start {
+								VectorModificationType::SetPrimaryHandle { segment, relative_position }
+							} else {
+								VectorModificationType::SetEndHandle { segment, relative_position }
+							};
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 					}
@@ -1050,8 +1063,10 @@ impl Fsm for PenToolFsmState {
 					let handles = BezierHandles::Cubic { handle_start, handle_end };
 					let end = tool_data.next_point;
 					let bezier = Bezier { start, handles, end };
-					// Draw the curve for the currently-being-placed segment
-					overlay_context.outline_bezier(bezier, transform);
+					if (end - start).length_squared() > f64::EPSILON {
+						// Draw the curve for the currently-being-placed segment
+						overlay_context.outline_bezier(bezier, transform);
+					}
 				}
 
 				// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
@@ -1082,7 +1097,7 @@ impl Fsm for PenToolFsmState {
 						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
 					}
 
-					// Draw the line between the currently-being-placed anchor and last-placed point (Lock angle bent overlays)
+					// Draw the line between the currently-being-placed anchor and last-placed point (Snap angle bent overlays)
 					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.snap_angle {
 						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
 					}
