@@ -946,6 +946,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: parent_layers.into_iter().collect() });
 					responses.add(BroadcastEvent::SelectionChanged);
 				}
+				else {
+					return ;
+				}
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
