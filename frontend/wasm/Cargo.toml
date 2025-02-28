@@ -9,6 +9,7 @@ readme = "../../README.md"
 homepage = "https://graphite.rs"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
+default-run = "graphite-wasm"
 
 [features]
 default = ["gpu"]

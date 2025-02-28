@@ -1,4 +1,5 @@
 [target.wasm32-unknown-unknown]
+runner = "npm start"
 rustflags = [
 	# Currently disabled because of https://github.com/GraphiteEditor/Graphite/issues/1262
 	# The current simd implementation leads to undefined behavior
@@ -10,3 +11,6 @@ rustflags = [
 	"link-arg=--max-memory=4294967296",
 	"--cfg=web_sys_unstable_apis",
 ]
+
+[target.x86_64-unknown-linux-gnu]
+runner = "npm run start-cargo"

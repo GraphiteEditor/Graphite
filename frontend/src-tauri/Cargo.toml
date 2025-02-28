@@ -5,7 +5,7 @@ description = "Graphite Desktop"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "Apache-2.0"
 repository = ""
-default-run = "graphite-desktop"
+# default-run = "graphite-desktop"
 edition = "2021"
 rust-version = "1.79"
 

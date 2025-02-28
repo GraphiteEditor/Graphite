@@ -8,6 +8,7 @@
 	"scripts": {
 		"---------- DEV SERVER ----------": "",
 		"start": "npm run setup && npm run wasm:build-dev && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-dev\"",
+		"start-cargo": "npm run setup && npm run wasm:build-dev && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-dev\" && echo",
 		"profiling": "npm run setup && npm run wasm:build-profiling && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-profiling\"",
 		"production": "npm run setup && npm run wasm:build-production && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run wasm:watch-production\"",
 		"---------- BUILDS ----------": "",

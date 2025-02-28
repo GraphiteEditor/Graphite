@@ -24,6 +24,8 @@ members = [
 exclude = ["node-graph/gpu-compiler"]
 resolver = "2"
 
+default-members = ["frontend/wasm"]
+
 [workspace.dependencies]
 # Local dependencies
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest"] }
