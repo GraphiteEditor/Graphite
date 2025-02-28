@@ -2121,30 +2121,17 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				};
 
 				let mut number_options = (None, None, None);
-				let input_type = match implementation {
-					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-						if let Some(field) = graphene_core::registry::NODE_METADATA
-							.lock()
-							.unwrap()
-							.get(&proto_node_identifier.name.clone().into_owned())
-							.and_then(|metadata| metadata.fields.get(input_index))
-						{
-							number_options = (field.number_min, field.number_max, field.number_mode_range);
-						}
-						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
-							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
-							return Vec::new();
-						};
-						let first_node_io = implementations.keys().next().unwrap_or(const { &graphene_std::NodeIOTypes::empty() });
-						let Some(input_type) = first_node_io.inputs.get(input_index) else {
-							log::error!("Could not get input type for protonode {proto_node_identifier:?} at index {input_index:?}");
-							return Vec::new();
-						};
-						input_type.clone()
+				if let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation {
+					if let Some(field) = graphene_core::registry::NODE_METADATA
+						.lock()
+						.unwrap()
+						.get(&proto_node_identifier.name.clone().into_owned())
+						.and_then(|metadata| metadata.fields.get(input_index))
+					{
+						number_options = (field.number_min, field.number_max, field.number_mode_range);
 					}
-					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
-				};
-
+				}
+				let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0;
 				property_from_type(node_id, input_index, &input_type, number_options, context)
 			});
 			layout.extend(row);
