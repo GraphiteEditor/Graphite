@@ -538,13 +538,13 @@ where
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{generic::*, structural::*, value::*};
+	use crate::generic::*;
 
 	#[test]
 	pub fn dot_product_function() {
 		let vector_a = glam::DVec2::new(1., 2.);
 		let vector_b = glam::DVec2::new(3., 4.);
-		assert_eq!(dot_product(vector_a, vector_b), 11.);
+		assert_eq!(dot_product((), vector_a, vector_b), 11.);
 	}
 
 	#[test]
@@ -573,8 +573,7 @@ mod test {
 
 	#[test]
 	pub fn identity_node() {
-		let value = ValueNode(4u32).then(IdentityNode::new());
-		assert_eq!(value.eval(()), &4);
+		assert_eq!(identity(&4), &4);
 	}
 
 	#[test]

@@ -1567,7 +1567,7 @@ mod test {
 					NodeId(14),
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
-						input: ProtoNodeInput::None,
+						input: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
@@ -1589,7 +1589,7 @@ mod test {
 
 		println!("{:#?}", resolved_network[0]);
 		println!("{construction_network:#?}");
-		assert_eq!(resolved_network[0], construction_network);
+		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
 	}
 
 	fn flat_network() -> NodeNetwork {

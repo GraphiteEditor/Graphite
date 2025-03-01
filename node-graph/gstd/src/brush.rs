@@ -343,15 +343,13 @@ mod test {
 	use super::*;
 
 	use graphene_core::transform::Transform;
-	use graphene_core::value::ClonedNode;
 
 	use glam::DAffine2;
 
 	#[test]
 	fn test_brush_texture() {
-		let brush_texture_node = BrushStampGeneratorNode::new(ClonedNode::new(Color::BLACK), ClonedNode::new(100.), ClonedNode::new(100.));
 		let size = 20.;
-		let image = brush_texture_node.eval(size);
+		let image = brush_stamp_generator(size, Color::BLACK, 100., 100.);
 		assert_eq!(image.transform(), DAffine2::from_scale_angle_translation(DVec2::splat(size.ceil()), 0., -DVec2::splat(size / 2.)));
 		// center pixel should be BLACK
 		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));

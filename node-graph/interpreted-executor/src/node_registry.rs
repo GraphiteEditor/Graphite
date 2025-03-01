@@ -1,4 +1,4 @@
-use dyn_any::{DynFuture, StaticType};
+use dyn_any::StaticType;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
@@ -96,7 +96,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				})
 			},
 			{
-				let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(graphene_std::any::PanicNode::<Context, DynFuture<'static, &WasmEditorApi>>::new());
+				let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(graphene_std::any::PanicNode::<Context, dyn_any::DynFuture<'static, &WasmEditorApi>>::new());
 				let params = vec![fn_type_fut!(Context, &WasmEditorApi)];
 				let mut node_io = <wgpu_executor::CreateGpuSurfaceNode<_> as NodeIO<'_, Context>>::to_async_node_io(&node, params);
 				node_io.call_argument = concrete!(<Context as StaticType>::Static);

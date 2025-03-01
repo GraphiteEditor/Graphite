@@ -80,6 +80,7 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rustybuzz = "0.20"
 spirv = "0.3"
+pretty_assertions = "1.4.1"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
