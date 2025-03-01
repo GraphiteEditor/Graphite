@@ -292,7 +292,7 @@ impl Fsm for ArtboardToolFsmState {
 					let snap_data = SnapData::ignore(document, input, &ignore);
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
-					let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+					let mouse_delta = snap_drag(start, current, axis_align, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 					let size = bounds.bounds[1] - bounds.bounds[0];
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);
