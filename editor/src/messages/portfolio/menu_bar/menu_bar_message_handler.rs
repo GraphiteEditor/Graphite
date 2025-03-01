@@ -261,6 +261,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
+							label: "Select Parent".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::SelectParentLayer),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::SelectParentLayer.into()),
+							disabled: no_active_document || !has_selected_nodes,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
 							label: "Previous Selection".into(),
 							icon: Some("HistoryUndo".into()),
 							shortcut: action_keys!(DocumentMessageDiscriminant::SelectionStepBack),
