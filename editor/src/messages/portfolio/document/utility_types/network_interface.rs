@@ -5334,7 +5334,7 @@ impl NodeNetworkInterface {
 		// If a non artboard layer is attempted to be connected to the exports, and there is already an artboard connected, then connect the layer to the artboard.
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next() {
 			if parent == LayerNodeIdentifier::ROOT_PARENT
-				&& !self.reference(&layer.to_node(), network_path).is_some_and(|reference| *reference == Some("Artboard".to_string()))
+				&& self.reference(&layer.to_node(), network_path).is_none_or(|reference| *reference != Some("Artboard".to_string()))
 				&& self.is_artboard(&first_layer.to_node(), network_path)
 			{
 				parent = first_layer;

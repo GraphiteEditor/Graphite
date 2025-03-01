@@ -1,7 +1,6 @@
 use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
-use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -16,7 +15,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -355,17 +354,46 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
-				let parent = self.new_layer_parent(false);
-				let calculated_insert_index =
-					DocumentMessageHandler::get_calculated_insert_index(self.network_interface.document_metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
-
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-				responses.add(PortfolioMessage::PasteIntoFolder {
-					clipboard: Clipboard::Internal,
-					parent,
-					insert_index: calculated_insert_index,
+
+				let mut new_dragging = Vec::new();
+				let mut layers = self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+
+				layers.sort_by_key(|layer| {
+					let Some(parent) = layer.parent(self.metadata()) else { return usize::MAX };
+					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
 				});
+
+				for layer in layers.into_iter().rev() {
+					let Some(parent) = layer.parent(self.metadata()) else { continue };
+
+					// Copy the layer
+					let mut copy_ids = HashMap::new();
+					let node_id = layer.to_node();
+					copy_ids.insert(node_id, NodeId(0));
+
+					self.network_interface
+						.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::LayerChildrenUpstreamFlow)
+						.enumerate()
+						.for_each(|(index, node_id)| {
+							copy_ids.insert(node_id, NodeId((index + 1) as u64));
+						});
+
+					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
+
+					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
+
+					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+
+					let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
+					let layer = LayerNodeIdentifier::new_unchecked(layer_id);
+					new_dragging.push(layer);
+					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+					responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
+				}
+				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
@@ -702,6 +730,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 
 				let size = existing_bottom_right - existing_top_left;
+				// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
+				// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
+				let size = size.max(DVec2::ONE);
 				let enlargement = DVec2::new(
 					if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
 					if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
@@ -930,6 +961,31 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					document: self.serialize_document(),
 					name,
 				})
+			}
+			DocumentMessage::SelectParentLayer => {
+				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+				let selected_layers = selected_nodes.selected_layers(self.metadata());
+
+				let mut parent_layers = HashSet::new();
+
+				// Find the parent of each selected layer
+				for layer in selected_layers {
+					// Get this layer's parent
+					let Some(parent) = layer.parent(self.metadata()) else { continue };
+
+					// Either use the parent, or keep the same layer if it's already at the top level
+					let to_insert = if parent == LayerNodeIdentifier::ROOT_PARENT { layer } else { parent };
+
+					// Add the layer to the set of those which will become selected
+					parent_layers.insert(to_insert.to_node());
+				}
+
+				// Select each parent layer
+				if !parent_layers.is_empty() {
+					let nodes = parent_layers.into_iter().collect();
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					responses.add(BroadcastEvent::SelectionChanged);
+				}
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
@@ -1358,6 +1414,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			ToggleOverlaysVisibility,
 			ToggleSnapping,
 			Undo,
+			SelectParentLayer,
 			SelectionStepForward,
 			SelectionStepBack,
 			ZoomCanvasTo100Percent,

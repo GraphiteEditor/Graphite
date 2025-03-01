@@ -109,6 +109,7 @@ pub enum DocumentMessage {
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,
+	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
 	SelectedLayersLowerToBack,
