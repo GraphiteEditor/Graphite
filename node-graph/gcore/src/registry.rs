@@ -6,8 +6,8 @@ use std::sync::{LazyLock, Mutex};
 use dyn_any::DynAny;
 
 use crate::transform::Footprint;
-use crate::NodeIO;
 use crate::NodeIOTypes;
+use crate::{NodeIO, Type};
 
 pub mod types {
 	/// 0% - 100%
@@ -47,6 +47,7 @@ pub struct FieldMetadata {
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,
+	pub default_type: Option<Type>,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,

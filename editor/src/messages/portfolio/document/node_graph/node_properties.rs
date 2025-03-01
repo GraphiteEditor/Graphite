@@ -2129,7 +2129,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 				let mut number_options = (None, None, None);
 				let input_type = match implementation {
-					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
+					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						if let Some(field) = graphene_core::registry::NODE_METADATA
 							.lock()
 							.unwrap()
@@ -2137,25 +2137,22 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = (field.number_min, field.number_max, field.number_mode_range);
+							if let Some(ref default) = field.default_type {
+								break 'early_return default.clone();
+							}
 						}
 						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
 							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
 							return Vec::new();
 						};
 						let proto_node_identifier = proto_node_identifier.clone();
-						debug!("implementations: {:#?}", implementations);
 						let mut input_types = implementations
 							.keys()
 							.filter_map(|item| item.inputs.get(input_index))
-							.filter(|ty| {
-								let result = property_from_type(node_id, input_index, ty, number_options, context);
-								debug!("result: {:?}\nty: {:?}", result, ty);
-								result.is_ok()
-							})
+							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, context).is_ok())
 							.collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
-						debug!("Final input type: {input_type:?}");
 						let Some(input_type) = input_type else {
 							log::error!("Could not get input type for protonode {proto_node_identifier:?} at index {input_index:?}");
 							return Vec::new();
