@@ -11,14 +11,12 @@ use axum::routing::get;
 use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
 // use http::{Response, StatusCode};
-use std::cell::RefCell;
+use std::sync::Mutex;
 // use std::collections::HashMap;
 // use std::sync::Arc;
 // use std::sync::Mutex;
 
-thread_local! {
-	static EDITOR: RefCell<Option<Editor>> = const { RefCell::new(None) };
-}
+static EDITOR: Mutex<Option<Editor>> = const { Mutex::new(None) };
 
 // async fn respond_to(id: Path<String>) -> impl IntoResponse {
 // 	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
@@ -54,9 +52,21 @@ async fn main() {
 		.apply()
 		.unwrap();
 
+	std::thread::spawn(|| {
+		let set = tokio::task::LocalSet::new();
+
+		loop {
+			set.spawn_local(graphite_editor::node_graph_executor::run_node_graph());
+
+			std::thread::sleep(std::time::Duration::from_millis(16))
+		}
+	});
+
 	// *(IMAGES.lock().unwrap()) = Some(HashMap::new());
 	graphite_editor::application::set_uuid_seed(0);
-	EDITOR.with(|editor| editor.borrow_mut().replace(Editor::new()));
+	let mut editor_lock = EDITOR.lock().unwrap();
+	*editor_lock = Some(Editor::new());
+	drop(editor_lock);
 	let app = Router::new().route("/", get(|| async { "Hello, World!" }))/*.route("/image/:id", get(respond_to))*/;
 
 	// run it with hyper on localhost:3000
@@ -83,13 +93,11 @@ fn set_random_seed(seed: f64) {
 }
 #[tauri::command]
 async fn poll_node_graph() -> String {
-	return "[]".into();
+	// return "[]".into();
 
 	let mut responses = VecDeque::new();
-	let responses = EDITOR.with(|editor| {
-		let mut editor = editor.borrow_mut();
-		editor.as_mut().unwrap().poll_node_graph_evaluation(&mut responses)
-	});
+	let mut editor_lock = EDITOR.lock().unwrap();
+	editor_lock.as_mut().unwrap().poll_node_graph_evaluation(&mut responses);
 
 	for response in &responses {
 		let serialized = ron::to_string(&response.clone()).unwrap();
@@ -97,7 +105,6 @@ async fn poll_node_graph() -> String {
 			log::error!("Error deserializing message: {error}");
 		}
 	}
-	println!("handling messages");
 
 	// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
 	let result: Vec<_> = responses.into_iter().collect();
@@ -110,10 +117,8 @@ fn handle_message(message: String) -> String {
 	let Ok(message) = ron::from_str::<graphite_editor::messages::message::Message>(&message) else {
 		panic!("Error parsing message: {message}")
 	};
-	let responses = EDITOR.with(|editor| {
-		let mut editor = editor.borrow_mut();
-		editor.as_mut().unwrap().handle_message(message)
-	});
+	let mut editor_lock = EDITOR.lock().unwrap();
+	let responses = editor_lock.as_mut().unwrap().handle_message(message);
 
 	for response in &responses {
 		let serialized = ron::to_string(&response.clone()).unwrap();
