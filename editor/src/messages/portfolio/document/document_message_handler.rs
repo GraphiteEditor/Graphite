@@ -702,6 +702,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 
 				let size = existing_bottom_right - existing_top_left;
+				// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
+				let size = size.max(DVec2::ONE);
 				let enlargement = DVec2::new(
 					if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
 					if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
