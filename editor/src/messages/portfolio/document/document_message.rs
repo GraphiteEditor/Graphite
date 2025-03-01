@@ -60,6 +60,9 @@ pub enum DocumentMessage {
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
+	RotateSelectedLayers {
+		degrees: f64,
+	},
 	GraphViewOverlay {
 		open: bool,
 	},

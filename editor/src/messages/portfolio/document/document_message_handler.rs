@@ -454,6 +454,30 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 				}
 			}
+			DocumentMessage::RotateSelectedLayers { degrees } => {
+				// Get the bounding box of selected layers in viewport space
+				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
+					// Calculate the center of the bounding box to use as rotation pivot
+					let center = (max + min) / 2.;
+					// Transform that moves pivot point to origin
+					let bbox_trans = DAffine2::from_translation(-center);
+
+					let mut added_transaction = false;
+					for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&self.network_interface) {
+						if !added_transaction {
+							responses.add(DocumentMessage::AddTransaction);
+							added_transaction = true;
+						}
+
+						responses.add(GraphOperationMessage::TransformChange {
+							layer,
+							transform: DAffine2::from_angle(degrees.to_radians()),
+							transform_in: TransformIn::Scope { scope: bbox_trans },
+							skip_rerender: false,
+						});
+					}
+				}
+			}
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 

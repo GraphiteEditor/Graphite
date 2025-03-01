@@ -168,6 +168,18 @@ impl SelectTool {
 		})
 	}
 
+	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
+		[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
+			.into_iter()
+			.map(move |(degrees, icon, name)| {
+				IconButton::new(icon, 24)
+					.tooltip(name)
+					.on_update(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into())
+					.disabled(disabled)
+					.widget_holder()
+			})
+	}
+
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> {
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
@@ -217,6 +229,10 @@ impl LayoutHolder for SelectTool {
 		let disabled = self.tool_data.selected_layers_count == 0;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.flip_widgets(disabled));
+
+		// Turn
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.extend(self.turn_widgets(disabled));
 
 		// Boolean
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
