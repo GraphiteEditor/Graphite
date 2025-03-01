@@ -306,6 +306,7 @@ pub enum TransformOperation {
 }
 
 impl TransformOperation {
+	#[allow(clippy::too_many_arguments)]
 	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
 		if self != &TransformOperation::None {
@@ -351,6 +352,7 @@ impl TransformOperation {
 		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) -> bool {
 		(*self, local) = match self {
 			TransformOperation::Grabbing(translation) => {
@@ -367,6 +369,7 @@ impl TransformOperation {
 		local
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		match self {
 			TransformOperation::None => (),
@@ -457,6 +460,7 @@ impl TransformOperation {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		if *self != TransformOperation::None {
 			*self = match self {
