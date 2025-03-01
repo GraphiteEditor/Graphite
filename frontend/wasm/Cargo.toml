@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 default = ["gpu"]
 gpu = ["editor/gpu"]
-tauri = ["ron"]
+tauri = ["ron", "editor/tauri"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -37,6 +37,7 @@ js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
+futures.workspace = true
 math-parser = { workspace = true }
 wgpu = { workspace = true, features = [
 	"fragile-send-sync-non-atomic-wasm",

@@ -140,7 +140,7 @@
                   "identifier": {
                     "anyOf": [
                       {
-                        "description": "This permission set configures what kind of\nfetch operations are available from the http plugin.\n\nThis enables all fetch operations but does not\nallow explicitly any origins to be fetched. This needs to\nbe manually configured before usage.\n\n#### Granted Permissions\n\nAll fetch operations are enabled.\n\n",
+                        "description": "This permission set configures what kind of\nfetch operations are available from the http plugin.\n\nThis enables all fetch operations but does not\nallow explicitly any origins to be fetched. This needs to\nbe manually configured before usage.\n\n#### Granted Permissions\n\nAll fetch operations are enabled.\n\n\n#### This default permission set includes:\n\n- `allow-fetch`\n- `allow-fetch-cancel`\n- `allow-fetch-read-body`\n- `allow-fetch-send`",
                         "type": "string",
                         "const": "http:default",
                         "markdownDescription": "This permission set configures what kind of\nfetch operations are available from the http plugin.\n\nThis enables all fetch operations but does not\nallow explicitly any origins to be fetched. This needs to\nbe manually configured before usage.\n\n#### Granted Permissions\n\nAll fetch operations are enabled.\n\n\n#### This default permission set includes:\n\n- `allow-fetch`\n- `allow-fetch-cancel`\n- `allow-fetch-read-body`\n- `allow-fetch-send`"
@@ -513,7 +513,7 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Default core plugins set which includes:\n- 'core:path:default'\n- 'core:event:default'\n- 'core:window:default'\n- 'core:webview:default'\n- 'core:app:default'\n- 'core:image:default'\n- 'core:resources:default'\n- 'core:menu:default'\n- 'core:tray:default'\n",
+          "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",
           "markdownDescription": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`"
@@ -2397,7 +2397,7 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
-          "description": "This permission set configures what kind of\nfetch operations are available from the http plugin.\n\nThis enables all fetch operations but does not\nallow explicitly any origins to be fetched. This needs to\nbe manually configured before usage.\n\n#### Granted Permissions\n\nAll fetch operations are enabled.\n\n",
+          "description": "This permission set configures what kind of\nfetch operations are available from the http plugin.\n\nThis enables all fetch operations but does not\nallow explicitly any origins to be fetched. This needs to\nbe manually configured before usage.\n\n#### Granted Permissions\n\nAll fetch operations are enabled.\n\n\n#### This default permission set includes:\n\n- `allow-fetch`\n- `allow-fetch-cancel`\n- `allow-fetch-read-body`\n- `allow-fetch-send`",
           "type": "string",
           "const": "http:default",
           "markdownDescription": "This permission set configures what kind of\nfetch operations are available from the http plugin.\n\nThis enables all fetch operations but does not\nallow explicitly any origins to be fetched. This needs to\nbe manually configured before usage.\n\n#### Granted Permissions\n\nAll fetch operations are enabled.\n\n\n#### This default permission set includes:\n\n- `allow-fetch`\n- `allow-fetch-cancel`\n- `allow-fetch-read-body`\n- `allow-fetch-send`"
@@ -2451,7 +2451,7 @@
           "markdownDescription": "Denies the fetch_send command without any pre-configured scope."
         },
         {
-          "description": "This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality without any specific\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n",
+          "description": "This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality with a reasonable\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n\n#### This default permission set includes:\n\n- `allow-open`",
           "type": "string",
           "const": "shell:default",
           "markdownDescription": "This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality with a reasonable\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n\n#### This default permission set includes:\n\n- `allow-open`"

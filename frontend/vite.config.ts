@@ -59,6 +59,7 @@ export default defineConfig({
 		port: 8080,
 		host: "0.0.0.0",
 	},
+	envPrefix: ['VITE_', 'TAURI_ENV_*'],
 	build: {
 		rollupOptions: {
 			plugins: [

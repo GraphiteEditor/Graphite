@@ -1,25 +1,21 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+
 use graph_craft::document::value::{RenderOutput, TaggedValue};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, generate_uuid};
+use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_core::renderer::RenderSvgSegmentList;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_core::renderer::{GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::Context;
-use graphene_std::application_io::TimingInformation;
-use graphene_std::memo::IORecord;
-use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
+use graphene_core::Context;
+use graphene_std::renderer::{format_transform_matrix, RenderMetadata};
 use graphene_std::vector::VectorData;
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::dynamic_executor::{IntrospectError, ResolvedDocumentNodeTypesDelta};
 
 use glam::{DAffine2, DVec2, UVec2};
 use std::sync::Arc;
@@ -36,15 +32,13 @@ pub struct ExecutionRequest {
 	render_config: RenderConfig,
 }
 
-#[cfg_attr(feature = "tauri", derive(serde::Serialize, serde::Deserialize))]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<FrontendMessage>,
 	transform: DAffine2,
 	vector_modify: HashMap<NodeId, VectorData>,
-	/// The resulting value from the temporary inspected during execution
-	inspect_result: Option<InspectResult>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -53,7 +47,7 @@ pub struct CompilationResponse {
 	node_graph_errors: GraphErrors,
 }
 
-#[cfg_attr(feature = "tauri", derive(serde::Serialize, serde::Deserialize))]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
@@ -65,7 +59,6 @@ pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
-	old_inspect_node: Option<NodeId>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,27 +72,11 @@ impl Default for NodeGraphExecutor {
 			futures: Default::default(),
 			runtime_io: NodeRuntimeIO::new(),
 			node_graph_hash: 0,
-			old_inspect_node: None,
 		}
 	}
 }
 
 impl NodeGraphExecutor {
-	/// A local runtime is useful on threads since having global state causes flakes
-	#[cfg(test)]
-	pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
-		let (request_sender, request_receiver) = std::sync::mpsc::channel();
-		let (response_sender, response_receiver) = std::sync::mpsc::channel();
-		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
-
-		let node_executor = Self {
-			futures: Default::default(),
-			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
-			node_graph_hash: 0,
-			old_inspect_node: None,
-		};
-		(node_runtime, node_executor)
-	}
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&self, render_config: RenderConfig) -> u64 {
 		let execution_id = generate_uuid();
@@ -109,7 +86,7 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
+	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
 		introspect_node(path).await
 	}
 
@@ -143,45 +120,23 @@ impl NodeGraphExecutor {
 		Some(extract_data(downcasted))
 	}
 
-	/// Updates the network to monitor all inputs. Useful for the testing.
-	#[cfg(test)]
-	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
-		// We should always invalidate the cache.
-		self.node_graph_hash = generate_uuid();
-		let mut network = document.network_interface.document_network().clone();
-		let instrumented = Instrumented::new(&mut network);
-
-		self.runtime_io
-			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
-			.map_err(|e| e.to_string())?;
-		Ok(instrumented)
-	}
-
-	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, inspect_node: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
-		let network_hash = document.network_interface.document_network().current_hash();
-		// Refresh the graph when it changes or the inspect node changes
-		if network_hash != self.node_graph_hash || self.old_inspect_node != inspect_node || ignore_hash {
-			let network = document.network_interface.document_network().clone();
-			self.old_inspect_node = inspect_node;
+	/// Evaluates a node graph, computing the entire graph
+	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
+		// Get the node graph layer
+		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
+		if network_hash != self.node_graph_hash || ignore_hash {
 			self.node_graph_hash = network_hash;
-
 			self.runtime_io
-				.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node }))
+				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone()))
 				.map_err(|e| e.to_string())?;
 		}
-		Ok(())
-	}
 
-	/// Adds an evaluate request for whatever current network is cached.
-	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<(), String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},
-			time,
 			#[cfg(any(feature = "resvg", feature = "vello"))]
 			export_format: graphene_core::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
@@ -199,24 +154,9 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(
-		&mut self,
-		document: &mut DocumentMessageHandler,
-		viewport_resolution: UVec2,
-		time: TimingInformation,
-		inspect_node: Option<NodeId>,
-		ignore_hash: bool,
-	) -> Result<(), String> {
-		self.update_node_graph(document, inspect_node, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)?;
-
-		Ok(())
-	}
-
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
-		let network = document.network_interface.document_network().clone();
+		let network = document.network_interface.network(&[]).unwrap().clone();
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
@@ -234,7 +174,6 @@ impl NodeGraphExecutor {
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
-			time: Default::default(),
 			export_format: graphene_core::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
@@ -243,9 +182,7 @@ impl NodeGraphExecutor {
 		export_config.size = size;
 
 		// Execute the node graph
-		self.runtime_io
-			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
-			.map_err(|e| e.to_string())?;
+		self.runtime_io.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		let execution_context = ExecutionContext { export_config: Some(export_config) };
 		self.futures.insert(execution_id, execution_context);
@@ -297,7 +234,6 @@ impl NodeGraphExecutor {
 						responses: existing_responses,
 						transform,
 						vector_modify,
-						inspect_result,
 					} = execution_response;
 
 					responses.add(OverlaysMessage::Draw);
@@ -322,17 +258,7 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
 					}
-
-					// Update the spreadsheet on the frontend using the value of the inspect result.
-					if self.old_inspect_node.is_some() {
-						if let Some(inspect_result) = inspect_result {
-							responses.add(SpreadsheetMessage::UpdateLayout { inspect_result });
-						}
-					}
 				}
-				// NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
-				// 	responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
-				// }
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
@@ -361,6 +287,9 @@ impl NodeGraphExecutor {
 					});
 					responses.add(NodeGraphMessage::SendGraph);
 				}
+				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
+					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
+				}
 			}
 		}
 		Ok(())
@@ -369,7 +298,7 @@ impl NodeGraphExecutor {
 	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(ViewMode::Normal, None, false, false, false);
+		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, None, false, false, false);
 
 		// Render SVG
 		render_object.render_svg(&mut render, &render_params);
@@ -425,111 +354,5 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 		Ok(())
-	}
-}
-
-/// Stores all of the monitor nodes that have been attached to a graph
-#[derive(Default)]
-pub struct Instrumented {
-	protonodes_by_name: HashMap<String, Vec<Vec<Vec<NodeId>>>>,
-	protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
-}
-
-#[cfg(test)]
-impl Instrumented {
-	/// Adds montior nodes to the network
-	fn add(&mut self, network: &mut NodeNetwork, path: &mut Vec<NodeId>) {
-		// Required to do seperately to satiate the borrow checker.
-		let mut monitor_nodes = Vec::new();
-		for (id, node) in network.nodes.iter_mut() {
-			// Recursively instrument
-			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				path.push(*id);
-				self.add(nested, path);
-				path.pop();
-			}
-			let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
-			for input in &mut node.inputs {
-				let node_id = NodeId::new();
-				let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
-				monitor_nodes.push((old_input, node_id));
-				path.push(node_id);
-				monitor_node_ids.push(path.clone());
-				path.pop();
-			}
-			if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
-				path.push(*id);
-				self.protonodes_by_name.entry(identifier.name.to_string()).or_default().push(monitor_node_ids.clone());
-				self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
-				path.pop();
-			}
-		}
-		for (input, monitor_id) in monitor_nodes {
-			let monitor_node = DocumentNode {
-				inputs: vec![input],
-				implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-				manual_composition: Some(graph_craft::generic!(T)),
-				skip_deduplication: true,
-				..Default::default()
-			};
-			network.nodes.insert(monitor_id, monitor_node);
-		}
-	}
-
-	/// Instrument a graph and return a new [Instrumented] state.
-	pub fn new(network: &mut NodeNetwork) -> Self {
-		let mut instrumented = Self::default();
-		instrumented.add(network, &mut Vec::new());
-		instrumented
-	}
-
-	fn downcast<Input: graphene_std::NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		// This is quite inflexible since it only allows the footprint as inputs.
-		if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
-			Some(x.output.clone())
-		} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
-			Some(x.output.clone())
-		} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
-			Some(x.output.clone())
-		} else {
-			panic!("cannot downcast type for introspection");
-		}
-	}
-
-	/// Grab all of the values of the input every time it occurs in the graph.
-	pub fn grab_all_input<'a, Input: graphene_std::NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		self.protonodes_by_name
-			.get(Input::identifier())
-			.map_or([].as_slice(), |x| x.as_slice())
-			.iter()
-			.filter_map(|inputs| inputs.get(Input::INDEX))
-			.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-			.filter_map(Instrumented::downcast::<Input>)
-	}
-
-	pub fn grab_protonode_input<Input: graphene_std::NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
-
-		let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
-
-		Self::downcast::<Input>(dynamic)
-	}
-
-	pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
-		let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
-		self.grab_protonode_input::<Input>(&vec![node], runtime)
 	}
 }
