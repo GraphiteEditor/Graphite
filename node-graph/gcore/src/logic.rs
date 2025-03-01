@@ -32,7 +32,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 	if_false: impl Node<C, Output = T>,
 ) -> T {
 	if condition {
-		// we can't remove these calls because we only want to evaluate the brach that we actually need
+		// We can't remove these calls because we only want to evaluate the branch that we actually need
 		if_true.eval(ctx).await
 	} else {
 		if_false.eval(ctx).await

@@ -132,7 +132,8 @@ impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{generic::FnNode, value::ValueNode};
+	use crate::generic::FnNode;
+	use crate::value::ValueNode;
 
 	#[test]
 	fn compose() {

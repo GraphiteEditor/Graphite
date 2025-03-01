@@ -2694,10 +2694,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		}
 		let output_type = &first_node_io.return_value;
 
-		if *display_name == "Text" {
-			log::debug!("{} {:?}", display_name, first_node_io);
-		}
-
 		let inputs = fields
 			.iter()
 			.zip(first_node_io.inputs.iter())

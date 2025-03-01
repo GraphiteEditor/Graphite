@@ -1,7 +1,7 @@
+use crate::transform::Footprint;
+
 use core::{any::Any, borrow::Borrow, panic::Location};
 use std::sync::Arc;
-
-use crate::transform::Footprint;
 
 pub trait Ctx: Clone + Send {}
 
