@@ -89,20 +89,24 @@ pub fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize
 	widgets
 }
 
-pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>), context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn property_from_type(
+	node_id: NodeId,
+	index: usize,
+	ty: &Type,
+	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+	context: &mut NodePropertiesContext,
+) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
 	let Some(name) = context.network_interface.input_name(&node_id, index, context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
-		return vec![];
+		return Err(vec![]);
 	};
-
 	let Some(network) = context.network_interface.network(context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
-		return vec![];
+		return Err(vec![]);
 	};
-
 	let Some(document_node) = network.nodes.get(&node_id) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the document node does not exist");
-		return vec![];
+		return Err(vec![]);
 	};
 
 	let (mut number_min, mut number_max, range) = number_options;
@@ -247,7 +251,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 									))
 									.widget_holder(),
 							]);
-							widgets.into()
+							return Err(vec![widgets.into()]);
 						}
 					}
 				}
@@ -257,8 +261,10 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, context),
 		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
 	};
+
 	extra_widgets.push(widgets);
-	extra_widgets
+
+	Ok(extra_widgets)
 }
 
 pub fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
@@ -2121,18 +2127,35 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				};
 
 				let mut number_options = (None, None, None);
-				if let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation {
-					if let Some(field) = graphene_core::registry::NODE_METADATA
-						.lock()
-						.unwrap()
-						.get(&proto_node_identifier.name.clone().into_owned())
-						.and_then(|metadata| metadata.fields.get(input_index))
-					{
-						number_options = (field.number_min, field.number_max, field.number_mode_range);
+				let input_type = match implementation {
+					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
+						if let Some(field) = graphene_core::registry::NODE_METADATA
+							.lock()
+							.unwrap()
+							.get(&proto_node_identifier.name.clone().into_owned())
+							.and_then(|metadata| metadata.fields.get(input_index))
+						{
+							number_options = (field.number_min, field.number_max, field.number_mode_range);
+						}
+						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
+							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
+							return Vec::new();
+						};
+						let proto_node_identifier = proto_node_identifier.clone();
+						let input_type = implementations
+							.keys()
+							.filter_map(|item| item.inputs.get(input_index))
+							.find(|item| property_from_type(node_id, input_index, item, number_options, context).is_ok());
+						let Some(input_type) = input_type else {
+							log::error!("Could not get input type for protonode {proto_node_identifier:?} at index {input_index:?}");
+							return Vec::new();
+						};
+						input_type.clone()
 					}
-				}
-				let input_type = context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0;
-				property_from_type(node_id, input_index, &input_type, number_options, context)
+					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
+				};
+
+				property_from_type(node_id, input_index, &input_type, number_options, context).unwrap_or_else(|value| value)
 			});
 			layout.extend(row);
 		}
