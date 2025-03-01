@@ -1236,7 +1236,7 @@ impl core::fmt::Display for SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"))]
 async fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(

@@ -27,7 +27,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 
 	let render_node = graph_craft::document::DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)],
-		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
+		implementation: DocumentNodeImplementation::Network(NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {

@@ -7,7 +7,7 @@ use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
-#[node_macro::node(category("Raster: Filter"))]
+#[node_macro::node(category("Raster"))]
 async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
 	let image_frame = image_frame.one_item();
 

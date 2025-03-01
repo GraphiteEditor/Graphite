@@ -390,7 +390,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
-			category: "Raster: Generator",
+			category: "Network",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1947,28 +1947,29 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// Aims for interoperable compatibility with:
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
-		DocumentNodeDefinition {
-			identifier: "Curves",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
-						NodeInput::value(TaggedValue::Curve(Default::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".into(), "Curve".into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		(*IMAGINATE_NODE).clone(),
+		// TODO: Fix this, it's currently broken
+		// DocumentNodeDefinition {
+		// 	identifier: "Curves",
+		// 	category: "Raster: Adjustment",
+		// 	node_template: NodeTemplate {
+		// 		document_node: DocumentNode {
+		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
+		// 			inputs: vec![
+		// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
+		// 			],
+		// 			..Default::default()
+		// 		},
+		// 		persistent_node_metadata: DocumentNodePersistentMetadata {
+		// 			input_properties: vec!["Image".into(), "Curve".into()],
+		// 			output_names: vec!["Image".to_string()],
+		// 			..Default::default()
+		// 		},
+		// 	},
+		// 	description: Cow::Borrowed("TODO"),
+		// 	properties: None,
+		// },
+		// (*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
 			identifier: "Line",
 			category: "Vector: Shape",
@@ -2757,7 +2758,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
 	identifier: "Imaginate",
-	category: "Raster: Generator",
+	category: "Raster",
 	node_template: NodeTemplate {
 		document_node: DocumentNode {
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {

@@ -472,7 +472,7 @@ fn empty_image<P: Pixel>(_: impl Ctx, transform: DAffine2, #[implementations(Col
 // 	tiling: Tiling: bool,
 // }
 
-#[node_macro::node(category("Raster: Generator"))]
+#[node_macro::node(category("Raster"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
@@ -627,7 +627,7 @@ fn noise_pattern(
 	ImageFrameTable::new(result)
 }
 
-#[node_macro::node(category("Raster: Generator"))]
+#[node_macro::node(category("Raster"))]
 fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();

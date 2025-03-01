@@ -429,7 +429,7 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
 }
 
 /// Constructs a two-dimensional vector value which may be set to any XY coordinate.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(name("Vector2 Value"), category("Value"))]
 fn vector2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
