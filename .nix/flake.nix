@@ -116,6 +116,7 @@
           packages = buildInputs ++ buildTools ++ devTools;
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
+          GIO_MODULE_DIR="${pkgs.glib-networking}/lib/gio/modules/";
 
           shellHook = ''
             alias cargo='mold --run cargo'
