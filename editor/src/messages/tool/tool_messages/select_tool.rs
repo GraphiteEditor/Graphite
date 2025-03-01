@@ -2,8 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
-	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT, SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -617,8 +616,8 @@ impl Fsm for SelectToolFsmState {
 								.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
 							let (direction, color) = match axis {
-								Axis::X => (e0, COLOR_OVERLAY_BLUE),
-								Axis::Y => (e0.perp(), COLOR_OVERLAY_BLUE),
+								Axis::X => (e0, COLOR_OVERLAY_RED),
+								Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
 								_ => unreachable!(),
 							};
 
@@ -641,19 +640,29 @@ impl Fsm for SelectToolFsmState {
 					let angle = -mouse_position.angle_to(DVec2::X);
 					let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-					let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
-					other.insert(0, '#');
-					let other = other.as_str();
-
 					let extension = tool_data.drag_current - tool_data.drag_start;
 					let origin = compass_center - extension;
 					let viewport_diagonal = input.viewport_bounds.size().length();
 
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
 					let perp = edge.perp();
-
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other));
+					
+					let edge_dot_horizontal = edge.normalize().dot(DVec2::X).abs();
+					let perp_dot_horizontal = perp.normalize().dot(DVec2::X).abs();
+					
+					if edge_dot_horizontal >= perp_dot_horizontal {
+						let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_GREEN.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+						other.insert(0, '#');
+						let other = other.as_str();
+						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_RED));
+						overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other));
+					} else {
+						let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_RED.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+						other.insert(0, '#');
+						let other = other.as_str();
+						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_GREEN));
+						overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other));
+					}
 				}
 
 				// Check if the tool is in selection mode
