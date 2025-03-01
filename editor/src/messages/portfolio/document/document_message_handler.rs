@@ -702,6 +702,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 
 				let size = existing_bottom_right - existing_top_left;
+				// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
 				// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
 				let size = size.max(DVec2::ONE);
 				let enlargement = DVec2::new(
