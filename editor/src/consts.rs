@@ -78,6 +78,8 @@ pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
 pub const MIN_LENGTH_FOR_CORNERS_VISIBILITY: f64 = 12.;
+/// The width or height that the transform cage needs to be (at least) before the corner resize handle click targets take up their full surroundings. Otherwise, when less than this value, the interior edge resize handle takes precedence so the corner handles don't eat into the edge area, making it harder to resize the cage from its edges.
+pub const MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS: f64 = 10.;
 /// When the width or height of the transform cage is less than this value, only the exterior of the bounding box will act as a click target for resizing.
 pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 /// When dragging the edge of a cage with Alt, it centers around the pivot.

@@ -1043,7 +1043,7 @@ impl Fsm for SelectToolFsmState {
 							None,
 						);
 
-						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
+						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 
 						// AutoPanning
 						let messages = [
@@ -1082,7 +1082,7 @@ impl Fsm for SelectToolFsmState {
 							None,
 						);
 
-						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
+						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 					}
 				}
 				SelectToolFsmState::SkewingBounds { skew }
@@ -1124,7 +1124,7 @@ impl Fsm for SelectToolFsmState {
 						None,
 					);
 
-					selected.update_transforms(delta, None);
+					selected.update_transforms(delta, None, None);
 				}
 
 				SelectToolFsmState::RotatingBounds
