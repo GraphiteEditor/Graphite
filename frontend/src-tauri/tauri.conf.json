@@ -48,13 +48,14 @@
   "identifier": "rs.graphite.editor",
   "plugins": {},
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "fullscreen": false,
-        "height": 600,
+        "height": 1080,
         "resizable": true,
         "title": "Graphite",
-        "width": 800,
+        "width": 1920,
         "useHttpsScheme": true
       }
     ],

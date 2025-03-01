@@ -1,7 +1,9 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
-use graphite_editor::application::Editor;
 use graphite_editor::messages::prelude::*;
+use graphite_editor::node_graph_executor::NODE_RUNTIME;
+use graphite_editor::node_graph_executor::*;
+use graphite_editor::{application::Editor, node_graph_executor::NodeRuntimeMessage};
 
 // use axum::body::StreamBody;
 // use axum::extract::Path;
@@ -11,14 +13,13 @@ use axum::routing::get;
 use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
 // use http::{Response, StatusCode};
-use std::cell::RefCell;
+use std::sync::Mutex;
 // use std::collections::HashMap;
 // use std::sync::Arc;
 // use std::sync::Mutex;
 
-thread_local! {
-	static EDITOR: RefCell<Option<Editor>> = const { RefCell::new(None) };
-}
+static EDITOR: Mutex<Option<Editor>> = const { Mutex::new(None) };
+static NODE_RUNTIME_IO: Mutex<Option<NodeRuntimeIO>> = const { Mutex::new(None) };
 
 // async fn respond_to(id: Path<String>) -> impl IntoResponse {
 // 	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
@@ -54,9 +55,19 @@ async fn main() {
 		.apply()
 		.unwrap();
 
-	// *(IMAGES.lock().unwrap()) = Some(HashMap::new());
+	std::thread::spawn(|| loop {
+		futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
+
+		std::thread::sleep(std::time::Duration::from_millis(16))
+	});
+
 	graphite_editor::application::set_uuid_seed(0);
-	EDITOR.with(|editor| editor.borrow_mut().replace(Editor::new()));
+	let mut editor_lock = EDITOR.lock().unwrap();
+	*editor_lock = Some(Editor::new());
+	drop(editor_lock);
+	let mut runtime_lock = NODE_RUNTIME_IO.lock().unwrap();
+	*runtime_lock = Some(NodeRuntimeIO::new());
+	drop(runtime_lock);
 	let app = Router::new().route("/", get(|| async { "Hello, World!" }))/*.route("/image/:id", get(respond_to))*/;
 
 	// run it with hyper on localhost:3000
@@ -68,7 +79,7 @@ async fn main() {
 	tauri::Builder::default()
 		.plugin(tauri_plugin_http::init())
 		.plugin(tauri_plugin_shell::init())
-		.invoke_handler(tauri::generate_handler![set_random_seed, handle_message])
+		.invoke_handler(tauri::generate_handler![poll_node_graph, runtime_message])
 		.setup(|_app| {
 			use tauri::Manager;
 			_app.get_webview_window("main").unwrap().open_devtools();
@@ -78,29 +89,20 @@ async fn main() {
 		.expect("error while running tauri application");
 }
 #[tauri::command]
-fn set_random_seed(seed: f64) {
-	graphite_editor::application::set_uuid_seed(seed as u64);
+fn poll_node_graph() -> String {
+	let vec: Vec<_> = NODE_RUNTIME_IO.lock().as_mut().unwrap().as_mut().unwrap().receive().collect();
+	if !vec.is_empty() {
+		log::error!("responding");
+		dbg!(serde_json::to_string(&vec).unwrap())
+	} else {
+		serde_json::to_string(&vec).unwrap()
+	}
 }
 
 #[tauri::command]
-fn handle_message(message: String) -> String {
-	let Ok(message) = ron::from_str::<graphite_editor::messages::message::Message>(&message) else {
-		panic!("Error parsing message: {message}")
-	};
-	let responses = EDITOR.with(|editor| {
-		let mut editor = editor.borrow_mut();
-		editor.as_mut().unwrap().handle_message(message)
-	});
-
-	for response in &responses {
-		let serialized = ron::to_string(&response.clone()).unwrap();
-		if let Err(error) = ron::from_str::<FrontendMessage>(&serialized) {
-			log::error!("Error deserializing message: {error}");
-		}
-	}
-
-	// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
-	let result: Vec<_> = responses.into_iter().collect();
-
-	ron::to_string(&result).expect("Failed to serialize FrontendMessage")
+fn runtime_message(message: String) -> Result<(), String> {
+	let message = serde_json::from_str(&message).unwrap();
+	log::error!("message");
+	let response = NODE_RUNTIME_IO.lock().as_ref().unwrap().as_ref().unwrap().send(message);
+	dbg!(response)
 }

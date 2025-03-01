@@ -1,3 +1,4 @@
+#[cfg(target_arch = "wasm32")]
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER,
@@ -19,12 +20,81 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct MockOverlay;
+#[cfg(not(target_arch = "wasm32"))]
+impl MockOverlay {
+	fn begin_path(&self) {}
+
+	fn move_to(&self, _x: f64, _y: f64) {}
+
+	fn line_to(&self, _x: f64, _y: f64) {}
+
+	fn close_path(&self) {}
+
+	fn set_fill_style_str(&self, _color_fill: &str) {}
+
+	fn set_stroke_style_str(&self, _color_stroke: &str) {}
+
+	fn fill(&self) {}
+
+	fn stroke(&self) {}
+
+	fn set_line_dash(&self, _new: &JsValue) -> Result<JsValue, JsValue> {
+		Err(JsValue::from("test".to_owned()))
+	}
+
+	fn set_line_dash_offset(&self, _arg: f64) {}
+
+	fn arc(&self, _x: f64, _y: f64, _manipulator_group_marker_size: f64, _arg: f64, _tau: f64) -> Result<JsValue, JsValue> {
+		Err(JsValue::from("test".to_owned()))
+	}
+
+	fn set_transform(&self, _a: f64, _b: f64, _c: f64, _d: f64, _e: f64, _f: f64) -> Result<JsValue, JsValue> {
+		Err(JsValue::from("test".to_owned()))
+	}
+
+	fn reset_transform(&self) -> Result<JsValue, JsValue> {
+		Err(JsValue::from("test".to_owned()))
+	}
+
+	fn rect(&self, _x: f64, _y: f64, _size_1: f64, _size_22: f64) {}
+
+	fn line_width(&self) -> f64 {
+		0.
+	}
+
+	fn set_line_width(&self, _hover_ring_stroke_width: f64) {}
+
+	fn set_line_cap(&self, _arg: &str) {}
+
+	fn quadratic_curve_to(&self, _x_1: f64, _y_1: f64, _x_2: f64, _y_2: f64) {}
+
+	fn bezier_curve_to(&self, _x_1: f64, _y_1: f64, _x_2: f64, _y_2: f64, _x_3: f64, _y_3: f64) {}
+
+	fn measure_text(&self, _text: &str) -> Result<web_sys::TextMetrics, JsValue> {
+		Err(JsValue::from("test".to_owned()))
+	}
+
+	fn fill_rect(&self, _padding_1: f64, _padding_2: f64, _padding_3: f64, _padding_4: f64) {}
+
+	fn set_font(&self, _arg: &str) {}
+
+	fn fill_text(&self, _text: &str, _arg_1: f64, _arg_2: f64) -> Result<JsValue, JsValue> {
+		Err(JsValue::from("test".to_owned()))
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip, default = "overlay_canvas_context")]
 	#[specta(skip)]
+	#[cfg(target_arch = "wasm32")]
 	pub render_context: web_sys::CanvasRenderingContext2d,
+	#[cfg(not(target_arch = "wasm32"))]
+	pub render_context: MockOverlay,
 	pub size: DVec2,
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
