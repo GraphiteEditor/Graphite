@@ -640,7 +640,7 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>, transform_operation: Option<TransformOperation>) {
-		let pivot = DAffine2::from_translation(pivot.unwrap_or_else(|| *self.pivot));
+		let pivot = DAffine2::from_translation(pivot.unwrap_or(*self.pivot));
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),

@@ -554,8 +554,9 @@ impl PenToolData {
 
 		if is_start {
 			let modification_type = VectorModificationType::SetPrimaryHandle {
-				// If is start is true then end_point_segment exists
-				segment: self.end_point_segment.unwrap(),
+				segment: self
+					.end_point_segment
+					.expect("In update_handle_position(), if `is_start` is true then `end_point_segment` should exist"),
 				relative_position,
 			};
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1098,11 +1099,11 @@ impl Fsm for PenToolFsmState {
 					overlay_context.line(next_anchor, handle_end, None);
 
 					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.lock_angle {
-						// Draw the line between the currently-being-placed anchor and last-placed point (Lock angle bent overlays)
+						// Draw the line between the currently-being-placed anchor and last-placed point (lock angle bent overlays)
 						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
 					}
 
-					// Draw the line between the currently-being-placed anchor and last-placed point (Snap angle bent overlays)
+					// Draw the line between the currently-being-placed anchor and last-placed point (snap angle bent overlays)
 					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.snap_angle {
 						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
 					}

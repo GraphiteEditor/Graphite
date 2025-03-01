@@ -104,36 +104,26 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 	}
 }
 
-fn update_collinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	const PI: f64 = std::f64::consts::PI;
+fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	use std::f64::consts::PI;
 
 	for &layer in selected_layers {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-			continue;
-		};
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 		for [handle1, handle2] in &vector_data.colinear_manipulators {
 			let manipulator1 = handle1.to_manipulator_point();
 			let manipulator2 = handle2.to_manipulator_point();
 
-			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else {
-				continue;
-			};
-
-			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else {
-				continue;
-			};
-
-			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else {
-				continue;
-			};
+			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else { continue };
+			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
+			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
 
 			let angle = pos1.angle_to(pos2);
 
-			// Check if handles are not collinear (not approximately equal to ±π)
+			// Check if handles are not colinear (not approximately equal to +/- PI)
 			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
 				let modification_type = VectorModificationType::SetG1Continuous {
-					handles: [handle1.clone(), handle2.clone()],
+					handles: [*handle1, *handle2],
 					enabled: false,
 				};
 
@@ -350,7 +340,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 					selected.responses.add(PenToolMessage::Confirm);
 				} else {
-					update_collinear_handles(&selected_layers, document, responses);
+					update_colinear_handles(&selected_layers, document, responses);
 					responses.add(DocumentMessage::EndTransaction);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
