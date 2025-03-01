@@ -865,14 +865,14 @@ impl Fsm for SelectToolFsmState {
 							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
 							if bounds.check_skew_handle(input.mouse.position, closest_edge) {
 								tool_data.get_snap_candidates(document, input);
-								return SelectToolFsmState::SkewingBounds{ skew };
+								return SelectToolFsmState::SkewingBounds { skew };
 							}
 						}
 					}
 					tool_data.get_snap_candidates(document, input);
 					SelectToolFsmState::ResizingBounds
 				}
-                // Dragging the selected layers around to transform them
+				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
 

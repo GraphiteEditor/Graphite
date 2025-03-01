@@ -1,8 +1,8 @@
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
-	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
+	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
+	SKEW_TRIANGLE_SIZE,
 };
-use crate::consts::{SKEW_GIZMO_OFFSET, SKEW_GIZMO_SIZE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
@@ -16,7 +16,7 @@ use glam::{DAffine2, DMat2, DVec2};
 
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
-// (top, bottom, left, right)
+/// (top, bottom, left, right)
 pub type EdgeBool = (bool, bool, bool, bool);
 
 pub struct SizeSnapData<'a> {
@@ -254,6 +254,7 @@ impl SelectedEdges {
 		(DAffine2::from_scale(enlargement_factor), pivot)
 	}
 
+	// TODO: Add free movement when Ctrl is pressed to allow dragging the whole edge, not just sliding it
 	pub fn skew_transform(&self, mouse: DVec2, to_viewport_transform: DAffine2, _free_movement: bool) -> DAffine2 {
 		// Skip if the matrix is singular (as it isn't really possible to skew).
 		if !to_viewport_transform.matrix2.determinant().recip().is_finite() {
@@ -391,10 +392,10 @@ impl BoundingBoxManager {
 		let max = self.bounds[0].max(self.bounds[1]);
 
 		let distances = [
-			if edges.0 { Some((cursor - DVec2::new(cursor.x, min.y)).length_squared()) } else { None },
-			if edges.1 { Some((cursor - DVec2::new(cursor.x, max.y)).length_squared()) } else { None },
-			if edges.2 { Some((cursor - DVec2::new(min.x, cursor.y)).length_squared()) } else { None },
-			if edges.3 { Some((cursor - DVec2::new(max.x, cursor.y)).length_squared()) } else { None },
+			edges.0.then(|| (cursor - DVec2::new(cursor.x, min.y)).length_squared()),
+			edges.1.then(|| (cursor - DVec2::new(cursor.x, max.y)).length_squared()),
+			edges.2.then(|| (cursor - DVec2::new(min.x, cursor.y)).length_squared()),
+			edges.3.then(|| (cursor - DVec2::new(max.x, cursor.y)).length_squared()),
 		];
 
 		let min_distance = distances.iter().filter_map(|&x| x).min_by(|a, b| a.partial_cmp(b).unwrap());
@@ -412,15 +413,15 @@ impl BoundingBoxManager {
 
 	pub fn check_skew_handle(&self, cursor: DVec2, edge: EdgeBool) -> bool {
 		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) {
-			if (end - start).length() < MIN_LENGTH_FOR_TRIANGLE_VISIBILITY {
+			if (end - start).length() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY {
 				return false;
 			}
 
 			let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
 				let normal = direction.perp();
-				let top = base + direction * SKEW_GIZMO_SIZE;
-				let edge1 = base + normal * SKEW_GIZMO_SIZE / 2.;
-				let edge2 = base - normal * SKEW_GIZMO_SIZE / 2.;
+				let top = base + direction * SKEW_TRIANGLE_SIZE;
+				let edge1 = base + normal * SKEW_TRIANGLE_SIZE / 2.;
+				let edge2 = base - normal * SKEW_TRIANGLE_SIZE / 2.;
 
 				let v0 = edge1 - top;
 				let v1 = edge2 - top;
@@ -435,16 +436,16 @@ impl BoundingBoxManager {
 				let denom = d00 * d11 - d01 * d01;
 				let v = (d11 * d20 - d01 * d21) / denom;
 				let w = (d00 * d21 - d01 * d20) / denom;
-				let u = 1.0 - v - w;
+				let u = 1. - v - w;
 
-				u >= 0.0 && v >= 0.0 && w >= 0.0
+				u >= 0. && v >= 0. && w >= 0.
 			};
 
 			let edge_dir = (end - start).normalize();
 			let mid = end.midpoint(start);
 
 			for direction in [edge_dir, -edge_dir] {
-				let base = mid + direction * (3. + SKEW_GIZMO_OFFSET);
+				let base = mid + direction * (3. + SKEW_TRIANGLE_OFFSET);
 				if touches_triangle(base, direction, cursor) {
 					return true;
 				}
@@ -486,7 +487,7 @@ impl BoundingBoxManager {
 
 	pub fn render_skew_gizmos(&mut self, overlay_context: &mut OverlayContext, hover_edge: EdgeBool) {
 		let mut draw_edge_triangles = |start: DVec2, end: DVec2| {
-			if (end - start).length() < MIN_LENGTH_FOR_TRIANGLE_VISIBILITY {
+			if (end - start).length() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY {
 				return;
 			}
 
@@ -494,7 +495,7 @@ impl BoundingBoxManager {
 			let mid = end.midpoint(start);
 
 			for edge in [edge_dir, -edge_dir] {
-				overlay_context.draw_triangle(mid + edge * (3. + SKEW_GIZMO_OFFSET), edge, SKEW_GIZMO_SIZE, None, None);
+				overlay_context.draw_triangle(mid + edge * (3. + SKEW_TRIANGLE_OFFSET), edge, SKEW_TRIANGLE_SIZE, None, None);
 			}
 		};
 
@@ -504,50 +505,45 @@ impl BoundingBoxManager {
 	}
 
 	pub fn over_extended_edge_midpoint(&self, mouse: DVec2, hover_edge: EdgeBool) -> bool {
+		const HALF_WIDTH_OUTER_RECT: f64 = RESIZE_HANDLE_SIZE / 2. + SKEW_TRIANGLE_OFFSET + SKEW_TRIANGLE_SIZE;
+		const HALF_WIDTH_INNER_RECT: f64 = SKEW_TRIANGLE_OFFSET + RESIZE_HANDLE_SIZE / 2.;
+
+		const INNER_QUAD_CORNER: DVec2 = DVec2::new(HALF_WIDTH_INNER_RECT, RESIZE_HANDLE_SIZE / 2.);
+		const FULL_QUAD_CORNER: DVec2 = DVec2::new(HALF_WIDTH_OUTER_RECT, BOUNDS_SELECT_THRESHOLD);
+
 		let quad = self.transform * Quad::from_box(self.bounds);
 
-		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
-			if (end - start).length() < MIN_LENGTH_FOR_TRIANGLE_VISIBILITY {
-				return false;
-			}
+		let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) else {
+			return false;
+		};
+		if (end - start).length() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY {
+			return false;
+		}
 
-			let point = start.midpoint(end);
-
-			let angle = if hover_edge.0 || hover_edge.1 {
-				(quad.top_left() - quad.top_right()).to_angle()
-			} else if hover_edge.2 || hover_edge.3 {
-				(quad.top_left() - quad.bottom_left()).to_angle()
-			} else {
-				return false;
-			};
-
-			let is_compact = if hover_edge.0 || hover_edge.1 {
-				(quad.top_left() - quad.bottom_left()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2)
-			} else if hover_edge.2 || hover_edge.3 {
-				(quad.top_left() - quad.top_right()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2)
-			} else {
-				unreachable!()
-			};
-
-			const HALF_WIDTH_OUTER_RECT: f64 = RESIZE_HANDLE_SIZE / 2. + SKEW_GIZMO_OFFSET + SKEW_GIZMO_SIZE;
-			const HALF_WIDTH_INNER_RECT: f64 = SKEW_GIZMO_OFFSET + RESIZE_HANDLE_SIZE / 2.;
-
-			const INNER_QUAD_CORNER: DVec2 = DVec2::new(HALF_WIDTH_INNER_RECT, RESIZE_HANDLE_SIZE / 2.);
-			const FULL_QUAD_CORNER: DVec2 = DVec2::new(HALF_WIDTH_OUTER_RECT, BOUNDS_SELECT_THRESHOLD);
-
-			let has_triangle_hover = self.check_skew_handle(mouse, hover_edge);
-			if is_compact {
-				let upper_rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-FULL_QUAD_CORNER.with_y(0.), FULL_QUAD_CORNER]);
-				let inter_triangle_quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-INNER_QUAD_CORNER, INNER_QUAD_CORNER]);
-
-				upper_rect.contains(mouse) || has_triangle_hover || inter_triangle_quad.contains(mouse)
-			} else {
-				let rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-FULL_QUAD_CORNER, FULL_QUAD_CORNER]);
-
-				rect.contains(mouse) || has_triangle_hover
-			}
+		let angle;
+		let is_compact;
+		if hover_edge.0 || hover_edge.1 {
+			angle = (quad.top_left() - quad.top_right()).to_angle();
+			is_compact = (quad.top_left() - quad.bottom_left()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2);
+		} else if hover_edge.2 || hover_edge.3 {
+			angle = (quad.top_left() - quad.bottom_left()).to_angle();
+			is_compact = (quad.top_left() - quad.top_right()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2);
 		} else {
-			false
+			return false;
+		};
+
+		let has_triangle_hover = self.check_skew_handle(mouse, hover_edge);
+		let point = start.midpoint(end);
+
+		if is_compact {
+			let upper_rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-FULL_QUAD_CORNER.with_y(0.), FULL_QUAD_CORNER]);
+			let inter_triangle_quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-INNER_QUAD_CORNER, INNER_QUAD_CORNER]);
+
+			upper_rect.contains(mouse) || has_triangle_hover || inter_triangle_quad.contains(mouse)
+		} else {
+			let rect = DAffine2::from_angle_translation(angle, point) * Quad::from_box([-FULL_QUAD_CORNER, FULL_QUAD_CORNER]);
+
+			rect.contains(mouse) || has_triangle_hover
 		}
 	}
 
