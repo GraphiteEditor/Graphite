@@ -6,6 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 
+use dyn_any::DynAny;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod};
@@ -2142,10 +2143,19 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							return Vec::new();
 						};
 						let proto_node_identifier = proto_node_identifier.clone();
-						let input_type = implementations
+						debug!("implementations: {:#?}", implementations);
+						let mut input_types = implementations
 							.keys()
 							.filter_map(|item| item.inputs.get(input_index))
-							.find(|item| property_from_type(node_id, input_index, item, number_options, context).is_ok());
+							.filter(|ty| {
+								let result = property_from_type(node_id, input_index, ty, number_options, context);
+								debug!("result: {:?}\nty: {:?}", result, ty);
+								result.is_ok()
+							})
+							.collect::<Vec<_>>();
+						input_types.sort_by_key(|ty| ty.type_name());
+						let input_type = input_types.first().cloned();
+						debug!("Final input type: {input_type:?}");
 						let Some(input_type) = input_type else {
 							log::error!("Could not get input type for protonode {proto_node_identifier:?} at index {input_index:?}");
 							return Vec::new();

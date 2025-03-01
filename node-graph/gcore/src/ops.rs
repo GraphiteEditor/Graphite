@@ -91,6 +91,17 @@ fn add<U: Add<T>, T>(
 	augend + addend
 }
 
+// TODO: Don't commit this, it's for testing
+/// The addition operation (+) calculates the sum of two numbers.
+#[node_macro::node(category("Math: Arithmetic"))]
+fn add_to<U: Add<T>, T>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] augend: U,
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)] addend: T,
+) -> <U as Add<T>>::Output {
+	augend + addend
+}
+
 /// The subtraction operation (-) calculates the difference between two numbers.
 #[node_macro::node(category("Math: Arithmetic"))]
 fn subtract<U: Sub<T>, T>(
@@ -105,6 +116,19 @@ fn subtract<U: Sub<T>, T>(
 #[node_macro::node(category("Math: Arithmetic"))]
 fn multiply<U: Mul<T>, T>(
 	_: (),
+	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] multiplier: U,
+	#[default(1.)]
+	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)]
+	multiplicand: T,
+) -> <U as Mul<T>>::Output {
+	multiplier * multiplicand
+}
+
+// TODO: Don't commit this, it's for testing
+/// The multiplication operation (×) calculates the product of two numbers.
+#[node_macro::node(category("Math: Arithmetic"))]
+fn multiply_to<U: Mul<T>, T>(
+	_: impl Ctx,
 	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, f64, DVec2)] multiplier: U,
 	#[default(1.)]
 	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, DVec2, f64)]
