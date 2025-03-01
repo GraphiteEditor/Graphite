@@ -1,19 +1,10 @@
 use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::transform::Footprint;
-use graphene_core::Color;
+use graphene_core::{Color, Ctx};
 
 #[node_macro::node(category("Raster"))]
-async fn image_color_palette<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ImageFrameTable<Color>,
-		Footprint -> ImageFrameTable<Color>,
-	)]
-	image: impl Node<F, Output = ImageFrameTable<Color>>,
+async fn image_color_palette(
+	_: impl Ctx,
+	image: ImageFrameTable<Color>,
 	#[min(1.)]
 	#[max(28.)]
 	max_size: u32,
@@ -25,7 +16,6 @@ async fn image_color_palette<F: 'n + Send>(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	let image = image.eval(footprint).await;
 	let image = image.one_item();
 
 	for pixel in image.image.data.iter() {
@@ -75,30 +65,24 @@ async fn image_color_palette<F: 'n + Send>(
 mod test {
 	use super::*;
 
-	use graph_craft::generic::FnNode;
 	use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 	use graphene_core::raster::Image;
-	use graphene_core::value::CopiedNode;
-	use graphene_core::Node;
 
 	#[test]
 	fn test_image_color_palette() {
-		let node = ImageColorPaletteNode {
-			max_size: CopiedNode(1u32),
-			image: FnNode::new(|_| {
-				Box::pin(async move {
-					ImageFrameTable::new(ImageFrame {
-						image: Image {
-							width: 100,
-							height: 100,
-							data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
-							base64_string: None,
-						},
-						..Default::default()
-					})
-				})
+		let result = image_color_palette(
+			(),
+			ImageFrameTable::new(ImageFrame {
+				image: Image {
+					width: 100,
+					height: 100,
+					data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
+					base64_string: None,
+				},
+				..Default::default()
 			}),
-		};
-		assert_eq!(futures::executor::block_on(node.eval(())), [Color::from_rgbaf32(0., 0., 0., 1.).unwrap()]);
+			1,
+		);
+		assert_eq!(futures::executor::block_on(result), [Color::from_rgbaf32(0., 0., 0., 1.).unwrap()]);
 	}
 }
