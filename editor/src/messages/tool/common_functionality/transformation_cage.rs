@@ -1,6 +1,6 @@
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
-	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
+	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
 };
 use crate::consts::{SKEW_GIZMO_OFFSET, SKEW_GIZMO_SIZE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
@@ -411,31 +411,35 @@ impl BoundingBoxManager {
 	}
 
 	pub fn check_skew_handle(&self, cursor: DVec2, edge: EdgeBool) -> bool {
-		let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
-			let normal = direction.perp();
-			let top = base + direction * SKEW_GIZMO_SIZE;
-			let edge1 = base + normal * SKEW_GIZMO_SIZE / 2.;
-			let edge2 = base - normal * SKEW_GIZMO_SIZE / 2.;
-
-			let v0 = edge1 - top;
-			let v1 = edge2 - top;
-			let v2 = cursor - top;
-
-			let d00 = v0.dot(v0);
-			let d01 = v0.dot(v1);
-			let d11 = v1.dot(v1);
-			let d20 = v2.dot(v0);
-			let d21 = v2.dot(v1);
-
-			let denom = d00 * d11 - d01 * d01;
-			let v = (d11 * d20 - d01 * d21) / denom;
-			let w = (d00 * d21 - d01 * d20) / denom;
-			let u = 1.0 - v - w;
-
-			u >= 0.0 && v >= 0.0 && w >= 0.0
-		};
-
 		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) {
+			if (end - start).length() < MIN_LENGTH_FOR_TRIANGLE_VISIBILITY {
+				return false;
+			}
+
+			let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
+				let normal = direction.perp();
+				let top = base + direction * SKEW_GIZMO_SIZE;
+				let edge1 = base + normal * SKEW_GIZMO_SIZE / 2.;
+				let edge2 = base - normal * SKEW_GIZMO_SIZE / 2.;
+
+				let v0 = edge1 - top;
+				let v1 = edge2 - top;
+				let v2 = cursor - top;
+
+				let d00 = v0.dot(v0);
+				let d01 = v0.dot(v1);
+				let d11 = v1.dot(v1);
+				let d20 = v2.dot(v0);
+				let d21 = v2.dot(v1);
+
+				let denom = d00 * d11 - d01 * d01;
+				let v = (d11 * d20 - d01 * d21) / denom;
+				let w = (d00 * d21 - d01 * d20) / denom;
+				let u = 1.0 - v - w;
+
+				u >= 0.0 && v >= 0.0 && w >= 0.0
+			};
+
 			let edge_dir = (end - start).normalize();
 			let mid = end.midpoint(start);
 
@@ -482,6 +486,10 @@ impl BoundingBoxManager {
 
 	pub fn render_skew_gizmos(&mut self, overlay_context: &mut OverlayContext, hover_edge: EdgeBool) {
 		let mut draw_edge_triangles = |start: DVec2, end: DVec2| {
+			if (end - start).length() < MIN_LENGTH_FOR_TRIANGLE_VISIBILITY {
+				return;
+			}
+
 			let edge_dir = (end - start).normalize();
 			let mid = end.midpoint(start);
 
@@ -489,6 +497,7 @@ impl BoundingBoxManager {
 				overlay_context.draw_triangle(mid + edge * (3. + SKEW_GIZMO_OFFSET), edge, SKEW_GIZMO_SIZE, None, None);
 			}
 		};
+
 		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
 			draw_edge_triangles(start, end);
 		}
@@ -498,6 +507,10 @@ impl BoundingBoxManager {
 		let quad = self.transform * Quad::from_box(self.bounds);
 
 		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
+			if (end - start).length() < MIN_LENGTH_FOR_TRIANGLE_VISIBILITY {
+				return false;
+			}
+
 			let point = start.midpoint(end);
 
 			let angle = if hover_edge.0 || hover_edge.1 {

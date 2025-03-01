@@ -865,7 +865,7 @@ impl Fsm for SelectToolFsmState {
 							let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
 							if bounds.check_skew_handle(input.mouse.position, closest_edge) {
 								tool_data.get_snap_candidates(document, input);
-								return SelectToolFsmState::SkewingBounds{skew};
+								return SelectToolFsmState::SkewingBounds{ skew };
 							}
 						}
 					}
