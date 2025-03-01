@@ -2697,7 +2697,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			.iter()
 			.zip(first_node_io.inputs.iter())
 			.enumerate()
-			.map(|(index, (field, ty))| {
+			.map(|(index, (field, node_io_ty))| {
+				let ty = field.default_type.as_ref().unwrap_or(node_io_ty);
 				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
 
 				match field.value_source {
