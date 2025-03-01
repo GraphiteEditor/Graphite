@@ -959,6 +959,31 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					name,
 				})
 			}
+			DocumentMessage::SelectParentLayer => {
+				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+				let selected_layers = selected_nodes.selected_layers(self.metadata());
+
+				let mut parent_layers = HashSet::new();
+
+				// Find the parent of each selected layer
+				for layer in selected_layers {
+					// Get this layer's parent
+					let Some(parent) = layer.parent(self.metadata()) else { continue };
+
+					// Either use the parent, or keep the same layer if it's already at the top level
+					let to_insert = if parent == LayerNodeIdentifier::ROOT_PARENT { layer } else { parent };
+
+					// Add the layer to the set of those which will become selected
+					parent_layers.insert(to_insert.to_node());
+				}
+
+				// Select each parent layer
+				if !parent_layers.is_empty() {
+					let nodes = parent_layers.into_iter().collect();
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					responses.add(BroadcastEvent::SelectionChanged);
+				}
+			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata.all_layers().filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[])).filter(|&layer| {
@@ -1386,6 +1411,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			ToggleOverlaysVisibility,
 			ToggleSnapping,
 			Undo,
+			SelectParentLayer,
 			SelectionStepForward,
 			SelectionStepBack,
 			ZoomCanvasTo100Percent,
