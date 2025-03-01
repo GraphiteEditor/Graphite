@@ -983,7 +983,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.stop_duplicates(document, responses);
 				}
 
-				tool_data.axis_align = input.keyboard.key(modifier_keys.axis_align) && !axis.is_constraint();
+				tool_data.axis_align = input.keyboard.key(modifier_keys.axis_align);
 
 				// Ignore the non duplicated layers if the current layers have not spawned yet.
 				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
@@ -997,7 +997,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-				let aligned_to_axis = tool_data.axis_align || matches!(axis, Axis::X | Axis::Y);
+				let aligned_to_axis = tool_data.axis_align || axis.is_constraint();
 				let mouse_delta = snap_drag(
 					start,
 					current,
