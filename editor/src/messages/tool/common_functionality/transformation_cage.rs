@@ -1,6 +1,6 @@
 use crate::consts::{
-	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY,
-	MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
+	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -491,6 +491,7 @@ impl BoundingBoxManager {
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_SELECT_THRESHOLD);
 		let [corner_min_x, corner_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_CORNERS_VISIBILITY);
 		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR);
+		let [midpoint_threshold_x, midpoint_threshold_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS);
 
 		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
@@ -500,6 +501,19 @@ impl BoundingBoxManager {
 
 			let width = max.x - min.x;
 			let height = max.y - min.y;
+
+			if (left || right) && (top || bottom) {
+				let horizontal_midpoint_x = (min.x + max.x) / 2.;
+				let vertical_midpoint_y = (min.y + max.y) / 2.;
+
+				if (cursor.x - horizontal_midpoint_x).abs() < midpoint_threshold_x {
+					left = false;
+					right = false;
+				} else if (cursor.y - vertical_midpoint_y).abs() < midpoint_threshold_y {
+					top = false;
+					bottom = false;
+				}
+			}
 
 			if width < edge_min_x || height <= edge_min_y {
 				if self.transform_tampered {
