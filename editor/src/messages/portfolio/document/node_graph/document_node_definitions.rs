@@ -293,9 +293,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![
-									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
+									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(ArtboardGroup))), 0),
 									NodeInput::node(NodeId(1), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
@@ -390,7 +390,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
-			category: "Raster: Generator",
+			category: "Network",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -398,20 +398,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::LoadResourceNode")),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 						]
@@ -484,7 +484,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -554,7 +554,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -638,20 +638,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::scope("editor-api")],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RasterizeNode")),
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 						]
@@ -724,7 +724,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					manual_composition: Some(concrete!(Footprint)),
+					manual_composition: Some(concrete!(Context)),
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode")),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Bool(false), false),
@@ -1000,7 +1000,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 2),
 								NodeInput::network(concrete!(BrushCache), 3),
 							],
-							manual_composition: Some(concrete!(Footprint)),
+							manual_composition: Some(concrete!(Context)),
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::brush::BrushNode")),
 							..Default::default()
 						}]
@@ -1062,7 +1062,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MemoNode"),
 					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1081,7 +1081,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::ImpureMemoNode"),
 					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true)],
-					manual_composition: Some(concrete!(Footprint)),
+					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1103,7 +1103,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![DocumentNode {
 							inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 1)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-							manual_composition: Some(concrete!(Footprint)),
+							manual_composition: Some(concrete!(Context)),
 							..Default::default()
 						}]
 						.into_iter()
@@ -1158,12 +1158,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::node(NodeId(0), 0)],
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UniformNode")),
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -1242,7 +1242,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -1321,7 +1321,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -1406,7 +1406,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -1515,7 +1515,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -1595,7 +1595,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 								..Default::default()
@@ -1665,13 +1665,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								manual_composition: Some(concrete!(())),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::scope("editor-api")],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::CreateGpuSurfaceNode")),
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
 								..Default::default()
@@ -1736,7 +1736,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(concrete!(Context)),
 								inputs: vec![
 									NodeInput::network(concrete!(ShaderInputFrame), 0),
 									NodeInput::network(concrete!(Arc<wgpu_executor::Surface>), 1),
@@ -1947,35 +1947,36 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// Aims for interoperable compatibility with:
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
-		DocumentNodeDefinition {
-			identifier: "Curves",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
-						NodeInput::value(TaggedValue::Curve(Default::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec!["Image".into(), "Curve".into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		(*IMAGINATE_NODE).clone(),
+		// TODO: Fix this, it's currently broken
+		// DocumentNodeDefinition {
+		// 	identifier: "Curves",
+		// 	category: "Raster: Adjustment",
+		// 	node_template: NodeTemplate {
+		// 		document_node: DocumentNode {
+		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
+		// 			inputs: vec![
+		// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
+		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
+		// 			],
+		// 			..Default::default()
+		// 		},
+		// 		persistent_node_metadata: DocumentNodePersistentMetadata {
+		// 			input_properties: vec!["Image".into(), "Curve".into()],
+		// 			output_names: vec!["Image".to_string()],
+		// 			..Default::default()
+		// 		},
+		// 	},
+		// 	description: Cow::Borrowed("TODO"),
+		// 	properties: None,
+		// },
+		// (*IMAGINATE_NODE).clone(),
 		DocumentNodeDefinition {
 			identifier: "Line",
 			category: "Vector: Shape",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::LineNode"),
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Context)),
 					inputs: vec![
 						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::new(0., -50.)), false),
@@ -2089,7 +2090,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::text::TextNode"),
-					manual_composition: Some(concrete!(())),
+					manual_composition: Some(concrete!(Context)),
 					inputs: vec![
 						NodeInput::scope("editor-api"),
 						NodeInput::value(TaggedValue::String("Lorem ipsum".to_string()), false),
@@ -2190,7 +2191,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(DVec2), 4),
 									NodeInput::network(concrete!(DVec2), 5),
 								],
-								manual_composition: Some(concrete!(Footprint)),
+								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::TransformNode")),
 								..Default::default()
 							},
@@ -2350,7 +2351,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 					],
-					manual_composition: Some(concrete!(Footprint)),
+					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -2699,7 +2700,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			.enumerate()
 			.map(|(index, (field, node_io_ty))| {
 				let ty = field.default_type.as_ref().unwrap_or(node_io_ty);
-				let exposed = if index == 0 { *ty != fn_type!(()) } else { field.exposed };
+				let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
 
 				match field.value_source {
 					RegistryValueSource::None => {}
@@ -2753,7 +2754,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
 	identifier: "Imaginate",
-	category: "Raster: Generator",
+	category: "Raster",
 	node_template: NodeTemplate {
 		document_node: DocumentNode {
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -2762,7 +2763,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-						manual_composition: Some(concrete!(())),
+						manual_composition: Some(concrete!(Context)),
 						skip_deduplication: true,
 						..Default::default()
 					},

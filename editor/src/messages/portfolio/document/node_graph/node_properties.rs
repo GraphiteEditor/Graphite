@@ -260,7 +260,7 @@ pub(crate) fn property_from_type(
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, context),
-		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
+		Type::Future(out) => return property_from_type(node_id, index, out, number_options, context),
 	};
 
 	extra_widgets.push(widgets);

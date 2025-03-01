@@ -53,6 +53,9 @@ macro_rules! future {
 	($type:ty) => {{
 		$crate::Type::Future(Box::new(concrete!($type)))
 	}};
+	($type:ty, $name:ty) => {
+		$crate::Type::Future(Box::new(concrete!($type, $name)))
+	};
 }
 
 #[macro_export]
@@ -65,6 +68,18 @@ macro_rules! fn_type {
 	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
+	};
+}
+#[macro_export]
+macro_rules! fn_type_fut {
+	($type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
+	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
+	};
+	($in_type:ty, $type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
 	};
 }
 
@@ -134,6 +149,7 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
+		"graphene_core::transform::Footprint" => "core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
 		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::graphic_element::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
 		"graphene_core::vector::vector_data::VectorData" => "graphene_core::graphic_element::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
 		"graphene_core::raster::image::ImageFrame<Color>" => "graphene_core::graphic_element::Instances<graphene_core::raster::image::ImageFrame<Color>>".to_string(),
@@ -189,7 +205,7 @@ pub enum Type {
 	/// Runtime type information for a function. Given some input, gives some output.
 	/// See the example and explanation in the `ComposeNode` implementation within the node registry for more info.
 	Fn(Box<Type>, Box<Type>),
-	/// Not used at the moment.
+	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
 }
 
@@ -280,7 +296,7 @@ impl Type {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
-			Self::Future(_) => self,
+			Self::Future(output) => output.nested_type(),
 		}
 	}
 }
