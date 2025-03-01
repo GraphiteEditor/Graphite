@@ -12,8 +12,7 @@ use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
-use graphene_core::GraphicGroupTable;
-use graphene_core::{Color, WasmNotSend};
+use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
 
 #[cfg(target_arch = "wasm32")]
 use base64::Engine;
@@ -27,7 +26,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
+async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
@@ -37,7 +36,7 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 // #[node_macro::node(category("Debug: GPU"))]
 // #[cfg(target_arch = "wasm32")]
 // async fn draw_image_frame(
-// 	_: (),
+// 	_: impl Ctx,
 // 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
 // 	surface_handle: Arc<WasmSurfaceHandle>,
 // ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
@@ -60,7 +59,7 @@ async fn create_surface<'a: 'n>(_: (), editor: &'a WasmEditorApi) -> Arc<WasmSur
 // }
 
 #[node_macro::node(category("Network"))]
-async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
+async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
 		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
 	};
@@ -74,8 +73,8 @@ async fn load_resource<'a: 'n>(_: (), _primary: (), #[scope("editor-api")] edito
 	data
 }
 
-#[node_macro::node(category("Raster"))]
-fn decode_image(_: (), data: Arc<[u8]>) -> ImageFrameTable<Color> {
+#[node_macro::node(category("Network"))]
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return ImageFrameTable::default();
 	};
@@ -156,13 +155,13 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 #[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
 async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
-	_: (),
+	_: impl Ctx,
 	#[implementations(
-		Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
+		GraphicGroupTable,
 	)]
-	data: impl Node<Footprint, Output = T>,
+	mut data: T,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> ImageFrameTable<Color> {
@@ -171,7 +170,6 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 		return ImageFrameTable::default();
 	}
 
-	let mut data = data.eval(footprint).await;
 	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
@@ -218,31 +216,34 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 #[node_macro::node(category(""))]
 async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	render_config: RenderConfig,
-	editor_api: &'a WasmEditorApi,
+	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
-		Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> GraphicGroupTable,
-		Footprint -> graphene_core::Artboard,
-		Footprint -> graphene_core::ArtboardGroup,
-		Footprint -> Option<Color>,
-		Footprint -> Vec<Color>,
-		Footprint -> bool,
-		Footprint -> f32,
-		Footprint -> f64,
-		Footprint -> String,
+		Context -> VectorDataTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> GraphicGroupTable,
+		Context -> graphene_core::Artboard,
+		Context -> graphene_core::ArtboardGroup,
+		Context -> Option<Color>,
+		Context -> Vec<Color>,
+		Context -> bool,
+		Context -> f32,
+		Context -> f64,
+		Context -> String,
 	)]
-	data: impl Node<Footprint, Output = T>,
-	_surface_handle: impl Node<(), Output = Option<wgpu_executor::WgpuSurface>>,
+	data: impl Node<Context<'static>, Output = T>,
+	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
+	let ctx = OwnedContextImpl::default().with_footprint(footprint).into_context();
+	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
-	let data = data.eval(footprint).await;
+	let data = data.eval(ctx.clone()).await;
+	let editor_api = editor_api.eval(ctx.clone()).await;
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = _surface_handle.eval(()).await;
+	let surface_handle = _surface_handle.eval(ctx.clone()).await;
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();

@@ -1,9 +1,9 @@
-use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::application_io::TextureFrameTable;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable};
+use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroup, GraphicGroupTable, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
 
@@ -244,6 +244,12 @@ pub struct Footprint {
 
 impl Default for Footprint {
 	fn default() -> Self {
+		Self::empty()
+	}
+}
+
+impl Footprint {
+	pub const fn empty() -> Self {
 		Self {
 			transform: DAffine2::IDENTITY,
 			resolution: glam::UVec2::new(1920, 1080),
@@ -251,9 +257,6 @@ impl Default for Footprint {
 			ignore_modifications: false,
 		}
 	}
-}
-
-impl Footprint {
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
 		let start = inverse.transform_point2((0., 0.).into());
@@ -277,7 +280,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_footprint: Footprint, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
 	data
 }
 
@@ -301,26 +304,15 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Sync, T: 'n + TransformMut>(
+async fn transform<T: 'n + TransformMut + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
 	)]
-	mut input: I,
-	#[implementations(
-		() -> VectorDataTable,
-		() -> GraphicGroupTable,
-		() -> ImageFrameTable<Color>,
-		() -> TextureFrame,
-		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroupTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> TextureFrame,
-	)]
-	transform_target: impl Node<I, Output = T>,
+	transform_target: impl Node<Context<'static>, Output = T>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
@@ -328,22 +320,27 @@ async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Syn
 	_pivot: DVec2,
 ) -> T {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let footprint = input.clone().into();
-	if !footprint.ignore_modifications {
-		input.apply_transform(&modification);
+	let footprint = ctx.try_footprint().copied();
+
+	let mut ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		if !footprint.ignore_modifications {
+			footprint.apply_transform(&modification);
+		}
+		ctx = ctx.with_footprint(footprint);
 	}
 
-	let mut data = transform_target.eval(input).await;
+	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
-	let data_transform = data.transform_mut();
+	let data_transform = transform_target.transform_mut();
 	*data_transform = modification * (*data_transform);
 
-	data
+	transform_target
 }
 
 #[node_macro::node(category(""))]
 fn replace_transform<Data: TransformMut, TransformInput: Transform>(
-	_: (),
+	_: impl Ctx,
 	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Data {

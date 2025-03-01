@@ -2,10 +2,10 @@ use crate::application_io::{TextureFrame, TextureFrameTable};
 use crate::instances::Instances;
 use crate::raster::image::{ImageFrame, ImageFrameTable};
 use crate::raster::BlendMode;
-use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
+use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::Color;
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 
 use dyn_any::DynAny;
 
@@ -280,28 +280,8 @@ impl ArtboardGroup {
 }
 
 #[node_macro::node(category(""))]
-async fn layer<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-		Footprint -> GraphicGroupTable,
-	)]
-	stack: impl Node<F, Output = GraphicGroupTable>,
-	#[implementations(
-		() -> GraphicElement,
-		Footprint -> GraphicElement,
-	)]
-	element: impl Node<F, Output = GraphicElement>,
-	node_path: Vec<NodeId>,
-) -> GraphicGroupTable {
-	let mut element = element.eval(footprint).await;
-	let stack = stack.eval(footprint).await;
-	let stack = stack.one_item();
-	let mut stack = stack.clone();
+async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
+	let mut stack = stack.one_item().clone();
 
 	if stack.transform.matrix2.determinant() != 0. {
 		*element.transform_mut() = stack.transform.inverse() * element.transform();
@@ -318,72 +298,36 @@ async fn layer<F: 'n + Send + Copy>(
 }
 
 #[node_macro::node(category("Debug"))]
-async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
+async fn to_element<Data: Into<GraphicElement> + 'n>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroupTable,
+	 	VectorDataTable,
+		ImageFrameTable<Color>,
+	 	TextureFrameTable,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-	 	() -> VectorDataTable,
-		() -> ImageFrameTable<Color>,
-	 	() -> TextureFrameTable,
-	 	Footprint -> GraphicGroupTable,
-	 	Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-	 	Footprint -> TextureFrameTable,
-	)]
-	data: impl Node<F, Output = Data>,
+	data: Data,
 ) -> GraphicElement {
-	data.eval(footprint).await.into()
+	data.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn to_group<F: 'n + Send, Data: Into<GraphicGroupTable> + 'n>(
+async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
+		TextureFrameTable,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-		() -> VectorDataTable,
-		() -> ImageFrameTable<Color>,
-		() -> TextureFrameTable,
-		Footprint -> GraphicGroupTable,
-		Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> TextureFrameTable,
-	)]
-	element: impl Node<F, Output = Data>,
+	element: Data,
 ) -> GraphicGroupTable {
-	element.eval(footprint).await.into()
+	element.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn flatten_group<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-		Footprint -> GraphicGroupTable,
-	)]
-	group: impl Node<F, Output = GraphicGroupTable>,
-	fully_flatten: bool,
-) -> GraphicGroupTable {
-	let nested_group = group.eval(footprint).await;
-	let nested_group = nested_group.one_item();
-	let nested_group = nested_group.clone();
+async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
+	let nested_group = group.one_item().clone();
 
 	let mut flat_group = GraphicGroup::default();
 
@@ -420,34 +364,28 @@ async fn flatten_group<F: 'n + Send>(
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroupTable> + 'n>(
+async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		Context -> GraphicGroupTable,
+		Context -> VectorDataTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
 	)]
-	mut footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-		() -> VectorDataTable,
-		() -> ImageFrameTable<Color>,
-		() -> TextureFrame,
-		Footprint -> GraphicGroupTable,
-		Footprint -> VectorDataTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> TextureFrame,
-	)]
-	contents: impl Node<F, Output = Data>,
+	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
 	location: IVec2,
 	dimensions: IVec2,
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	footprint.apply_transform(&DAffine2::from_translation(location.as_dvec2()));
-	let graphic_group = contents.eval(footprint).await;
+	let footprint = ctx.try_footprint().copied();
+	let mut new_ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		footprint.translate(location.as_dvec2());
+		new_ctx = new_ctx.with_footprint(footprint);
+	}
+	let graphic_group = contents.eval(new_ctx.into_context()).await;
 
 	Artboard {
 		graphic_group: graphic_group.into(),
@@ -460,28 +398,16 @@ async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroupTable
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ArtboardGroup,
-		Footprint -> ArtboardGroup,
-	)]
-	artboards: impl Node<F, Output = ArtboardGroup>,
-	#[implementations(
-		() -> Artboard,
-		Footprint -> Artboard,
-	)]
-	artboard: impl Node<F, Output = Artboard>,
-	node_path: Vec<NodeId>,
-) -> ArtboardGroup {
-	let artboard = artboard.eval(footprint).await;
-	let mut artboards = artboards.eval(footprint).await;
-
+async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
+	// let mut artboards = artboards.eval(ctx.clone()).await;
+	// let artboard = artboard.eval(ctx).await;
+	// let foot = ctx.footprint();
+	// log::debug!("{:?}", foot);
 	// Get the penultimate element of the node path, or None if the path is too short
+
+	// TODO: Delete this line
+	let _ctx = ctx;
+
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	artboards.append_artboard(artboard, encapsulating_node_id);
 

@@ -1,28 +1,14 @@
 use graph_craft::proto::types::Percentage;
 use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
 use graphene_core::raster::Image;
-use graphene_core::transform::Footprint;
-use graphene_core::Color;
+use graphene_core::{Color, Ctx};
 
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
-#[node_macro::node(category("Raster: Filter"))]
-async fn dehaze<F: 'n + Send + Sync>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ImageFrameTable<Color>,
-		Footprint -> ImageFrameTable<Color>,
-	)]
-	image_frame: impl Node<F, Output = ImageFrameTable<Color>>,
-	strength: Percentage,
-) -> ImageFrameTable<Color> {
-	let image_frame = image_frame.eval(footprint).await;
+#[node_macro::node(category("Raster"))]
+async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
 	let image_frame = image_frame.one_item();
 
 	// Prepare the image data for processing

@@ -14,6 +14,7 @@ pub use crate as graphene_core;
 pub use ctor;
 
 pub mod consts;
+pub mod context;
 pub mod generic;
 pub mod instances;
 pub mod logic;
@@ -48,6 +49,7 @@ pub mod application_io;
 #[cfg(feature = "reflections")]
 pub mod registry;
 
+pub use context::*;
 use core::any::TypeId;
 pub use memo::MemoHash;
 pub use raster::Color;
@@ -56,7 +58,7 @@ pub use types::Cow;
 // pub trait Node: for<'n> NodeIO<'n> {
 /// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
 /// See `node-graph/README.md` for information on how to define a new node.
-pub trait Node<'i, Input: 'i>: 'i {
+pub trait Node<'i, Input> {
 	type Output: 'i;
 	/// Evaluates the node with the single specified input.
 	fn eval(&'i self, input: Input) -> Self::Output;
@@ -79,10 +81,10 @@ mod types;
 #[cfg(feature = "alloc")]
 pub use types::*;
 
-pub trait NodeIO<'i, Input: 'i>: 'i + Node<'i, Input>
+pub trait NodeIO<'i, Input>: Node<'i, Input>
 where
 	Self::Output: 'i + StaticTypeSized,
-	Input: 'i + StaticTypeSized,
+	Input: StaticTypeSized,
 {
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
@@ -112,8 +114,7 @@ where
 	{
 		NodeIOTypes {
 			call_argument: concrete!(<Input as StaticTypeSized>::Static),
-			// TODO return actual future type
-			return_value: concrete!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
+			return_value: future!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
 			inputs,
 		}
 	}
@@ -122,7 +123,7 @@ where
 impl<'i, N: Node<'i, I>, I> NodeIO<'i, I> for N
 where
 	N::Output: 'i + StaticTypeSized,
-	I: 'i + StaticTypeSized,
+	I: StaticTypeSized,
 {
 }
 
@@ -152,13 +153,13 @@ use dyn_any::StaticTypeSized;
 use core::pin::Pin;
 
 #[cfg(feature = "alloc")]
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
+impl<'i, I, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
-impl<'i, I: 'i, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
+impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
