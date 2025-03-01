@@ -295,6 +295,7 @@ impl fmt::Display for Key {
 			Self::MouseMiddle => "MMB",
 			Self::MouseBack => "Mouse Back",
 			Self::MouseForward => "Mouse Fwd",
+			Self::NumKeys => "0–9",
 
 			_ => key_name.as_str(),
 		};
@@ -317,20 +318,6 @@ struct LayoutKey {
 	key: String,
 	label: String,
 }
-/*
-impl Serialize for Key {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		let key = format!("{:?}", self.0);
-		let label = self.0.to_string();
-
-		assert_eq!(serde_json::to_string(Key::KeyEscape), {"key": KeyEscape, "label": "Esc"});
-
-		let mut state = serializer.serialize_struct("KeyWithLabel", 2)?;
-		state.serialize_field("key", &key)?;
-		state.serialize_field("label", &label)?;
-		state.end()
-	}
-}*/
 
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 
@@ -447,7 +434,7 @@ impl<const LENGTH: usize> BitVector<LENGTH> {
 		result == 0
 	}
 
-	pub fn ones(&self) -> u32 {
+	pub fn count_ones(&self) -> u32 {
 		let mut result = 0;
 
 		for storage in self.0.iter() {

@@ -3,7 +3,7 @@
 <script lang="ts">
 	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
+	import type { MenuListEntry } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -429,7 +429,7 @@
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
 				>
 					{#if entry.icon && drawIcon}
-						<IconLabel icon={entry.icon} class="entry-icon" />
+						<IconLabel icon={entry.icon} iconSizeOverride={16} class="entry-icon" />
 					{:else if drawIcon}
 						<div class="no-icon" />
 					{/if}

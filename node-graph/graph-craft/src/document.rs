@@ -576,6 +576,13 @@ impl DocumentNodeImplementation {
 		}
 	}
 
+	pub fn get_proto_node(&self) -> Option<&ProtoNodeIdentifier> {
+		match self {
+			DocumentNodeImplementation::ProtoNode(p) => Some(p),
+			_ => None,
+		}
+	}
+
 	pub const fn proto(name: &'static str) -> Self {
 		Self::ProtoNode(ProtoNodeIdentifier::new(name))
 	}
@@ -762,7 +769,7 @@ pub struct NodeNetwork {
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias document upgrade code
 	pub exports: Vec<NodeInput>,
-	/// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
+	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	#[cfg_attr(

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { FrontendGraphDataType } from "@graphite/wasm-communication/messages";
+	import type { FrontendGraphDataType } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 

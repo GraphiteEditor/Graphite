@@ -1,4 +1,5 @@
 use super::utility_types::ToolType;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
 use graphene_core::raster::color::Color;
@@ -98,4 +99,7 @@ pub enum ToolMessage {
 	Undo,
 	UpdateCursor,
 	UpdateHints,
+	UpdateSelectionMode {
+		selection_mode: SelectionMode,
+	},
 }

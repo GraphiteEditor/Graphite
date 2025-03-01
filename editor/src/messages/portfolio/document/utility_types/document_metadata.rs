@@ -3,8 +3,7 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
-use graphene_std::vector::PointId;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::{PointId, VectorData};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, HashSet};
@@ -207,8 +206,8 @@ impl LayerNodeIdentifier {
 	/// Access the node id of this layer
 	pub fn to_node(self) -> NodeId {
 		let id = NodeId(u64::from(self.0) - 1);
-
 		debug_assert!(id != NodeId(0), "LayerNodeIdentifier::ROOT_PARENT cannot be converted to NodeId");
+
 		id
 	}
 
@@ -460,7 +459,7 @@ impl DoubleEndedIterator for DescendantsIter<'_> {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NodeRelations {
-	parent: Option<LayerNodeIdentifier>,
+	pub parent: Option<LayerNodeIdentifier>,
 	previous_sibling: Option<LayerNodeIdentifier>,
 	next_sibling: Option<LayerNodeIdentifier>,
 	first_child: Option<LayerNodeIdentifier>,

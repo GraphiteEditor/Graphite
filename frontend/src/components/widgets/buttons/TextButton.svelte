@@ -1,6 +1,6 @@
 <script lang="ts">
+	import type { MenuListEntry } from "@graphite/messages";
 	import type { IconName } from "@graphite/utility-functions/icons";
-	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
@@ -146,11 +146,12 @@
 		}
 
 		&.flush {
-			background: none;
+			--button-background-color: none;
+			--button-text-color: var(--color-e-nearwhite);
 
 			&:hover,
 			&.open {
-				background: var(--color-5-dullgray);
+				--button-background-color: var(--color-5-dullgray);
 			}
 		}
 

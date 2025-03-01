@@ -2,7 +2,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::Type;
 
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -11,12 +11,12 @@ pub enum FrontendGraphDataType {
 	Raster,
 	VectorData,
 	Number,
-	Graphic,
+	Group,
 	Artboard,
 }
 
 impl FrontendGraphDataType {
-	pub fn with_type(input: &Type) -> Self {
+	fn with_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::Image(_) | TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
@@ -30,9 +30,16 @@ impl FrontendGraphDataType {
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_) => Self::Number,
-			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Graphic,
+			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group, // TODO: Is GraphicElement supposed to be included here?
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
+		}
+	}
+
+	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
+		match type_source {
+			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
+			_ => Self::with_type(input),
 		}
 	}
 }
@@ -44,6 +51,8 @@ pub struct FrontendGraphInput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
+	#[serde(rename = "validTypes")]
+	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Option<OutputConnector>,
 }
@@ -180,6 +189,8 @@ pub struct FrontendClickTargets {
 	pub all_nodes_bounding_box: String,
 	#[serde(rename = "importExportsBoundingBox")]
 	pub import_exports_bounding_box: String,
+	#[serde(rename = "modifyImportExport")]
+	pub modify_import_export: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -188,4 +199,33 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum GraphWireStyle {
+	#[default]
+	Direct = 0,
+	GridAligned = 1,
+}
+
+impl std::fmt::Display for GraphWireStyle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			GraphWireStyle::GridAligned => write!(f, "Grid-Aligned"),
+			GraphWireStyle::Direct => write!(f, "Direct"),
+		}
+	}
+}
+
+impl GraphWireStyle {
+	pub fn tooltip_description(&self) -> &'static str {
+		match self {
+			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes",
+			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes",
+		}
+	}
+
+	pub fn is_direct(&self) -> bool {
+		*self == GraphWireStyle::Direct
+	}
 }

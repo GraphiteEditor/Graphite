@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
+	import type { MenuListEntry } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -138,6 +138,7 @@
 
 			.dropdown-arrow {
 				margin: 4px;
+				margin-right: 2px;
 				flex: 0 0 auto;
 			}
 

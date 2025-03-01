@@ -1,7 +1,7 @@
 use super::utility_types::Direction;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 
 use glam::IVec2;
@@ -58,8 +58,7 @@ pub enum NodeGraphMessage {
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
-		node_id: NodeId,
-		input_index: usize,
+		input_connector: InputConnector,
 		new_exposed: bool,
 	},
 	InsertNode {
@@ -97,7 +96,20 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
-	PrintSelectedNodeCoordinates,
+	RemoveImport {
+		import_index: usize,
+	},
+	RemoveExport {
+		export_index: usize,
+	},
+	ReorderImport {
+		start_index: usize,
+		end_index: usize,
+	},
+	ReorderExport {
+		start_index: usize,
+		end_index: usize,
+	},
 	RunDocumentGraph,
 	ForceRunDocumentGraph,
 	SelectedNodesAdd {
@@ -125,6 +137,7 @@ pub enum NodeGraphMessage {
 	SetDisplayName {
 		node_id: NodeId,
 		alias: String,
+		skip_adding_history_step: bool,
 	},
 	SetDisplayNameImpl {
 		node_id: NodeId,
@@ -153,6 +166,14 @@ pub enum NodeGraphMessage {
 	TogglePreviewImpl {
 		node_id: NodeId,
 	},
+	SetImportExportName {
+		name: String,
+		index: ImportOrExport,
+	},
+	SetImportExportNameImpl {
+		name: String,
+		index: ImportOrExport,
+	},
 	ToggleSelectedAsLayersOrNodes,
 	ToggleSelectedLocked,
 	ToggleLocked {
@@ -180,6 +201,7 @@ pub enum NodeGraphMessage {
 	},
 	UpdateEdges,
 	UpdateBoxSelection,
+	UpdateImportsExports,
 	UpdateLayerPanel,
 	UpdateNewNodeGraph,
 	UpdateTypes {

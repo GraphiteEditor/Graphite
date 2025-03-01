@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount } from "svelte";
 
+	import type { FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { FrontendNodeType } from "@graphite/wasm-communication/messages";
 
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";

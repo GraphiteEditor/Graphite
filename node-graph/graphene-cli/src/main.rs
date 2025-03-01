@@ -79,7 +79,7 @@ fn init_logging() {
 }
 
 // Migrations are done in the editor which is unfortunately not available here.
-// TODO: remove this and share migrations between the edtior and the CLI.
+// TODO: remove this and share migrations between the editor and the CLI.
 fn fix_nodes(network: &mut NodeNetwork) {
 	for node in network.nodes.values_mut() {
 		match &mut node.implementation {

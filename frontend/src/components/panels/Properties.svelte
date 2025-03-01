@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelSectionsLayout } from "@graphite/wasm-communication/messages";
+	import type { Editor } from "@graphite/editor";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelSectionsLayout } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";

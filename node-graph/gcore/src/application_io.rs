@@ -1,3 +1,4 @@
+use crate::instances::Instances;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
@@ -63,6 +64,8 @@ impl Size for web_sys::HtmlCanvasElement {
 		UVec2::new(self.width(), self.height())
 	}
 }
+
+pub type TextureFrameTable = Instances<TextureFrame>;
 
 #[derive(Debug, Clone)]
 pub struct TextureFrame {

@@ -3,6 +3,7 @@
 
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
+	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
 	const dispatch = createEventDispatcher<{
@@ -65,6 +66,12 @@
 	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
 		return inputOrTextarea;
 	}
+
+	function cancel() {
+		dispatch("textChangeCanceled");
+
+		if (inputOrTextarea) preventEscapeClosingParentFloatingMenu(inputOrTextarea);
+	}
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
@@ -83,7 +90,7 @@
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
+			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
@@ -102,7 +109,7 @@
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
+			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 		/>

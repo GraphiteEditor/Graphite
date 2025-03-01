@@ -110,7 +110,7 @@ impl NodeIOTypes {
 impl core::fmt::Debug for NodeIOTypes {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.write_fmt(format_args!(
-			"node({}) -> {}",
+			"node({}) → {}",
 			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
 			self.return_value
 		))
@@ -131,12 +131,15 @@ impl From<String> for ProtoNodeIdentifier {
 fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
 	use serde::Deserialize;
 
-	// Rename "f32" to "f64"
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::graphic_element::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
+		"graphene_core::vector::vector_data::VectorData" => "graphene_core::graphic_element::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
+		"graphene_core::raster::image::ImageFrame<Color>" => "graphene_core::graphic_element::Instances<graphene_core::raster::image::ImageFrame<Color>>".to_string(),
 		_ => name,
 	};
+
 	Ok(Cow::Owned(name))
 }
 
@@ -150,9 +153,9 @@ pub struct TypeDescriptor {
 	pub name: Cow<'static, str>,
 	#[serde(default)]
 	pub alias: Option<Cow<'static, str>>,
-	#[serde(default)]
+	#[serde(skip)]
 	pub size: usize,
-	#[serde(default)]
+	#[serde(skip)]
 	pub align: usize,
 }
 
@@ -292,13 +295,13 @@ fn format_type(ty: &str) -> String {
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
-			Self::Generic(arg0) => write!(f, "Generic({arg0})"),
+			Self::Generic(arg0) => write!(f, "Generic<{arg0}>"),
 			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(arg0) => write!(f, "Concrete({}, {:?})", arg0.name, arg0.id),
+			Self::Concrete(arg0) => write!(f, "Concrete<{}, {:?}>", arg0.name, arg0.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => write!(f, "Concrete({})", format_type(&arg0.name)),
-			Self::Fn(arg0, arg1) => write!(f, "({arg0:?} -> {arg1:?})"),
-			Self::Future(arg0) => write!(f, "Future({arg0:?})"),
+			Self::Concrete(arg0) => write!(f, "Concrete<{}>", format_type(&arg0.name)),
+			Self::Fn(arg0, arg1) => write!(f, "{arg0:?} → {arg1:?}"),
+			Self::Future(arg0) => write!(f, "Future<{arg0:?}>"),
 		}
 	}
 }
@@ -308,7 +311,7 @@ impl std::fmt::Display for Type {
 		match self {
 			Type::Generic(name) => write!(f, "{name}"),
 			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
-			Type::Fn(input, output) => write!(f, "({input} -> {output})"),
+			Type::Fn(input, output) => write!(f, "{input} → {output}"),
 			Type::Future(ty) => write!(f, "Future<{ty}>"),
 		}
 	}

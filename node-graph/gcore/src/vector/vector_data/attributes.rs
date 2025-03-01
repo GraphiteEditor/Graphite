@@ -1,4 +1,5 @@
-use super::HandleId;
+use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
+use crate::vector::ConcatElement;
 
 use dyn_any::DynAny;
 
@@ -46,7 +47,7 @@ macro_rules! create_ids {
 	};
 }
 
-create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
+create_ids! { InstanceId, PointId, SegmentId, RegionId, StrokeId, FillId }
 
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -491,7 +492,7 @@ impl RegionDomain {
 	}
 }
 
-impl super::VectorData {
+impl VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles.
 	fn segment_to_bezier_with_index(&self, start: usize, end: usize, handles: bezier_rs::BezierHandles) -> bezier_rs::Bezier {
 		let start = self.point_domain.positions()[start];
@@ -642,7 +643,7 @@ impl super::VectorData {
 	}
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 struct StrokePathIterPointSegmentMetadata {
 	segment_index: usize,
 	start_from_end: bool,
@@ -663,34 +664,30 @@ impl StrokePathIterPointSegmentMetadata {
 }
 
 #[derive(Clone, Default)]
-struct StrokePathIterPointMetadata([Option<StrokePathIterPointSegmentMetadata>; 2]);
+struct StrokePathIterPointMetadata(tinyvec::TinyVec<[StrokePathIterPointSegmentMetadata; 2]>);
 
 impl StrokePathIterPointMetadata {
 	fn set(&mut self, value: StrokePathIterPointSegmentMetadata) {
-		if self.0[0].is_none() {
-			self.0[0] = Some(value)
-		} else if self.0[1].is_none() {
-			self.0[1] = Some(value);
-		} else {
-			panic!("Mesh networks are not supported");
-		}
+		self.0.insert(0, value);
 	}
 	#[must_use]
 	fn connected(&self) -> usize {
-		self.0.iter().filter(|val| val.is_some()).count()
+		self.0.len()
 	}
 	#[must_use]
 	fn take_first(&mut self) -> Option<StrokePathIterPointSegmentMetadata> {
-		self.0[0].take().or_else(|| self.0[1].take())
+		self.0.pop()
 	}
 	fn take_eq(&mut self, target: StrokePathIterPointSegmentMetadata) -> bool {
-		self.0[0].take_if(|&mut value| value == target).or_else(|| self.0[1].take_if(|&mut value| value == target)).is_some()
+		let has_taken = self.0.contains(&target);
+		self.0.retain(|value| *value != target);
+		has_taken
 	}
 }
 
 #[derive(Clone)]
 pub struct StrokePathIter<'a> {
-	vector_data: &'a super::VectorData,
+	vector_data: &'a VectorData,
 	points: Vec<StrokePathIterPointMetadata>,
 	skip: usize,
 	done_one: bool,
@@ -766,7 +763,7 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-impl crate::vector::ConcatElement for super::VectorData {
+impl ConcatElement for VectorData {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		let new_ids = other
 			.point_domain
@@ -802,6 +799,14 @@ impl crate::vector::ConcatElement for super::VectorData {
 		self.style = other.style.clone();
 		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
 		self.alpha_blending = other.alpha_blending;
+	}
+}
+
+impl ConcatElement for VectorDataTable {
+	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
+		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
+			instance.concat(other_instance, transform, node_id);
+		}
 	}
 }
 

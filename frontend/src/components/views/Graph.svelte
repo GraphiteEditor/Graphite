@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
+	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 
-	import { FADE_TRANSITION } from "@graphite/consts";
+	import type { Editor } from "@graphite/editor";
+	import type { Node } from "@graphite/messages";
+	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Node } from "@graphite/wasm-communication/messages";
-	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -18,8 +18,10 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
+	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -44,6 +46,69 @@
 	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
+
+	let inputElement: HTMLInputElement;
+	let hoveringImportIndex: number | undefined = undefined;
+	let hoveringExportIndex: number | undefined = undefined;
+
+	let editingNameImportIndex: number | undefined = undefined;
+	let editingNameExportIndex: number | undefined = undefined;
+	let editingNameText = "";
+
+	function exportsToEdgeTextInputWidth() {
+		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
+		let exportTextDiv = Array.from(exportTextDivs).find((div) => {
+			return div.getAttribute("data-index") === String(editingNameExportIndex);
+		});
+		if (!graph || !exportTextDiv) return "50px";
+		let distance = graph.getBoundingClientRect().right - exportTextDiv.getBoundingClientRect().right;
+		return distance - 15 + "px";
+	}
+
+	function importsToEdgeTextInputWidth() {
+		let importTextDivs = document.querySelectorAll(`[data-import-text-edge]`);
+		let importTextDiv = Array.from(importTextDivs).find((div) => {
+			return div.getAttribute("data-index") === String(editingNameImportIndex);
+		});
+		if (!graph || !importTextDiv) return "50px";
+		let distance = importTextDiv.getBoundingClientRect().left - graph.getBoundingClientRect().left;
+		return distance - 15 + "px";
+	}
+
+	function setEditingImportNameIndex(index: number, currentName: string) {
+		focusInput(currentName);
+		editingNameImportIndex = index;
+	}
+
+	function setEditingExportNameIndex(index: number, currentName: string) {
+		focusInput(currentName);
+		editingNameExportIndex = index;
+	}
+
+	function focusInput(currentName: string) {
+		editingNameText = currentName;
+		setTimeout(() => {
+			if (inputElement) {
+				inputElement.focus();
+			}
+		}, 0);
+	}
+
+	function setEditingImportName(event: Event) {
+		if (editingNameImportIndex !== undefined) {
+			let text = (event.target as HTMLInputElement)?.value;
+			editor.handle.setImportName(editingNameImportIndex, text);
+			editingNameImportIndex = undefined;
+		}
+	}
+
+	function setEditingExportName(event: Event) {
+		if (editingNameExportIndex !== undefined) {
+			let text = (event.target as HTMLInputElement)?.value;
+			editor.handle.setExportName(editingNameExportIndex, text);
+			editingNameExportIndex = undefined;
+		}
+	}
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
@@ -94,11 +159,13 @@
 		return { nodeOutput, nodeInput };
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean): WirePath {
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement, verticalOut: boolean, verticalIn: boolean, dashed: boolean, directNotGridAligned: boolean): WirePath {
 		const inputPortRect = inputPort.getBoundingClientRect();
 		const outputPortRect = outputPort.getBoundingClientRect();
 
-		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
+		const pathString = directNotGridAligned
+			? buildCurvedWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn)
+			: buildStraightWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
 		const thick = verticalIn && verticalOut;
 
@@ -119,7 +186,7 @@
 			const wireEndNode = wire.wireEnd.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireEnd.nodeId) : undefined;
 			const wireEnd = (wireEndNode?.isLayer && Number(wire.wireEnd.index) === 0) || false;
 
-			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed)];
+			return [createWirePath(nodeOutput, nodeInput, wireStart, wireEnd, wire.dashed, $nodeGraph.wiresDirectNotGridAligned)];
 		});
 	}
 
@@ -133,7 +200,270 @@
 		return iconMap[icon] || "NodeNodes";
 	}
 
-	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+	function buildStraightWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
+		if (!nodesContainer) return [];
+
+		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
+		const LINE_WIDTH = 2;
+
+		// Calculate coordinates for input and output connectors
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
+		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
+		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
+
+		// Adjust for scale
+		const containerBounds = nodesContainer.getBoundingClientRect();
+		const scale = $nodeGraph.transform.scale;
+		const inConnectorX = Math.round((inX - containerBounds.x) / scale);
+		const inConnectorY = Math.round((inY - containerBounds.y) / scale);
+		const outConnectorX = Math.round((outX - containerBounds.x) / scale);
+		const outConnectorY = Math.round((outY - containerBounds.y) / scale);
+
+		// Helper functions for calculating coordinates
+		const calculateMidX = () => (inConnectorX + outConnectorX) / 2 + (((inConnectorX + outConnectorX) / 2) % gridSpacing);
+		const calculateMidY = () => (inConnectorY + outConnectorY) / 2 + (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+		const calculateMidYAlternate = () => (inConnectorY + outConnectorY) / 2 - (((inConnectorY + outConnectorY) / 2) % gridSpacing);
+
+		// Define X coordinate calculations
+		const x1 = () => outConnectorX;
+		const x2 = () => outConnectorX + gridSpacing;
+		const x3 = () => inConnectorX - 2 * gridSpacing;
+		const x4 = () => inConnectorX;
+		const x5 = () => inConnectorX - 2 * gridSpacing + LINE_WIDTH;
+		const x6 = () => outConnectorX + gridSpacing + LINE_WIDTH;
+		const x7 = () => outConnectorX + 2 * gridSpacing + LINE_WIDTH;
+		const x8 = () => inConnectorX + LINE_WIDTH;
+		const x9 = () => outConnectorX + 2 * gridSpacing;
+		const x10 = () => calculateMidX() + LINE_WIDTH;
+		const x11 = () => outConnectorX - gridSpacing;
+		const x12 = () => outConnectorX - 4 * gridSpacing;
+		const x13 = () => calculateMidX();
+		const x14 = () => inConnectorX + gridSpacing;
+		const x15 = () => inConnectorX - 4 * gridSpacing;
+		const x16 = () => inConnectorX + 8 * gridSpacing;
+		const x17 = () => calculateMidX() - 2 * LINE_WIDTH;
+		const x18 = () => outConnectorX + gridSpacing - 2 * LINE_WIDTH;
+		const x19 = () => outConnectorX - 2 * LINE_WIDTH;
+		const x20 = () => calculateMidX() - LINE_WIDTH;
+
+		// Define Y coordinate calculations
+		const y1 = () => outConnectorY;
+		const y2 = () => outConnectorY - gridSpacing;
+		const y3 = () => inConnectorY;
+		const y4 = () => outConnectorY - gridSpacing + 5.5 * LINE_WIDTH;
+		const y5 = () => inConnectorY - 2 * gridSpacing;
+		const y6 = () => outConnectorY + 4 * LINE_WIDTH;
+		const y7 = () => outConnectorY + 5 * LINE_WIDTH;
+		const y8 = () => outConnectorY - 2 * gridSpacing + 5.5 * LINE_WIDTH;
+		const y9 = () => outConnectorY + 6 * LINE_WIDTH;
+		const y10 = () => inConnectorY + 2 * gridSpacing;
+		const y111 = () => inConnectorY + gridSpacing + 6.5 * LINE_WIDTH;
+		const y12 = () => inConnectorY + gridSpacing - 5.5 * LINE_WIDTH;
+		const y13 = () => inConnectorY - gridSpacing;
+		const y14 = () => inConnectorY + gridSpacing;
+		const y15 = () => calculateMidY();
+		const y16 = () => calculateMidYAlternate();
+
+		// Helper function for constructing coordinate pairs
+		const construct = (...coords: [() => number, () => number][]) => coords.map(([x, y]) => ({ x: x(), y: y() }));
+
+		// Define wire path shapes that get used more than once
+		const wire1 = () => construct([x1, y1], [x1, y4], [x5, y4], [x5, y3], [x4, y3]);
+		const wire2 = () => construct([x1, y1], [x1, y16], [x3, y16], [x3, y3], [x4, y3]);
+		const wire3 = () => construct([x1, y1], [x1, y4], [x12, y4], [x12, y10], [x3, y10], [x3, y3], [x4, y3]);
+		const wire4 = () => construct([x1, y1], [x1, y4], [x13, y4], [x13, y10], [x3, y10], [x3, y3], [x4, y3]);
+
+		// `outConnector` point and `inConnector` point lying on the same horizontal grid line and `outConnector` point lies to the right of `inConnector` point
+		if (outConnectorY === inConnectorY && outConnectorX > inConnectorX && (verticalOut || !verticalIn)) return construct([x1, y1], [x2, y1], [x2, y2], [x3, y2], [x3, y3], [x4, y3]);
+
+		// Handle straight lines
+		if (outConnectorY === inConnectorY || (outConnectorX === inConnectorX && verticalOut)) return construct([x1, y1], [x4, y3]);
+
+		// Handle standard right-angle paths
+		// Start vertical, then horizontal
+
+		// `outConnector` point lies to the left of `inConnector` point
+		if (verticalOut && inConnectorX > outConnectorX) {
+			// `outConnector` point lies above `inConnector` point
+			if (outConnectorY < inConnectorY) {
+				// `outConnector` point lies on the vertical grid line 4 units to the left of `inConnector` point point
+				if (-4 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX < -3 * gridSpacing) return wire1();
+
+				// `outConnector` point lying on vertical grid lines 3 and 2 units to the left of `inConnector` point
+				if (-3 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= -1 * gridSpacing) {
+					if (-2 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) return construct([x1, y1], [x1, y2], [x2, y2], [x2, y3], [x4, y3]);
+
+					if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) return construct([x1, y1], [x1, y4], [x6, y4], [x6, y3], [x4, y3]);
+
+					return construct([x1, y1], [x1, y4], [x7, y4], [x7, y5], [x3, y5], [x3, y3], [x4, y3]);
+				}
+
+				// `outConnector` point lying on vertical grid line 1 units to the left of `inConnector` point
+				if (-1 * gridSpacing < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 0 * gridSpacing) {
+					// `outConnector` point lying on horizontal grid line 1 unit above `inConnector` point
+					if (-2 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) return construct([x1, y6], [x2, y6], [x8, y3]);
+
+					// `outConnector` point lying on the same horizontal grid line as `inConnector` point
+					if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) return construct([x1, y7], [x4, y3]);
+
+					return construct([x1, y1], [x1, y2], [x9, y2], [x9, y5], [x3, y5], [x3, y3], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x1, y4], [x10, y4], [x10, y3], [x4, y3]);
+			}
+
+			// `outConnector` point lies below `inConnector` point
+			// `outConnector` point lying on vertical grid line 1 unit to the left of `inConnector` point
+			if (-1 * gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 0 * gridSpacing) {
+				// `outConnector` point lying on the horizontal grid lines 1 and 2 units below the `inConnector` point
+				if (0 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 2 * gridSpacing) construct([x1, y6], [x11, y6], [x11, y3], [x4, y3]);
+
+				return wire2();
+			}
+
+			return construct([x1, y1], [x1, y3], [x4, y3]);
+		}
+
+		// `outConnector` point lies to the right of `inConnector` point
+		if (verticalOut && inConnectorX <= outConnectorX) {
+			// `outConnector` point lying on any horizontal grid line above `inConnector` point
+			if (outConnectorY < inConnectorY) {
+				// `outConnector` point lying on horizontal grid line 1 unit above `inConnector` point
+				if (-2 * gridSpacing < outConnectorY - inConnectorY && outConnectorY - inConnectorY <= -1 * gridSpacing) return wire1();
+
+				// `outConnector` point lying on the same horizontal grid line as `inConnector` point
+				if (-1 * gridSpacing < outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 0 * gridSpacing) return construct([x1, y1], [x1, y8], [x5, y8], [x5, y3], [x4, y3]);
+
+				// `outConnector` point lying on vertical grid lines 1 and 2 units to the right of `inConnector` point
+				if (gridSpacing <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 3 * gridSpacing) {
+					return construct([x1, y1], [x1, y4], [x9, y4], [x9, y5], [x3, y5], [x3, y3], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x1, y4], [x10, y4], [x10, y5], [x5, y5], [x5, y3], [x4, y3]);
+			}
+
+			// `outConnector` point lies below `inConnector` point
+			if (outConnectorY - inConnectorY <= gridSpacing) {
+				// `outConnector` point lies on the horizontal grid line 1 unit below the `inConnector` Point
+				if (0 <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 13 * gridSpacing) return construct([x1, y9], [x3, y9], [x3, y3], [x4, y3]);
+
+				if (13 < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 18 * gridSpacing) return wire3();
+
+				return wire4();
+			}
+
+			// `outConnector` point lies on the horizontal grid line 2 units below `outConnector` point
+			if (gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= 2 * gridSpacing) {
+				if (0 <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 13 * gridSpacing) return construct([x1, y7], [x5, y7], [x5, y3], [x4, y3]);
+
+				if (13 < outConnectorX - inConnectorX && outConnectorX - inConnectorX <= 18 * gridSpacing) return wire3();
+
+				return wire4();
+			}
+
+			// 0 to 4 units below the `outConnector` Point
+			if (outConnectorY - inConnectorY <= 4 * gridSpacing) return wire1();
+
+			return wire2();
+		}
+
+		// Start horizontal, then vertical
+		if (verticalIn) {
+			// when `outConnector` lies below `inConnector`
+			if (outConnectorY > inConnectorY) {
+				// `outConnectorX` lies to the left of `inConnectorX`
+				if (outConnectorX < inConnectorX) return construct([x1, y1], [x4, y1], [x4, y3]);
+
+				// `outConnectorX` lies to the right of `inConnectorX`
+				if (outConnectorY - inConnectorY <= gridSpacing) {
+					// `outConnector` point directly below `inConnector` point
+					if (0 <= outConnectorX - inConnectorX && outConnectorX - inConnectorX <= gridSpacing) return construct([x1, y1], [x14, y1], [x14, y2], [x4, y2], [x4, y3]);
+
+					// `outConnector` point lies below `inConnector` point and strictly to the right of `inConnector` point
+					return construct([x1, y1], [x2, y1], [x2, y111], [x4, y111], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x2, y1], [x2, y2], [x4, y2], [x4, y3]);
+			}
+
+			// `outConnectorY` lies on or above the `inConnectorY` point
+			if (-6 * gridSpacing < inConnectorX - outConnectorX && inConnectorX - outConnectorX < 4 * gridSpacing) {
+				// edge case: `outConnector` point lying on vertical grid lines ranging from 4 units to left to 5 units to right of `inConnector` point
+				if (-1 * gridSpacing < inConnectorX - outConnectorX && inConnectorX - outConnectorX < 4 * gridSpacing) {
+					return construct([x1, y1], [x2, y1], [x2, y2], [x15, y2], [x15, y12], [x4, y12], [x4, y3]);
+				}
+
+				return construct([x1, y1], [x16, y1], [x16, y12], [x4, y12], [x4, y3]);
+			}
+
+			// left of edge case: `outConnector` point lying on vertical grid lines more than 4 units to left of `inConnector` point
+			if (4 * gridSpacing < inConnectorX - outConnectorX) return construct([x1, y1], [x17, y1], [x17, y12], [x4, y12], [x4, y3]);
+
+			// right of edge case: `outConnector` point lying on the vertical grid lines more than 5 units to right of `inConnector` point
+			if (6 * gridSpacing > inConnectorX - outConnectorX) return construct([x1, y1], [x18, y1], [x18, y12], [x4, y12], [x4, y3]);
+		}
+
+		// Both horizontal - use horizontal middle point
+		// When `inConnector` point is one of the two closest diagonally opposite points
+		if (0 <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= gridSpacing && inConnectorY - outConnectorY >= -1 * gridSpacing && inConnectorY - outConnectorY <= gridSpacing) {
+			return construct([x19, y1], [x19, y3], [x4, y3]);
+		}
+
+		// When `inConnector` point lies on the horizontal line 1 unit above and below the `outConnector` point
+		if (-1 * gridSpacing <= outConnectorY - inConnectorY && outConnectorY - inConnectorY <= gridSpacing && outConnectorX > inConnectorX) {
+			// Horizontal line above `outConnectorY`
+			if (inConnectorY < outConnectorY) return construct([x1, y1], [x2, y1], [x2, y13], [x3, y13], [x3, y3], [x4, y3]);
+
+			// Horizontal line below `outConnectorY`
+			return construct([x1, y1], [x2, y1], [x2, y14], [x3, y14], [x3, y3], [x4, y3]);
+		}
+
+		// `outConnector` point to the right of `inConnector` point
+		if (outConnectorX > inConnectorX - gridSpacing) return construct([x1, y1], [x18, y1], [x18, y15], [x5, y15], [x5, y3], [x4, y3]);
+
+		// When `inConnector` point lies on the vertical grid line two units to the right of `outConnector` point
+		if (gridSpacing <= inConnectorX - outConnectorX && inConnectorX - outConnectorX <= 2 * gridSpacing) return construct([x1, y1], [x18, y1], [x18, y3], [x4, y3]);
+
+		return construct([x1, y1], [x20, y1], [x20, y3], [x4, y3]);
+	}
+
+	function buildStraightWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		const locations = buildStraightWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+		if (locations.length === 0) return "[error]";
+		if (locations.length === 2) return `M${locations[0].x},${locations[0].y} L${locations[1].x},${locations[1].y}`;
+
+		const CORNER_RADIUS = 10;
+
+		// Create path with rounded corners
+		let path = `M${locations[0].x},${locations[0].y}`;
+
+		for (let i = 1; i < locations.length - 1; i++) {
+			const prev = locations[i - 1];
+			const curr = locations[i];
+			const next = locations[i + 1];
+
+			// Calculate corner points
+			const isVertical = curr.x === prev.x;
+			const cornerStart = {
+				x: curr.x + (isVertical ? 0 : prev.x < curr.x ? -CORNER_RADIUS : CORNER_RADIUS),
+				y: curr.y + (isVertical ? (prev.y < curr.y ? -CORNER_RADIUS : CORNER_RADIUS) : 0),
+			};
+			const cornerEnd = {
+				x: curr.x + (isVertical ? (next.x < curr.x ? -CORNER_RADIUS : CORNER_RADIUS) : 0),
+				y: curr.y + (isVertical ? 0 : next.y < curr.y ? -CORNER_RADIUS : CORNER_RADIUS),
+			};
+
+			// Add line to corner start, quadratic curve for corner, then continue to next point
+			path += ` L${cornerStart.x},${cornerStart.y}`;
+			path += ` Q${curr.x},${curr.y} ${cornerEnd.x},${cornerEnd.y}`;
+		}
+
+		path += ` L${locations[locations.length - 1].x},${locations[locations.length - 1].y}`;
+		return path;
+	}
+
+	function buildCurvedWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
 		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
@@ -152,19 +482,6 @@
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
-		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
-		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
-		// if ((verticalOut && verticalIn) || (!verticalOut && !verticalIn && verticalGap === 0)) {
-		// 	return [
-		// 		{ x: outConnectorX, y: outConnectorY },
-		// 		{ x: inConnectorX, y: inConnectorY },
-		// 	];
-		// }
-
-		// // L-shape bend
-		// if (verticalOut !== verticalIn) {
-		// }
-
 		const curveLength = 24;
 		const curveFalloffRate = curveLength * Math.PI * 2;
 
@@ -181,12 +498,14 @@
 		];
 	}
 
-	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
-		const locations = buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
+	function buildCurvedWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
+		const locations = buildCurvedWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
 		if (locations.length === 0) return "[error]";
+
 		const SMOOTHING = 0.5;
 		const delta01 = { x: (locations[1].x - locations[0].x) * SMOOTHING, y: (locations[1].y - locations[0].y) * SMOOTHING };
 		const delta23 = { x: (locations[3].x - locations[2].x) * SMOOTHING, y: (locations[3].y - locations[2].y) * SMOOTHING };
+
 		return `
 			M${locations[0].x},${locations[0].y}
 			L${locations[1].x},${locations[1].y}
@@ -262,35 +581,28 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${value.dataType}`;
+		return value.resolvedType ? `Resolved Data:\n${value.resolvedType}` : `Unresolved Data ${value.dataType}`;
+	}
+
+	function validTypesText(value: FrontendGraphInput): string {
+		return `Valid Types:\n${value.validTypes.join(",\n ")}`;
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
-		if (output.connectedTo.length === 0) {
-			return "Connected to nothing";
-		} else {
-			return output.connectedTo
-				.map((inputConnector) => {
-					if ((inputConnector as Node).nodeId === undefined) {
-						return `Connected to export index ${inputConnector.index}`;
-					} else {
-						return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
-					}
-				})
-				.join("\n");
-		}
+		if (output.connectedTo.length === 0) return "Connected to nothing";
+
+		return output.connectedTo
+			.map((inputConnector) => {
+				if ((inputConnector as Node).nodeId === undefined) return `Connected to export index ${inputConnector.index}`;
+				return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
+			})
+			.join("\n");
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		if (input.connectedTo === undefined) {
-			return "Connected to nothing";
-		} else {
-			if ((input.connectedTo as Node).nodeId === undefined) {
-				return `Connected to import index ${input.connectedTo.index}`;
-			} else {
-				return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
-			}
-		}
+		if (input.connectedTo === undefined) return "Connected to nothing";
+		if ((input.connectedTo as Node).nodeId === undefined) return `Connected to import index ${input.connectedTo.index}`;
+		return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
 	}
 
 	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
@@ -394,6 +706,9 @@
 				{/each}
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.importExportsBoundingBox} />
+				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
+					<path class="modify-import-export" d={pathString} />
+				{/each}
 			</svg>
 		</div>
 	{/if}
@@ -430,22 +745,61 @@
 				style:--offset-top={position.y / 24}
 				bind:this={outputs[0][index]}
 			>
-				<title>{`${dataTypeTooltip(outputMetadata)}\n${outputConnectedToText(outputMetadata)}`}</title>
+				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
 				{#if outputMetadata.connectedTo !== undefined}
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 				{:else}
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<p class="import-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{outputMetadata.name}</p>
+
+			<div
+				class="edit-import-export import"
+				on:pointerenter={() => (hoveringImportIndex = index)}
+				on:pointerleave={() => (hoveringImportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+			>
+				{#if editingNameImportIndex == index}
+					<input
+						class="import-text-input"
+						type="text"
+						style:width={importsToEdgeTextInputWidth()}
+						bind:this={inputElement}
+						bind:value={editingNameText}
+						on:blur={setEditingImportName}
+						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+					/>
+				{:else}
+					<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+				{/if}
+				{#if hoveringImportIndex === index || editingNameImportIndex === index}
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						class="remove-button-import"
+						data-index={index}
+						data-import-text-edge
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+					<div class="reorder-drag-grip" title="Reorder this import"></div>
+				{/if}
+			</div>
 		{/each}
+		{#if $nodeGraph.reorderImportIndex !== undefined}
+			{@const position = {
+				x: Number($nodeGraph.imports[0].position.x),
+				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
+			}}
+			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24} />
+		{/if}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
 				<IconButton
-					class={"visibility"}
-					data-visibility-button
 					size={24}
-					icon={"Add"}
+					icon="Add"
 					action={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
@@ -465,20 +819,57 @@
 				style:--offset-top={position.y / 24}
 				bind:this={inputs[0][index]}
 			>
-				<title>{`${dataTypeTooltip(inputMetadata)}\n${inputConnectedToText(inputMetadata)}`}</title>
+				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
 				{#if inputMetadata.connectedTo !== undefined}
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 				{:else}
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				{/if}
 			</svg>
-			<p class="export-text" style:--offset-left={position.x / 24} style:--offset-top={position.y / 24}>{inputMetadata.name}</p>
+			<div
+				class="edit-import-export export"
+				on:pointerenter={() => (hoveringExportIndex = index)}
+				on:pointerleave={() => (hoveringExportIndex = undefined)}
+				style:--offset-left={position.x / 24}
+				style:--offset-top={position.y / 24}
+			>
+				{#if hoveringExportIndex === index || editingNameExportIndex === index}
+					<div class="reorder-drag-grip" title="Reorder this export"></div>
+					<IconButton
+						size={16}
+						icon={"Remove"}
+						class="remove-button-export"
+						data-index={index}
+						data-export-text-edge
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+					/>
+				{/if}
+				{#if editingNameExportIndex === index}
+					<input
+						type="text"
+						style:width={exportsToEdgeTextInputWidth()}
+						bind:this={inputElement}
+						bind:value={editingNameText}
+						on:blur={setEditingExportName}
+						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+					/>
+				{:else}
+					<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
+				{/if}
+			</div>
 		{/each}
+		{#if $nodeGraph.reorderExportIndex !== undefined}
+			{@const position = {
+				x: Number($nodeGraph.exports[0].position.x),
+				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
+			}}
+			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
+		{/if}
 		{#if $nodeGraph.addExport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
 				<IconButton
-					class={"visibility"}
-					data-visibility-button
 					size={24}
 					icon={"Add"}
 					action={() => {
@@ -522,8 +913,8 @@
 				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
 				{/if}
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
@@ -541,7 +932,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if primaryOutputConnectedToLayer(node)}
@@ -564,7 +955,7 @@
 						bind:this={inputs[nodeIndex + 1][0]}
 					>
 						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
 						{/if}
 						{#if node.primaryInput?.connectedTo !== undefined}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
@@ -589,7 +980,7 @@
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex + 1][1]}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\n${inputConnectedToText(stackDataInput)}`}</title>
+							<title>{`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}</title>
 							{#if stackDataInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -662,8 +1053,8 @@
 				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
 				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
@@ -696,7 +1087,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n${inputConnectedToText(node.primaryInput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -716,7 +1107,7 @@
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex + 1][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(secondary)}\n${inputConnectedToText(secondary)}`}</title>
+								<title>{`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}</title>
 								{#if secondary.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
@@ -739,7 +1130,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${outputConnectedToText(node.primaryOutput)}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -758,7 +1149,7 @@
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex + 1][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(secondary)}\n${outputConnectedToText(secondary)}`}</title>
+							<title>{`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}</title>
 							{#if secondary.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -878,6 +1269,10 @@
 				.all-nodes-bounding-box {
 					stroke: purple;
 				}
+
+				.modify-import-export {
+					stroke: orange;
+				}
 			}
 		}
 
@@ -916,30 +1311,66 @@
 				left: calc(var(--offset-left) * 24px);
 			}
 
+			.reorder-bar {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+				width: 50px;
+				height: 2px;
+				background: white;
+			}
+
 			.plus {
-				margin-top: -4px;
-				margin-left: -4px;
 				position: absolute;
 				top: calc(var(--offset-top) * 24px);
 				left: calc(var(--offset-left) * 24px);
 			}
 
-			.export-text {
+			.edit-import-export {
 				position: absolute;
-				margin-top: 0;
-				margin-left: 20px;
+				display: flex;
+				align-items: center;
 				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
-			}
+				margin-top: -5px;
+				height: 24px;
 
-			.import-text {
-				position: absolute;
-				text-align: right;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
-				margin-top: 0;
-				margin-left: calc(-100px - 2px);
-				width: 100px;
+				&.import {
+					right: calc(100% - var(--offset-left) * 24px);
+				}
+
+				&.export {
+					left: calc(var(--offset-left) * 24px + 17px);
+				}
+
+				.import-text {
+					text-align: right;
+					text-wrap: nowrap;
+				}
+
+				.export-text {
+					text-wrap: nowrap;
+				}
+
+				.import-text-input {
+					text-align: right;
+				}
+
+				.remove-button-import {
+					margin-left: 3px;
+				}
+
+				.remove-button-export {
+					margin-right: 3px;
+				}
+
+				.reorder-drag-grip {
+					width: 8px;
+					height: 24px;
+					background-position: 2px 8px;
+					border-radius: 2px;
+					margin: -6px 0;
+					background-image: var(--icon-drag-grip-hover);
+				}
 			}
 		}
 
@@ -1312,8 +1743,10 @@
 	.box-selection {
 		position: absolute;
 		pointer-events: none;
-		background: rgba(var(--color-overlay-blue-rgb), 0.05);
-		border: 1px solid var(--color-overlay-blue);
 		z-index: 2;
+		// TODO: This will be removed after box selection, and all of graph rendering, is moved to the backend and this whole file
+		// is removed, but for now this color needs to stay in sync with `COLOR_OVERLAY_BLUE` set in consts.rs of the editor backend.
+		background: rgba(0, 168, 255, 0.05);
+		border: 1px solid #00a8ff;
 	}
 </style>

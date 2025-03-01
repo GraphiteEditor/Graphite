@@ -156,7 +156,7 @@ impl LayoutHolder for BrushTool {
 			false,
 			|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
-			|color: &ColorButton| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value.as_solid())).into(),
+			|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value.as_solid())).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
@@ -277,7 +277,7 @@ impl BrushToolData {
 			let Some(reference) = document.network_interface.reference(&node_id, &[]) else {
 				continue;
 			};
-			if reference == "Brush" && node_id != layer.to_node() {
+			if *reference == Some("Brush".to_string()) && node_id != layer.to_node() {
 				let points_input = node.inputs.get(2)?;
 				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else {
 					continue;
@@ -285,7 +285,7 @@ impl BrushToolData {
 				self.strokes.clone_from(strokes);
 
 				return Some(layer);
-			} else if reference == "Transform" {
+			} else if *reference == Some("Transform".to_string()) {
 				let upstream = document.metadata().upstream_transform(node_id);
 				let pivot = DAffine2::from_translation(upstream.transform_point2(get_current_normalized_pivot(&node.inputs)));
 				self.transform = pivot * get_current_transform(&node.inputs) * pivot.inverse() * self.transform;
@@ -425,11 +425,11 @@ impl Fsm for BrushToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
 		let hint_data = match self {
 			BrushToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),
-				HintGroup(vec![HintInfo::keys([Key::BracketLeft, Key::BracketRight], "Shrink/Grow Brush")]),
+				HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Shrink/Grow Brush")]),
 			]),
 			BrushToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};

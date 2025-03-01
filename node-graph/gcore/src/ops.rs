@@ -1,5 +1,5 @@
+use crate::raster::image::ImageFrameTable;
 use crate::raster::BlendMode;
-use crate::raster::ImageFrame;
 use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
@@ -37,7 +37,7 @@ impl ValueProvider for MathNodeContext {
 }
 
 /// Calculates a mathematical expression with input values "A" and "B"
-#[node_macro::node(category("Math"))]
+#[node_macro::node(category("General"), properties("math_properties"))]
 fn math<U: num_traits::float::Float>(
 	_: (),
 	/// The value of "A" when calculating the expression
@@ -285,7 +285,7 @@ fn random<U: num_traits::float::Float>(
 	max: U,
 ) -> f64 {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-	let result = rng.gen::<f64>();
+	let result = rng.random::<f64>();
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
 	let (min, max) = (min.to_f64().unwrap(), max.to_f64().unwrap());
 	result * (max - min) + min
@@ -472,7 +472,7 @@ fn unwrap<T: Default>(_: (), #[implementations(Option<f64>, Option<f32>, Option<
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrame<Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: (), #[implementations(&ImageFrameTable<Color>)] value: &'i T) -> T {
 	value.clone()
 }
 

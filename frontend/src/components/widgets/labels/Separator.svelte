@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorType } from "@graphite/wasm-communication/messages";
+	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages";
 
 	export let direction: SeparatorDirection = "Horizontal";
 	export let type: SeparatorType = "Unrelated";
@@ -25,7 +25,7 @@
 			}
 
 			&.section {
-				// If changing this, update `--separator-height` in `Document.svelte`
+				// If changing this, update `--height-of-separator` in `Document.svelte`
 				margin: 12px 0;
 				width: 100%;
 

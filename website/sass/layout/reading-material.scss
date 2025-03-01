@@ -34,6 +34,13 @@
 			margin-top: 10px;
 		}
 
+		@media (min-width: 1200px) {
+			.wide {
+				margin-left: -140px;
+				margin-right: -140px;
+			}
+		}
+
 		p ~ img {
 			width: auto;
 			max-width: 100%;

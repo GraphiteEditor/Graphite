@@ -31,6 +31,7 @@
 	--variable-px: Min(1px, 0.15vw);
 	--page-edge-padding: 40px;
 	--border-thickness: 2px;
+	--feature-box-padding: 80;
 	--font-size-link: calc(1rem * 4 / 3);
 }
 
@@ -53,6 +54,7 @@ body {
 		--font-size-link: calc(1rem * 4 / 3);
 		--page-edge-padding: 28px;
 		--border-thickness: 1px;
+		--feature-box-padding: 40;
 	}
 
 	html,
@@ -278,6 +280,37 @@ body > .page {
 
 			details {
 				width: 100%;
+
+				summary {
+					display: inline-block;
+					position: relative;
+					padding-left: calc(10px + 8px);
+					font-weight: 800;
+
+					&::before {
+						content: "";
+						background: url('data:image/svg+xml;utf8,\
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><polygon fill="%2316323f" points="4,0 1,0 6,5 1,10 4,10 9,5 4,0" /></svg>\
+							');
+						position: absolute;
+						margin: auto;
+						top: 0;
+						bottom: 0;
+						left: 0;
+						width: 10px;
+						height: 10px;
+					}
+
+					+ * {
+						margin-top: 20px;
+					}
+				}
+
+			}
+
+			details[open] summary::before {
+				// content: "▼";
+				transform: rotate(90deg);
 			}
 		}
 	}
@@ -339,13 +372,13 @@ body > .page {
 // ELEMENT SPACING RULES
 // =====================
 
-:is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ul, ol, ol li p, img, a:has(> img:only-child)),
+:is(h1, h2, h3, h4, article > :first-child, details > summary) ~ :is(p, ul, ol, ol li p, img, a:has(> img:only-child)),
 :is(h1, h2, h3, h4, article > :first-child) ~ :is(ul, ol) li p + img,
 :is(h1, h2, h3, h4, p) ~ .feature-icons,
 p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .youtube-embed),
 .youtube-embed + :is(p, .link, .button),
 p + p > .button,
-p + :is(.link, section),
+p + :is(.link, section, details),
 table td p ~ p,
 img + .link,
 article {

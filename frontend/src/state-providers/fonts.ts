@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerFontLoad } from "@graphite/wasm-communication/messages";
+import { type Editor } from "@graphite/editor";
+import { TriggerFontLoad } from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createFontsState(editor: Editor) {
@@ -106,7 +106,7 @@ const weightNameMapping = new Map([
 	[100, "Thin"],
 	[200, "Extra Light"],
 	[300, "Light"],
-	[400, "Normal"],
+	[400, "Regular"],
 	[500, "Medium"],
 	[600, "Semi Bold"],
 	[700, "Bold"],

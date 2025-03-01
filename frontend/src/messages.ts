@@ -73,6 +73,14 @@ export class UpdateInSelectedNetwork extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 }
 
+export class UpdateImportReorderIndex extends JsMessage {
+	readonly importIndex!: number | undefined;
+}
+
+export class UpdateExportReorderIndex extends JsMessage {
+	readonly exportIndex!: number | undefined;
+}
+
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
@@ -92,6 +100,8 @@ export class UpdateNodeGraph extends JsMessage {
 
 	@Type(() => FrontendNodeWire)
 	readonly wires!: FrontendNodeWire[];
+
+	readonly wiresDirectNotGridAligned!: boolean;
 }
 
 export class UpdateNodeGraphTransform extends JsMessage {
@@ -128,10 +138,6 @@ export class UpdateOpenDocumentsList extends JsMessage {
 
 export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
-}
-
-export class UpdateZoomWithScroll extends JsMessage {
-	readonly zoomWithScroll!: boolean;
 }
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
@@ -174,6 +180,7 @@ export type FrontendClickTargets = {
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
 	readonly importExportsBoundingBox: string;
+	readonly modifyImportExport: string[];
 };
 
 export type ContextMenuInformation = {
@@ -182,7 +189,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
 
 export class Node {
 	readonly index!: bigint;
@@ -213,6 +220,8 @@ export class FrontendGraphInput {
 	readonly name!: string;
 
 	readonly resolvedType!: string | undefined;
+
+	readonly validTypes!: string[];
 
 	@CreateOutputConnectorOptional
 	connectedTo!: Node | undefined;
@@ -660,8 +669,8 @@ export class Color {
 		return new Color(this.red, this.green, this.blue, 1);
 	}
 
-	contrastingColor(): "black" | "white" {
-		if (this.none) return "black";
+	luminance(): number | undefined {
+		if (this.none) return undefined;
 
 		// Convert alpha into white
 		const r = this.red * this.alpha + (1 - this.alpha);
@@ -674,9 +683,15 @@ export class Color {
 		const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
 		const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
 
-		const linear = linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+		return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+	}
 
-		return linear > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
+	contrastingColor(): "black" | "white" {
+		if (this.none) return "black";
+
+		const luminance = this.luminance();
+
+		return luminance && luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
 	}
 }
 
@@ -761,7 +776,8 @@ export class UpdateMouseCursor extends JsMessage {
 	readonly cursor!: MouseCursorIcon;
 }
 
-export class TriggerLoadAutoSaveDocuments extends JsMessage {}
+export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
+export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
@@ -777,17 +793,7 @@ export class TriggerImport extends JsMessage {}
 
 export class TriggerPaste extends JsMessage {}
 
-export class TriggerCopyToClipboardBlobUrl extends JsMessage {
-	readonly blobUrl!: string;
-}
-
 export class TriggerDelayedZoomCanvasToFitAll extends JsMessage {}
-
-export class TriggerDownloadBlobUrl extends JsMessage {
-	readonly layerName!: string;
-
-	readonly blobUrl!: string;
-}
 
 export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
@@ -806,12 +812,12 @@ export class TriggerDownloadTextFile extends JsMessage {
 	readonly name!: string;
 }
 
-export class TriggerRevokeBlobUrl extends JsMessage {
-	readonly url!: string;
-}
-
 export class TriggerSavePreferences extends JsMessage {
 	readonly preferences!: Record<string, unknown>;
+}
+
+export class TriggerSaveActiveDocument extends JsMessage {
+	readonly documentId!: bigint;
 }
 
 export class DocumentChanged extends JsMessage {}
@@ -946,7 +952,7 @@ export class CheckboxInput extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export class ColorButton extends WidgetProps {
+export class ColorInput extends WidgetProps {
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
@@ -979,6 +985,37 @@ export class ColorButton extends WidgetProps {
 }
 
 export type FillChoice = Color | Gradient;
+
+export function contrastingOutlineFactor(value: FillChoice, proximityColor: string | [string, string], proximityRange: number): number {
+	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
+	const [range1, range2] = pair.map((color) => Color.fromCSS(window.getComputedStyle(document.body).getPropertyValue(color)) || new Color("none"));
+
+	const contrast = (color: Color): number => {
+		const colorLuminance = color.luminance() || 0;
+		let rangeLuminance1 = range1.luminance() || 0;
+		let rangeLuminance2 = range2.luminance() || 0;
+		[rangeLuminance1, rangeLuminance2] = [Math.min(rangeLuminance1, rangeLuminance2), Math.max(rangeLuminance1, rangeLuminance2)];
+
+		const distance = (() => {
+			if (colorLuminance < rangeLuminance1) return rangeLuminance1 - colorLuminance;
+			if (colorLuminance > rangeLuminance2) return colorLuminance - rangeLuminance2;
+			return 0;
+		})();
+
+		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (color.toHSV()?.s || 0));
+	};
+
+	if (value instanceof Gradient) {
+		if (value.stops.length === 0) return 0;
+
+		const first = contrast(value.stops[0].color);
+		const last = contrast(value.stops[value.stops.length - 1].color);
+
+		return Math.min(first, last);
+	}
+
+	return contrast(value);
+}
 
 type MenuEntryCommon = {
 	label: string;
@@ -1077,7 +1114,7 @@ export class IconLabel extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export class ImageLabel extends WidgetProps {
+export class ImageButton extends WidgetProps {
 	image!: IconName;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
@@ -1291,6 +1328,8 @@ export class TextLabel extends WidgetProps {
 
 	italic!: boolean;
 
+	centerAlign!: boolean;
+
 	tableAlign!: boolean;
 
 	minWidth!: number;
@@ -1314,13 +1353,13 @@ export class PivotInput extends WidgetProps {
 const widgetSubTypes = [
 	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
 	{ value: CheckboxInput, name: "CheckboxInput" },
-	{ value: ColorButton, name: "ColorButton" },
+	{ value: ColorInput, name: "ColorInput" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
 	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
+	{ value: ImageButton, name: "ImageButton" },
 	{ value: IconLabel, name: "IconLabel" },
-	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
@@ -1573,9 +1612,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerCopyToClipboardBlobUrl,
 	TriggerDelayedZoomCanvasToFitAll,
-	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFetchAndOpenDocument,
@@ -1583,11 +1620,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument,
 	TriggerIndexedDbWriteDocument,
-	TriggerLoadAutoSaveDocuments,
+	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
+	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRevokeBlobUrl,
+	TriggerSaveActiveDocument,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
@@ -1607,9 +1645,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentModeLayout,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
+	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
+	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
@@ -1628,6 +1668,5 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolShelfLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
-	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

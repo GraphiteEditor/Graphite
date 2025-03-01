@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onDestroy, createEventDispatcher, getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import type { HSV, RGB, FillChoice } from "@graphite/messages";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { HSV, RGB, FillChoice } from "@graphite/wasm-communication/messages";
-	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
+	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -65,7 +66,19 @@
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
+	let gradientSpectrumDragging = false;
+	let shiftPressed = false;
+	let alignedAxis: "saturation" | "value" | undefined = undefined;
+	let hueBeforeDrag = 0;
+	let saturationBeforeDrag = 0;
+	let valueBeforeDrag = 0;
+	let alphaBeforeDrag = 0;
+	let saturationStartOfAxisAlign: number | undefined = undefined;
+	let valueStartOfAxisAlign: number | undefined = undefined;
+	let saturationRestoreWhenShiftReleased: number | undefined = undefined;
+	let valueRestoreWhenShiftReleased: number | undefined = undefined;
 
+	let self: FloatingMenu | undefined;
 	let hexCodeInputWidget: TextInput | undefined;
 	let gradientSpectrumInputWidget: SpectrumInput | undefined;
 
@@ -77,6 +90,9 @@
 	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
+	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
+	$: outlined = outlineFactor > 0.0001;
+	$: transparency = newColor.alpha < 1 || oldColor.alpha < 1;
 
 	function generateColor(h: number, s: number, v: number, a: number, none: boolean) {
 		if (none) return new Color("none");
@@ -119,6 +135,14 @@
 		const target = (e.target || undefined) as HTMLElement | undefined;
 		draggingPickerTrack = target?.closest("[data-saturation-value-picker], [data-hue-picker], [data-alpha-picker]") || undefined;
 
+		hueBeforeDrag = hue;
+		saturationBeforeDrag = saturation;
+		valueBeforeDrag = value;
+		alphaBeforeDrag = alpha;
+
+		saturationStartOfAxisAlign = undefined;
+		valueStartOfAxisAlign = undefined;
+
 		addEvents();
 
 		onPointerMove(e);
@@ -134,6 +158,8 @@
 			saturation = clamp((e.clientX - rectangle.left) / rectangle.width, 0, 1);
 			value = clamp(1 - (e.clientY - rectangle.top) / rectangle.height, 0, 1);
 			strayCloses = false;
+
+			if (shiftPressed) updateAxisLock();
 		} else if (draggingPickerTrack?.hasAttribute("data-hue-picker")) {
 			const rectangle = draggingPickerTrack.getBoundingClientRect();
 
@@ -148,25 +174,102 @@
 
 		const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
 		setColor(color);
+
+		if (!e.shiftKey) {
+			shiftPressed = false;
+			alignedAxis = undefined;
+		} else if (!shiftPressed && draggingPickerTrack) {
+			shiftPressed = true;
+			saturationStartOfAxisAlign = saturation;
+			valueStartOfAxisAlign = value;
+		}
 	}
 
 	function onPointerUp() {
 		removeEvents();
 	}
 
+	function onMouseDown(e: MouseEvent) {
+		const BUTTONS_RIGHT = 0b0000_0010;
+		if (e.buttons & BUTTONS_RIGHT) abortDrag();
+	}
+
+	function onKeyDown(e: KeyboardEvent) {
+		if (e.key === "Escape") {
+			const element = self?.div();
+			if (element) preventEscapeClosingParentFloatingMenu(element);
+
+			abortDrag();
+		}
+	}
+
+	function onKeyUp(e: KeyboardEvent) {
+		if (e.key === "Shift") {
+			shiftPressed = false;
+			alignedAxis = undefined;
+
+			if (saturationRestoreWhenShiftReleased !== undefined && valueRestoreWhenShiftReleased !== undefined) {
+				saturation = saturationRestoreWhenShiftReleased;
+				value = valueRestoreWhenShiftReleased;
+
+				const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
+				setColor(color);
+			}
+		}
+	}
+
 	function addEvents() {
 		document.addEventListener("pointermove", onPointerMove);
 		document.addEventListener("pointerup", onPointerUp);
+		document.addEventListener("mousedown", onMouseDown);
+		document.addEventListener("keydown", onKeyDown);
+		document.addEventListener("keyup", onKeyUp);
 
 		dispatch("startHistoryTransaction");
 	}
 
 	function removeEvents() {
 		draggingPickerTrack = undefined;
-		strayCloses = true;
+		// The setTimeout is necessary to prevent the FloatingMenu's `escapeCloses` from becoming true immediately upon pressing the Escape key, and thus closing
+		setTimeout(() => (strayCloses = true), 0);
+		shiftPressed = false;
+		alignedAxis = undefined;
 
 		document.removeEventListener("pointermove", onPointerMove);
 		document.removeEventListener("pointerup", onPointerUp);
+		document.removeEventListener("mousedown", onMouseDown);
+		document.removeEventListener("keydown", onKeyDown);
+		document.removeEventListener("keyup", onKeyUp);
+	}
+
+	function updateAxisLock() {
+		if (!saturationStartOfAxisAlign || !valueStartOfAxisAlign) return;
+
+		const deltaSaturation = saturation - saturationStartOfAxisAlign;
+		const deltaValue = value - valueStartOfAxisAlign;
+
+		saturationRestoreWhenShiftReleased = saturation;
+		valueRestoreWhenShiftReleased = value;
+
+		if (Math.abs(deltaSaturation) < Math.abs(deltaValue)) {
+			alignedAxis = "saturation";
+			saturation = saturationStartOfAxisAlign;
+		} else {
+			alignedAxis = "value";
+			value = valueStartOfAxisAlign;
+		}
+	}
+
+	function abortDrag() {
+		removeEvents();
+
+		hue = hueBeforeDrag;
+		saturation = saturationBeforeDrag;
+		value = valueBeforeDrag;
+		alpha = alphaBeforeDrag;
+
+		const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
+		setColor(color);
 	}
 
 	function setColor(color?: Color) {
@@ -299,7 +402,7 @@
 	});
 </script>
 
-<FloatingMenu class="color-picker" {open} on:open {strayCloses} {direction} type="Popover">
+<FloatingMenu class="color-picker" {open} on:open {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
 	<LayoutRow
 		styles={{
 			"--new-color": newColor.toHexOptionalAlpha(),
@@ -317,6 +420,15 @@
 				<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
 					{#if !isNone}
 						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+					{/if}
+					{#if alignedAxis}
+						<div
+							class="selection-circle-alignment"
+							class:saturation={alignedAxis === "saturation"}
+							class:value={alignedAxis === "value"}
+							style:top={`${(1 - value) * 100}%`}
+							style:left={`${saturation * 100}%`}
+						/>
 					{/if}
 				</LayoutCol>
 				<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
@@ -340,6 +452,7 @@
 						}}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
+						on:dragging={({ detail }) => (gradientSpectrumDragging = detail)}
 						bind:this={gradientSpectrumInputWidget}
 					/>
 					{#if gradientSpectrumInputWidget && activeIndex !== undefined}
@@ -360,6 +473,8 @@
 		<LayoutCol class="details">
 			<LayoutRow
 				class="choice-preview"
+				classes={{ outlined, transparency }}
+				styles={{ "--outline-amount": outlineFactor }}
 				tooltip={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before any change was made (right)" : "The present color choice"}
 			>
 				{#if !newColor.equals(oldColor)}
@@ -453,7 +568,7 @@
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltip="Scale from transparent (0%) to opaque (100%) for the color's alpha channel">Alpha</TextLabel>
+				<TextLabel tooltip="Scale of translucency, from transparent (0%) to opaque (100%), for the color's alpha channel">Alpha</TextLabel>
 				<Separator type="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
@@ -471,18 +586,18 @@
 					unit="%"
 					mode="Range"
 					displayDecimalPlaces={1}
-					tooltip={`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`}
+					tooltip={`Scale of translucency, from transparent (0%) to opaque (100%), for the color's alpha channel`}
 				/>
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone && !gradient}
-					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0" />
+					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0"></button>
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0" />
+				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0"></button>
 				<Separator type="Related" />
-				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0" />
+				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0"></button>
 				<Separator type="Related" />
 				<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
 					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
@@ -501,10 +616,13 @@
 
 <style lang="scss" global>
 	.color-picker {
+		--picker-size: 256px;
+		--picker-circle-radius: 6px;
+
 		.pickers-and-gradient {
 			.pickers {
 				.saturation-value-picker {
-					width: 256px;
+					width: var(--picker-size);
 					background-blend-mode: multiply;
 					background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-color));
 					position: relative;
@@ -513,7 +631,7 @@
 				.saturation-value-picker,
 				.hue-picker,
 				.alpha-picker {
-					height: 256px;
+					height: var(--picker-size);
 					border-radius: 2px;
 					position: relative;
 					overflow: hidden;
@@ -552,8 +670,8 @@
 
 				.selection-circle {
 					position: absolute;
-					left: 0%;
-					top: 0%;
+					left: 0;
+					top: 0;
 					width: 0;
 					height: 0;
 					pointer-events: none;
@@ -562,19 +680,59 @@
 						content: "";
 						display: block;
 						position: relative;
-						left: -6px;
-						top: -6px;
-						width: 12px;
-						height: 12px;
+						left: calc(-1 * var(--picker-circle-radius));
+						top: calc(-1 * var(--picker-circle-radius));
+						width: calc(var(--picker-circle-radius) * 2 + 1px);
+						height: calc(var(--picker-circle-radius) * 2 + 1px);
 						border-radius: 50%;
 						border: 2px solid var(--opaque-color-contrasting);
 						box-sizing: border-box;
 					}
 				}
 
+				.selection-circle-alignment {
+					position: absolute;
+					pointer-events: none;
+
+					&.saturation::before,
+					&.saturation::after,
+					&.value::before,
+					&.value::after {
+						content: "";
+						position: absolute;
+						background: var(--opaque-color-contrasting);
+						width: 1px;
+						height: 1px;
+					}
+
+					&.saturation {
+						&::before {
+							height: var(--picker-size);
+							margin-top: calc(-1 * var(--picker-size) - var(--picker-circle-radius));
+						}
+
+						&::after {
+							height: var(--picker-size);
+							margin-top: var(--picker-circle-radius);
+						}
+					}
+
+					&.value {
+						&::before {
+							width: var(--picker-size);
+							margin-left: var(--picker-circle-radius);
+						}
+
+						&::after {
+							width: var(--picker-size);
+							margin-left: calc(-1 * var(--picker-size) - var(--picker-circle-radius));
+						}
+					}
+				}
+
 				.selection-needle {
 					position: absolute;
-					top: 0%;
+					top: 0;
 					width: 100%;
 					height: 0;
 					pointer-events: none;
@@ -642,14 +800,27 @@
 				width: 100%;
 				height: 32px;
 				border-radius: 2px;
-				border: 1px solid var(--color-1-nearblack);
 				box-sizing: border-box;
 				overflow: hidden;
 				position: relative;
-				background-image: var(--color-transparent-checkered-background);
-				background-size: var(--color-transparent-checkered-background-size);
-				background-position: var(--color-transparent-checkered-background-position);
-				background-repeat: var(--color-transparent-checkered-background-repeat);
+
+				&.outlined::after {
+					content: "";
+					position: absolute;
+					top: 0;
+					bottom: 0;
+					left: 0;
+					right: 0;
+					box-shadow: inset 0 0 0 1px rgba(var(--color-0-black-rgb), var(--outline-amount));
+					pointer-events: none;
+				}
+
+				&.transparency {
+					background-image: var(--color-transparent-checkered-background);
+					background-size: var(--color-transparent-checkered-background-size);
+					background-position: var(--color-transparent-checkered-background-position);
+					background-repeat: var(--color-transparent-checkered-background-repeat);
+				}
 
 				.swap-button-background {
 					overflow: hidden;

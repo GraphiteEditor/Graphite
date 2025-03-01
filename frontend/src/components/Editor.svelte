@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, setContext } from "svelte";
 
+	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
 	import { createDragManager } from "@graphite/io-managers/drag";
 	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
@@ -15,7 +16,6 @@
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { type Editor } from "@graphite/wasm-communication/editor";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -105,16 +105,6 @@
 		--color-error-red: #d6536e;
 		--color-error-red-rgb: 214, 83, 110;
 
-		// Keep changes to these colors updated with `editor/src/consts.rs`
-		--color-overlay-blue: #00a8ff;
-		--color-overlay-blue-rgb: 0, 168, 255;
-		--color-overlay-yellow: #ffc848;
-		--color-overlay-yellow-rgb: 255, 200, 72;
-		--color-overlay-white: #ffffff;
-		--color-overlay-white-rgb: 255, 255, 255;
-		--color-overlay-gray: #cccccc;
-		--color-overlay-gray-rgb: 204, 204, 204;
-
 		--color-data-general: #c5c5c5;
 		--color-data-general-dim: #767676;
 		--color-data-raster: #e4bb72;
@@ -123,8 +113,8 @@
 		--color-data-vectordata-dim: #4b778c;
 		--color-data-number: #cbbab4;
 		--color-data-number-dim: #87736b;
-		--color-data-graphic: #6b84e8;
-		--color-data-graphic-dim: #4a557b;
+		--color-data-group: #6b84e8;
+		--color-data-group-dim: #4a557b;
 		--color-data-artboard: #70a898;
 		--color-data-artboard-dim: #3a6156;
 
@@ -148,6 +138,7 @@
 			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px, 16px 16px, 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px, 8px 8px;
+		--color-transparent-checkered-background-position-plus-one: 1px 1px, 9px 9px, 9px 9px;
 		--color-transparent-checkered-background-size-mini: 8px 8px, 8px 8px, 8px 8px;
 		--color-transparent-checkered-background-position-mini: 0 0, 4px 4px, 4px 4px;
 		--color-transparent-checkered-background-repeat: repeat, repeat, repeat;
@@ -244,11 +235,11 @@
 		.scrollable-y {
 			overflow: hidden;
 
-			// Firefox (standardized in CSS, but less capable)
 			scrollbar-width: thin;
+			// Not supported in Safari
 			scrollbar-color: var(--color-5-dullgray) transparent;
 
-			// WebKit (only in Chromium/Safari but more capable)
+			// Safari (more capable, removed from recent versions of Chromium, possibly still supported in Safari but not tested)
 			&::-webkit-scrollbar {
 				width: calc(2px + 6px + 2px);
 				height: calc(2px + 6px + 2px);

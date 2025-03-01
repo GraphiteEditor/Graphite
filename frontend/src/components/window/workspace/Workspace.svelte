@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import type { FrontendDocumentDetails } from "@graphite/messages";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-
-	import type { FrontendDocumentDetails } from "@graphite/wasm-communication/messages";
 
 	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -15,15 +14,17 @@
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {
 		/**/ root: 100,
-		/*   ├── */ content: 80,
-		/*   │      ├── */ document: 100,
-		/*   └── */ details: 20,
-		/*          ├── */ properties: 45,
-		/*          └── */ layers: 55,
+		/*   ├─ */ content: 80,
+		/*   │     └─ */ document: 100,
+		/*   └─ */ details: 20,
+		/*         ├─ */ properties: 45,
+		/*         └─ */ layers: 55,
 	};
 
 	let panelSizes = PANEL_SIZES;
 	let documentPanel: Panel | undefined;
+	let gutterResizeRestore: [number, number] | undefined = undefined;
+	let pointerCaptureId: number | undefined = undefined;
 
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
@@ -65,32 +66,68 @@
 		const proportionBeingResized = totalResizingSpaceOccupied / parentElementSize;
 
 		// Prevent cursor flicker as mouse temporarily leaves the gutter
-		gutter.setPointerCapture(e.pointerId);
+		pointerCaptureId = e.pointerId;
+		gutter.setPointerCapture(pointerCaptureId);
 
 		const mouseStart = isHorizontal ? e.clientX : e.clientY;
 
-		const updatePosition = (e: PointerEvent) => {
+		const abortResize = () => {
+			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
+			removeListeners();
+
+			pointerCaptureId = e.pointerId;
+			gutter.setPointerCapture(pointerCaptureId);
+
+			if (gutterResizeRestore !== undefined) {
+				panelSizes[nextSiblingName] = gutterResizeRestore[0];
+				panelSizes[prevSiblingName] = gutterResizeRestore[1];
+				gutterResizeRestore = undefined;
+			}
+		};
+
+		const onPointerMove = (e: PointerEvent) => {
 			const mouseCurrent = isHorizontal ? e.clientX : e.clientY;
 			let mouseDelta = mouseStart - mouseCurrent;
 
 			mouseDelta = Math.max(nextSiblingSize + mouseDelta, MIN_PANEL_SIZE) - nextSiblingSize;
 			mouseDelta = prevSiblingSize - Math.max(prevSiblingSize - mouseDelta, MIN_PANEL_SIZE);
 
+			if (gutterResizeRestore === undefined) gutterResizeRestore = [panelSizes[nextSiblingName], panelSizes[prevSiblingName]];
+
 			panelSizes[nextSiblingName] = ((nextSiblingSize + mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
 			panelSizes[prevSiblingName] = ((prevSiblingSize - mouseDelta) / totalResizingSpaceOccupied) * proportionBeingResized * 100;
 		};
 
-		const cleanup = (e: PointerEvent) => {
-			gutter.releasePointerCapture(e.pointerId);
-
-			document.removeEventListener("pointermove", updatePosition);
-			document.removeEventListener("pointerleave", cleanup);
-			document.removeEventListener("pointerup", cleanup);
+		const onPointerUp = () => {
+			gutterResizeRestore = undefined;
+			if (pointerCaptureId) gutter.releasePointerCapture(pointerCaptureId);
+			removeListeners();
 		};
 
-		document.addEventListener("pointermove", updatePosition);
-		document.addEventListener("pointerleave", cleanup);
-		document.addEventListener("pointerup", cleanup);
+		const onMouseDown = (e: MouseEvent) => {
+			const BUTTONS_RIGHT = 0b0000_0010;
+			if (e.buttons & BUTTONS_RIGHT) abortResize();
+		};
+
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") abortResize();
+		};
+
+		const addListeners = () => {
+			document.addEventListener("pointermove", onPointerMove);
+			document.addEventListener("pointerup", onPointerUp);
+			document.addEventListener("mousedown", onMouseDown);
+			document.addEventListener("keydown", onKeyDown);
+		};
+
+		const removeListeners = () => {
+			document.removeEventListener("pointermove", onPointerMove);
+			document.removeEventListener("pointerup", onPointerUp);
+			document.removeEventListener("mousedown", onMouseDown);
+			document.removeEventListener("keydown", onKeyDown);
+		};
+
+		addListeners();
 	}
 </script>
 

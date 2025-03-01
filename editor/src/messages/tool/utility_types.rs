@@ -9,12 +9,14 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
+use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
 
+use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
 pub struct ToolActionHandlerData<'a> {
@@ -25,27 +27,7 @@ pub struct ToolActionHandlerData<'a> {
 	pub font_cache: &'a FontCache,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
-}
-impl<'a> ToolActionHandlerData<'a> {
-	pub fn new(
-		document: &'a mut DocumentMessageHandler,
-		document_id: DocumentId,
-		global_tool_data: &'a DocumentToolData,
-		input: &'a InputPreprocessorMessageHandler,
-		font_cache: &'a FontCache,
-		shape_editor: &'a mut ShapeState,
-		node_graph: &'a NodeGraphExecutor,
-	) -> Self {
-		Self {
-			document,
-			document_id,
-			global_tool_data,
-			input,
-			font_cache,
-			shape_editor,
-			node_graph,
-		}
-	}
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
@@ -74,16 +56,16 @@ pub trait Fsm {
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
-	fn update_hints(&self, responses: &mut VecDeque<Message>);
+	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &Self::ToolData);
 	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, _tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(responses);
+				self.update_hints(responses, tool_data);
 				true
 			}
 			ToolMessage::UpdateCursor => {
@@ -118,7 +100,7 @@ pub trait Fsm {
 		// Update state
 		if *self != new_state {
 			*self = new_state;
-			self.update_hints(responses);
+			self.update_hints(responses, tool_data);
 			if update_cursor_on_transition {
 				self.update_cursor(responses);
 			}
@@ -492,7 +474,7 @@ pub struct HintInfo {
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,
 	/// The text describing what occurs with this input combination.
-	pub label: String,
+	pub label: Cow<'static, str>,
 	/// Draws a prepended "+" symbol which indicates that this is a refinement upon a previous hint in the group.
 	pub plus: bool,
 	/// Draws a prepended "/" symbol which indicates that this is an alternative to a previous hint in the group.
@@ -500,8 +482,12 @@ pub struct HintInfo {
 }
 
 impl HintInfo {
-	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<String>) -> Self {
-		let keys: Vec<_> = keys.into_iter().collect();
+	/// Used for a hint where a single key or key stroke is used to perform one action.
+	/// Examples:
+	/// - The Escape key can be used to cancel an action
+	/// - The Ctrl+C key stroke can be used to copy
+	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<Cow<'static, str>>) -> Self {
+		let keys = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
 			key_groups_mac: None,
@@ -512,7 +498,11 @@ impl HintInfo {
 		}
 	}
 
-	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<String>) -> Self {
+	/// Used for a hint where multiple different individual keys can be used to perform variations of the same action. These keys are represented with a slight separation between them compared to [`Self::keys`].
+	/// Examples:
+	/// - The four arrow keys can be used to nudge a layer in different directions
+	/// - The G, R, and S keys can be used to enter GRS transformation mode
+	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<Cow<'static, str>>) -> Self {
 		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
 		Self {
 			key_groups,
@@ -524,7 +514,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+	pub fn mouse(mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		Self {
 			key_groups: vec![],
 			key_groups_mac: None,
@@ -535,7 +525,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn label(label: impl Into<String>) -> Self {
+	pub fn label(label: impl Into<Cow<'static, str>>) -> Self {
 		Self {
 			key_groups: vec![],
 			key_groups_mac: None,
@@ -546,8 +536,8 @@ impl HintInfo {
 		}
 	}
 
-	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
-		let keys: Vec<_> = keys.into_iter().collect();
+	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
+		let keys = keys.into_iter().collect();
 		Self {
 			key_groups: vec![KeysGroup(keys).into()],
 			key_groups_mac: None,
@@ -558,7 +548,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
 		Self {
 			key_groups,
@@ -570,7 +560,7 @@ impl HintInfo {
 		}
 	}
 
-	pub fn arrow_keys(label: impl Into<String>) -> Self {
+	pub fn arrow_keys(label: impl Into<Cow<'static, str>>) -> Self {
 		let multi_keys = [[Key::ArrowUp], [Key::ArrowRight], [Key::ArrowDown], [Key::ArrowLeft]];
 		Self::multi_keys(multi_keys, label)
 	}
@@ -586,7 +576,7 @@ impl HintInfo {
 	}
 
 	pub fn add_mac_keys(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
-		let mac_keys: Vec<_> = keys.into_iter().collect();
+		let mac_keys = keys.into_iter().collect();
 		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
 		self
 	}

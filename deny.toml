@@ -43,8 +43,9 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-	"RUSTSEC-2024-0370", # I don't care about unmaintained proc-macro-error
-	"RUSTSEC-2024-0388", # I don't care about unmaintained derivative
+	"RUSTSEC-2024-0370", # Unmaintained but still fully functional crate `proc-macro-error`
+	"RUSTSEC-2024-0388", # Unmaintained but still fully functional crate `derivative`
+	"RUSTSEC-2025-0007", # Unmaintained but still fully functional crate `ring`
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
@@ -78,6 +79,7 @@ allow = [
 	"OpenSSL",
 	"Unicode-3.0",
 	"Zlib",
+	"NCSA",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -183,7 +185,7 @@ allow-git = []
 
 [sources.allow-org]
 # 1 or more github.com organizations to allow git sources for
-github = ["linebender", "Rust-GPU", "0hypercube"]
+github = ["linebender", "Rust-GPU", "specta-rs"]
 # 1 or more gitlab.com organizations to allow git sources for
 #gitlab = [""]
 # 1 or more bitbucket.org organizations to allow git sources for

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
+	import type { MenuListEntry } from "@graphite/messages";
 	import type { FontsState } from "@graphite/state-providers/fonts";
-	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -72,7 +72,7 @@
 			dispatch("fontFamily", newName);
 
 			family = newName;
-			style = "Normal (400)";
+			style = "Regular (400)";
 		}
 
 		const fontFileUrl = await fonts.getFontFileUrl(family, style);
