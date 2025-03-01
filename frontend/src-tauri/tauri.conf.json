@@ -48,6 +48,7 @@
   "identifier": "rs.graphite.editor",
   "plugins": {},
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "fullscreen": false,

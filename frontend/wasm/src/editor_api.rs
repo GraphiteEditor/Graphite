@@ -33,6 +33,14 @@ extern "C" {
 	fn dispatchTauri(message: String) -> String;
 	// fn dispatchTauri(message: String);
 }
+#[wasm_bindgen]
+extern "C" {
+	// invoke with arguments (default)
+	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
+	async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name="invoke")]
+	async fn invoke_without_arg(cmd: &str) -> JsValue;
+}
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -65,6 +73,12 @@ impl EditorHandle {
 	}
 }
 
+pub fn create_message_object(message: &str) -> JsValue {
+	let obj = js_sys::Object::new();
+	js_sys::Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(message)).unwrap();
+	obj.into()
+}
+
 #[wasm_bindgen]
 impl EditorHandle {
 	#[wasm_bindgen(constructor)]
@@ -74,6 +88,7 @@ impl EditorHandle {
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
+		log::debug!("message");
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
 			log::error!("Attempted to initialize the editor handle more than once");
 		}
@@ -86,6 +101,7 @@ impl EditorHandle {
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
+		// log::debug!("message");
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
 		#[cfg(not(feature = "tauri"))]
@@ -95,8 +111,21 @@ impl EditorHandle {
 			let message: Message = message.into();
 			let message = ron::to_string(&message).unwrap();
 
-			let response = dispatchTauri(message);
-			ron::from_str(&response).unwrap()
+			let handle = self.clone();
+			wasm_bindgen_futures::spawn_local(async move {
+				let message = create_message_object(&message);
+				let response = invoke("handle_message", message.into()).await;
+				// let response = dispatchTauri(message);
+				let frontend_messages: Vec<FrontendMessage> = ron::from_str(&response.as_string().unwrap()).unwrap();
+				if frontend_messages.len() > 0 {
+					log::debug!("response {:?}", response.as_string());
+				}
+				// Send each `FrontendMessage` to the JavaScript frontend
+				for message in frontend_messages.into_iter() {
+					handle.send_frontend_message_to_js(message);
+				}
+			});
+			vec![]
 		};
 
 		// Send each `FrontendMessage` to the JavaScript frontend
@@ -150,7 +179,6 @@ impl EditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
-				#[cfg(not(feature = "tauri"))]
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -1059,6 +1087,17 @@ async fn poll_node_graph_evaluation() {
 		}
 
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+	});
+}
+#[cfg(feature = "tauri")]
+async fn poll_node_graph_evaluation() {
+	let response = invoke_without_arg("poll_node_graph").await;
+	// Send each `FrontendMessage` to the JavaScript frontend
+	editor_and_handle(move |_, handle| {
+		let frontend_messages: Vec<FrontendMessage> = ron::from_str(&response.as_string().unwrap()).unwrap();
+		for message in frontend_messages {
+			handle.send_frontend_message_to_js(message);
+		}
 	});
 }
 

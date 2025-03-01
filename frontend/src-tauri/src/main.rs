@@ -68,7 +68,7 @@ async fn main() {
 	tauri::Builder::default()
 		.plugin(tauri_plugin_http::init())
 		.plugin(tauri_plugin_shell::init())
-		.invoke_handler(tauri::generate_handler![set_random_seed, handle_message])
+		.invoke_handler(tauri::generate_handler![set_random_seed, handle_message, poll_node_graph])
 		.setup(|_app| {
 			use tauri::Manager;
 			_app.get_webview_window("main").unwrap().open_devtools();
@@ -80,6 +80,29 @@ async fn main() {
 #[tauri::command]
 fn set_random_seed(seed: f64) {
 	graphite_editor::application::set_uuid_seed(seed as u64);
+}
+#[tauri::command]
+async fn poll_node_graph() -> String {
+	return "[]".into();
+
+	let mut responses = VecDeque::new();
+	let responses = EDITOR.with(|editor| {
+		let mut editor = editor.borrow_mut();
+		editor.as_mut().unwrap().poll_node_graph_evaluation(&mut responses)
+	});
+
+	for response in &responses {
+		let serialized = ron::to_string(&response.clone()).unwrap();
+		if let Err(error) = ron::from_str::<FrontendMessage>(&serialized) {
+			log::error!("Error deserializing message: {error}");
+		}
+	}
+	println!("handling messages");
+
+	// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
+	let result: Vec<_> = responses.into_iter().collect();
+
+	ron::to_string(&result).expect("Failed to serialize FrontendMessage")
 }
 
 #[tauri::command]
@@ -98,6 +121,7 @@ fn handle_message(message: String) -> String {
 			log::error!("Error deserializing message: {error}");
 		}
 	}
+	// println!("handling messages");
 
 	// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
 	let result: Vec<_> = responses.into_iter().collect();
