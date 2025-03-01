@@ -1,13 +1,12 @@
+use crate::transform::Footprint;
+use crate::{NodeIO, NodeIOTypes, Type};
+
+use dyn_any::DynAny;
+
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
-
-use dyn_any::DynAny;
-
-use crate::transform::Footprint;
-use crate::NodeIOTypes;
-use crate::{NodeIO, Type};
 
 pub mod types {
 	/// 0% - 100%
