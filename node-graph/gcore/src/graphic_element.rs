@@ -45,15 +45,30 @@ impl AlphaBlending {
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
 	use serde::Deserialize;
 
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldGraphicGroup {
+		elements: Vec<(GraphicElement, Option<NodeId>)>,
+		transform: DAffine2,
+		alpha_blending: AlphaBlending,
+	}
+
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	enum EitherFormat {
 		GraphicGroup(GraphicGroup),
+		OldGraphicGroup(OldGraphicGroup),
 		GraphicGroupTable(GraphicGroupTable),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::GraphicGroup(graphic_group) => GraphicGroupTable::new(graphic_group),
+		EitherFormat::OldGraphicGroup(old) => {
+			let mut graphic_group_table = GraphicGroupTable::new(GraphicGroup { elements: old.elements });
+			*graphic_group_table.one_instance_mut().transform = old.transform;
+			*graphic_group_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			graphic_group_table
+		}
 		EitherFormat::GraphicGroupTable(graphic_group_table) => graphic_group_table,
 	})
 }

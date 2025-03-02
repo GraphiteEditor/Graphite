@@ -1,7 +1,7 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::GraphicElement;
 use crate::{instances::Instances, transform::TransformMut};
+use crate::{AlphaBlending, GraphicElement};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -212,15 +212,31 @@ impl<P: Pixel> IntoIterator for Image<P> {
 pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ImageFrameTable<Color>, D::Error> {
 	use serde::Deserialize;
 
+	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldImageFrame<P: Pixel> {
+		image: Image<P>,
+		transform: DAffine2,
+		alpha_blending: AlphaBlending,
+	}
+
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	enum EitherFormat {
 		ImageFrame(ImageFrame<Color>),
+		OldImageFrame(OldImageFrame<Color>),
 		ImageFrameTable(ImageFrameTable<Color>),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::ImageFrame(image_frame) => ImageFrameTable::<Color>::new(image_frame),
+		EitherFormat::OldImageFrame(image_frame_with_transform_and_blending) => {
+			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
+			let mut image_frame_table = ImageFrameTable::new(ImageFrame { image });
+			*image_frame_table.one_instance_mut().transform = transform;
+			*image_frame_table.one_instance_mut().alpha_blending = alpha_blending;
+			image_frame_table
+		}
 		EitherFormat::ImageFrameTable(image_frame_table) => image_frame_table,
 	})
 }

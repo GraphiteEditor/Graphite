@@ -5,7 +5,7 @@ pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
-use crate::{Color, GraphicGroupTable};
+use crate::{AlphaBlending, Color, GraphicGroupTable};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
@@ -17,16 +17,50 @@ use glam::{DAffine2, DVec2};
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
 	use serde::Deserialize;
 
+	#[derive(Clone, Debug, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldVectorData {
+		pub transform: DAffine2,
+		pub alpha_blending: AlphaBlending,
+
+		pub style: PathStyle,
+
+		/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
+		/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
+		pub colinear_manipulators: Vec<[HandleId; 2]>,
+
+		pub point_domain: PointDomain,
+		pub segment_domain: SegmentDomain,
+		pub region_domain: RegionDomain,
+
+		// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
+		pub upstream_graphic_group: Option<GraphicGroupTable>,
+	}
+
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	#[allow(clippy::large_enum_variant)]
 	enum EitherFormat {
 		VectorData(VectorData),
+		OldVectorData(OldVectorData),
 		VectorDataTable(VectorDataTable),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::OldVectorData(old) => {
+			let mut vector_data_table = VectorDataTable::new(VectorData {
+				style: old.style,
+				colinear_manipulators: old.colinear_manipulators,
+				point_domain: old.point_domain,
+				segment_domain: old.segment_domain,
+				region_domain: old.region_domain,
+				upstream_graphic_group: old.upstream_graphic_group,
+			});
+			*vector_data_table.one_instance_mut().transform = old.transform;
+			*vector_data_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			vector_data_table
+		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
 	})
 }
