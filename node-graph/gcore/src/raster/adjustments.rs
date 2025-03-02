@@ -1559,8 +1559,8 @@ fn color_overlay<T: Adjust<Color>>(
 
 #[cfg(test)]
 mod test {
+	use crate::raster::adjustments::BlendMode;
 	use crate::raster::image::{Image, ImageFrameTable};
-	use crate::raster::{BlendMode, Image};
 	use crate::{Color, Node};
 	use std::pin::Pin;
 

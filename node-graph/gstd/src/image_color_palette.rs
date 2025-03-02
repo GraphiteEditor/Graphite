@@ -66,7 +66,6 @@ mod test {
 	use super::*;
 
 	use graphene_core::raster::image::{Image, ImageFrameTable};
-	use graphene_core::raster::Image;
 
 	#[test]
 	fn test_image_color_palette() {
