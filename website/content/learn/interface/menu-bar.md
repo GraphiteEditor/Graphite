@@ -92,7 +92,7 @@ The **View menu** lists actions related to the view of the canvas within the vie
 
 | | |
 |-|-|
-| Tilt | <p>Begins tilting the viewport angle based on your mouse movements.</p><p>While tilting, hold <kbd>Ctrl</kbd> to snap to 15° increments. Confirm with a left click or <kbd>Enter</kbd>. Cancel with a right click or <kbd>Esc</kbd>.</p> |
+| Tilt | <p>Begins tilting the viewport angle based on your mouse movements.</p><p>While tilting, hold <kbd>Shift</kbd> to snap to 15° increments. Confirm with a left click or <kbd>Enter</kbd>. Cancel with a right click or <kbd>Esc</kbd>.</p> |
 | Reset Tilt | <p>Sets the viewport tilt angle back to 0°.</p> |
 | Zoom In | <p>Narrows the view to the next whole zoom increment, such as:</p><p>25%, 33.33%, 40%, 50%, 66.67%, 80%, 100%, 125%, 160%, 200%, 250%, 320%, 400%, 500%</p> |
 | Zoom Out | <p>Widens the view to the next whole zoom increment, such as above.</p> |

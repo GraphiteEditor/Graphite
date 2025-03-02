@@ -1,11 +1,9 @@
-use crate::transform::Footprint;
-
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
 use graphene_core::{transform::Transform, GraphicGroup};
-use graphene_core::{Color, GraphicElement, GraphicGroupTable};
+use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 
@@ -13,22 +11,7 @@ use glam::{DAffine2, DVec2};
 use std::ops::Mul;
 
 #[node_macro::node(category(""))]
-async fn boolean_operation<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-		Footprint -> GraphicGroupTable,
-	)]
-	group_of_paths: impl Node<F, Output = GraphicGroupTable>,
-	operation: BooleanOperation,
-) -> VectorDataTable {
-	let group_of_paths = group_of_paths.eval(footprint).await;
-	let group_of_paths = group_of_paths.one_item();
-
+async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
 	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
@@ -193,6 +176,7 @@ async fn boolean_operation<F: 'n + Send>(
 		}
 	}
 
+	let group_of_paths = group_of_paths.one_item();
 	// The first index is the bottom of the stack
 	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(group_of_paths), operation);
 

@@ -1,6 +1,7 @@
 use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
@@ -10,7 +11,7 @@ use crate::messages::tool::utility_types::{ToolData, ToolType};
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
-use graphene_std::vector::VectorData;
+use graphene_std::vector::{VectorData, VectorModificationType};
 
 use glam::{DAffine2, DVec2};
 use std::f64::consts::TAU;
@@ -100,6 +101,35 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 			}
 		}
 		_ => edge,
+	}
+}
+
+fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	use std::f64::consts::PI;
+
+	for &layer in selected_layers {
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+		for [handle1, handle2] in &vector_data.colinear_manipulators {
+			let manipulator1 = handle1.to_manipulator_point();
+			let manipulator2 = handle2.to_manipulator_point();
+
+			let Some(anchor) = manipulator1.get_anchor_position(&vector_data) else { continue };
+			let Some(pos1) = manipulator1.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
+			let Some(pos2) = manipulator2.get_position(&vector_data).map(|pos| pos - anchor) else { continue };
+
+			let angle = pos1.angle_to(pos2);
+
+			// Check if handles are not colinear (not approximately equal to +/- PI)
+			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
+				let modification_type = VectorModificationType::SetG1Continuous {
+					handles: [*handle1, *handle2],
+					enabled: false,
+				};
+
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+		}
 	}
 }
 
@@ -310,6 +340,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 					selected.responses.add(PenToolMessage::Confirm);
 				} else {
+					update_colinear_handles(&selected_layers, document, responses);
 					responses.add(DocumentMessage::EndTransaction);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);

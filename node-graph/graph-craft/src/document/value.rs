@@ -102,8 +102,8 @@ macro_rules! tagged_value {
 						})
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
-					Type::Future(_) => {
-						None
+					Type::Future(output) => {
+						TaggedValue::from_type(output)
 					}
 				}
 			}
@@ -270,7 +270,7 @@ impl TaggedValue {
 				Some(ty)
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
-			Type::Future(_) => None,
+			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
 		}
 	}
 

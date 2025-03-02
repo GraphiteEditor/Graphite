@@ -127,6 +127,7 @@ import FileImport from "@graphite-frontend/assets/icon-16px-solid/file-import.sv
 import File from "@graphite-frontend/assets/icon-16px-solid/file.svg";
 import FlipHorizontal from "@graphite-frontend/assets/icon-16px-solid/flip-horizontal.svg";
 import FlipVertical from "@graphite-frontend/assets/icon-16px-solid/flip-vertical.svg";
+import FolderOpen from "@graphite-frontend/assets/icon-16px-solid/folder-open.svg";
 import Folder from "@graphite-frontend/assets/icon-16px-solid/folder.svg";
 import FrameAll from "@graphite-frontend/assets/icon-16px-solid/frame-all.svg";
 import FrameSelected from "@graphite-frontend/assets/icon-16px-solid/frame-selected.svg";
@@ -171,6 +172,7 @@ import ReverseRadialGradientToRight from "@graphite-frontend/assets/icon-16px-so
 import Reverse from "@graphite-frontend/assets/icon-16px-solid/reverse.svg";
 import Save from "@graphite-frontend/assets/icon-16px-solid/save.svg";
 import SelectAll from "@graphite-frontend/assets/icon-16px-solid/select-all.svg";
+import SelectParent from "@graphite-frontend/assets/icon-16px-solid/select-parent.svg";
 import Settings from "@graphite-frontend/assets/icon-16px-solid/settings.svg";
 import SmallDot from "@graphite-frontend/assets/icon-16px-solid/small-dot.svg";
 import StackBottom from "@graphite-frontend/assets/icon-16px-solid/stack-bottom.svg";
@@ -185,6 +187,8 @@ import TransformationGrab from "@graphite-frontend/assets/icon-16px-solid/transf
 import TransformationRotate from "@graphite-frontend/assets/icon-16px-solid/transformation-rotate.svg";
 import TransformationScale from "@graphite-frontend/assets/icon-16px-solid/transformation-scale.svg";
 import Trash from "@graphite-frontend/assets/icon-16px-solid/trash.svg";
+import TurnNegative90 from "@graphite-frontend/assets/icon-16px-solid/turn-negative-90.svg";
+import TurnPositive90 from "@graphite-frontend/assets/icon-16px-solid/turn-positive-90.svg";
 import UserManual from "@graphite-frontend/assets/icon-16px-solid/user-manual.svg";
 import ViewModeNormal from "@graphite-frontend/assets/icon-16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@graphite-frontend/assets/icon-16px-solid/view-mode-outline.svg";
@@ -240,6 +244,7 @@ const SOLID_16PX = {
 	FlipHorizontal: { svg: FlipHorizontal, size: 16 },
 	FlipVertical: { svg: FlipVertical, size: 16 },
 	Folder: { svg: Folder, size: 16 },
+	FolderOpen: { svg: FolderOpen, size: 16 },
 	FrameAll: { svg: FrameAll, size: 16 },
 	FrameSelected: { svg: FrameSelected, size: 16 },
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
@@ -283,6 +288,7 @@ const SOLID_16PX = {
 	ReverseRadialGradientToRight: { svg: ReverseRadialGradientToRight, size: 16 },
 	Save: { svg: Save, size: 16 },
 	SelectAll: { svg: SelectAll, size: 16 },
+	SelectParent: { svg: SelectParent, size: 16 },
 	Settings: { svg: Settings, size: 16 },
 	SmallDot: { svg: SmallDot, size: 16 },
 	Stack: { svg: Stack, size: 16 },
@@ -297,6 +303,8 @@ const SOLID_16PX = {
 	TransformationRotate: { svg: TransformationRotate, size: 16 },
 	TransformationScale: { svg: TransformationScale, size: 16 },
 	Trash: { svg: Trash, size: 16 },
+	TurnNegative90: { svg: TurnNegative90, size: 16 },
+	TurnPositive90: { svg: TurnPositive90, size: 16 },
 	UserManual: { svg: UserManual, size: 16 },
 	ViewModeNormal: { svg: ViewModeNormal, size: 16 },
 	ViewModeOutline: { svg: ViewModeOutline, size: 16 },

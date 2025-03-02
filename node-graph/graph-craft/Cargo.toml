@@ -54,6 +54,7 @@ winit = { workspace = true }
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
+pretty_assertions = { workspace = true }
 
 # Required dependencies
 criterion = { version = "0.5", features = ["html_reports"]}

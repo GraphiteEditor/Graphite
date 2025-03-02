@@ -140,7 +140,7 @@ pub fn input_mappings() -> Mapping {
 		// NavigateToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NavigateToolMessage::ZoomCanvasBegin),
 		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NavigateToolMessage::TiltCanvasBegin),
-		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigateToolMessage::PointerMove { snap: Control }),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NavigateToolMessage::PointerMove { snap: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=NavigateToolMessage::PointerUp { zoom_in: true }),
 		entry!(KeyUp(MouseLeft); modifiers=[Shift], action_dispatch=NavigateToolMessage::PointerUp { zoom_in: false }),
 		//
@@ -336,6 +336,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
 		entry!(KeyDown(KeyG); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
 		entry!(KeyDown(KeyN); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::CreateEmptyFolder),
+		entry!(KeyDown(Backslash); modifiers=[Alt], action_dispatch=DocumentMessage::SelectParentLayer),
 		entry!(KeyDown(BracketLeft); modifiers=[Alt], action_dispatch=DocumentMessage::SelectionStepBack),
 		entry!(KeyDown(BracketRight); modifiers=[Alt], action_dispatch=DocumentMessage::SelectionStepForward),
 		entry!(KeyDown(MouseBack); action_dispatch=DocumentMessage::SelectionStepBack),

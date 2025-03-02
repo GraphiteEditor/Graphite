@@ -146,11 +146,12 @@
 		}
 
 		&.flush {
-			background: none;
+			--button-background-color: none;
+			--button-text-color: var(--color-e-nearwhite);
 
 			&:hover,
 			&.open {
-				background: var(--color-5-dullgray);
+				--button-background-color: var(--color-5-dullgray);
 			}
 		}
 

@@ -235,11 +235,11 @@
 		.scrollable-y {
 			overflow: hidden;
 
-			// Firefox (standardized in CSS, but less capable)
 			scrollbar-width: thin;
+			// Not supported in Safari
 			scrollbar-color: var(--color-5-dullgray) transparent;
 
-			// WebKit (only in Chromium/Safari but more capable)
+			// Safari (more capable, removed from recent versions of Chromium, possibly still supported in Safari but not tested)
 			&::-webkit-scrollbar {
 				width: calc(2px + 6px + 2px);
 				height: calc(2px + 6px + 2px);
