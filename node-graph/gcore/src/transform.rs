@@ -2,7 +2,7 @@ use crate::application_io::TextureFrameTable;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
-use crate::{Artboard, ArtboardGroup, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
+use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
 
 use glam::{DAffine2, DVec2};
 
@@ -132,7 +132,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroupTable)] data: T) -> T {
 	data
 }
 

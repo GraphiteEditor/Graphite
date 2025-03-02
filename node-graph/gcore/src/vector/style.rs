@@ -5,6 +5,7 @@ use crate::renderer::format_transform_matrix;
 use crate::Color;
 
 use dyn_any::DynAny;
+
 use glam::{DAffine2, DVec2};
 use std::fmt::{self, Display, Write};
 

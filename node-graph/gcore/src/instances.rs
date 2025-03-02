@@ -2,18 +2,17 @@ use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::Pixel;
 use crate::transform::{Transform, TransformMut};
+use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorData, VectorDataTable};
 use crate::{AlphaBlending, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
 
 use dyn_any::StaticType;
+
 use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Instances<T>
-where
-	T: Into<GraphicElement> + StaticType + 'static,
-{
+pub struct Instances<T> {
 	id: Vec<InstanceId>,
 	#[serde(alias = "instances")]
 	instance: Vec<T>,
@@ -21,15 +20,33 @@ where
 	transform: Vec<DAffine2>,
 	#[serde(default = "one_alpha_blending_default")]
 	alpha_blending: Vec<AlphaBlending>,
+	source_node_id: Vec<Option<NodeId>>,
 }
 
-impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
+impl<T> Instances<T> {
 	pub fn new(instance: T) -> Self {
 		Self {
 			id: vec![InstanceId::generate()],
 			instance: vec![instance],
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
+			source_node_id: vec![None],
+		}
+	}
+
+	pub fn push(&mut self, instance: T) -> InstanceMut<T> {
+		self.id.push(InstanceId::generate());
+		self.instance.push(instance);
+		self.transform.push(DAffine2::IDENTITY);
+		self.alpha_blending.push(AlphaBlending::default());
+		self.source_node_id.push(None);
+
+		InstanceMut {
+			id: self.id.last_mut().expect("Shouldn't be empty"),
+			instance: self.instance.last_mut().expect("Shouldn't be empty"),
+			transform: self.transform.last_mut().expect("Shouldn't be empty"),
+			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
+			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
 		}
 	}
 
@@ -39,6 +56,7 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 			instance: self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			transform: self.transform.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			alpha_blending: self.alpha_blending.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
+			source_node_id: self.source_node_id.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 		}
 	}
 
@@ -50,6 +68,7 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 			instance: self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			transform: self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			alpha_blending: self.alpha_blending.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
+			source_node_id: self.source_node_id.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 		}
 	}
 
@@ -60,11 +79,13 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 			.zip(self.instance.iter())
 			.zip(self.transform.iter())
 			.zip(self.alpha_blending.iter())
-			.map(|(((id, instance), transform), alpha_blending)| Instance {
+			.zip(self.source_node_id.iter())
+			.map(|((((id, instance), transform), alpha_blending), source_node_id)| Instance {
 				id,
 				instance,
 				transform,
 				alpha_blending,
+				source_node_id,
 			})
 	}
 
@@ -75,22 +96,24 @@ impl<T: Into<GraphicElement> + StaticType + 'static> Instances<T> {
 			.zip(self.instance.iter_mut())
 			.zip(self.transform.iter_mut())
 			.zip(self.alpha_blending.iter_mut())
-			.map(|(((id, instance), transform), alpha_blending)| InstanceMut {
+			.zip(self.source_node_id.iter_mut())
+			.map(|((((id, instance), transform), alpha_blending), source_node_id)| InstanceMut {
 				id,
 				instance,
 				transform,
 				alpha_blending,
+				source_node_id,
 			})
 	}
 }
 
-impl<T: Into<GraphicElement> + Default + Hash + StaticType + 'static> Default for Instances<T> {
+impl<T: Default + Hash> Default for Instances<T> {
 	fn default() -> Self {
 		Self::new(T::default())
 	}
 }
 
-impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for Instances<T> {
+impl<T: Hash> core::hash::Hash for Instances<T> {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 		for instance in &self.instance {
@@ -99,13 +122,14 @@ impl<T: Into<GraphicElement> + Hash + StaticType + 'static> core::hash::Hash for
 	}
 }
 
-impl<T: Into<GraphicElement> + PartialEq + StaticType + 'static> PartialEq for Instances<T> {
+impl<T: PartialEq> PartialEq for Instances<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.id == other.id && self.instance.len() == other.instance.len() && { self.instance.iter().zip(other.instance.iter()).all(|(a, b)| a == b) }
 	}
 }
 
-unsafe impl<T: Into<GraphicElement> + StaticType + 'static> dyn_any::StaticType for Instances<T> {
+#[cfg(feature = "dyn-any")]
+unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
 }
 
@@ -122,6 +146,7 @@ pub struct Instance<'a, T> {
 	pub instance: &'a T,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
+	pub source_node_id: &'a Option<NodeId>,
 }
 #[derive(Debug)]
 pub struct InstanceMut<'a, T> {
@@ -129,6 +154,7 @@ pub struct InstanceMut<'a, T> {
 	pub instance: &'a mut T,
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
+	pub source_node_id: &'a mut Option<NodeId>,
 }
 
 // GRAPHIC ELEMENT
@@ -235,8 +261,6 @@ impl<P: Pixel> TransformMut for InstanceMut<'_, Image<P>> {
 // IMAGE FRAME TABLE
 impl<P: Pixel> Transform for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn transform(&self) -> DAffine2 {
@@ -245,8 +269,6 @@ where
 }
 impl<P: Pixel> TransformMut for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
