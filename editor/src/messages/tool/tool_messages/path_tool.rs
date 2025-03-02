@@ -425,11 +425,7 @@ impl PathToolData {
 			SelectionStatus::None => false,
 			SelectionStatus::One(single_selected_point) => {
 				let vector_data = document.network_interface.compute_modified_vector(single_selected_point.layer).unwrap();
-				if single_selected_point.id.get_handle_pair(&vector_data).is_some() {
-					true
-				} else {
-					false
-				}
+				single_selected_point.id.get_handle_pair(&vector_data).is_some()
 			}
 			SelectionStatus::Multiple(_) => true,
 		};
