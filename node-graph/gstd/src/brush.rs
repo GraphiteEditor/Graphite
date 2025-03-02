@@ -353,12 +353,13 @@ mod test {
 		assert_eq!(image.sample(DVec2::splat(0.), DVec2::ONE), Some(Color::BLACK));
 	}
 
-	#[test]
-	fn test_brush_output_size() {
-		let brush_node = BrushNode::new(
-			ClonedNode::new(ImageFrameTable::<Color>::default()),
-			ClonedNode::new(ImageFrameTable::<Color>::default()),
-			ClonedNode::new(vec![BrushStroke {
+	#[tokio::test]
+	async fn test_brush_output_size() {
+		let image = brush(
+			(),
+			ImageFrameTable::<Color>::default(),
+			ImageFrameTable::<Color>::default(),
+			vec![BrushStroke {
 				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {
 					color: Color::BLACK,
@@ -368,10 +369,10 @@ mod test {
 					spacing: 20.,
 					blend_mode: BlendMode::Normal,
 				},
-			}]),
-			ClonedNode::new(BrushCache::new_proto()),
-		);
-		let image = brush_node.eval(());
+			}],
+			BrushCache::new_proto(),
+		)
+		.await;
 		assert_eq!(image.width(), 20);
 	}
 }

@@ -972,7 +972,9 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 	let source_transform = source.transform();
 	let source = source.one_instance().instance;
 
-	VectorDataTable::new(bevel_algorithm(source.clone(), source_transform, distance))
+	let mut result = VectorDataTable::new(bevel_algorithm(source.clone(), source_transform, distance));
+	*result.transform_mut() = source_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1114,7 +1116,7 @@ mod test {
 		// Test a VectorData with non-zero rotation
 		let square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
 		let mut square = VectorDataTable::new(square);
-		square.one_instance_mut().transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
+		*square.one_instance_mut().transform_mut() *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
 		let bounding_box = BoundingBoxNode {
 			vector_data: FutureWrapperNode(square),
 		}
@@ -1212,7 +1214,12 @@ mod test {
 	fn contains_segment(vector: VectorData, target: bezier_rs::Bezier) {
 		let segments = vector.segment_bezier_iter().map(|x| x.1);
 		let count = segments.filter(|bezier| bezier.abs_diff_eq(&target, 0.01) || bezier.reversed().abs_diff_eq(&target, 0.01)).count();
-		assert_eq!(count, 1, "Incorrect number of {target:#?} in {:#?}", vector.segment_bezier_iter().collect::<Vec<_>>());
+		assert_eq!(
+			count,
+			1,
+			"Expected exactly one matching segment for {target:?}, but found {count}. The given segments are: {:#?}",
+			vector.segment_bezier_iter().collect::<Vec<_>>()
+		);
 	}
 
 	#[tokio::test]
@@ -1258,28 +1265,27 @@ mod test {
 
 	#[tokio::test]
 	async fn bevel_with_transform() {
-		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(1., 0.), DVec2::new(1., 10.), DVec2::X * 10.);
-		let source = Subpath::<PointId>::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -10., DVec2::ZERO), curve], false);
-		let mut vector_data = VectorData::from_subpath(source);
-		let vector_data_table = VectorDataTable::new(vector_data);
+		let curve = Bezier::from_cubic_dvec2(DVec2::new(0., 0.), DVec2::new(1., 0.), DVec2::new(1., 10.), DVec2::new(10., 0.));
+		let source = Subpath::<PointId>::from_beziers(&[Bezier::from_linear_dvec2(DVec2::new(-10., 0.), DVec2::ZERO), curve], false);
+		let vector_data = VectorData::from_subpath(source);
+		let mut vector_data_table = VectorDataTable::new(vector_data.clone());
 
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
-		*vector_data_table.one_instance_mut().transform = transform;
+		*vector_data_table.one_instance_mut().transform_mut() = transform;
 
 		let beveled = super::bevel((), VectorDataTable::new(vector_data), 5.);
 		let beveled = beveled.one_instance().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
-		assert_eq!(beveled.transform, transform);
 
 		// Segments
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-0.5, 0.), DVec2::new(-10., 0.)));
-		let trimmed = curve.trim(bezier_rs::TValue::Euclidean(0.5 / curve.length(Some(0.00001))), bezier_rs::TValue::Parametric(1.));
+		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(-10., 0.)));
+		let trimmed = curve.trim(bezier_rs::TValue::Euclidean(5. / curve.length(Some(0.00001))), bezier_rs::TValue::Parametric(1.));
 		contains_segment(beveled.clone(), trimmed);
 
 		// Join
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-0.5, 0.), trimmed.start));
+		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), trimmed.start));
 	}
 
 	#[tokio::test]

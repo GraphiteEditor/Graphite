@@ -75,19 +75,17 @@ pub struct TextureFrame {
 }
 
 impl Hash for TextureFrame {
+	#[cfg(feature = "wgpu")]
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		#[cfg(feature = "wgpu")]
 		self.texture.hash(state);
 	}
+	#[cfg(not(feature = "wgpu"))]
+	fn hash<H: Hasher>(&self, _state: &mut H) {}
 }
 
 impl PartialEq for TextureFrame {
 	fn eq(&self, other: &Self) -> bool {
-		#[cfg(feature = "wgpu")]
-		return self.texture == other.texture;
-
-		#[cfg(not(feature = "wgpu"))]
-		self.transform.eq(&other.transform)
+		self.texture == other.texture
 	}
 }
 
