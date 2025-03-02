@@ -1,4 +1,5 @@
 use super::*;
+use crate::transform::TransformMut;
 use crate::uuid::generate_uuid;
 use crate::Ctx;
 
@@ -425,11 +426,14 @@ impl core::hash::Hash for VectorModification {
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
+	let vector_data_transform = *vector_data.one_instance().transform;
 	let vector_data = vector_data.one_instance_mut().instance;
 
 	modification.apply(vector_data);
 
-	VectorDataTable::new(vector_data.clone())
+	let mut result = VectorDataTable::new(vector_data.clone());
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[test]

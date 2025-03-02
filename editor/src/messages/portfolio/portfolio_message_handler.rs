@@ -457,7 +457,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 35] = [
+				const REPLACEMENTS: [(&str, &str); 34] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -488,7 +488,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
-					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
 					("graphene_core::vector::generator_nodes::RectangleGenerator", "graphene_core::vector::generator_nodes::RectangleNode"),
 					(
 						"graphene_core::vector::generator_nodes::RegularPolygonGenerator",
