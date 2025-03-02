@@ -6,7 +6,7 @@ pub use executor::GpuExecutor;
 
 use dyn_any::{DynAny, StaticType};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle, TextureFrame};
+use graphene_core::application_io::{ApplicationIo, EditorApi, ImageTexture, SurfaceHandle};
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{Image, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
@@ -912,14 +912,14 @@ async fn render_texture<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrame {
+async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> ImageTexture {
 	// let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 
 	let input = input.one_instance().instance;
-	let new_data: Vec<SRGBA8> = input.image.data.iter().map(|x| (*x).into()).collect();
+	let new_data: Vec<SRGBA8> = input.data.iter().map(|x| (*x).into()).collect();
 	let new_image = Image {
-		width: input.image.width,
-		height: input.image.height,
+		width: input.width,
+		height: input.height,
 		data: new_data,
 		base64_string: None,
 	};
@@ -931,9 +931,9 @@ async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFram
 		_ => unreachable!("Unsupported ShaderInput type"),
 	};
 
-	TextureFrame {
+	ImageTexture {
 		texture: texture.into(),
-		// TODO: Find an alternate way to encode the transform and alpha_blend now that these fields have been moved up out of TextureFrame
+		// TODO: Find an alternate way to encode the transform and alpha_blend now that these fields have been moved up out of ImageTexture
 		// transform: input.transform,
 		// alpha_blend: Default::default(),
 	}

@@ -1,6 +1,6 @@
-use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::instances::Instances;
-use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::BlendMode;
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
@@ -111,9 +111,9 @@ impl From<VectorDataTable> for GraphicGroupTable {
 		Self::new(GraphicGroup::new(vec![GraphicElement::VectorData(vector_data)]))
 	}
 }
-impl From<ImageFrame<Color>> for GraphicGroupTable {
-	fn from(image_frame: ImageFrame<Color>) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))]))
+impl From<Image<Color>> for GraphicGroupTable {
+	fn from(image: Image<Color>) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image)))]))
 	}
 }
 impl From<ImageFrameTable<Color>> for GraphicGroupTable {
@@ -121,9 +121,9 @@ impl From<ImageFrameTable<Color>> for GraphicGroupTable {
 		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))]))
 	}
 }
-impl From<TextureFrame> for GraphicGroupTable {
-	fn from(texture_frame: TextureFrame) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture_frame)))]))
+impl From<ImageTexture> for GraphicGroupTable {
+	fn from(image_texture: ImageTexture) -> Self {
+		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(image_texture)))]))
 	}
 }
 impl From<TextureFrameTable> for GraphicGroupTable {
@@ -194,11 +194,14 @@ impl GraphicElement {
 	}
 }
 
+// TODO: Rename to Raster
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 pub enum RasterFrame {
 	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+	// TODO: Rename to ImageTable
 	ImageFrame(ImageFrameTable<Color>),
 	/// A GPU texture with a finite position and extent
+	// TODO: Rename to ImageTextureTable
 	TextureFrame(TextureFrameTable),
 }
 
@@ -207,7 +210,7 @@ impl<'de> serde::Deserialize<'de> for RasterFrame {
 	where
 		D: serde::Deserializer<'de>,
 	{
-		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(ImageFrame::deserialize(deserializer)?)))
+		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
 	}
 }
 
@@ -239,7 +242,7 @@ impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
 			graphic_group: GraphicGroupTable::default(),
-			label: String::from("Artboard"),
+			label: "Artboard".to_string(),
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
 			background: Color::WHITE,
@@ -382,16 +385,13 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
+async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroup {
 	// let mut artboards = artboards.eval(ctx.clone()).await;
 	// let artboard = artboard.eval(ctx).await;
 	// let foot = ctx.footprint();
 	// log::debug!("{:?}", foot);
-	// Get the penultimate element of the node path, or None if the path is too short
-
-	// TODO: Delete this line
-	let _ctx = ctx;
-
+	// Get the penultimate element of the node path, or None if the path is too short.
+	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 	artboards.append_artboard(artboard, encapsulating_node_id);
 
@@ -399,8 +399,8 @@ async fn append_artboard(ctx: impl Ctx, mut artboards: ArtboardGroup, artboard: 
 }
 
 // TODO: Remove this one
-impl From<ImageFrame<Color>> for GraphicElement {
-	fn from(image_frame: ImageFrame<Color>) -> Self {
+impl From<Image<Color>> for GraphicElement {
+	fn from(image_frame: Image<Color>) -> Self {
 		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
 	}
 }
@@ -410,8 +410,8 @@ impl From<ImageFrameTable<Color>> for GraphicElement {
 	}
 }
 // TODO: Remove this one
-impl From<TextureFrame> for GraphicElement {
-	fn from(texture: TextureFrame) -> Self {
+impl From<ImageTexture> for GraphicElement {
+	fn from(texture: ImageTexture) -> Self {
 		GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture)))
 	}
 }
@@ -462,7 +462,7 @@ trait ToGraphicElement: Into<GraphicElement> {}
 
 impl ToGraphicElement for VectorDataTable {}
 impl ToGraphicElement for ImageFrameTable<Color> {}
-impl ToGraphicElement for TextureFrame {}
+impl ToGraphicElement for ImageTexture {}
 
 impl<T> From<T> for GraphicGroup
 where

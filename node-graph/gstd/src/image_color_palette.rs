@@ -18,7 +18,7 @@ async fn image_color_palette(
 
 	let image = image.one_instance().instance;
 
-	for pixel in image.image.data.iter() {
+	for pixel in image.data.iter() {
 		let r = pixel.r() * GRID;
 		let g = pixel.g() * GRID;
 		let b = pixel.b() * GRID;
@@ -65,20 +65,17 @@ async fn image_color_palette(
 mod test {
 	use super::*;
 
-	use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-	use graphene_core::raster::Image;
+	use graphene_core::raster::image::{Image, ImageFrameTable};
 
 	#[test]
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			ImageFrameTable::new(ImageFrame {
-				image: Image {
-					width: 100,
-					height: 100,
-					data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
-					base64_string: None,
-				},
+			ImageFrameTable::new(Image {
+				width: 100,
+				height: 100,
+				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
+				base64_string: None,
 			}),
 			1,
 		);

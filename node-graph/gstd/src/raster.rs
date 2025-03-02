@@ -1,9 +1,8 @@
 use dyn_any::DynAny;
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
+use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{
-	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue,
-	Sample,
+	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
@@ -33,10 +32,9 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 	let image_frame_transform = image_frame.transform();
 	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
 
-	let image_frame = image_frame.one_instance().instance;
+	let image = image_frame.one_instance().instance;
 
 	// Resize the image using the image crate
-	let image = &image_frame.image;
 	let data = bytemuck::cast_vec(image.data.clone());
 
 	let footprint = ctx.footprint();
@@ -86,7 +84,7 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 
 	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 
-	let mut result = ImageFrameTable::new(ImageFrame { image });
+	let mut result = ImageFrameTable::new(image);
 	*result.transform_mut() = new_transform;
 	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
 
@@ -263,7 +261,7 @@ where
 	_P::Static: Pixel,
 	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'n + Clone,
 	_Fg: Sample<Pixel = _P> + Transform + Clone + Send + 'n,
-	GraphicElement: From<ImageFrame<_P>>,
+	GraphicElement: From<Image<_P>>,
 {
 	let (background, foreground) = images;
 
@@ -330,11 +328,11 @@ fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> Im
 	}
 
 	let image_instance = image.one_instance().instance;
-	if image_instance.image.width == 0 || image_instance.image.height == 0 {
+	if image_instance.width == 0 || image_instance.height == 0 {
 		return empty_image((), bounds, Color::TRANSPARENT);
 	}
 
-	let orig_image_scale = DVec2::new(image_instance.image.width as f64, image_instance.image.height as f64);
+	let orig_image_scale = DVec2::new(image_instance.width as f64, image_instance.height as f64);
 	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image.transform().inverse();
 	let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
 
@@ -345,11 +343,11 @@ fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> Im
 	// Copy over original image into enlarged image.
 	let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
 	let offset_in_new_image = (-new_start).as_uvec2();
-	for y in 0..image_instance.image.height {
-		let old_start = y * image_instance.image.width;
+	for y in 0..image_instance.height {
+		let old_start = y * image_instance.width;
 		let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
-		let old_row = &image_instance.image.data[old_start as usize..(old_start + image_instance.image.width) as usize];
-		let new_row = &mut new_img.data[new_start as usize..(new_start + image_instance.image.width) as usize];
+		let old_row = &image_instance.data[old_start as usize..(old_start + image_instance.width) as usize];
+		let new_row = &mut new_img.data[new_start as usize..(new_start + image_instance.width) as usize];
 		new_row.copy_from_slice(old_row);
 	}
 
@@ -357,7 +355,7 @@ fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> Im
 	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 	let new_texture_to_layer_space = image.transform() * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-	let mut result = ImageFrameTable::new(ImageFrame { image: new_img });
+	let mut result = ImageFrameTable::new(new_img);
 	*result.transform_mut() = new_texture_to_layer_space;
 	*result.one_instance_mut().alpha_blending = *image.one_instance().alpha_blending;
 
@@ -371,7 +369,7 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> ImageFrameTabl
 
 	let image = Image::new(width, height, color);
 
-	let mut result = ImageFrameTable::new(ImageFrame { image });
+	let mut result = ImageFrameTable::new(image);
 	*result.transform_mut() = transform;
 	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
 
@@ -559,7 +557,7 @@ fn noise_pattern(
 				}
 			}
 
-			let mut result = ImageFrameTable::new(ImageFrame { image });
+			let mut result = ImageFrameTable::new(image);
 			*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 			*result.one_instance_mut().alpha_blending = AlphaBlending::default();
 
@@ -621,7 +619,7 @@ fn noise_pattern(
 		}
 	}
 
-	let mut result = ImageFrameTable::new(ImageFrame { image });
+	let mut result = ImageFrameTable::new(image);
 	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
 
@@ -669,7 +667,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 		data,
 		..Default::default()
 	};
-	let mut result = ImageFrameTable::new(ImageFrame { image });
+	let mut result = ImageFrameTable::new(image);
 	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 	*result.one_instance_mut().alpha_blending = Default::default();
 
