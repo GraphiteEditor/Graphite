@@ -1,4 +1,4 @@
-use crate::vector::{HandleId, PointId, VectorData, VectorDataTable};
+use crate::vector::{HandleId, VectorData, VectorDataTable};
 use crate::Ctx;
 
 use bezier_rs::Subpath;
@@ -104,16 +104,4 @@ fn star(
 #[node_macro::node(category("Vector: Shape"))]
 fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
-}
-
-// TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
-#[node_macro::node(category(""))]
-fn path(_: impl Ctx, path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> VectorDataTable {
-	let mut vector_data = VectorData::from_subpaths(path_data, false);
-	vector_data.colinear_manipulators = colinear_manipulators
-		.iter()
-		.filter_map(|&point| super::ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
-		.collect();
-
-	VectorDataTable::new(vector_data)
 }

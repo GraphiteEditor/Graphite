@@ -605,17 +605,15 @@ impl Blend<Color> for ImageFrameTable<Color> {
 		let mut result = self.clone();
 
 		for (over, under) in result.instances_mut().zip(under.instances()) {
-			let data = over.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			let data = over.instance.image.data.iter().zip(under.instance.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-			*over = ImageFrame {
+			*over.instance = ImageFrame {
 				image: super::Image {
 					data,
-					width: over.image.width,
-					height: over.image.height,
+					width: over.instance.image.width,
+					height: over.instance.image.height,
 					base64_string: None,
 				},
-				transform: over.transform,
-				alpha_blending: over.alpha_blending,
 			};
 		}
 
@@ -744,7 +742,7 @@ where
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
 		for instance in self.instances_mut() {
-			for c in instance.image.data.iter_mut() {
+			for c in instance.instance.image.data.iter_mut() {
 				*c = map_fn(c);
 			}
 		}
@@ -1582,10 +1580,7 @@ mod test {
 	#[tokio::test]
 	async fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
-		let image = ImageFrame {
-			image: Image::new(1, 1, image_color),
-			..Default::default()
-		};
+		let image = ImageFrame { image: Image::new(1, 1, image_color) };
 
 		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
 		let overlay_color = Color::GREEN;
@@ -1594,7 +1589,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.one_item();
+		let result = result.one_instance().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
