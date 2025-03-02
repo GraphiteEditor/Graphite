@@ -2,7 +2,6 @@ use crate::instances::Instances;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
-use crate::AlphaBlending;
 
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
@@ -73,36 +72,20 @@ pub struct TextureFrame {
 	pub texture: Arc<wgpu::Texture>,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
-	pub transform: DAffine2,
-	pub alpha_blend: AlphaBlending,
 }
 
 impl Hash for TextureFrame {
+	#[cfg(feature = "wgpu")]
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		#[cfg(feature = "wgpu")]
 		self.texture.hash(state);
 	}
+	#[cfg(not(feature = "wgpu"))]
+	fn hash<H: Hasher>(&self, _state: &mut H) {}
 }
 
 impl PartialEq for TextureFrame {
 	fn eq(&self, other: &Self) -> bool {
-		#[cfg(feature = "wgpu")]
-		return self.transform.eq(&other.transform) && self.texture == other.texture;
-
-		#[cfg(not(feature = "wgpu"))]
-		self.transform.eq(&other.transform)
-	}
-}
-
-impl Transform for TextureFrame {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for TextureFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
+		self.texture == other.texture
 	}
 }
 

@@ -45,15 +45,30 @@ impl AlphaBlending {
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
 	use serde::Deserialize;
 
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldGraphicGroup {
+		elements: Vec<(GraphicElement, Option<NodeId>)>,
+		transform: DAffine2,
+		alpha_blending: AlphaBlending,
+	}
+
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	enum EitherFormat {
 		GraphicGroup(GraphicGroup),
+		OldGraphicGroup(OldGraphicGroup),
 		GraphicGroupTable(GraphicGroupTable),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::GraphicGroup(graphic_group) => GraphicGroupTable::new(graphic_group),
+		EitherFormat::OldGraphicGroup(old) => {
+			let mut graphic_group_table = GraphicGroupTable::new(GraphicGroup { elements: old.elements });
+			*graphic_group_table.one_instance_mut().transform = old.transform;
+			*graphic_group_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			graphic_group_table
+		}
 		EitherFormat::GraphicGroupTable(graphic_group_table) => graphic_group_table,
 	})
 }
@@ -65,15 +80,11 @@ pub type GraphicGroupTable = Instances<GraphicGroup>;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
 	elements: Vec<(GraphicElement, Option<NodeId>)>,
-	pub transform: DAffine2,
-	pub alpha_blending: AlphaBlending,
 }
 
 impl core::hash::Hash for GraphicGroup {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|element| element.to_bits().hash(state));
 		self.elements.hash(state);
-		self.alpha_blending.hash(state);
 	}
 }
 
@@ -81,8 +92,6 @@ impl GraphicGroup {
 	pub fn new(elements: Vec<GraphicElement>) -> Self {
 		Self {
 			elements: elements.into_iter().map(|element| (element, None)).collect(),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::new(),
 		}
 	}
 }
@@ -214,29 +223,6 @@ impl serde::Serialize for RasterFrame {
 	}
 }
 
-impl Transform for RasterFrame {
-	fn transform(&self) -> DAffine2 {
-		match self {
-			RasterFrame::ImageFrame(frame) => frame.transform(),
-			RasterFrame::TextureFrame(frame) => frame.transform(),
-		}
-	}
-	fn local_pivot(&self, pivot: glam::DVec2) -> glam::DVec2 {
-		match self {
-			RasterFrame::ImageFrame(frame) => frame.local_pivot(pivot),
-			RasterFrame::TextureFrame(frame) => frame.local_pivot(pivot),
-		}
-	}
-}
-impl TransformMut for RasterFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		match self {
-			RasterFrame::ImageFrame(frame) => frame.transform_mut(),
-			RasterFrame::TextureFrame(frame) => frame.transform_mut(),
-		}
-	}
-}
-
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -281,20 +267,20 @@ impl ArtboardGroup {
 
 #[node_macro::node(category(""))]
 async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
-	let mut stack = stack.one_item().clone();
+	let mut stack = stack;
 
-	if stack.transform.matrix2.determinant() != 0. {
-		*element.transform_mut() = stack.transform.inverse() * element.transform();
+	if stack.transform().matrix2.determinant() != 0. {
+		*element.transform_mut() = stack.transform().inverse() * element.transform();
 	} else {
-		stack.clear();
-		stack.transform = DAffine2::IDENTITY;
+		stack.one_instance_mut().instance.clear();
+		*stack.transform_mut() = DAffine2::IDENTITY;
 	}
 
 	// Get the penultimate element of the node path, or None if the path is too short
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	stack.push((element, encapsulating_node_id));
+	stack.one_instance_mut().instance.push((element, encapsulating_node_id));
 
-	GraphicGroupTable::new(stack)
+	stack
 }
 
 #[node_macro::node(category("Debug"))]
@@ -327,40 +313,38 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 
 #[node_macro::node(category("General"))]
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
-	let nested_group = group.one_item().clone();
-
-	let mut flat_group = GraphicGroup::default();
-
-	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
+	fn flatten_group(result_group: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool) {
 		let mut collection_group = GraphicGroup::default();
-		for (element, reference) in current_group.elements {
-			if let GraphicElement::GraphicGroup(nested_group) = element {
-				let nested_group = nested_group.one_item();
-				let mut nested_group = nested_group.clone();
+		let current_group_elements = current_group_table.one_instance().instance.elements.clone();
 
-				*nested_group.transform_mut() = nested_group.transform() * current_group.transform;
+		for (element, reference) in current_group_elements {
+			if let GraphicElement::GraphicGroup(mut nested_group_table) = element {
+				*nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
 
-				let mut sub_group = GraphicGroup::default();
+				let mut sub_group_table = GraphicGroupTable::default();
 				if fully_flatten {
-					flatten_group(&mut sub_group, nested_group, fully_flatten);
+					flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
 				} else {
-					for (collection_element, _) in &mut nested_group.elements {
-						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
+					let nested_group_table_transform = nested_group_table.transform();
+					for (collection_element, _) in &mut nested_group_table.one_instance_mut().instance.elements {
+						*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
 					}
-					sub_group = nested_group;
+					sub_group_table = nested_group_table;
 				}
-				collection_group.append(&mut sub_group.elements);
+
+				collection_group.append(&mut sub_group_table.one_instance_mut().instance.elements);
 			} else {
 				collection_group.push((element, reference));
 			}
 		}
 
-		result_group.append(&mut collection_group.elements);
+		result_group.one_instance_mut().instance.append(&mut collection_group.elements);
 	}
 
-	flatten_group(&mut flat_group, nested_group, fully_flatten);
+	let mut flat_group = GraphicGroupTable::default();
+	flatten_group(&mut flat_group, group, fully_flatten);
 
-	GraphicGroupTable::new(flat_group)
+	flat_group
 }
 
 #[node_macro::node(category(""))]
@@ -487,8 +471,6 @@ where
 	fn from(value: T) -> Self {
 		Self {
 			elements: (vec![(value.into(), None)]),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::default(),
 		}
 	}
 }
