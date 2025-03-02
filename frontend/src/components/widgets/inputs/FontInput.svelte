@@ -72,7 +72,7 @@
 			dispatch("fontFamily", newName);
 
 			family = newName;
-			style = "Normal (400)";
+			style = "Regular (400)";
 		}
 
 		const fontFileUrl = await fonts.getFontFileUrl(family, style);

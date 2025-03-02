@@ -614,23 +614,24 @@
 			.tool-shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
-				// A precaution in case the variables above somehow fail
-				max-width: var(--columns-width-max);
 
 				.tools {
 					flex: 0 1 auto;
 
+					// Disabled because Firefox appears to have switched to using overlay scrollbars which float atop the content and don't affect the layout (as of FF 135 on Windows).
+					// We'll keep this here in case it's needed in the future.
+					//
 					// Firefox-specific workaround for this bug causing the scrollbar to cover up the toolbar instead of widening to accommodate the scrollbar:
 					// <https://bugzilla.mozilla.org/show_bug.cgi?id=764076>
 					// <https://stackoverflow.com/questions/63278303/firefox-does-not-take-vertical-scrollbar-width-into-account-when-calculating-par>
 					// Remove this when the Firefox bug is fixed.
-					@-moz-document url-prefix() {
-						--available-height-plus-1: calc(var(--available-height) + 1px);
-						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--separator-height));
-						--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
-						--firefox-scrollbar-width-space-occupied: 8; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
-						padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
-					}
+					// @-moz-document url-prefix() {
+					// 	--available-height-plus-1: calc(var(--available-height) + 1px);
+					// 	--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--height-of-separator));
+					// 	--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
+					// 	--firefox-scrollbar-width-space-occupied: 2; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
+					// 	padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
+					// }
 
 					.widget-span {
 						flex-wrap: wrap;

@@ -110,7 +110,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Node graph integration in documents</span>
 		</div>
 		<!-- Alpha 3 -->
-		<div class="feature-icon ongoing heading" title="Began February 2024" data-year="2024">
+		<div class="feature-icon complete heading" title="Began February 2024" data-year="2024">
 			<h3>— Alpha 3 —</h3>
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
@@ -141,25 +141,21 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Imaginate tool</span>
 		</div> -->
-		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Infinitely zoomable/panable content</span>
-		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>GPU-accelerated raster rendering</span>
-		</div>
 		<!-- Alpha 4 -->
-		<div class="feature-icon heading" title="Expected to begin February 2025" data-year="Feb. 2025">
+		<div class="feature-icon ongoing heading" title="Began February 2025" data-year="2025">
 			<h3>— Alpha 4 —</h3>
 		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
 		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing">
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Lambda nodes</span>
+		</div>
+		<div class="feature-icon ongoing">
+			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Graph data attribute spreadsheets</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -169,9 +165,13 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Contextual properties panel</span>
 		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Graph data attribute spreadsheets</span>
+		<div class="feature-icon" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Infinitely zoomable/panable content</span>
+		</div>
+		<div class="feature-icon" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>GPU-accelerated raster rendering</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />

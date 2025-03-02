@@ -578,6 +578,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
+						log::error!("could not get reference in deserialize_document");
 						continue;
 					};
 
@@ -586,6 +587,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 					let inputs_count = node.inputs.len();
+
+					// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
+					if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+						document.network_interface.set_manual_compostion(node_id, &[], graph_craft::concrete!(graphene_std::Context).into());
+					}
 
 					// Upgrade Fill nodes to the format change in #1778
 					if reference == "Fill" && inputs_count == 8 {
@@ -869,13 +875,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.load_document(document, document_id, responses, to_front);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
-				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
+				let mut all_new_ids = Vec::new();
+				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let nodes = entry.clone().nodes;
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+						all_new_ids.extend(new_ids.values().cloned());
+						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
 					}
 				};
@@ -883,9 +891,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
-					paste(entry, responses)
+					paste(entry, responses, &mut all_new_ids)
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {

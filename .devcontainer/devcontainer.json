@@ -6,7 +6,7 @@
 		},
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
-	"onCreateCommand": "cargo install cargo-watch wasm-pack cargo-about && cargo install -f wasm-bindgen-cli@0.2.99",
+	"onCreateCommand": "cargo install cargo-watch wasm-pack cargo-about && cargo install -f wasm-bindgen-cli@0.2.100",
 	"customizations": {
 		"vscode": {
 			// NOTE: Keep this in sync with `.vscode/extensions.json`

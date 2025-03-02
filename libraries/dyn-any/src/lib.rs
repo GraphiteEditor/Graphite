@@ -58,6 +58,13 @@ pub trait DynAny<'a>: 'a {
 	fn type_id(&self) -> TypeId;
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str;
+	fn reborrow_box<'short>(self: Box<Self>) -> Box<dyn DynAny<'short> + 'short>
+	where
+		'a: 'short;
+	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + Send + Sync + 'short)
+	where
+		'a: 'short,
+		Self: Send + Sync;
 }
 
 impl<'a, T: StaticType + 'a> DynAny<'a> for T {
@@ -67,6 +74,20 @@ impl<'a, T: StaticType + 'a> DynAny<'a> for T {
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str {
 		core::any::type_name::<T>()
+	}
+	fn reborrow_box<'short>(self: Box<Self>) -> Box<dyn DynAny<'short> + 'short>
+	where
+		'a: 'short,
+	{
+		self
+	}
+
+	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + Send + Sync + 'short)
+	where
+		'a: 'short,
+		Self: Send + Sync,
+	{
+		self
 	}
 }
 pub fn downcast_ref<'a, V: StaticType + 'a>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
