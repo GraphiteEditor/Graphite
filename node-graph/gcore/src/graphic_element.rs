@@ -227,7 +227,7 @@ impl serde::Serialize for RasterFrame {
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
 	pub graphic_group: GraphicGroupTable,

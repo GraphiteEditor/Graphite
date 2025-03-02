@@ -5622,6 +5622,34 @@ impl NodeNetworkInterface {
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}
+
+	pub fn iter_recursive(&self) -> NodesRecursiveIter<'_> {
+		NodesRecursiveIter {
+			stack: vec![&self.network],
+			current_slice: None,
+		}
+	}
+}
+
+pub struct NodesRecursiveIter<'a> {
+	stack: Vec<&'a NodeNetwork>,
+	current_slice: Option<std::collections::hash_map::Iter<'a, NodeId, DocumentNode>>,
+}
+
+impl<'a> Iterator for NodesRecursiveIter<'a> {
+	type Item = (NodeId, &'a DocumentNode);
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			if let Some((id, node)) = self.current_slice.as_mut().and_then(|iter| iter.next()) {
+				if let DocumentNodeImplementation::Network(network) = &node.implementation {
+					self.stack.push(network);
+				}
+				return Some((*id, node));
+			}
+			let network = self.stack.pop()?;
+			self.current_slice = Some(network.nodes.iter());
+		}
+	}
 }
 
 #[derive(PartialEq)]
