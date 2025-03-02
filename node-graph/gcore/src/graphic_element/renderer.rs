@@ -276,6 +276,7 @@ pub struct RenderMetadata {
 	pub clip_targets: HashSet<NodeId>,
 }
 
+// TODO: Rename to "Graphical"
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
@@ -831,7 +832,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 
 			match render_params.image_render_mode {
 				ImageRenderMode::Base64 => {
-					let image = &instance.instance.image;
+					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
 					}
@@ -894,7 +895,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 		use vello::peniko;
 
 		for instance in self.instances() {
-			let image = &instance.instance.image;
+			let image = &instance.instance;
 			if image.data.is_empty() {
 				return;
 			}
@@ -918,7 +919,7 @@ impl GraphicElementRendered for RasterFrame {
 				};
 
 				for instance in image.instances() {
-					let (image, blending) = (&instance.instance.image, instance.alpha_blending);
+					let (image, blending) = (&instance.instance, instance.alpha_blending);
 					if image.data.is_empty() {
 						return;
 					}
@@ -992,9 +993,9 @@ impl GraphicElementRendered for RasterFrame {
 		};
 
 		match self {
-			RasterFrame::ImageFrame(image_frame) => {
-				for instance in image_frame.instances() {
-					let image = &instance.instance.image;
+			RasterFrame::ImageFrame(image) => {
+				for instance in image.instances() {
+					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
 					}
@@ -1004,8 +1005,8 @@ impl GraphicElementRendered for RasterFrame {
 					render_stuff(image, *instance.alpha_blending);
 				}
 			}
-			RasterFrame::TextureFrame(texture) => {
-				for instance in texture.instances() {
+			RasterFrame::TextureFrame(image_texture) => {
+				for instance in image_texture.instances() {
 					let image =
 						vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.texture.width(), instance.instance.texture.height()).with_extend(peniko::Extend::Repeat);
 

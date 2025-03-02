@@ -5,8 +5,8 @@ use graph_craft::proto::FutureWrapperNode;
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::{Alpha, Bitmap, BlendMode, Color, Image, Pixel, Sample};
+use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::{Alpha, Bitmap, BlendMode, Color, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
@@ -93,14 +93,14 @@ where
 	P: Pixel + Alpha + std::fmt::Debug + dyn_any::StaticType,
 	P::Static: Pixel,
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
-	GraphicElement: From<ImageFrame<P>>,
+	GraphicElement: From<Image<P>>,
 {
 	if positions.is_empty() {
 		return target;
 	}
 
-	let target_width = target.one_instance().instance.image.width;
-	let target_height = target.one_instance().instance.image.height;
+	let target_width = target.one_instance().instance.width;
+	let target_height = target.one_instance().instance.height;
 	let target_size = DVec2::new(target_width as f64, target_height as f64);
 
 	let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
@@ -125,12 +125,12 @@ where
 		let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 		let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
 		assert!(texture_index(max_x, max_y) < texture.data.len());
-		assert!(target_index(max_x, max_y) < target.one_instance().instance.image.data.len());
+		assert!(target_index(max_x, max_y) < target.one_instance().instance.data.len());
 
 		for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 			for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 				let src_pixel = texture.data[texture_index(x, y)];
-				let dst_pixel = &mut target.one_instance_mut().instance.image.data[target_index(x + clamp_start.x, y + clamp_start.y)];
+				let dst_pixel = &mut target.one_instance_mut().instance.data[target_index(x + clamp_start.x, y + clamp_start.y)];
 				*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 			}
 		}
@@ -146,7 +146,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let blank_texture = empty_image((), transform, Color::TRANSPARENT);
 	let image = crate::raster::blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
-	image.one_instance().instance.image.clone()
+	image.one_instance().instance.clone()
 }
 
 macro_rules! inline_blend_funcs {
@@ -286,9 +286,7 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 
 	let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
 	if has_erase_strokes {
-		let opaque_image = ImageFrame {
-			image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE),
-		};
+		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = ImageFrameTable::new(opaque_image);
 		*erase_restore_mask.transform_mut() = background_bounds;
 		*erase_restore_mask.one_instance_mut().alpha_blending = Default::default();
