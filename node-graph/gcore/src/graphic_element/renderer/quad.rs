@@ -48,7 +48,7 @@ impl Quad {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
 	}
 
-	/// Get two edges as orthogonal bases.
+	/// Get two edges as bases.
 	pub fn edges(&self) -> [[DVec2; 2]; 2] {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]]]
 	}
