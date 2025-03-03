@@ -282,7 +282,7 @@ impl Fsm for RectangleToolFsmState {
 				RectangleToolFsmState::Ready
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 
 				shape_data.cleanup(responses);
 

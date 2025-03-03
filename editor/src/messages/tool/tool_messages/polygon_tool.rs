@@ -368,7 +368,7 @@ impl Fsm for PolygonToolFsmState {
 				PolygonToolFsmState::Ready
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 
 				polygon_data.cleanup(responses);
 

@@ -246,7 +246,7 @@ impl Fsm for LineToolFsmState {
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				tool_data.layer = None;
 				LineToolFsmState::Ready
 			}

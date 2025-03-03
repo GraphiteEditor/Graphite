@@ -456,7 +456,7 @@ impl PathToolData {
 		if commit_transaction {
 			responses.add(DocumentMessage::EndTransaction);
 		} else {
-			responses.add(DocumentMessage::AbortTransaction);
+			responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 		}
 		responses.add(OverlaysMessage::Draw);
 		PathToolFsmState::Ready
@@ -1136,7 +1136,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.saved_points_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}

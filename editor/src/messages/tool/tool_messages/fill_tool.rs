@@ -100,7 +100,7 @@ impl Fsm for FillToolFsmState {
 			}
 			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
 			(FillToolFsmState::Filling, FillToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 
 				FillToolFsmState::Ready
 			}

@@ -154,7 +154,7 @@ impl Fsm for ImaginateToolFsmState {
 				ImaginateToolFsmState::Ready
 			}
 			(ImaginateToolFsmState::Drawing, ImaginateToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 
 				shape_data.cleanup(responses);
 
