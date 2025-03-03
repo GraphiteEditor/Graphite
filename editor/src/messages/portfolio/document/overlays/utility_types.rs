@@ -22,8 +22,10 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct MockOverlay;
+#[cfg(not(target_arch = "wasm32"))]
 impl MockOverlay {
 	fn begin_path(&self) {}
 

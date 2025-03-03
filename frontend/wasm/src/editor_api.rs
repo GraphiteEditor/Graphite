@@ -26,22 +26,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
-// /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
-// /// This avoids creating a json with a list millions of numbers long.
-#[wasm_bindgen(module = "/../src/editor.ts")]
-extern "C" {
-	fn dispatchTauri(message: String) -> String;
-	// fn dispatchTauri(message: String);
-}
-#[wasm_bindgen]
-extern "C" {
-	// invoke with arguments (default)
-	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-	async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name="invoke")]
-	async fn invoke_without_arg(cmd: &str) -> JsValue;
-}
-
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen(js_name = setRandomSeed)]
@@ -73,12 +57,6 @@ impl EditorHandle {
 	}
 }
 
-pub fn create_message_object(message: &str) -> JsValue {
-	let obj = js_sys::Object::new();
-	js_sys::Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(message)).unwrap();
-	obj.into()
-}
-
 #[wasm_bindgen]
 impl EditorHandle {
 	#[wasm_bindgen(constructor)]
@@ -104,29 +82,7 @@ impl EditorHandle {
 		// log::debug!("message");
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
-		#[cfg(not(feature = "tauri"))]
 		let frontend_messages = editor(|editor| editor.handle_message(message.into()));
-		#[cfg(feature = "tauri")]
-		let frontend_messages: Vec<FrontendMessage> = {
-			let message: Message = message.into();
-			let message = ron::to_string(&message).unwrap();
-
-			let handle = self.clone();
-			wasm_bindgen_futures::spawn_local(async move {
-				let message = create_message_object(&message);
-				let response = invoke("handle_message", message.into()).await;
-				// let response = dispatchTauri(message);
-				let frontend_messages: Vec<FrontendMessage> = ron::from_str(&response.as_string().unwrap()).unwrap();
-				if frontend_messages.len() > 0 {
-					log::debug!("response {:?}", response.as_string());
-				}
-				// Send each `FrontendMessage` to the JavaScript frontend
-				for message in frontend_messages.into_iter() {
-					handle.send_frontend_message_to_js(message);
-				}
-			});
-			vec![]
-		};
 
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for message in frontend_messages.into_iter() {
@@ -186,12 +142,10 @@ impl EditorHandle {
 						let micros: f64 = timestamp * 1000.;
 						let timestamp = Duration::from_micros(micros.round() as u64);
 
-						#[cfg(not(feature = "tauri"))]
 						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
 							handle.send_frontend_message_to_js(message);
 						}
 
-						#[cfg(not(feature = "tauri"))]
 						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
 							handle.send_frontend_message_to_js(message);
 						}
@@ -211,7 +165,6 @@ impl EditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move || {
-				#[cfg(not(feature = "tauri"))]
 				auto_save_all_documents();
 
 				// Schedule ourself for another setTimeout callback
@@ -219,21 +172,6 @@ impl EditorHandle {
 			}));
 
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
-		}
-	}
-
-	#[wasm_bindgen(js_name = tauriResponse)]
-	pub fn tauri_response(&self, _message: JsValue) {
-		#[cfg(feature = "tauri")]
-		match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
-			Ok(response) => {
-				for message in response {
-					self.send_frontend_message_to_js(message);
-				}
-			}
-			Err(error) => {
-				log::error!("tauri response: {error:?}\n{_message:?}");
-			}
 		}
 	}
 
@@ -787,7 +725,6 @@ impl EditorHandle {
 
 	// TODO: Eventually remove this document upgrade code
 	#[wasm_bindgen(js_name = triggerUpgradeDocumentToVectorManipulationFormat)]
-	#[cfg(not(feature = "tauri"))]
 	pub async fn upgrade_document_to_vector_manipulation_format(
 		&self,
 		document_id: u64,
@@ -1056,7 +993,6 @@ pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut Edito
 	});
 }
 
-#[cfg(not(feature = "tauri"))]
 async fn poll_node_graph_evaluation() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
@@ -1089,19 +1025,7 @@ async fn poll_node_graph_evaluation() {
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 	});
 }
-#[cfg(feature = "tauri")]
-async fn poll_node_graph_evaluation() {
-	let response = invoke_without_arg("poll_node_graph").await;
-	// Send each `FrontendMessage` to the JavaScript frontend
-	editor_and_handle(move |_, handle| {
-		let frontend_messages: Vec<FrontendMessage> = ron::from_str(&response.as_string().unwrap()).unwrap();
-		for message in frontend_messages {
-			handle.send_frontend_message_to_js(message);
-		}
-	});
-}
 
-#[cfg(not(feature = "tauri"))]
 fn auto_save_all_documents() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
