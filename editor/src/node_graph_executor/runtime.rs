@@ -152,7 +152,6 @@ impl NodeRuntime {
 			}
 		}
 		let requests = [font, preferences, graph, execution].into_iter().flatten();
-		println!("no requests");
 
 		for request in requests {
 			dbg!(&request);
@@ -357,10 +356,8 @@ pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + 
 }
 
 pub async fn run_node_graph() -> bool {
-	println!("running closure");
 	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return false };
 	if let Some(ref mut runtime) = runtime.as_mut() {
-		println!("got runtime");
 		runtime.run().await;
 	}
 	true
