@@ -404,7 +404,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::Escape => {
 				if self.node_graph_handler.drag_start.is_some() {
-					responses.add(DocumentMessage::AbortTransaction);
+					responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 					self.node_graph_handler.drag_start = None;
 				} else if self
 					.node_graph_handler
@@ -1163,7 +1163,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			// Commits the transaction if the network was mutated since the transaction started, otherwise it aborts the transaction
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::AbortTransaction);
+					responses.add_front(DocumentMessage::AbortTransaction { undo_count: 1 }); // TODO: If needed refactor DocumentMessage::EndTransaction to also allow n≠1 undos
 				}
 				TransactionStatus::Modified => {
 					responses.add_front(DocumentMessage::CommitTransaction);
@@ -1177,12 +1177,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
 			}
-			DocumentMessage::AbortTransaction => {
+			DocumentMessage::AbortTransaction { undo_count } => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 
-				self.undo(ipp, responses);
+				for _ in 0..undo_count {
+					self.undo(ipp, responses);
+				}
+
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
 			}

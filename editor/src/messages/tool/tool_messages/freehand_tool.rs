@@ -275,7 +275,7 @@ impl Fsm for FreehandToolFsmState {
 				FreehandToolFsmState::Ready
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
 				tool_data.layer = None;
 				tool_data.end_point = None;
 
