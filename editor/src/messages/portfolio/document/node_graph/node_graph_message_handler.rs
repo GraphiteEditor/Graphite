@@ -585,7 +585,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if right_click {
 					// Abort dragging a node
 					if self.drag_start.is_some() {
-						responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+						responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 						self.drag_start = None;
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
@@ -603,7 +603,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
-						responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+						responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 						self.wire_in_progress_from_connector = None;
 						self.wire_in_progress_to_connector = None;
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });

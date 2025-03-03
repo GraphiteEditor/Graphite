@@ -968,7 +968,7 @@ impl Fsm for SelectToolFsmState {
 				state
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1250,7 +1250,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction{undo_count : 1},
+					true => DocumentMessage::AbortTransaction { undo_count: 1 },
 					false => DocumentMessage::EndTransaction,
 				};
 				tool_data.axis_align = false;
@@ -1320,7 +1320,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction{ undo_count : 1},
+					true => DocumentMessage::AbortTransaction { undo_count: 1 },
 					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
@@ -1336,7 +1336,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction{undo_count: 1},
+					true => DocumentMessage::AbortTransaction { undo_count: 1 },
 					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
@@ -1350,7 +1350,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction{undo_count: 1},
+					true => DocumentMessage::AbortTransaction { undo_count: 1 },
 					false => DocumentMessage::EndTransaction,
 				};
 				responses.add(response);
@@ -1443,7 +1443,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.axis_align = false;
 				responses.add(OverlaysMessage::Draw);
@@ -1464,7 +1464,7 @@ impl Fsm for SelectToolFsmState {
 					bounds.original_transforms.clear();
 				}
 
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 

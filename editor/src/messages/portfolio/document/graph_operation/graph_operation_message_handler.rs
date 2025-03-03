@@ -220,7 +220,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					let node_id = NodeId::new();
 					let Some(document_node) = network_interface.network(&[]).and_then(|network| network.nodes.get(&artboard.to_node())) else {
 						log::error!("Artboard not created");
-						responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+						responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 						return;
 					};
 

@@ -551,7 +551,7 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);

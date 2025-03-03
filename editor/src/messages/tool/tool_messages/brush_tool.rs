@@ -402,14 +402,14 @@ impl Fsm for BrushToolFsmState {
 				if !tool_data.strokes.is_empty() {
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
-					responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+					responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				}
 				tool_data.strokes.clear();
 
 				BrushToolFsmState::Ready
 			}
 			(BrushToolFsmState::Drawing, BrushToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				tool_data.strokes.clear();
 
 				BrushToolFsmState::Ready

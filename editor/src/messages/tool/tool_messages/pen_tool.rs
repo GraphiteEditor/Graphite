@@ -1391,7 +1391,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;

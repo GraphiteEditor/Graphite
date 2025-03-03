@@ -279,7 +279,7 @@ impl Fsm for EllipseToolFsmState {
 				EllipseToolFsmState::Ready
 			}
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction{undo_count: 1});
+				responses.add(DocumentMessage::AbortTransaction { undo_count: 1 });
 				shape_data.cleanup(responses);
 
 				EllipseToolFsmState::Ready
