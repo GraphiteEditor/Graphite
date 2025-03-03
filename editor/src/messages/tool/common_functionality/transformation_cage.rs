@@ -277,31 +277,14 @@ impl SelectedEdges {
 		let scale_factor = if parallel_to_x { signed_bounds.y.recip() } else { signed_bounds.x.recip() };
 		let scaled_document_drag = document_drag_vector * scale_factor;
 
-		if free_movement {
-			let (skew_amount, scale_amount) = if parallel_to_x {
-				(scaled_document_drag.x, 1.0 + scaled_document_drag.y)
-			} else {
-				(scaled_document_drag.y, 1.0 + scaled_document_drag.x)
-			};
+		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
+			1. + if parallel_to_y && free_movement { scaled_document_drag.x } else { 0. },
+			if parallel_to_y { scaled_document_drag.y } else { 0. },
+			if parallel_to_x { scaled_document_drag.x } else { 0. },
+			1. + if parallel_to_x && free_movement { scaled_document_drag.y } else { 0. },
+		]));
 
-			let mat = if parallel_to_x {
-				DMat2::from_cols(DVec2::new(1.0, 0.0), DVec2::new(skew_amount, scale_amount))
-			} else {
-				DMat2::from_cols(DVec2::new(scale_amount, skew_amount), DVec2::new(0.0, 1.0))
-			};
-
-			let skew = DAffine2::from_mat2(mat);
-			DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite)
-		} else {
-			let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
-				1.0,
-				if parallel_to_y { scaled_document_drag.y } else { 0.0 },
-				if parallel_to_x { scaled_document_drag.x } else { 0.0 },
-				1.0,
-			]));
-
-			DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite)
-		}
+		DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite)
 	}
 }
 
