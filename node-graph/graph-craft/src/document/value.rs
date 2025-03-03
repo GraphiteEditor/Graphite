@@ -115,6 +115,19 @@ macro_rules! tagged_value {
 }
 
 tagged_value! {
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
+	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
+	VectorData(graphene_core::vector::VectorDataTable),
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
+	GraphicGroup(graphene_core::GraphicGroupTable),
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
+	ArtboardGroup(graphene_core::ArtboardGroupTable),
+	GraphicElement(graphene_core::GraphicElement),
 	String(String),
 	U32(u32),
 	U64(u64),
@@ -130,19 +143,14 @@ tagged_value! {
 	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image<Color>),
 	ImaginateCache(ImaginateCache),
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
-	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
 	Color(graphene_core::raster::color::Color),
+	OptionalColor(Option<graphene_core::raster::color::Color>),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateController(ImaginateController),
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
-	VectorData(graphene_core::vector::VectorDataTable),
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),
@@ -170,7 +178,6 @@ tagged_value! {
 	// TODO: Eventually remove this alias document upgrade code
 	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))]
 	GradientStops(graphene_core::vector::style::GradientStops),
-	OptionalColor(Option<graphene_core::raster::color::Color>),
 	// TODO: Eventually remove this alias document upgrade code
 	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))]
 	PointIds(Vec<graphene_core::vector::PointId>),
@@ -178,12 +185,6 @@ tagged_value! {
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
-	GraphicGroup(graphene_core::GraphicGroupTable),
-	GraphicElement(graphene_core::GraphicElement),
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
-	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	Palette(Vec<Color>),
