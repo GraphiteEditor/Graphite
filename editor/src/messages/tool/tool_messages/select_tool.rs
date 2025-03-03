@@ -1573,7 +1573,14 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::DraggingPivot | SelectToolFsmState::SkewingBounds { .. } => {
+			SelectToolFsmState::SkewingBounds { .. } => {
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock slide")]),
+				]);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			}
+			SelectToolFsmState::DraggingPivot => {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
