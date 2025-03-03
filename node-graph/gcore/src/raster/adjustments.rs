@@ -734,8 +734,6 @@ impl Adjust<Color> for GradientStops {
 }
 impl<P: Pixel> Adjust<P> for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
@@ -1382,8 +1380,6 @@ impl MultiplyAlpha for GraphicGroupTable {
 }
 impl<P: Pixel> MultiplyAlpha for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
 	GraphicElement: From<Image<P>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {

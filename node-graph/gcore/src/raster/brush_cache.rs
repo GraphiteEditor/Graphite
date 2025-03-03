@@ -4,8 +4,9 @@ use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
 use crate::Color;
 
-use core::hash::Hash;
 use dyn_any::DynAny;
+
+use core::hash::Hash;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -57,7 +58,7 @@ impl BrushCacheImpl {
 		background = core::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = ImageFrameTable::empty();
+		let mut first_stroke_texture = ImageFrameTable::one_empty_image();
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
 		if !strokes.is_empty() && self.prev_input.len() > num_blended_strokes {

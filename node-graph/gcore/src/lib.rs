@@ -51,6 +51,8 @@ pub mod registry;
 
 pub use context::*;
 use core::any::TypeId;
+use core::pin::Pin;
+pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use memo::MemoHash;
 pub use raster::Color;
 pub use types::Cow;
@@ -148,10 +150,6 @@ impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for allo
 	}
 }
 
-use dyn_any::StaticTypeSized;
-
-use core::pin::Pin;
-
 #[cfg(feature = "alloc")]
 impl<'i, I, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
 	type Output = O;
@@ -172,5 +170,3 @@ pub use crate::application_io::{SurfaceFrame, SurfaceId};
 pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
-
-pub use dyn_any::{WasmNotSend, WasmNotSync};
