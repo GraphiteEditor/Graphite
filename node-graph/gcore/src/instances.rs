@@ -35,6 +35,16 @@ impl<T> Instances<T> {
 		}
 	}
 
+	pub fn empty() -> Self {
+		Self {
+			id: Vec::new(),
+			instance: Vec::new(),
+			transform: Vec::new(),
+			alpha_blending: Vec::new(),
+			source_node_id: Vec::new(),
+		}
+	}
+
 	pub fn push(&mut self, instance: T) -> InstanceMut<T> {
 		self.id.push(InstanceId::generate());
 		self.instance.push(instance);
@@ -74,7 +84,7 @@ impl<T> Instances<T> {
 	}
 
 	pub fn instances(&self) -> impl Iterator<Item = Instance<T>> {
-		assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances)", self.instance.len());
+		// assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances)", self.instance.len());
 		self.id
 			.iter()
 			.zip(self.instance.iter())
@@ -91,7 +101,7 @@ impl<T> Instances<T> {
 	}
 
 	pub fn instances_mut(&mut self) -> impl Iterator<Item = InstanceMut<T>> {
-		assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances_mut)", self.instance.len());
+		// assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances_mut)", self.instance.len());
 		self.id
 			.iter_mut()
 			.zip(self.instance.iter_mut())

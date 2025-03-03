@@ -670,6 +670,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 
 #[node_macro::node(name("Spline"), category("Vector"), path(graphene_core::vector))]
 async fn spline(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
+	let original_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_mut().instance;
 
 	// Exit early if there are no points to generate splines from.
@@ -707,7 +708,9 @@ async fn spline(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTabl
 	}
 	vector_data.segment_domain = segment_domain;
 
-	VectorDataTable::new(vector_data.clone())
+	let mut result = VectorDataTable::new(vector_data.clone());
+	*result.transform_mut() = original_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]

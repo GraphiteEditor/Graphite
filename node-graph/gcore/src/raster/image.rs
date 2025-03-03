@@ -284,7 +284,7 @@ pub type ImageFrameTable<P> = Instances<Image<P>>;
 
 /// Construct a 0x0 image frame table. This is useful because ImageFrameTable::default() will return a 1x1 image frame table.
 impl ImageFrameTable<Color> {
-	pub fn empty() -> Self {
+	pub fn one_empty_image() -> Self {
 		let mut result = Self::new(Image::default());
 		*result.transform_mut() = DAffine2::ZERO;
 		result

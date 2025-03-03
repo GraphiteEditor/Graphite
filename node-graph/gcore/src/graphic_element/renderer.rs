@@ -792,41 +792,36 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for ArtboardGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for (artboard, _) in &self.one_instance().instance.artboards {
-			artboard.render_svg(render, render_params);
+		for artboard in self.instances() {
+			artboard.instance.render_svg(render, render_params);
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.one_instance()
-			.instance
-			.artboards
-			.iter()
-			.filter_map(|(element, _)| element.bounding_box(transform))
-			.reduce(Quad::combine_bounds)
+		self.instances().filter_map(|instance| instance.instance.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
-		for (artboard, element_id) in &self.one_instance().instance.artboards {
-			artboard.collect_metadata(metadata, footprint, *element_id);
+		for instance in self.instances() {
+			instance.instance.collect_metadata(metadata, footprint, *instance.source_node_id);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for (artboard, _) in &self.one_instance().instance.artboards {
-			artboard.add_upstream_click_targets(click_targets);
+		for instance in self.instances() {
+			instance.instance.add_upstream_click_targets(click_targets);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		for (artboard, _) in &self.one_instance().instance.artboards {
-			artboard.render_to_vello(scene, transform, context)
+		for instance in self.instances() {
+			instance.instance.render_to_vello(scene, transform, context)
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		!self.one_instance().instance.artboards.is_empty()
+		self.instances().count() > 0
 	}
 }
 

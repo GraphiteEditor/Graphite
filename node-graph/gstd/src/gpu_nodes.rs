@@ -80,7 +80,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 		let name = "placeholder".to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, image_frame_table, executor).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
-			return ImageFrameTable::empty();
+			return ImageFrameTable::one_empty_image();
 		};
 		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
@@ -337,7 +337,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
 	let Ok(proto_networks_result) = proto_networks else {
 		log::error!("Error compiling network in 'blend_gpu_image()");
-		return ImageFrameTable::empty();
+		return ImageFrameTable::one_empty_image();
 	};
 	let proto_networks = proto_networks_result;
 	log::debug!("compiling shader");

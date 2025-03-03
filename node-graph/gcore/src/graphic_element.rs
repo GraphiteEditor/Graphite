@@ -238,6 +238,12 @@ pub struct Artboard {
 	pub clip: bool,
 }
 
+impl Default for Artboard {
+	fn default() -> Self {
+		Self::new(IVec2::ZERO, IVec2::new(1920, 1080))
+	}
+}
+
 impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
@@ -251,26 +257,15 @@ impl Artboard {
 	}
 }
 
-/// Contains multiple artboards.
-#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ArtboardGroup {
-	pub artboards: Vec<(Artboard, Option<NodeId>)>,
-}
-
-impl ArtboardGroup {
-	pub fn new() -> Self {
-		Default::default()
-	}
-
-	fn append_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
-		self.artboards.push((artboard, node_id));
-	}
-}
-
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
 	use serde::Deserialize;
+
+	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct ArtboardGroup {
+		pub artboards: Vec<(Artboard, Option<NodeId>)>,
+	}
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
@@ -280,12 +275,19 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::ArtboardGroup(artboard_group) => ArtboardGroupTable::new(artboard_group),
+		EitherFormat::ArtboardGroup(artboard_group) => {
+			let mut table = ArtboardGroupTable::empty();
+			for (artboard, source_node_id) in artboard_group.artboards {
+				table.push(artboard);
+				*table.instances_mut().last().unwrap().source_node_id = source_node_id;
+			}
+			table
+		}
 		EitherFormat::ArtboardGroupTable(artboard_group_table) => artboard_group_table,
 	})
 }
 
-pub type ArtboardGroupTable = Instances<ArtboardGroup>;
+pub type ArtboardGroupTable = Instances<Artboard>;
 
 #[node_macro::node(category(""))]
 async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
@@ -405,14 +407,12 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 
 #[node_macro::node(category(""))]
 async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroupTable {
-	let artboard_group = artboards.one_instance_mut().instance;
-
-	// let foot = ctx.footprint();
-	// log::debug!("{:?}", foot);
 	// Get the penultimate element of the node path, or None if the path is too short.
 	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	artboard_group.append_artboard(artboard, encapsulating_node_id);
+
+	artboards.push(artboard);
+	*artboards.instances_mut().last().unwrap().source_node_id = encapsulating_node_id;
 
 	artboards
 }

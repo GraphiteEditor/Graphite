@@ -47,7 +47,7 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::empty();
+		return ImageFrameTable::one_empty_image();
 	}
 
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
@@ -512,7 +512,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::empty();
+		return ImageFrameTable::one_empty_image();
 	}
 
 	let footprint_scale = footprint.scale();
@@ -638,7 +638,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::empty();
+		return ImageFrameTable::one_empty_image();
 	}
 
 	let scale = footprint.scale();
