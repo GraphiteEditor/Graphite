@@ -457,7 +457,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 35] = [
+				const REPLACEMENTS: [(&str, &str); 34] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -488,7 +488,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
-					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
 					("graphene_core::vector::generator_nodes::RectangleGenerator", "graphene_core::vector::generator_nodes::RectangleNode"),
 					(
 						"graphene_core::vector::generator_nodes::RegularPolygonGenerator",
@@ -575,6 +574,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
+						log::error!("could not get reference in deserialize_document");
 						continue;
 					};
 
@@ -583,6 +583,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 					let inputs_count = node.inputs.len();
+
+					// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
+					if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+						document.network_interface.set_manual_compostion(node_id, &[], graph_craft::concrete!(graphene_std::Context).into());
+					}
 
 					// Upgrade Fill nodes to the format change in #1778
 					if reference == "Fill" && inputs_count == 8 {
