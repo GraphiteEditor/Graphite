@@ -8,7 +8,7 @@ use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
 use crate::{Color, GraphicElement, GraphicGroup, GraphicGroupTable};
 
-use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Bezier, Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -1135,16 +1135,13 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 		}
 	}
 
-	fn calculate_angle(p0: DVec2, p1: DVec2, p2: DVec2) -> f64 {
-		let v1 = (p1 - p0).normalize();
-		let v2 = (p1 - p2).normalize();
+	fn calculate_distance_to_spilt(bezier1: Bezier, bezier2: Bezier, bevel_length: f64) -> f64 {
+		let v1 = (bezier1.end - bezier1.start).normalize();
+		let v2 = (bezier1.end - bezier2.end).normalize();
 
 		let dot_product = v1.dot(v2);
-		dot_product.acos()
-	}
 
-	fn calculate_distance_to_spilt(bevel_length: f64, angle_rad: f64) -> f64 {
-		// distance = bevel_length / sin(angle/2)
+		let angle_rad = dot_product.acos();
 
 		bevel_length / ((angle_rad / 2.0).sin())
 	}
@@ -1189,12 +1186,7 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 				handles: *handles,
 			};
 
-			debug!("{:?}", prev_bezier);
-			debug!("{:?}", bezier);
-
-			let angel_rad = calculate_angle(prev_bezier.start, prev_bezier.end, bezier.end);
-
-			let spilt_distance = calculate_distance_to_spilt(distance, angel_rad);
+			let spilt_distance = calculate_distance_to_spilt(prev_bezier, bezier, distance);
 
 			if prev_bezier.is_linear() {
 				prev_bezier.handles = bezier_rs::BezierHandles::Linear;
@@ -1209,11 +1201,14 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 
 			let inverse_transform = (vector_data.transform.matrix2.determinant() != 0.).then(|| vector_data.transform.inverse()).unwrap_or_default();
 
+			let original_length = bezier.length(None);
+			let mut length = original_length;
+
 			// Only split if the length is big enough to make it worthwhile
 			let valid_length = prev_length > 1e-10;
 			if segments_connected[*prev_end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
-				let distance = spilt_distance.min(prev_original_length / 2.);
+				let distance = spilt_distance.min(prev_original_length.min(original_length) / 2.);
 				prev_bezier = split_distance(prev_bezier.reversed(), distance, prev_length).reversed();
 				if first_bezier_bool {
 					first_length = (first_length - distance).max(0.);
@@ -1225,14 +1220,11 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 			// Update the handles
 			*prev_handles = prev_bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
 
-			let original_length = bezier.length(None);
-			let mut length = original_length;
-
 			// Only split if the length is big enough to make it worthwhile
 			let valid_length = length > 1e-10;
 			if segments_connected[*start_point_index] > 0 && valid_length {
 				// Apply the bevel to the start
-				let distance = spilt_distance.min(original_length / 2.);
+				let distance = spilt_distance.min(original_length.min(prev_original_length) / 2.);
 				bezier = split_distance(bezier, distance, length);
 				length = (length - distance).max(0.);
 				// Update the start position
@@ -1261,9 +1253,7 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 		}
 
 		if prev_end_point_index == first_start_point_index {
-			let angel_rad = calculate_angle(prev_bezier.start, prev_bezier.end, first_bezier.end);
-
-			let spilt_distance = calculate_distance_to_spilt(distance, angel_rad);
+			let spilt_distance = calculate_distance_to_spilt(prev_bezier, first_bezier, distance);
 
 			if prev_bezier.is_linear() {
 				prev_bezier.handles = bezier_rs::BezierHandles::Linear;
@@ -1282,7 +1272,7 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 			let valid_length = prev_length > 1e-10;
 			if segments_connected[*prev_end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
-				let distance = spilt_distance.min(prev_original_length / 2.);
+				let distance = spilt_distance.min(prev_original_length.min(first_original_length) / 2.);
 				prev_bezier = split_distance(prev_bezier.reversed(), distance, prev_length).reversed();
 				// Update the end position
 				let pos = inverse_transform.transform_point2(prev_bezier.end);
@@ -1295,7 +1285,7 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 			let valid_length = first_length > 1e-10;
 			if segments_connected[*first_start_point_index] > 0 && valid_length {
 				// Apply the bevel to the start
-				let distance = spilt_distance.min(first_original_length / 2.);
+				let distance = spilt_distance.min(first_original_length.min(prev_original_length) / 2.);
 				first_bezier = split_distance(first_bezier, distance, first_length);
 				// Update the start position
 				let pos = inverse_transform.transform_point2(first_bezier.start);
