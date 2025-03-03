@@ -20,7 +20,7 @@ gpu = ["graphite-editor/gpu"]
 
 [dependencies]
 # Local dependencies
-graphite-editor = { path = "../../editor", features = ["tauri", "gpu"] }
+graphite-editor = { path = "../../editor", features = ["tauri", "gpu", "ron"] }
 
 # Workspace dependencies
 serde_json = { workspace = true }
