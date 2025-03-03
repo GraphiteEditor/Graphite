@@ -160,16 +160,16 @@ macro_rules! tagged_value {
 
 tagged_value! {
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
 	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
 	VectorData(graphene_core::vector::VectorDataTable),
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
 	GraphicGroup(graphene_core::GraphicGroupTable),
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
 	Artboard(graphene_core::Artboard),

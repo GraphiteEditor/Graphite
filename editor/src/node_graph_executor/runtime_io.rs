@@ -66,7 +66,7 @@ impl NodeRuntimeIO {
 
 		#[cfg(feature = "tauri")]
 		{
-			let serialized = serde_json::to_string(&message).map_err(|e| e.to_string())?;
+			let serialized = ron::to_string(&message).map_err(|e| e.to_string()).unwrap();
 			wasm_bindgen_futures::spawn_local(async move {
 				let js_message = create_message_object(&serialized);
 				invoke("runtime_message", js_message).await;
@@ -84,7 +84,7 @@ impl NodeRuntimeIO {
 			// In the Tauri case, responses are handled separately via poll_node_runtime_updates
 			wasm_bindgen_futures::spawn_local(async move {
 				let messages = invoke_without_arg("poll_node_graph").await;
-				let vec: Vec<_> = serde_json::from_str(&messages.as_string().unwrap()).unwrap();
+				let vec: Vec<_> = ron::from_str(&messages.as_string().unwrap()).unwrap();
 				for message in vec {
 					sender.send(message).unwrap();
 				}

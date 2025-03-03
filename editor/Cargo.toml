@@ -20,10 +20,10 @@ gpu = [
 	"wgpu-executor",
 	"gpu-executor",
 ]
-tauri = []
+tauri = ["ron"]
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
-postcard = ["dep:postcard"]
+ron = ["dep:ron"]
 
 [dependencies]
 # Local dependencies
@@ -71,7 +71,7 @@ gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-postcard = { version = "1.1.1", optional = true }
+ron = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies
