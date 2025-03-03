@@ -1,8 +1,8 @@
-use dyn_any::StaticType;
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
 use wgpu_executor::WgpuExecutor;
 
+use dyn_any::StaticType;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;

@@ -3,7 +3,7 @@
 #[cfg(feature = "alloc")]
 use crate::raster::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 #[cfg(feature = "alloc")]
-use crate::raster::image::{ImageFrame, ImageFrameTable};
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::vector::style::GradientStops;
@@ -605,17 +605,13 @@ impl Blend<Color> for ImageFrameTable<Color> {
 		let mut result = self.clone();
 
 		for (over, under) in result.instances_mut().zip(under.instances()) {
-			let data = over.image.data.iter().zip(under.image.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
+			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-			*over = ImageFrame {
-				image: super::Image {
-					data,
-					width: over.image.width,
-					height: over.image.height,
-					base64_string: None,
-				},
-				transform: over.transform,
-				alpha_blending: over.alpha_blending,
+			*over.instance = Image {
+				data,
+				width: over.instance.width,
+				height: over.instance.height,
+				base64_string: None,
 			};
 		}
 
@@ -738,13 +734,11 @@ impl Adjust<Color> for GradientStops {
 }
 impl<P: Pixel> Adjust<P> for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
+	GraphicElement: From<Image<P>>,
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
 		for instance in self.instances_mut() {
-			for c in instance.image.data.iter_mut() {
+			for c in instance.instance.data.iter_mut() {
 				*c = map_fn(c);
 			}
 		}
@@ -1386,9 +1380,7 @@ impl MultiplyAlpha for GraphicGroupTable {
 }
 impl<P: Pixel> MultiplyAlpha for ImageFrameTable<P>
 where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
+	GraphicElement: From<Image<P>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instances_mut() {
@@ -1541,13 +1533,13 @@ fn color_overlay<T: Adjust<Color>>(
 
 // #[cfg(feature = "alloc")]
 // mod index_node {
-// 	use crate::raster::{Color, ImageFrame};
+// 	use crate::raster::{Color, Image};
 // 	use crate::Ctx;
 
 // 	#[node_macro::node(category(""))]
 // 	pub fn index<T: Default + Clone>(
 // 		_: impl Ctx,
-// 		#[implementations(Vec<ImageFrame<Color>>, Vec<Color>)]
+// 		#[implementations(Vec<Image<Color>>, Vec<Color>)]
 // 		#[widget(ParsedWidgetOverride::Hidden)]
 // 		input: Vec<T>,
 // 		index: u32,
@@ -1563,8 +1555,8 @@ fn color_overlay<T: Adjust<Color>>(
 
 #[cfg(test)]
 mod test {
-	use crate::raster::image::{ImageFrame, ImageFrameTable};
-	use crate::raster::{BlendMode, Image};
+	use crate::raster::adjustments::BlendMode;
+	use crate::raster::image::{Image, ImageFrameTable};
 	use crate::{Color, Node};
 	use std::pin::Pin;
 
@@ -1582,10 +1574,7 @@ mod test {
 	#[tokio::test]
 	async fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
-		let image = ImageFrame {
-			image: Image::new(1, 1, image_color),
-			..Default::default()
-		};
+		let image = Image::new(1, 1, image_color);
 
 		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
 		let overlay_color = Color::GREEN;
@@ -1594,9 +1583,9 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.one_item();
+		let result = result.one_instance().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
-		assert_eq!(result.image.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
+		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 	}
 }
