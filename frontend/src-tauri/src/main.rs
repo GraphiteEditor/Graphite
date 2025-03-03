@@ -93,16 +93,21 @@ fn poll_node_graph() -> String {
 	let vec: Vec<_> = NODE_RUNTIME_IO.lock().as_mut().unwrap().as_mut().unwrap().receive().collect();
 	if !vec.is_empty() {
 		log::error!("responding");
-		dbg!(serde_json::to_string(&vec).unwrap())
+		dbg!(ron::to_string(&vec).unwrap())
 	} else {
-		serde_json::to_string(&vec).unwrap()
+		ron::to_string(&vec).unwrap()
 	}
 }
 
 #[tauri::command]
 fn runtime_message(message: String) -> Result<(), String> {
-	let message = serde_json::from_str(&message).unwrap();
-	log::error!("message");
+	let message = match ron::from_str(&message) {
+		Ok(message) => message,
+		Err(e) => {
+			log::error!("Failed to deserialize message: {}\nwith error: {}", message, e);
+			return Err("Failed to deserialize message".into());
+		}
+	};
 	let response = NODE_RUNTIME_IO.lock().as_ref().unwrap().as_ref().unwrap().send(message);
 	dbg!(response)
 }
