@@ -56,10 +56,12 @@
 	onMount(async () => {
 		await tick();
 		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+		if (open && !inNestedMenuList()) addEventListener("contextmenu", handleRightClick);
 	});
 	onDestroy(async () => {
 		await tick();
 		if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+		if (!inNestedMenuList()) removeEventListener("contextmenu", handleRightClick);
 	});
 
 	function inNestedMenuList(): boolean {
@@ -119,6 +121,9 @@
 	function watchOpen(open: boolean) {
 		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
 		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+
+		if (open && !inNestedMenuList()) addEventListener("contextmenu", handleRightClick);
+		else if (!inNestedMenuList()) removeEventListener("contextmenu", handleRightClick);
 
 		highlighted = activeEntry;
 		dispatch("open", open);
@@ -227,6 +232,17 @@
 
 		// Submenu was opened
 		return true;
+	}
+
+	function handleRightClick(e: MouseEvent) {
+		e.preventDefault();
+		// Close menu with escape key
+		if (e.button === 2) {
+			open = false;
+
+			// Reset active to before open
+			setHighlighted(activeEntry);
+		}
 	}
 
 	/// Handles keyboard navigation for the menu.
@@ -425,6 +441,7 @@
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					{tooltip}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
+					on:mouseup={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
 				>
@@ -585,5 +602,5 @@
 			}
 		}
 	}
-	// paddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpadding
+	// paddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpaddingpadding
 </style>
