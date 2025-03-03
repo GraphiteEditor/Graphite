@@ -37,11 +37,15 @@ pub struct TransformLayerMessageHandler {
 
 	original_transforms: OriginalTransforms,
 	pivot: ViewportPosition,
+
 	local_pivot: DocumentPosition,
 	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
+
 	ptz: PTZ,
 	initial_transform: DAffine2,
+
+	operation_count: usize,
 
 	// Pen tool (outgoing handle GRS manipulation)
 	handle: DVec2,
@@ -191,9 +195,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					*selected.pivot = new_pivot;
 
 					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
-
-					self.grab_target = grab_target;
-
 					self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
 				} else {
 					log::warn!("Failed to calculate pivot.");
@@ -341,6 +342,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					selected.responses.add(PenToolMessage::Confirm);
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
+					self.operation_count = 0;
 					responses.add(DocumentMessage::EndTransaction);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -396,6 +398,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 				self.local = false;
 				self.layer_bounding_box = selected.bounding_box();
+				self.operation_count += 1;
 
 				selected.original_transforms.clear();
 
@@ -449,6 +452,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				self.local = false;
 				self.layer_bounding_box = selected.bounding_box();
+				self.operation_count += 1;
 
 				selected.original_transforms.clear();
 
@@ -501,6 +505,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				self.local = false;
 				self.layer_bounding_box = selected.bounding_box();
+				self.operation_count += 1;
 
 				selected.original_transforms.clear();
 
@@ -526,7 +531,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.typing.clear();
 					self.transform_operation = TransformOperation::None;
 
-					responses.add(DocumentMessage::AbortTransaction);
+					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: self.operation_count });
+					self.operation_count = 0;
 					responses.add(ToolMessage::UpdateHints);
 				}
 

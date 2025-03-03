@@ -1183,11 +1183,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.document_redo_history.clear();
 			}
 			DocumentMessage::AbortTransaction => {
+				responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
+			}
+			DocumentMessage::RepeatedAbortTransaction { undo_count } => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 
-				self.undo(ipp, responses);
+				for _ in 0..undo_count {
+					self.undo(ipp, responses);
+				}
+
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
 			}
