@@ -126,7 +126,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::default()), true)),
+			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),

@@ -1,8 +1,8 @@
-use dyn_any::{StaticType, StaticTypeSized};
 use graphene_core::raster::{color::RGBA16F, Image, Pixel, SRGBA8};
 use graphene_core::*;
 
 use bytemuck::{Pod, Zeroable};
+use dyn_any::{StaticType, StaticTypeSized};
 use glam::UVec3;
 use std::borrow::Cow;
 

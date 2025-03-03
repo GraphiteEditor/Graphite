@@ -176,6 +176,7 @@ pub struct ValueMapperNode<C> {
 	lut: Vec<C>,
 }
 
+#[cfg(feature = "dyn-any")]
 unsafe impl<C: StaticTypeSized> StaticType for ValueMapperNode<C> {
 	type Static = ValueMapperNode<C::Static>;
 }

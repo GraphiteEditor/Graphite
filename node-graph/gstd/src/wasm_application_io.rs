@@ -77,7 +77,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 #[node_macro::node(category("Network"))]
 fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return ImageFrameTable::empty();
+		return ImageFrameTable::one_empty_image();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -216,7 +216,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		Context -> ImageFrameTable<Color>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
-		Context -> graphene_core::ArtboardGroup,
+		Context -> graphene_core::ArtboardGroupTable,
 		Context -> Option<Color>,
 		Context -> Vec<Color>,
 		Context -> bool,
