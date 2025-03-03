@@ -4,7 +4,7 @@ use crate::raster::Pixel;
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorData, VectorDataTable};
-use crate::{AlphaBlending, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
+use crate::{AlphaBlending, GraphicElement, GraphicGroupTable, RasterFrame};
 
 use dyn_any::StaticType;
 
@@ -197,27 +197,10 @@ impl TransformMut for GraphicElement {
 	}
 }
 
-// GRAPHIC GROUP
-impl Transform for Instance<'_, GraphicGroup> {
-	fn transform(&self) -> DAffine2 {
-		*self.transform
-	}
-}
-impl Transform for InstanceMut<'_, GraphicGroup> {
-	fn transform(&self) -> DAffine2 {
-		*self.transform
-	}
-}
-impl TransformMut for InstanceMut<'_, GraphicGroup> {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		self.transform
-	}
-}
-
 // GRAPHIC GROUP TABLE
 impl Transform for GraphicGroupTable {
 	fn transform(&self) -> DAffine2 {
-		self.one_instance().transform()
+		*self.one_instance().transform
 	}
 }
 impl TransformMut for GraphicGroupTable {

@@ -40,14 +40,12 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 	}
 
 	fn collect_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDataTable> {
-		let graphic_group = graphic_group_table.one_instance();
-
 		// Ensure all non vector data in the graphic group is converted to vector data
-		let vector_data_tables = graphic_group.instance.iter().map(|(element, _)| union_vector_data(element));
+		let vector_data_tables = graphic_group_table.instances().map(|element| union_vector_data(element.instance));
 
 		// Apply the transform from the parent graphic group
 		let transformed_vector_data = vector_data_tables.map(|mut vector_data_table| {
-			*vector_data_table.transform_mut() = graphic_group.transform() * vector_data_table.transform();
+			*vector_data_table.transform_mut() = graphic_group_table.transform() * vector_data_table.transform();
 			vector_data_table
 		});
 		transformed_vector_data.collect::<Vec<_>>()

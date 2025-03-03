@@ -9,7 +9,6 @@ use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 
 use dyn_any::DynAny;
 
-use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
 use std::hash::Hash;
 
@@ -52,83 +51,74 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct GraphicGroup {
+		elements: Vec<(GraphicElement, Option<NodeId>)>,
+	}
+	pub type OldGraphicGroupTable = Instances<GraphicGroup>;
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	enum EitherFormat {
-		GraphicGroup(GraphicGroup),
 		OldGraphicGroup(OldGraphicGroup),
+		OldGraphicGroupTable(OldGraphicGroupTable),
 		GraphicGroupTable(GraphicGroupTable),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::GraphicGroup(graphic_group) => GraphicGroupTable::new(graphic_group),
 		EitherFormat::OldGraphicGroup(old) => {
-			let mut graphic_group_table = GraphicGroupTable::new(GraphicGroup { elements: old.elements });
-			*graphic_group_table.one_instance_mut().transform = old.transform;
-			*graphic_group_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			let mut graphic_group_table = GraphicGroupTable::empty();
+			for (graphic_element, source_node_id) in old.elements {
+				let last = graphic_group_table.push(graphic_element);
+				*last.source_node_id = source_node_id;
+				*last.transform = old.transform;
+				*last.alpha_blending = old.alpha_blending;
+			}
+			graphic_group_table
+		}
+		EitherFormat::OldGraphicGroupTable(old) => {
+			let mut graphic_group_table = GraphicGroupTable::empty();
+			for (graphic_element, source_node_id) in old.instances().next().unwrap().instance.elements.clone() {
+				let pushed = graphic_group_table.push(graphic_element);
+				*pushed.source_node_id = source_node_id;
+			}
 			graphic_group_table
 		}
 		EitherFormat::GraphicGroupTable(graphic_group_table) => graphic_group_table,
 	})
 }
 
-pub type GraphicGroupTable = Instances<GraphicGroup>;
+pub type GraphicGroupTable = Instances<GraphicElement>;
 
-/// A list of [`GraphicElement`]s
-#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GraphicGroup {
-	elements: Vec<(GraphicElement, Option<NodeId>)>,
-}
-
-impl core::hash::Hash for GraphicGroup {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.elements.hash(state);
-	}
-}
-
-impl GraphicGroup {
-	pub fn new(elements: Vec<GraphicElement>) -> Self {
-		Self {
-			elements: elements.into_iter().map(|element| (element, None)).collect(),
-		}
-	}
-}
-
-impl From<GraphicGroup> for GraphicGroupTable {
-	fn from(graphic_group: GraphicGroup) -> Self {
-		Self::new(graphic_group)
-	}
-}
 impl From<VectorData> for GraphicGroupTable {
 	fn from(vector_data: VectorData) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::VectorData(VectorDataTable::new(vector_data))]))
+		Self::new(GraphicElement::VectorData(VectorDataTable::new(vector_data)))
 	}
 }
 impl From<VectorDataTable> for GraphicGroupTable {
 	fn from(vector_data: VectorDataTable) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::VectorData(vector_data)]))
+		Self::new(GraphicElement::VectorData(vector_data))
 	}
 }
 impl From<Image<Color>> for GraphicGroupTable {
 	fn from(image: Image<Color>) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image)))]))
+		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image))))
 	}
 }
 impl From<ImageFrameTable<Color>> for GraphicGroupTable {
 	fn from(image_frame: ImageFrameTable<Color>) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))]))
+		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame)))
 	}
 }
 impl From<ImageTexture> for GraphicGroupTable {
 	fn from(image_texture: ImageTexture) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(image_texture)))]))
+		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(image_texture))))
 	}
 }
 impl From<TextureFrameTable> for GraphicGroupTable {
 	fn from(texture_frame: TextureFrameTable) -> Self {
-		Self::new(GraphicGroup::new(vec![GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture_frame))]))
+		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture_frame)))
 	}
 }
 
@@ -278,8 +268,8 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 		EitherFormat::ArtboardGroup(artboard_group) => {
 			let mut table = ArtboardGroupTable::empty();
 			for (artboard, source_node_id) in artboard_group.artboards {
-				table.push(artboard);
-				*table.instances_mut().last().unwrap().source_node_id = source_node_id;
+				let pushed = table.push(artboard);
+				*pushed.source_node_id = source_node_id;
 			}
 			table
 		}
@@ -290,19 +280,18 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 pub type ArtboardGroupTable = Instances<Artboard>;
 
 #[node_macro::node(category(""))]
-async fn layer(_: impl Ctx, stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
-	let mut stack = stack;
-
+async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
 	if stack.transform().matrix2.determinant() != 0. {
 		*element.transform_mut() = stack.transform().inverse() * element.transform();
 	} else {
-		stack.one_instance_mut().instance.clear();
-		*stack.transform_mut() = DAffine2::IDENTITY;
+		// TODO: Figure out what to do here
+		// stack.one_instance_mut().instance.clear();
+		// *stack.transform_mut() = DAffine2::IDENTITY;
 	}
 
 	// Get the penultimate element of the node path, or None if the path is too short
-	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	stack.one_instance_mut().instance.push((element, encapsulating_node_id));
+	let pushed = stack.push(element);
+	*pushed.source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	stack
 }
@@ -338,11 +327,14 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 #[node_macro::node(category("General"))]
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
 	fn flatten_group(result_group: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool) {
-		let mut collection_group = GraphicGroup::default();
-		let current_group_elements = current_group_table.one_instance().instance.elements.clone();
+		let current_group_elements = current_group_table.instances();
+		for instance in current_group_elements {
+			let element = instance.instance.clone();
+			let reference = *instance.source_node_id;
 
-		for (element, reference) in current_group_elements {
-			if let GraphicElement::GraphicGroup(mut nested_group_table) = element {
+			if let GraphicElement::GraphicGroup(nested_group_table) = element {
+				// Apply the hierarchical transform to the nested group
+				let mut nested_group_table = nested_group_table;
 				*nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
 
 				let mut sub_group_table = GraphicGroupTable::default();
@@ -350,19 +342,22 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 					flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
 				} else {
 					let nested_group_table_transform = nested_group_table.transform();
-					for (collection_element, _) in &mut nested_group_table.one_instance_mut().instance.elements {
+					for nested_group_instance in nested_group_table.instances_mut() {
+						let collection_element = nested_group_instance.instance;
 						*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
 					}
 					sub_group_table = nested_group_table;
 				}
 
-				collection_group.append(&mut sub_group_table.one_instance_mut().instance.elements);
+				for instance in sub_group_table.instances() {
+					let pushed = result_group.push(instance.instance.clone());
+					*pushed.source_node_id = *instance.source_node_id;
+				}
 			} else {
-				collection_group.push((element, reference));
+				let pushed = result_group.push(element);
+				*pushed.source_node_id = reference;
 			}
 		}
-
-		result_group.one_instance_mut().instance.append(&mut collection_group.elements);
 	}
 
 	let mut flat_group = GraphicGroupTable::default();
@@ -411,8 +406,8 @@ async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artb
 	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
-	artboards.push(artboard);
-	*artboards.instances_mut().last().unwrap().source_node_id = encapsulating_node_id;
+	let pushed = artboards.push(artboard);
+	*pushed.source_node_id = encapsulating_node_id;
 
 	artboards
 }
@@ -450,46 +445,8 @@ impl From<VectorDataTable> for GraphicElement {
 		GraphicElement::VectorData(vector_data)
 	}
 }
-// TODO: Remove this one
-impl From<GraphicGroup> for GraphicElement {
-	fn from(graphic_group: GraphicGroup) -> Self {
-		GraphicElement::GraphicGroup(GraphicGroupTable::new(graphic_group))
-	}
-}
 impl From<GraphicGroupTable> for GraphicElement {
 	fn from(graphic_group: GraphicGroupTable) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
-	}
-}
-
-impl Deref for GraphicGroup {
-	type Target = Vec<(GraphicElement, Option<NodeId>)>;
-	fn deref(&self) -> &Self::Target {
-		&self.elements
-	}
-}
-impl DerefMut for GraphicGroup {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.elements
-	}
-}
-
-/// This is a helper trait used for the Into Implementation.
-/// We can't just implement this for all for which from is implemented
-/// as that would conflict with the implementation for `Self`
-trait ToGraphicElement: Into<GraphicElement> {}
-
-impl ToGraphicElement for VectorDataTable {}
-impl ToGraphicElement for ImageFrameTable<Color> {}
-impl ToGraphicElement for ImageTexture {}
-
-impl<T> From<T> for GraphicGroup
-where
-	T: ToGraphicElement,
-{
-	fn from(value: T) -> Self {
-		Self {
-			elements: (vec![(value.into(), None)]),
-		}
 	}
 }

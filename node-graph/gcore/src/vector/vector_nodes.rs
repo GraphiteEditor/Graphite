@@ -22,10 +22,9 @@ trait VectorIterMut {
 impl VectorIterMut for GraphicGroupTable {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
 		let parent_transform = self.transform();
-		let instance = self.one_instance_mut().instance;
 
 		// Grab only the direct children
-		instance.iter_mut().filter_map(|(element, _)| element.as_vector_data_mut()).map(move |vector_data| {
+		self.instances_mut().filter_map(|element| element.instance.as_vector_data_mut()).map(move |vector_data| {
 			let transform = parent_transform * vector_data.transform();
 
 			let vector_data_instance = vector_data.one_instance_mut().instance;
@@ -179,7 +178,6 @@ async fn repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send
 	let total = (instances - 1) as f64;
 
 	let mut result_table = GraphicGroupTable::default();
-	let result = result_table.one_instance_mut().instance;
 
 	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
 
@@ -188,13 +186,14 @@ async fn repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send
 	for i in 0..instances {
 		let translation = i as f64 * direction / total;
 		let angle = i as f64 * angle / total;
-		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		let mut new_instance = result_table.instances().last().map(|element| element.instance.clone()).unwrap_or(instance.to_graphic_element());
 		new_instance.new_ids_from_hash(None);
 		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
 		let data_transform = new_instance.transform_mut();
 		*data_transform = modification * first_vector_transform;
-		result.push((new_instance, None));
+
+		result_table.push(new_instance);
 	}
 
 	result_table
@@ -213,7 +212,6 @@ async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformM
 	let instances = instances.max(1);
 
 	let mut result_table = GraphicGroupTable::default();
-	let result = result_table.one_instance_mut().instance;
 
 	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
 
@@ -224,12 +222,12 @@ async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformM
 		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
 		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		let mut new_instance = result_table.instances().last().map(|element| element.instance.clone()).unwrap_or(instance.to_graphic_element());
 		new_instance.new_ids_from_hash(None);
 
 		let data_transform = new_instance.transform_mut();
 		*data_transform = modification * first_vector_transform;
-		result.push((new_instance, None));
+		result_table.push(new_instance);
 	}
 
 	result_table
@@ -250,13 +248,11 @@ async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 	random_rotation_seed: SeedValue,
 ) -> GraphicGroupTable {
 	let points_transform = points.transform();
-	let points = points.one_instance().instance;
+	let points_list = points.instances().flat_map(|element| element.instance.point_domain.positions());
 
 	let instance_transform = instance.transform();
 
 	let random_scale_difference = random_scale_max - random_scale_min;
-
-	let points_list = points.point_domain.positions();
 
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
@@ -268,7 +264,6 @@ async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 	let do_rotation = random_rotation.abs() > 1e-6;
 
 	let mut result_table = GraphicGroupTable::default();
-	let result = result_table.one_instance_mut().instance;
 
 	for &point in points_list {
 		let center_transform = DAffine2::from_translation(instance_center);
@@ -296,12 +291,12 @@ async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 			random_scale_min
 		};
 
-		let mut new_instance = result.last().map(|(element, _)| element.clone()).unwrap_or(instance.to_graphic_element());
+		let mut new_instance = result_table.instances().last().map(|element| element.instance.clone()).unwrap_or(instance.to_graphic_element());
 		new_instance.new_ids_from_hash(None);
 
 		let data_transform = new_instance.transform_mut();
 		*data_transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
-		result.push((new_instance, None));
+		result_table.push(new_instance);
 	}
 
 	result_table
@@ -407,14 +402,16 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 	// a flatten vector elements connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
 	fn concat_group(graphic_group_table: &GraphicGroupTable, current_transform: DAffine2, result: &mut InstanceMut<VectorData>) {
-		for (element, reference) in graphic_group_table.one_instance().instance.iter() {
-			match element {
+		for element in graphic_group_table.instances() {
+			match element.instance {
 				GraphicElement::VectorData(vector_data) => {
 					for instance in vector_data.instances() {
 						*result.alpha_blending = *instance.alpha_blending;
-						result
-							.instance
-							.concat(instance.instance, current_transform * instance.transform(), reference.map(|node_id| node_id.0).unwrap_or_default());
+						result.instance.concat(
+							instance.instance,
+							current_transform * instance.transform(),
+							element.source_node_id.map(|node_id| node_id.0).unwrap_or_default(),
+						);
 					}
 				}
 				GraphicElement::GraphicGroup(graphic_group) => {
@@ -440,18 +437,21 @@ pub trait ConcatElement {
 
 impl ConcatElement for GraphicGroupTable {
 	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
+		// TODO: Reduce cloning in this function
+
+		let mut other = other.clone();
 		let other_transform = other.transform();
 
-		let self_group = self.one_instance_mut().instance;
-		let other_group = other.one_instance().instance;
-
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
-		for (mut element, footprint_mapping) in other_group.iter().cloned() {
-			*element.transform_mut() = transform * element.transform() * other_transform;
-			self_group.push((element, footprint_mapping));
+		for element in other.instances_mut() {
+			*element.transform = transform * *element.transform * other_transform;
+			let pushed = self.push(element.instance.clone());
+			*pushed.source_node_id = *element.source_node_id;
 		}
 
-		*self.one_instance_mut().alpha_blending = *other.one_instance().alpha_blending;
+		self.instances_mut().zip(other.instances()).for_each(|(element, other_element)| {
+			*element.alpha_blending = *other_element.alpha_blending;
+		});
 	}
 }
 
@@ -1077,7 +1077,7 @@ mod test {
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
-		let vector_data = vector_data.one_instance().instance;
+		let vector_data = vector_data.instances().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 3);
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
@@ -1089,7 +1089,7 @@ mod test {
 		let instances = 8;
 		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
-		let vector_data = vector_data.one_instance().instance;
+		let vector_data = vector_data.instances().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
@@ -1099,7 +1099,7 @@ mod test {
 	async fn circle_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
-		let vector_data = vector_data.one_instance().instance;
+		let vector_data = vector_data.instances().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
@@ -1111,7 +1111,7 @@ mod test {
 	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))).await;
-		let bounding_box = bounding_box.one_instance().instance;
+		let bounding_box = bounding_box.instances().next().unwrap().instance;
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
@@ -1125,7 +1125,7 @@ mod test {
 		}
 		.eval(Footprint::default())
 		.await;
-		let bounding_box = bounding_box.one_instance().instance;
+		let bounding_box = bounding_box.instances().next().unwrap().instance;
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		let sqrt2 = core::f64::consts::SQRT_2;
@@ -1139,7 +1139,7 @@ mod test {
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
 		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
 		let flattened_copy_to_points = super::flatten_vector_elements(Footprint::default(), copy_to_points).await;
-		let flattened_copy_to_points = flattened_copy_to_points.one_instance().instance;
+		let flattened_copy_to_points = flattened_copy_to_points.instances().next().unwrap().instance;
 		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
 		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
@@ -1153,7 +1153,7 @@ mod test {
 	async fn sample_points() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
 		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, vec![100.]).await;
-		let sample_points = sample_points.one_instance().instance;
+		let sample_points = sample_points.instances().next().unwrap().instance;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
@@ -1163,7 +1163,7 @@ mod test {
 	async fn adaptive_spacing() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
 		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 18., 45., 10., true, vec![100.]).await;
-		let sample_points = sample_points.one_instance().instance;
+		let sample_points = sample_points.instances().next().unwrap().instance;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
@@ -1178,7 +1178,7 @@ mod test {
 			0,
 		)
 		.await;
-		let sample_points = sample_points.one_instance().instance;
+		let sample_points = sample_points.instances().next().unwrap().instance;
 		assert!(
 			(20..=40).contains(&sample_points.point_domain.positions().len()),
 			"actual len {}",
@@ -1197,7 +1197,7 @@ mod test {
 	#[tokio::test]
 	async fn spline() {
 		let spline = super::spline(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.))).await;
-		let spline = spline.one_instance().instance;
+		let spline = spline.instances().next().unwrap().instance;
 		assert_eq!(spline.stroke_bezier_paths().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
@@ -1206,7 +1206,7 @@ mod test {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
 		let target = Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO);
 		let sample_points = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5, 0).await;
-		let sample_points = sample_points.one_instance().instance;
+		let sample_points = sample_points.instances().next().unwrap().instance;
 		assert_eq!(
 			&sample_points.point_domain.positions()[..4],
 			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]
@@ -1229,7 +1229,7 @@ mod test {
 	async fn bevel_rect() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
 		let beveled = super::bevel(Footprint::default(), vector_node(source), 5.);
-		let beveled = beveled.one_instance().instance;
+		let beveled = beveled.instances().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
 		assert_eq!(beveled.segment_domain.ids().len(), 8);
@@ -1252,7 +1252,7 @@ mod test {
 		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
 		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), curve], false);
 		let beveled = super::bevel((), vector_node(source), 5.);
-		let beveled = beveled.one_instance().instance;
+		let beveled = beveled.instances().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
@@ -1277,7 +1277,7 @@ mod test {
 		*vector_data_table.one_instance_mut().transform_mut() = transform;
 
 		let beveled = super::bevel((), VectorDataTable::new(vector_data), 5.);
-		let beveled = beveled.one_instance().instance;
+		let beveled = beveled.instances().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
@@ -1295,7 +1295,7 @@ mod test {
 	async fn bevel_too_high() {
 		let source = Subpath::from_anchors([DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)], false);
 		let beveled = super::bevel(Footprint::default(), vector_node(source), 999.);
-		let beveled = beveled.one_instance().instance;
+		let beveled = beveled.instances().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
@@ -1316,7 +1316,7 @@ mod test {
 		let point = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO, DVec2::ZERO);
 		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), point, curve], false);
 		let beveled = super::bevel(Footprint::default(), vector_node(source), 5.);
-		let beveled = beveled.one_instance().instance;
+		let beveled = beveled.instances().next().unwrap().instance;
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
