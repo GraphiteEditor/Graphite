@@ -2,7 +2,6 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
-use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
@@ -150,9 +149,14 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
 		"graphene_core::transform::Footprint" => "core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
-		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::graphic_element::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
-		"graphene_core::vector::vector_data::VectorData" => "graphene_core::graphic_element::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
-		"graphene_core::raster::image::ImageFrame<Color>" => "graphene_core::graphic_element::Instances<graphene_core::raster::image::ImageFrame<Color>>".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::instances::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
+		"graphene_core::vector::vector_data::VectorData" => "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
+		"graphene_core::raster::image::ImageFrame<Color>"
+		| "graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<Color>>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>>" => {
+			"graphene_core::instances::Instances<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>".to_string()
+		}
 		_ => name,
 	};
 
@@ -215,7 +219,8 @@ impl Default for Type {
 	}
 }
 
-unsafe impl StaticType for Type {
+#[cfg(feature = "dyn-any")]
+unsafe impl dyn_any::StaticType for Type {
 	type Static = Self;
 }
 
@@ -264,7 +269,7 @@ impl Type {
 }
 
 impl Type {
-	pub fn new<T: StaticType + Sized>() -> Self {
+	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
@@ -273,6 +278,7 @@ impl Type {
 			align: core::mem::align_of::<T>(),
 		})
 	}
+
 	pub fn size(&self) -> Option<usize> {
 		match self {
 			Self::Generic(_) => None,
