@@ -806,21 +806,29 @@ fn skew_transform_correct() {
 		let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
 
 		// This is the current handle that goes under the mouse.
+		let opposite = edge.pivot_from_bounds(edge.bounds[0], edge.bounds[1]);
 		let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
 
+		let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
 		let parallel_to_x = edge.top || edge.bottom;
 		let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
 
-		// The target point is the projection in viewport space onto the line that the skew is parallel to.
-		let mut target_dragging_point = to_viewport_transform.transform_point2(dragging_point);
-		if parallel_to_x {
-			target_dragging_point += (mouse - target_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::X));
-		} else if parallel_to_y {
-			target_dragging_point += (mouse - target_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::Y));
-		}
+		let drag_vector = mouse - viewport_dragging_point;
+		let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
 
-		// Compute the final point in viewport space.
-		let final_dragging_point = to_viewport_transform.transform_point2(final_transform.transform_point2(dragging_point));
-		assert_eq!(final_dragging_point, target_dragging_point);
+		let sign = if edge.top || edge.left { -1. } else { 1. };
+		let scale_factor = (edge.bounds[1] - edge.bounds[0])[parallel_to_x as usize].abs().recip() * sign;
+		let scaled_document_drag = document_drag_vector * scale_factor;
+
+		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
+			1.,
+			if parallel_to_y { scaled_document_drag.y } else { 0. },
+			if parallel_to_x { scaled_document_drag.x } else { 0. },
+			1.,
+		]));
+
+		let constructed_transform = DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite);
+
+		assert_eq!(constructed_transform, final_transform);
 	}
 }
