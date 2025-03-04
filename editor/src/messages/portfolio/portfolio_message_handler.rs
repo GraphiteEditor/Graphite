@@ -20,7 +20,7 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use graphene_core::renderer::Quad;
 
 use bezier_rs::Subpath;
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
@@ -915,16 +915,29 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				}
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
-				use crate::messages::portfolio::document::graph_operation::transform_utils;
 				if let Some(document) = self.active_document_mut() {
 					let viewport_bounds = Quad::from_box_at_zero(ipp.viewport_bounds.size());
 					let viewport_center = viewport_bounds.center();
+					let transform = document.metadata().document_to_viewport;
+
+					let viewport_points = Quad::from_box_at_zero(ipp.viewport_bounds.size()).0;
+
+					let inv_transform = transform.inverse();
+					let doc_viewport_points = viewport_points.map(|p| inv_transform.transform_point2(p));
+					let viewport_in_doc_space = Quad(doc_viewport_points);
 
 					let mut positions = Vec::new();
 
 					for &layer in &layers {
 						if document.network_interface.is_artboard(&layer.to_node(), &[]) {
 							if let Some(bounds) = document.metadata().bounding_box_document(layer) {
+								let artboard_quad = Quad::from_box(bounds);
+
+								// Only center if nothing is in the viewport
+								if artboard_quad.intersects(viewport_in_doc_space) {
+									return;
+								}
+
 								positions.push((layer, bounds[0], true));
 							}
 						} else {
@@ -933,6 +946,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									if let Some(network) = modify_inputs.network_interface.network(&[]) {
 										if let Some(node) = network.nodes.get(&transform_node_id) {
 											let current_transform = transform_utils::get_current_transform(&node.inputs);
+
+											// Only center if nothing is in the viewport
+											if viewport_in_doc_space.contains(current_transform.translation) {
+												return;
+											}
+
 											positions.push((layer, current_transform.translation, false));
 										}
 									}
@@ -943,7 +962,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					if !positions.is_empty() {
 						let mean_pos = positions.iter().fold(glam::DVec2::ZERO, |acc, (_, pos, _)| acc + *pos) / positions.len() as f64;
-						let transform = document.metadata().document_to_viewport;
 
 						for (layer, pos, is_artboard) in positions {
 							let offset_from_center = pos - mean_pos;
@@ -974,6 +992,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				}
 			}
+
 			PortfolioMessage::PasteImage {
 				name,
 				image,
