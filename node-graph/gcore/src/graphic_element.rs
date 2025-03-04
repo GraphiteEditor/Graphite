@@ -89,6 +89,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 	})
 }
 
+// TODO: Rename to GraphicElementTable
 pub type GraphicGroupTable = Instances<GraphicElement>;
 
 impl From<VectorData> for GraphicGroupTable {
@@ -281,14 +282,6 @@ pub type ArtboardGroupTable = Instances<Artboard>;
 
 #[node_macro::node(category(""))]
 async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
-	// TODO: Figure out what to do with this transform
-	// if stack.transform().matrix2.determinant() != 0. {
-	// 	*element.transform_mut() = stack.transform().inverse() * element.transform();
-	// } else {
-	// 	stack.one_instance_mut().instance.clear();
-	// 	*stack.transform_mut() = DAffine2::IDENTITY;
-	// }
-
 	// Get the penultimate element of the node path, or None if the path is too short
 	let pushed = stack.push(element);
 	*pushed.source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
@@ -326,50 +319,39 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 
 #[node_macro::node(category("General"))]
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
-	fn flatten_group(result_group: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool) {
-		for instance in current_group_table.instances() {
-			let element = instance.instance.clone();
-			let reference = *instance.source_node_id;
+	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
+	fn flatten_group(output_group_table: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool, recursion_depth: usize) {
+		for current_instance in current_group_table.instances() {
+			let current_element = current_instance.instance.clone();
+			let reference = *current_instance.source_node_id;
 
-			// If the element is not a group, push it directly to the result group and move on to the next GraphicElement instance
-			let GraphicElement::GraphicGroup(nested_group_table) = element else {
-				let pushed = result_group.push(element);
-				*pushed.source_node_id = reference;
-				continue;
-			};
+			let recurse = fully_flatten || recursion_depth == 0;
 
-			// Apply the hierarchical transform to the nested group
-			// TODO: Figure out what to do with this transform
-			// *nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
+			match current_element {
+				// If we're allowed to recurse, flatten any GraphicGroups we encounter
+				GraphicElement::GraphicGroup(mut current_element) if recurse => {
+					// Apply the parent group's transform to all child elements
+					for graphic_element in current_element.instances_mut() {
+						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
+					}
 
-			let sub_group_table = if fully_flatten {
-				let mut sub_group_table = GraphicGroupTable::default();
-
-				flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
-
-				sub_group_table
-			} else {
-				// TODO: Figure out what to do with this transform
-				// let nested_group_table_transform = nested_group_table.transform();
-				// for nested_group_instance in nested_group_table.instances_mut() {
-				// 	let collection_element = nested_group_instance.instance;
-				// 	*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
-				// }
-
-				nested_group_table
-			};
-
-			for instance in sub_group_table.instances() {
-				let pushed = result_group.push(instance.instance.clone());
-				*pushed.source_node_id = *instance.source_node_id;
+					flatten_group(output_group_table, current_element, fully_flatten, recursion_depth + 1);
+				}
+				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
+				_ => {
+					let pushed = output_group_table.push(current_element);
+					*pushed.source_node_id = reference;
+					// Apply the parent group's transform to the leaf element
+					*pushed.transform = *current_instance.transform * *pushed.transform;
+				}
 			}
 		}
 	}
 
-	let mut flat_group = GraphicGroupTable::default();
-	flatten_group(&mut flat_group, group, fully_flatten);
+	let mut output = GraphicGroupTable::default();
+	flatten_group(&mut output, group, fully_flatten, 0);
 
-	flat_group
+	output
 }
 
 #[node_macro::node(category(""))]
