@@ -1,7 +1,7 @@
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
-use crate::instances::InstanceMut;
+use crate::instances::{InstanceMut, Instances};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -160,17 +160,23 @@ async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMu
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
+async fn repeat<I: 'n + Send>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(VectorDataTable, GraphicGroupTable)] instance: I,
+	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: DVec2,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> GraphicGroupTable {
-	let first_vector_transform = instance.transform();
+) -> GraphicGroupTable
+where
+	Instances<I>: GraphicElementRendered,
+{
+	// let Some(&first_vector_transform) = instance.instances().next().map(|element| element.transform) else {
+	// 	// TODO: Figure out what to do with this transform
+	// 	todo!()
+	// };
 
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
@@ -191,22 +197,28 @@ async fn repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send
 		new_graphic_element.new_ids_from_hash(None);
 
 		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = modification * first_vector_transform;
+		*new_instance.transform = modification; // * first_vector_transform;
 	}
 
 	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send>(
+async fn circular_repeat<I: 'n + Send>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(VectorDataTable, GraphicGroupTable)] instance: I,
+	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
-) -> GraphicGroupTable {
-	let first_vector_transform = instance.transform();
+) -> GraphicGroupTable
+where
+	Instances<I>: GraphicElementRendered,
+{
+	// let Some(&first_vector_transform) = instance.instances().next().map(|element| element.transform) else {
+	// 	// TODO: Figure out what to do with this transform
+	// 	todo!()
+	// };
 	let instances = instances.max(1);
 
 	let mut result_table = GraphicGroupTable::default();
@@ -224,30 +236,36 @@ async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformM
 		new_graphic_element.new_ids_from_hash(None);
 
 		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = modification * first_vector_transform;
+		*new_instance.transform = modification; // * first_vector_transform;
 	}
 
 	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
+async fn copy_to_points<I: 'n + Send>(
 	_: impl Ctx,
 	points: VectorDataTable,
 	#[expose]
 	#[implementations(VectorDataTable, GraphicGroupTable)]
-	instance: I,
+	instance: Instances<I>,
 	#[default(1)] random_scale_min: f64,
 	#[default(1)] random_scale_max: f64,
 	random_scale_bias: f64,
 	random_scale_seed: SeedValue,
 	random_rotation: Angle,
 	random_rotation_seed: SeedValue,
-) -> GraphicGroupTable {
+) -> GraphicGroupTable
+where
+	Instances<I>: GraphicElementRendered,
+{
 	let points_transform = points.transform();
 	let points_list = points.instances().flat_map(|element| element.instance.point_domain.positions());
 
-	let instance_transform = instance.transform();
+	// let Some(&instance_transform) = instance.instances().next().map(|element| element.transform) else {
+	// 	// TODO: Figure out what to do with this transform
+	// 	todo!()
+	// };
 
 	let random_scale_difference = random_scale_max - random_scale_min;
 
@@ -292,7 +310,8 @@ async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 		new_graphic_element.new_ids_from_hash(None);
 
 		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
+		*new_instance.transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
+		// * instance_transform;
 	}
 
 	result_table

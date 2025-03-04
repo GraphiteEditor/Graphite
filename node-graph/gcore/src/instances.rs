@@ -4,7 +4,7 @@ use crate::raster::Pixel;
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorDataTable};
-use crate::{AlphaBlending, GraphicElement, GraphicGroupTable, RasterFrame};
+use crate::{AlphaBlending, GraphicElement, RasterFrame};
 
 use dyn_any::StaticType;
 
@@ -175,42 +175,6 @@ pub struct InstanceMut<'a, T> {
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
 	pub source_node_id: &'a mut Option<NodeId>,
-}
-
-// GRAPHIC ELEMENT
-impl Transform for GraphicElement {
-	fn transform(&self) -> DAffine2 {
-		match self {
-			// TODO: Figure out what to do with this transform
-			GraphicElement::GraphicGroup(_) => DAffine2::IDENTITY,
-			GraphicElement::VectorData(vector_data) => vector_data.transform(),
-			GraphicElement::RasterFrame(frame) => frame.transform(),
-		}
-	}
-}
-impl TransformMut for GraphicElement {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		match self {
-			// TODO: Figure out what to do with this transform
-			GraphicElement::GraphicGroup(_) => todo!(),
-			GraphicElement::VectorData(vector_data) => vector_data.transform_mut(),
-			GraphicElement::RasterFrame(frame) => frame.transform_mut(),
-		}
-	}
-}
-
-// GRAPHIC GROUP TABLE
-impl Transform for GraphicGroupTable {
-	fn transform(&self) -> DAffine2 {
-		// TODO: Figure out what to do with this transform
-		DAffine2::IDENTITY
-	}
-}
-impl TransformMut for GraphicGroupTable {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		// TODO: Figure out what to do with this transform
-		todo!()
-	}
 }
 
 // VECTOR DATA TABLE

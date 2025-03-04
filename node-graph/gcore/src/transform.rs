@@ -1,4 +1,5 @@
 use crate::application_io::TextureFrameTable;
+use crate::instances::Instances;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
@@ -156,7 +157,7 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-async fn transform<T: 'n + TransformMut + 'static>(
+async fn transform<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Context -> VectorDataTable,
@@ -164,13 +165,13 @@ async fn transform<T: 'n + TransformMut + 'static>(
 		Context -> ImageFrameTable<Color>,
 		Context -> TextureFrameTable,
 	)]
-	transform_target: impl Node<Context<'static>, Output = T>,
+	transform_target: impl Node<Context<'static>, Output = Instances<T>>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
 	_pivot: DVec2,
-) -> T {
+) -> Instances<T> {
 	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	let footprint = ctx.try_footprint().copied();
 
@@ -184,19 +185,21 @@ async fn transform<T: 'n + TransformMut + 'static>(
 
 	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
-	let data_transform = transform_target.transform_mut();
-	*data_transform = modification * (*data_transform);
+	for data_transform in transform_target.instances_mut() {
+		*data_transform.transform = modification * *data_transform.transform;
+	}
 
 	transform_target
 }
 
 #[node_macro::node(category(""))]
-fn replace_transform<Data: TransformMut, TransformInput: Transform>(
+fn replace_transform<Data, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
+	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Instances<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
-) -> Data {
-	let data_transform = data.transform_mut();
-	*data_transform = transform.transform();
+) -> Instances<Data> {
+	for data_transform in data.instances_mut() {
+		*data_transform.transform = transform.transform();
+	}
 	data
 }
