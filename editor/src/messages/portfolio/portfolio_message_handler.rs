@@ -1,3 +1,4 @@
+use super::document::graph_operation::transform_utils;
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface::{self, InputConnector, OutputConnector};
 use super::utility_types::{PanelType, PersistentData};
@@ -20,7 +21,7 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use graphene_core::renderer::Quad;
 
 use bezier_rs::Subpath;
-use glam::{DVec2, IVec2};
+use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
