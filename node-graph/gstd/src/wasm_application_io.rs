@@ -125,8 +125,6 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 
 	let mut scene = Scene::new();
 	let mut child = Scene::new();
-	let graphic_element = data.to_graphic_element();
-	log::debug!("{:?}", graphic_element);
 
 	let mut context = wgpu_executor::RenderContext::default();
 	data.render_to_vello(&mut child, Default::default(), &mut context);
