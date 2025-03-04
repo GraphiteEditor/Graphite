@@ -36,7 +36,7 @@ pub struct ExecutionRequest {
 	render_config: RenderConfig,
 }
 
-#[cfg_attr(feature = "tauri", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
@@ -53,7 +53,7 @@ pub struct CompilationResponse {
 	node_graph_errors: GraphErrors,
 }
 
-#[cfg_attr(feature = "tauri", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
@@ -86,7 +86,7 @@ impl Default for NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// A local runtime is useful on threads since having global state causes flakes
-	#[cfg(test)]
+	#[cfg(all(test, not(feature = "tauri")))]
 	pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();

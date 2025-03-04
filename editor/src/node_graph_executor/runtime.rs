@@ -375,22 +375,22 @@ struct InspectState {
 }
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "tauri", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "decouple-execution", derive(serde::Serialize, serde::Deserialize))]
 pub struct InspectResult {
-	#[cfg(not(feature = "tauri"))]
+	#[cfg(not(feature = "decouple-execution"))]
 	introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
-	#[cfg(feature = "tauri")]
+	#[cfg(feature = "decouple-execution")]
 	introspected_data: Option<TaggedValue>,
 	pub inspect_node: NodeId,
 }
 
 impl InspectResult {
 	pub fn take_data(&mut self) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		#[cfg(not(feature = "tauri"))]
+		#[cfg(not(feature = "decouple-execution"))]
 		return self.introspected_data.clone();
 
-		#[cfg(feature = "tauri")]
-		return self.introspected_data.take().map(|value| value.to_any().into());
+		#[cfg(feature = "decouple-execution")]
+		return self.introspected_data.take().map(|value| value.to_any());
 	}
 }
 
@@ -435,7 +435,7 @@ impl InspectState {
 	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
 		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
 		// TODO: Consider displaying the error instead of ignoring it
-		#[cfg(feature = "tauri")]
+		#[cfg(feature = "decouple-execution")]
 		let introspected_data = introspected_data.as_ref().and_then(|data| TaggedValue::try_from_std_any_ref(data).ok());
 
 		Some(InspectResult {

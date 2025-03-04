@@ -254,11 +254,11 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
 
-	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
+	#[cfg(feature = "vello")]
 	let surface_handle = _surface_handle.eval(None).await;
 
 	let use_vello = editor_api.editor_preferences.use_vello();
-	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
+	#[cfg(feature = "vello")]
 	let use_vello = use_vello && surface_handle.is_some();
 
 	let mut metadata = RenderMetadata {
@@ -274,12 +274,12 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 		ExportFormat::Canvas => {
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
-				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
+				#[cfg(feature = "vello")]
 				return RenderOutput {
 					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap(), render_params).await,
 					metadata,
 				};
-				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]
+				#[cfg(not(feature = "vello"))]
 				render_svg(data, SvgRender::new(), render_params, footprint)
 			} else {
 				render_svg(data, SvgRender::new(), render_params, footprint)

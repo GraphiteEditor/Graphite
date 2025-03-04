@@ -60,7 +60,6 @@ impl NodeRuntimeIO {
 	pub fn send(&self, message: NodeRuntimeMessage) -> Result<(), String> {
 		#[cfg(not(feature = "tauri"))]
 		{
-			log::debug!("dispatching runtime message");
 			self.sender.send(message).map_err(|e| e.to_string())
 		}
 
