@@ -129,22 +129,15 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	log::debug!("{:?}", graphic_element);
 
 	let mut context = wgpu_executor::RenderContext::default();
-	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
-	log::debug!("contains artboard: {}, hide: {}", data.contains_artboard(), render_config.hide_artboards);
-	if !data.contains_artboard() && !render_config.hide_artboards {
-		background = Color::WHITE;
-		let color = peniko::Color::WHITE;
-		let rect = kurbo::Rect::new(-1000., -1000., 1000., 1000.);
-
-		log::debug!("adding to scene");
-		scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(footprint.scale().max_element()), color, None, &rect);
-	}
 	data.render_to_vello(&mut child, Default::default(), &mut context);
 
 	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
-	log::debug!("rendering");
+	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
+	if !data.contains_artboard() && !render_config.hide_artboards {
+		background = Color::WHITE;
+	}
 	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context, background)
 		.await
 		.expect("Failed to render Vello scene");
