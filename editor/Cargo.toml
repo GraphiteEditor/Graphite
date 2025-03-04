@@ -20,7 +20,8 @@ gpu = [
 	"wgpu-executor",
 	"gpu-executor",
 ]
-tauri = ["ron"]
+tauri = ["ron", "decouple-execution"]
+decouple-execution = []
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
 ron = ["dep:ron"]

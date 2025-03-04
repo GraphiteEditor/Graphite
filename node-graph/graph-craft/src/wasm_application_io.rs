@@ -68,6 +68,16 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
+	#[cfg(target_arch = "wasm32")]
+	{
+		log::debug!("testing tauri");
+		if let Some(window) = web_sys::window() {
+			if let Ok(tauri) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")) {
+				log::debug!("enabling wgpu");
+				return Some(true);
+			}
+		}
+	}
 	match WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
@@ -95,6 +105,7 @@ impl WasmApplicationIo {
 		#[cfg(not(target_arch = "wasm32"))]
 		let executor = WgpuExecutor::new().await;
 		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+		// Always enable wgpu when running with tauri
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -292,7 +303,10 @@ impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
 			imaginate_hostname: "http://localhost:7860/".into(),
+			#[cfg(target_arch = "wasm32")]
 			use_vello: false,
+			#[cfg(not(target_arch = "wasm32"))]
+			use_vello: true,
 		}
 	}
 }
