@@ -10,9 +10,14 @@ fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bo
 	value
 }
 
-#[node_macro::node(category("Debug"), skip_impl)]
+#[node_macro::node(category("Debug"))]
 fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
 	format!("{:?}", value)
+}
+use crate::ExtractTime;
+#[node_macro::node(category("Animation"))]
+fn time(ctx: impl Ctx + ExtractTime) -> f64 {
+	ctx.try_time().unwrap_or_default()
 }
 
 #[node_macro::node(category("Debug"))]
