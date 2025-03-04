@@ -44,10 +44,12 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 		let vector_data_tables = graphic_group_table.instances().map(|element| union_vector_data(element.instance));
 
 		// Apply the transform from the parent graphic group
-		let transformed_vector_data = vector_data_tables.map(|mut vector_data_table| {
-			*vector_data_table.transform_mut() = graphic_group_table.transform() * vector_data_table.transform();
-			vector_data_table
-		});
+		let transformed_vector_data = vector_data_tables;
+		// TODO: Figure out what to do with this transform
+		// .map(|mut vector_data_table| {
+		// 	*vector_data_table.transform_mut() = graphic_group_table.transform() * vector_data_table.transform();
+		// 	vector_data_table
+		// });
 		transformed_vector_data.collect::<Vec<_>>()
 	}
 
@@ -160,12 +162,12 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 					#[allow(unused_unsafe)]
 					let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
 					let mut boolean_intersection_result = VectorDataTable::new(from_path(&boolean_intersection_string));
-					*boolean_intersection_result.transform_mut() = all_other_vector_data_instance.transform();
+					*boolean_intersection_result.transform_mut() = *all_other_vector_data_instance.transform;
 
 					boolean_intersection_result.one_instance_mut().instance.style = all_other_vector_data_instance.instance.style.clone();
 					*boolean_intersection_result.one_instance_mut().alpha_blending = *all_other_vector_data_instance.alpha_blending;
 
-					let transform_of_lower_into_space_of_upper = boolean_intersection_result.one_instance_mut().transform().inverse() * any_intersection.transform();
+					let transform_of_lower_into_space_of_upper = boolean_intersection_result.one_instance_mut().transform.inverse() * any_intersection.transform();
 
 					let upper_path_string = to_path(boolean_intersection_result.one_instance_mut().instance, DAffine2::IDENTITY);
 					let lower_path_string = to_path(any_intersection.one_instance_mut().instance, transform_of_lower_into_space_of_upper);

@@ -2,7 +2,7 @@ use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::instances::Instances;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::BlendMode;
-use crate::transform::{Transform, TransformMut};
+use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
@@ -280,14 +280,14 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 pub type ArtboardGroupTable = Instances<Artboard>;
 
 #[node_macro::node(category(""))]
-async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, mut element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
-	if stack.transform().matrix2.determinant() != 0. {
-		*element.transform_mut() = stack.transform().inverse() * element.transform();
-	} else {
-		// TODO: Figure out what to do here
-		// stack.one_instance_mut().instance.clear();
-		// *stack.transform_mut() = DAffine2::IDENTITY;
-	}
+async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
+	// TODO: Figure out what to do with this transform
+	// if stack.transform().matrix2.determinant() != 0. {
+	// 	*element.transform_mut() = stack.transform().inverse() * element.transform();
+	// } else {
+	// 	stack.one_instance_mut().instance.clear();
+	// 	*stack.transform_mut() = DAffine2::IDENTITY;
+	// }
 
 	// Get the penultimate element of the node path, or None if the path is too short
 	let pushed = stack.push(element);
@@ -327,35 +327,41 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 #[node_macro::node(category("General"))]
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
 	fn flatten_group(result_group: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool) {
-		let current_group_elements = current_group_table.instances();
-		for instance in current_group_elements {
+		for instance in current_group_table.instances() {
 			let element = instance.instance.clone();
 			let reference = *instance.source_node_id;
 
-			if let GraphicElement::GraphicGroup(nested_group_table) = element {
-				// Apply the hierarchical transform to the nested group
-				let mut nested_group_table = nested_group_table;
-				*nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
-
-				let mut sub_group_table = GraphicGroupTable::default();
-				if fully_flatten {
-					flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
-				} else {
-					let nested_group_table_transform = nested_group_table.transform();
-					for nested_group_instance in nested_group_table.instances_mut() {
-						let collection_element = nested_group_instance.instance;
-						*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
-					}
-					sub_group_table = nested_group_table;
-				}
-
-				for instance in sub_group_table.instances() {
-					let pushed = result_group.push(instance.instance.clone());
-					*pushed.source_node_id = *instance.source_node_id;
-				}
-			} else {
+			// If the element is not a group, push it directly to the result group and move on to the next GraphicElement instance
+			let GraphicElement::GraphicGroup(nested_group_table) = element else {
 				let pushed = result_group.push(element);
 				*pushed.source_node_id = reference;
+				continue;
+			};
+
+			// Apply the hierarchical transform to the nested group
+			// TODO: Figure out what to do with this transform
+			// *nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
+
+			let sub_group_table = if fully_flatten {
+				let mut sub_group_table = GraphicGroupTable::default();
+
+				flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
+
+				sub_group_table
+			} else {
+				// TODO: Figure out what to do with this transform
+				// let nested_group_table_transform = nested_group_table.transform();
+				// for nested_group_instance in nested_group_table.instances_mut() {
+				// 	let collection_element = nested_group_instance.instance;
+				// 	*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
+				// }
+
+				nested_group_table
+			};
+
+			for instance in sub_group_table.instances() {
+				let pushed = result_group.push(instance.instance.clone());
+				*pushed.source_node_id = *instance.source_node_id;
 			}
 		}
 	}

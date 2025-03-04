@@ -21,25 +21,24 @@ trait VectorIterMut {
 
 impl VectorIterMut for GraphicGroupTable {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
-		let parent_transform = self.transform();
+		// TODO: Figure out what to do with this transform
+		// let parent_transform = self.transform();
 
 		// Grab only the direct children
 		self.instances_mut().filter_map(|element| element.instance.as_vector_data_mut()).map(move |vector_data| {
-			let transform = parent_transform * vector_data.transform();
+			// let transform = parent_transform * vector_data.transform();
 
 			let vector_data_instance = vector_data.one_instance_mut().instance;
 
-			(vector_data_instance, transform)
+			// (vector_data_instance, transform)
+			(vector_data_instance, DAffine2::IDENTITY)
 		})
 	}
 }
 
 impl VectorIterMut for VectorDataTable {
 	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
-		self.instances_mut().map(|instance| {
-			let transform = instance.transform();
-			(instance.instance, transform)
-		})
+		self.instances_mut().map(|instance| (instance.instance, *instance.transform))
 	}
 }
 
@@ -184,16 +183,15 @@ async fn repeat<I: 'n + GraphicElementRendered + Transform + TransformMut + Send
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	for i in 0..instances {
-		let translation = i as f64 * direction / total;
 		let angle = i as f64 * angle / total;
-		let mut new_instance = result_table.instances().last().map(|element| element.instance.clone()).unwrap_or(instance.to_graphic_element());
-		new_instance.new_ids_from_hash(None);
+		let translation = i as f64 * direction / total;
 		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let data_transform = new_instance.transform_mut();
-		*data_transform = modification * first_vector_transform;
+		let mut new_graphic_element = instance.to_graphic_element().clone();
+		new_graphic_element.new_ids_from_hash(None);
 
-		result_table.push(new_instance);
+		let new_instance = result_table.push(new_graphic_element);
+		*new_instance.transform = modification * first_vector_transform;
 	}
 
 	result_table
@@ -219,15 +217,14 @@ async fn circular_repeat<I: 'n + GraphicElementRendered + Transform + TransformM
 	let base_transform = DVec2::new(0., radius) - center;
 
 	for i in 0..instances {
-		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
-		let rotation = DAffine2::from_angle(angle);
+		let rotation = DAffine2::from_angle((std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians());
 		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		let mut new_instance = result_table.instances().last().map(|element| element.instance.clone()).unwrap_or(instance.to_graphic_element());
-		new_instance.new_ids_from_hash(None);
 
-		let data_transform = new_instance.transform_mut();
-		*data_transform = modification * first_vector_transform;
-		result_table.push(new_instance);
+		let mut new_graphic_element = instance.to_graphic_element().clone();
+		new_graphic_element.new_ids_from_hash(None);
+
+		let new_instance = result_table.push(new_graphic_element);
+		*new_instance.transform = modification * first_vector_transform;
 	}
 
 	result_table
@@ -291,12 +288,11 @@ async fn copy_to_points<I: GraphicElementRendered + TransformMut + Send + 'n>(
 			random_scale_min
 		};
 
-		let mut new_instance = result_table.instances().last().map(|element| element.instance.clone()).unwrap_or(instance.to_graphic_element());
-		new_instance.new_ids_from_hash(None);
+		let mut new_graphic_element = instance.to_graphic_element().clone();
+		new_graphic_element.new_ids_from_hash(None);
 
-		let data_transform = new_instance.transform_mut();
-		*data_transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
-		result_table.push(new_instance);
+		let new_instance = result_table.push(new_graphic_element);
+		*new_instance.transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform * instance_transform;
 	}
 
 	result_table
@@ -409,13 +405,14 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 						*result.alpha_blending = *instance.alpha_blending;
 						result.instance.concat(
 							instance.instance,
-							current_transform * instance.transform(),
+							current_transform * *instance.transform,
 							element.source_node_id.map(|node_id| node_id.0).unwrap_or_default(),
 						);
 					}
 				}
 				GraphicElement::GraphicGroup(graphic_group) => {
-					concat_group(graphic_group, current_transform * graphic_group.transform(), result);
+					// TODO: Figure out what to do with this transform
+					concat_group(graphic_group, current_transform /* * graphic_group.transform() */, result);
 				}
 				_ => {}
 			}
@@ -440,7 +437,9 @@ impl ConcatElement for GraphicGroupTable {
 		// TODO: Reduce cloning in this function
 
 		let mut other = other.clone();
-		let other_transform = other.transform();
+		// TODO: Figure out what to do with this transform
+		// let other_transform = other.transform();
+		let other_transform = DAffine2::IDENTITY;
 
 		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
 		for element in other.instances_mut() {
@@ -1119,7 +1118,7 @@ mod test {
 		// Test a VectorData with non-zero rotation
 		let square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
 		let mut square = VectorDataTable::new(square);
-		*square.one_instance_mut().transform_mut() *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
+		*square.one_instance_mut().transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
 		let bounding_box = BoundingBoxNode {
 			vector_data: FutureWrapperNode(square),
 		}
@@ -1273,8 +1272,7 @@ mod test {
 		let vector_data = VectorData::from_subpath(source);
 		let mut vector_data_table = VectorDataTable::new(vector_data.clone());
 
-		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
-		*vector_data_table.one_instance_mut().transform_mut() = transform;
+		*vector_data_table.one_instance_mut().transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 
 		let beveled = super::bevel((), VectorDataTable::new(vector_data), 5.);
 		let beveled = beveled.instances().next().unwrap().instance;

@@ -1,4 +1,3 @@
-use crate::transform::Transform;
 use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
 use crate::vector::ConcatElement;
 
@@ -806,7 +805,7 @@ impl ConcatElement for VectorDataTable {
 	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
 		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
 			*instance.alpha_blending = *other_instance.alpha_blending;
-			instance.instance.concat(other_instance.instance, transform * other_instance.transform(), node_id);
+			instance.instance.concat(other_instance.instance, transform * *other_instance.transform, node_id);
 		}
 	}
 }
