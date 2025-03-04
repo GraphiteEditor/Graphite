@@ -911,6 +911,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(Message::StartBuffer);
 						responses.add(PortfolioMessage::CenterPastedLayers { layers });
 					}
 				}
@@ -921,11 +922,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let viewport_center = viewport_bounds.center();
 					let transform = document.metadata().document_to_viewport;
 
-					let viewport_points = Quad::from_box_at_zero(ipp.viewport_bounds.size()).0;
-
-					let inv_transform = transform.inverse();
-					let doc_viewport_points = viewport_points.map(|p| inv_transform.transform_point2(p));
-					let viewport_in_doc_space = Quad(doc_viewport_points);
+					let viewport_in_doc_space = transform.inverse() * viewport_bounds;
+					let viewport_center_in_doc_space = transform.inverse().transform_point2(viewport_center);
 
 					let mut positions = Vec::new();
 
@@ -963,21 +961,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					if !positions.is_empty() {
 						let mean_pos = positions.iter().fold(glam::DVec2::ZERO, |acc, (_, pos, _)| acc + *pos) / positions.len() as f64;
+						let doc_space_translation = viewport_center_in_doc_space - mean_pos;
 
 						for (layer, pos, is_artboard) in positions {
-							let offset_from_center = pos - mean_pos;
-							let new_pos = viewport_center + transform.transform_vector2(offset_from_center);
-
 							if is_artboard {
 								if let Some(bounds) = document.metadata().bounding_box_document(layer) {
 									let dimensions = (bounds[1] - bounds[0]).round().as_ivec2();
+									let new_artboard_pos = pos + doc_space_translation - bounds[1].midpoint(bounds[0]);
+
 									responses.add(GraphOperationMessage::ResizeArtboard {
 										layer,
-										location: new_pos.round().as_ivec2(),
+										location: new_artboard_pos.round().as_ivec2(),
 										dimensions,
 									});
 								}
 							} else {
+								let offset_from_center = pos - mean_pos;
+								let new_pos = viewport_center + transform.transform_vector2(offset_from_center);
+
 								let mut new_transform = transform;
 								new_transform.translation = new_pos;
 								responses.add(GraphOperationMessage::TransformSet {
