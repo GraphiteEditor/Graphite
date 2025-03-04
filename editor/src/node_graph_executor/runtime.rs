@@ -154,7 +154,6 @@ impl NodeRuntime {
 		let requests = [font, preferences, graph, execution].into_iter().flatten();
 
 		for request in requests {
-			dbg!(&request);
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => {
 					self.editor_api = WasmEditorApi {

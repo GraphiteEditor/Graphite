@@ -43,13 +43,18 @@ async fn main() {
 	fern::Dispatch::new()
 		.chain(std::io::stdout())
 		.level(log::LevelFilter::Trace)
+		.level_for("naga", log::LevelFilter::Error)
+		.level_for("wgpu-hal", log::LevelFilter::Error)
+		.level_for("wgpu_hal", log::LevelFilter::Error)
+		.level_for("wgpu_core", log::LevelFilter::Error)
 		.format(move |out, message, record| {
 			out.finish(format_args!(
-				"[{}]{} {}",
+				"[{}]{} {} {}",
 				// This will color the log level only, not the whole line. Just a touch.
 				colors.color(record.level()),
 				chrono::Utc::now().format("[%Y-%m-%d %H:%M:%S]"),
-				message
+				message,
+				record.module_path().unwrap_or("")
 			))
 		})
 		.apply()
@@ -91,12 +96,7 @@ async fn main() {
 #[tauri::command]
 fn poll_node_graph() -> String {
 	let vec: Vec<_> = NODE_RUNTIME_IO.lock().as_mut().unwrap().as_mut().unwrap().receive().collect();
-	if !vec.is_empty() {
-		log::error!("responding");
-		dbg!(ron::to_string(&vec).unwrap())
-	} else {
-		ron::to_string(&vec).unwrap()
-	}
+	ron::to_string(&vec).unwrap()
 }
 
 #[tauri::command]
@@ -109,5 +109,5 @@ fn runtime_message(message: String) -> Result<(), String> {
 		}
 	};
 	let response = NODE_RUNTIME_IO.lock().as_ref().unwrap().as_ref().unwrap().send(message);
-	dbg!(response)
+	response
 }
