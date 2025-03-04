@@ -922,13 +922,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					let mut positions = Vec::new();
 
-					for layer in &layers {
-						if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(*layer, &mut document.network_interface, responses) {
-							if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
-								if let Some(network) = modify_inputs.network_interface.network(&[]) {
-									if let Some(node) = network.nodes.get(&transform_node_id) {
-										let current_transform = transform_utils::get_current_transform(&node.inputs);
-										positions.push((*layer, current_transform.translation));
+					for &layer in &layers {
+						if document.network_interface.is_artboard(&layer.to_node(), &[]) {
+							if let Some(bounds) = document.metadata().bounding_box_document(layer) {
+								positions.push((layer, bounds[0], true));
+							}
+						} else {
+							if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, responses) {
+								if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
+									if let Some(network) = modify_inputs.network_interface.network(&[]) {
+										if let Some(node) = network.nodes.get(&transform_node_id) {
+											let current_transform = transform_utils::get_current_transform(&node.inputs);
+											positions.push((layer, current_transform.translation, false));
+										}
 									}
 								}
 							}
@@ -936,22 +942,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					if !positions.is_empty() {
-						let mean_pos = positions.iter().fold(glam::DVec2::ZERO, |acc, (_, pos)| acc + *pos) / positions.len() as f64;
-						let mut transform = document.metadata().document_to_viewport;
+						let mean_pos = positions.iter().fold(glam::DVec2::ZERO, |acc, (_, pos, _)| acc + *pos) / positions.len() as f64;
+						let transform = document.metadata().document_to_viewport;
 
-						// Center each layer maintaining relative positions
-						for (layer, pos) in positions {
+						for (layer, pos, is_artboard) in positions {
 							let offset_from_center = pos - mean_pos;
 							let new_pos = viewport_center + transform.transform_vector2(offset_from_center);
-							transform.translation = new_pos;
 
-							responses.add(GraphOperationMessage::TransformSet {
-								layer,
-								transform,
-								transform_in: TransformIn::Viewport,
-								skip_rerender: false,
-							});
+							if is_artboard {
+								if let Some(bounds) = document.metadata().bounding_box_document(layer) {
+									let dimensions = (bounds[1] - bounds[0]).round().as_ivec2();
+									responses.add(GraphOperationMessage::ResizeArtboard {
+										layer,
+										location: new_pos.round().as_ivec2(),
+										dimensions,
+									});
+								}
+							} else {
+								let mut new_transform = transform;
+								new_transform.translation = new_pos;
+								responses.add(GraphOperationMessage::TransformSet {
+									layer,
+									transform: new_transform,
+									transform_in: TransformIn::Viewport,
+									skip_rerender: false,
+								});
+							}
 						}
+
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
