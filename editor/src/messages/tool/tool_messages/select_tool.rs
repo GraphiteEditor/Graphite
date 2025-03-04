@@ -249,10 +249,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 			responses.add(ToolMessage::UpdateHints);
 		}
 
-		if matches!(message, ToolMessage::Select(SelectToolMessage::PointerMove(_))) && !self.tool_data.has_dragged {
-			responses.add(ToolMessage::UpdateHints);
-		}
-
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
 		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
@@ -293,8 +289,8 @@ impl ToolTransition for SelectTool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
-	Drawing { selection_shape: SelectionShapeType },
-	Dragging { axis: Axis, using_compass: bool },
+	Drawing { selection_shape: SelectionShapeType, has_drawn: bool },
+	Dragging { axis: Axis, using_compass: bool, has_dragged: bool },
 	ResizingBounds,
 	SkewingBounds { skew: Key },
 	RotatingBounds,
@@ -317,7 +313,6 @@ struct SelectToolData {
 	layers_dragging: Vec<LayerNodeIdentifier>,
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
-	has_dragged: bool,
 	axis_align: bool,
 	non_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
 	bounding_box_manager: Option<BoundingBoxManager>,
@@ -576,7 +571,7 @@ impl Fsm for SelectToolFsmState {
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
 
-				let show_hover_ring = if let SelectToolFsmState::Dragging { axis, using_compass } = self {
+				let show_hover_ring = if let SelectToolFsmState::Dragging { axis, using_compass, .. } = self {
 					using_compass && !axis.is_constraint()
 				} else {
 					compass_rose_state.is_ring()
@@ -689,7 +684,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Check if the tool is in selection mode
-				if let Self::Drawing { selection_shape } = self {
+				if let Self::Drawing { selection_shape, .. } = self {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
@@ -905,7 +900,7 @@ impl Fsm for SelectToolFsmState {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging { axis, using_compass }
+					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false }
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -957,10 +952,10 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false }
+						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false }
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-						SelectToolFsmState::Drawing { selection_shape }
+						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
 					}
 				};
 				tool_data.non_duplicated_layers = None;
@@ -973,9 +968,10 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis, using_compass }, SelectToolMessage::PointerMove(modifier_keys)) => {
-				tool_data.has_dragged = true;
-
+			(SelectToolFsmState::Dragging { axis, using_compass, has_dragged }, SelectToolMessage::PointerMove(modifier_keys)) => {
+				if !has_dragged {
+					responses.add(ToolMessage::UpdateHints);
+				}
 				if input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_none() {
 					tool_data.start_duplicates(document, responses);
 				} else if !input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_some() {
@@ -1020,7 +1016,11 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				SelectToolFsmState::Dragging { axis, using_compass }
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged: true,
+				}
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
@@ -1159,7 +1159,11 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::Drawing { selection_shape }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::Drawing { selection_shape, has_drawn }, SelectToolMessage::PointerMove(modifier_keys)) => {
+				if !has_drawn {
+					responses.add(ToolMessage::UpdateHints);
+				}
+
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
@@ -1174,7 +1178,7 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				SelectToolFsmState::Drawing { selection_shape }
+				SelectToolFsmState::Drawing { selection_shape, has_drawn: true }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
 				let dragging_bounds = tool_data
@@ -1204,14 +1208,14 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis, using_compass }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::Dragging { axis, using_compass, has_dragged }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
 				}
 
-				SelectToolFsmState::Dragging { axis, using_compass }
+				SelectToolFsmState::Dragging { axis, using_compass, has_dragged }
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
@@ -1260,12 +1264,12 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Dragging { has_dragged, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.axis_align = false;
 
-				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
+				if !has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad_no_artboards(quad, input);
@@ -1298,7 +1302,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
 					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
-					if !tool_data.has_dragged {
+					if !has_dragged {
 						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
 							log::error!("selecting_layer should not be ROOT_PARENT");
 						} else {
@@ -1309,7 +1313,6 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				tool_data.has_dragged = false;
 				tool_data.layer_selected_on_start = None;
 
 				tool_data.snap_manager.cleanup(responses);
@@ -1360,7 +1363,7 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Drawing { selection_shape }, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				let quad = tool_data.selection_quad();
 
 				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
@@ -1483,11 +1486,11 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(responses, tool_data);
+				self.update_hints(responses);
 				true
 			}
 			ToolMessage::UpdateCursor => {
@@ -1498,7 +1501,7 @@ impl Fsm for SelectToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
@@ -1530,7 +1533,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Dragging { axis, using_compass } if tool_data.has_dragged => {
+			SelectToolFsmState::Dragging { axis, using_compass, has_dragged } if *has_dragged => {
 				let mut hint_data = vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![
@@ -1545,7 +1548,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(hint_data);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Drawing { .. } if tool_data.drag_start != tool_data.drag_current => {
+			SelectToolFsmState::Drawing { has_drawn, .. } if *has_drawn => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
