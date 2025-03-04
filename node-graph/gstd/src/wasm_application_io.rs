@@ -136,7 +136,11 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
-	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context)
+	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
+	if !data.contains_artboard() && !render_config.hide_artboards {
+		background = Color::WHITE;
+	}
+	exec.render_vello_scene(&scene, &surface_handle, footprint.resolution.x, footprint.resolution.y, &context, background)
 		.await
 		.expect("Failed to render Vello scene");
 
