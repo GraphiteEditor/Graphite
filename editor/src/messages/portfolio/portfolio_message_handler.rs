@@ -294,6 +294,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
 			}
+			PortfolioMessage::Time(timestamp) => {
+				self.executor.update_time(timestamp);
+			}
 			PortfolioMessage::FontLoaded {
 				font_family,
 				font_style,

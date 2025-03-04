@@ -280,6 +280,10 @@ impl OwnedContextImpl {
 		self.footprint = Some(footprint);
 		self
 	}
+	pub fn with_time(mut self, time: f64) -> Self {
+		self.time = Some(time);
+		self
+	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
 		Some(Arc::new(self))
 	}

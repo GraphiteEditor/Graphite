@@ -14,5 +14,6 @@ pub enum InputPreprocessorMessage {
 	PointerMove { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerUp { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	FrameTimeAdvance { timestamp: Duration },
+	CurrentTime { timestamp: u64 },
 	WheelScroll { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 }

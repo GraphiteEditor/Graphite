@@ -254,6 +254,7 @@ pub enum ExportFormat {
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
+	pub time: u64,
 	pub view_mode: ViewMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,

@@ -118,6 +118,7 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	ToggleRulers,
+	Time(u64),
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateVelloPreference,

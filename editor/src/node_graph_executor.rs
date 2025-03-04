@@ -371,6 +371,7 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
+	time: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -389,6 +390,7 @@ impl Default for NodeGraphExecutor {
 			sender: request_sender,
 			receiver: response_receiver,
 			node_graph_hash: 0,
+			time: 0,
 		}
 	}
 }
@@ -490,6 +492,7 @@ impl NodeGraphExecutor {
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_core::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
+			time: self.time,
 			hide_artboards: false,
 			for_export: false,
 		};
@@ -529,6 +532,7 @@ impl NodeGraphExecutor {
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
+			time: self.time,
 			export_format: graphene_core::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
@@ -709,6 +713,11 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 		Ok(())
+	}
+
+	pub(crate) fn update_time(&mut self, timestamp: u64) {
+		log::debug!("time: {}", timestamp);
+		self.time = timestamp;
 	}
 }
 
