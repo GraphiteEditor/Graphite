@@ -135,7 +135,7 @@ pub use graphene_core::renderer::RenderContext;
 // }
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext) -> Result<()> {
+	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext, background: Color) -> Result<()> {
 		let surface = &surface.surface.inner;
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		surface.configure(
@@ -153,13 +153,15 @@ impl WgpuExecutor {
 		);
 		let surface_texture = surface.get_current_texture()?;
 
+		let [r, g, b, _] = background.to_rgba8_srgb();
+		log::debug!("r: {r}, g: {g}, b: {b}");
 		let render_params = RenderParams {
 			// We are using an explicit opaque color here to eliminate the alpha premultiplication step
 			// which would be required to support a transparent webgpu canvas
-			base_color: vello::peniko::Color::from_rgba8(0x22, 0x22, 0x22, 0xff),
+			base_color: vello::peniko::Color::from_rgba8(r, g, b, 0xff),
 			width,
 			height,
-			antialiasing_method: AaConfig::Msaa8,
+			antialiasing_method: AaConfig::Msaa16,
 		};
 
 		{
