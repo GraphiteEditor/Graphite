@@ -168,10 +168,22 @@ fn upgrade_network(document: &mut DocumentMessageHandler, network_path: &[NodeId
 		document.network_interface.delete_nodes(vec![NodeId(0)], true, network_path);
 	}
 
-	let node_ids: Vec<_> = document.network_interface.network(&[]).unwrap().recursive_nodes().map(|(&id, _)| id).collect();
+	let mut network = document.network_interface.network(&[]).unwrap().clone();
+	network.generate_node_paths(&[]);
+
+	let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
 
 	// Apply upgrades to each node
-	for node_id in &node_ids {
+	for (node_id, path) in &node_ids {
+		let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
+		let network_path = &network_path;
+
+		let network_interface = &mut document.network_interface;
+
+		// Apply general node upgrades
+		if let Err(e) = upgrade_node_manual_composition(network_interface, node_id, network_path) {
+			log::error!("Failed to upgrade manual composition for node {node_id}: {e}");
+		}
 		// Get node metadata
 		let node_metadata = match network_metadata.persistent_metadata.node_metadata.get(node_id) {
 			Some(metadata) => metadata,
@@ -189,12 +201,6 @@ fn upgrade_network(document: &mut DocumentMessageHandler, network_path: &[NodeId
 				continue;
 			}
 		};
-		let network_interface = &mut document.network_interface;
-
-		// Apply general node upgrades
-		if let Err(e) = upgrade_node_manual_composition(network_interface, node_id, network_path) {
-			log::error!("Failed to upgrade manual composition for node {node_id}: {e}");
-		}
 
 		// Apply node-specific upgrades
 		let result = match reference.as_str() {
