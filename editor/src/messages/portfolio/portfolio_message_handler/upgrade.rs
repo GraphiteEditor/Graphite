@@ -184,6 +184,10 @@ fn upgrade_network(document: &mut DocumentMessageHandler, network_path: &[NodeId
 		if let Err(e) = upgrade_node_manual_composition(network_interface, node_id, network_path) {
 			log::error!("Failed to upgrade manual composition for node {node_id}: {e}");
 		}
+
+		// TODO: This does not work for nested nodes because we can't access
+		// the reference of nodes in subgraphs
+
 		// Get node metadata
 		let node_metadata = match network_metadata.persistent_metadata.node_metadata.get(node_id) {
 			Some(metadata) => metadata,
@@ -232,9 +236,6 @@ fn upgrade_network(document: &mut DocumentMessageHandler, network_path: &[NodeId
 				log::error!("Failed to upgrade node {node_id} from definition: {e}");
 			}
 		}
-
-		// Recursively upgrade sub-networks if this node has them
-		// Note: Would need network traversal logic here if nodes can have sub-networks
 	}
 
 	Ok(())
