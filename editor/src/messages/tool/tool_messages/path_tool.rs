@@ -174,8 +174,9 @@ impl LayoutHolder for PathTool {
 		})
 		// TODO: Remove `unwrap_or_default` once checkboxes are capable of displaying a mixed state
 		.unwrap_or_default();
+		let should_disable_colinear = self.tool_data.selection_status.is_none() || self.tool_data.is_endpoint;
 		let colinear_handle_checkbox = CheckboxInput::new(colinear_handles_state)
-			.disabled(self.tool_data.selection_status.is_none())
+			.disabled(should_disable_colinear)
 			.on_update(|&CheckboxInput { checked, .. }| {
 				if checked {
 					PathToolMessage::ManipulatorMakeHandlesColinear.into()
@@ -185,10 +186,7 @@ impl LayoutHolder for PathTool {
 			})
 			.tooltip(colinear_handles_tooltip)
 			.widget_holder();
-		let colinear_handles_label = TextLabel::new("Colinear Handles")
-			.disabled(self.tool_data.selection_status.is_none())
-			.tooltip(colinear_handles_tooltip)
-			.widget_holder();
+		let colinear_handles_label = TextLabel::new("Colinear Handles").disabled(should_disable_colinear).tooltip(colinear_handles_tooltip).widget_holder();
 
 		let path_overlay_mode_widget = RadioInput::new(vec![
 			RadioEntryData::new("all")
@@ -372,6 +370,7 @@ struct PathToolData {
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
+	is_endpoint: bool,
 }
 
 impl PathToolData {
@@ -1303,6 +1302,19 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 				tool_data.selection_status = get_selection_status(&document.network_interface, shape_editor);
+
+				tool_data.is_endpoint = false;
+				if let SelectionStatus::One(point) = &tool_data.selection_status {
+					if let ManipulatorPointId::Anchor(anchor_id) = point.id {
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(point.layer) {
+							tool_data.is_endpoint = vector_data.connected_count(anchor_id) <= 1;
+						}
+					} else if let Some(anchor_id) = point.id.get_anchor(&document.network_interface.compute_modified_vector(point.layer).unwrap_or_default()) {
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(point.layer) {
+							tool_data.is_endpoint = vector_data.connected_count(anchor_id) <= 1;
+						}
+					}
+				}
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
