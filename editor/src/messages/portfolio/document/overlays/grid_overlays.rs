@@ -211,16 +211,16 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 
 pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	let mut widgets = Vec::new();
-	fn update_val<I>(grid: &GridSnapping, update: impl Fn(&mut GridSnapping, &I)) -> impl Fn(&I) -> Message {
-		let grid = grid.clone();
+	fn update_val<I, F: Fn(&mut GridSnapping, &I)>(grid: &GridSnapping, update: F) -> impl Fn(&I) -> Message + use<I, F> {
+		let new_grid = grid.clone();
 		move |input: &I| {
-			let mut grid = grid.clone();
+			let mut grid = new_grid.clone();
 			update(&mut grid, input);
 			DocumentMessage::GridOptions(grid).into()
 		}
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
-		update_val::<NumberInput>(grid, move |grid, val| {
+		update_val::<NumberInput, _>(grid, move |grid, val| {
 			if let Some(val) = val.value {
 				if let Some(update) = update(grid) {
 					*update = val;
@@ -229,7 +229,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
-		update_val::<ColorInput>(grid, move |grid, color| {
+		update_val::<ColorInput, _>(grid, move |grid, color| {
 			if let FillChoice::Solid(color) = color.value {
 				if let Some(update_color) = update(grid) {
 					*update_color = color;
@@ -238,7 +238,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_display = |grid, update: fn(&mut GridSnapping) -> Option<&mut bool>| {
-		update_val::<CheckboxInput>(grid, move |grid, checkbox| {
+		update_val::<CheckboxInput, _>(grid, move |grid, checkbox| {
 			if let Some(update) = update(grid) {
 				*update = checkbox.checked;
 			}
