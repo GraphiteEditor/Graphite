@@ -58,7 +58,7 @@ pub enum OldNodeInput {
 }
 
 // TODO: Eventually remove this document upgrade code
-#[cfg(feature = "serde")]
+#[cfg(all(feature = "serde", target_arch = "wasm32"))]
 fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
 	D: serde::Deserializer<'de>,
