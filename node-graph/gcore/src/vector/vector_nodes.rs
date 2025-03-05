@@ -16,29 +16,21 @@ use rand::{Rng, SeedableRng};
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = &mut VectorData>;
 }
 
 impl VectorIterMut for GraphicGroupTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
-		// TODO: Figure out what to do with this transform
-		// let parent_transform = self.transform();
-
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = &mut VectorData> {
 		// Grab only the direct children
-		self.instances_mut().filter_map(|element| element.instance.as_vector_data_mut()).map(move |vector_data| {
-			// let transform = parent_transform * vector_data.transform();
-
-			let vector_data_instance = vector_data.one_instance_mut().instance;
-
-			// (vector_data_instance, transform)
-			(vector_data_instance, DAffine2::IDENTITY)
-		})
+		self.instances_mut()
+			.filter_map(|element| element.instance.as_vector_data_mut())
+			.map(move |vector_data| vector_data.one_instance_mut().instance)
 	}
 }
 
 impl VectorIterMut for VectorDataTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = (&mut VectorData, DAffine2)> {
-		self.instances_mut().map(|instance| (instance.instance, *instance.transform))
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = &mut VectorData> {
+		self.instances_mut().map(|instance| instance.instance)
 	}
 }
 
@@ -61,7 +53,7 @@ async fn assign_colors<T: VectorIterMut>(
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	for (i, (vector_data, _)) in vector_group.vector_iter_mut().enumerate() {
+	for (i, vector_data) in vector_group.vector_iter_mut().enumerate() {
 		let factor = match randomize {
 			true => rng.random::<f64>(),
 			false => match repeat_every {
@@ -116,7 +108,7 @@ async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Sen
 	_backup_gradient: Gradient,
 ) -> TargetTy {
 	let fill: Fill = fill.into();
-	for (target, _transform) in vector_data.vector_iter_mut() {
+	for target in vector_data.vector_iter_mut() {
 		target.style.set_fill(fill.clone());
 	}
 
@@ -152,8 +144,8 @@ async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMu
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
 	};
-	for (target, transform) in vector_data.vector_iter_mut() {
-		target.style.set_stroke(Stroke { transform, ..stroke.clone() });
+	for target in vector_data.vector_iter_mut() {
+		target.style.set_stroke(stroke.clone());
 	}
 
 	vector_data
@@ -173,11 +165,6 @@ async fn repeat<I: 'n + Send>(
 where
 	Instances<I>: GraphicElementRendered,
 {
-	// let Some(&first_vector_transform) = instance.instances().next().map(|element| element.transform) else {
-	// 	// TODO: Figure out what to do with this transform
-	// 	todo!()
-	// };
-
 	let angle = angle.to_radians();
 	let instances = instances.max(1);
 	let total = (instances - 1) as f64;
@@ -197,7 +184,7 @@ where
 		new_graphic_element.new_ids_from_hash(None);
 
 		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = modification; // * first_vector_transform;
+		*new_instance.transform = modification;
 	}
 
 	result_table
@@ -215,10 +202,6 @@ async fn circular_repeat<I: 'n + Send>(
 where
 	Instances<I>: GraphicElementRendered,
 {
-	// let Some(&first_vector_transform) = instance.instances().next().map(|element| element.transform) else {
-	// 	// TODO: Figure out what to do with this transform
-	// 	todo!()
-	// };
 	let instances = instances.max(1);
 
 	let mut result_table = GraphicGroupTable::default();
@@ -236,7 +219,7 @@ where
 		new_graphic_element.new_ids_from_hash(None);
 
 		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = modification; // * first_vector_transform;
+		*new_instance.transform = modification;
 	}
 
 	result_table
@@ -261,11 +244,6 @@ where
 {
 	let points_transform = points.transform();
 	let points_list = points.instances().flat_map(|element| element.instance.point_domain.positions());
-
-	// let Some(&instance_transform) = instance.instances().next().map(|element| element.transform) else {
-	// 	// TODO: Figure out what to do with this transform
-	// 	todo!()
-	// };
 
 	let random_scale_difference = random_scale_max - random_scale_min;
 
@@ -311,7 +289,6 @@ where
 
 		let new_instance = result_table.push(new_graphic_element);
 		*new_instance.transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
-		// * instance_transform;
 	}
 
 	result_table
@@ -416,61 +393,40 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
 	// a flatten vector elements connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
-	fn concat_group(graphic_group_table: &GraphicGroupTable, current_transform: DAffine2, result: &mut InstanceMut<VectorData>) {
-		for element in graphic_group_table.instances() {
-			match element.instance {
-				GraphicElement::VectorData(vector_data) => {
-					for instance in vector_data.instances() {
-						*result.alpha_blending = *instance.alpha_blending;
-						result.instance.concat(
-							instance.instance,
-							current_transform * *instance.transform,
-							element.source_node_id.map(|node_id| node_id.0).unwrap_or_default(),
-						);
+	fn flatten_group(graphic_group_table: &GraphicGroupTable, output: &mut InstanceMut<VectorData>) {
+		for current_element in graphic_group_table.instances() {
+			match current_element.instance {
+				GraphicElement::VectorData(vector_data_table) => {
+					// Loop through every row of the VectorDataTable and concatenate each instance's subpath into the output VectorData instance.
+					for vector_data_instance in vector_data_table.instances() {
+						let other = vector_data_instance.instance;
+						let transform = *current_element.transform * *vector_data_instance.transform;
+						let node_id = current_element.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
+						output.instance.concat(other, transform, node_id);
+
+						// Use the last encountered style as the output style
+						output.instance.style = vector_data_instance.instance.style.clone();
 					}
 				}
 				GraphicElement::GraphicGroup(graphic_group) => {
-					// TODO: Figure out what to do with this transform
-					concat_group(graphic_group, current_transform /* * graphic_group.transform() */, result);
+					let mut graphic_group = graphic_group.clone();
+					for instance in graphic_group.instances_mut() {
+						*instance.transform = *current_element.transform * *instance.transform;
+					}
+
+					flatten_group(&graphic_group, output);
 				}
 				_ => {}
 			}
 		}
 	}
 
-	let mut result_table = VectorDataTable::default();
-	let mut result_instance = result_table.one_instance_mut();
-	// TODO: This leads to incorrect stroke widths when flattening groups with different transforms.
-	result_instance.instance.style.set_stroke_transform(DAffine2::IDENTITY);
-	concat_group(&graphic_group_input, DAffine2::IDENTITY, &mut result_instance);
+	let mut output_table = VectorDataTable::default();
+	let Some(mut output) = output_table.instances_mut().next() else { return output_table };
 
-	result_table
-}
+	flatten_group(&graphic_group_input, &mut output);
 
-pub trait ConcatElement {
-	fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64);
-}
-
-impl ConcatElement for GraphicGroupTable {
-	fn concat(&mut self, other: &Self, transform: DAffine2, _node_id: u64) {
-		// TODO: Reduce cloning in this function
-
-		let mut other = other.clone();
-		// TODO: Figure out what to do with this transform
-		// let other_transform = other.transform();
-		let other_transform = DAffine2::IDENTITY;
-
-		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
-		for element in other.instances_mut() {
-			*element.transform = transform * *element.transform * other_transform;
-			let pushed = self.push(element.instance.clone());
-			*pushed.source_node_id = *element.source_node_id;
-		}
-
-		self.instances_mut().zip(other.instances()).for_each(|(element, other_element)| {
-			*element.alpha_blending = *other_element.alpha_blending;
-		});
-	}
+	output_table
 }
 
 #[node_macro::node(category(""), path(graphene_core::vector))]

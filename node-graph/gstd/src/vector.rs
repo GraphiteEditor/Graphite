@@ -13,44 +13,53 @@ use std::ops::Mul;
 
 #[node_macro::node(category(""))]
 async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
-	fn vector_from_image<T: Transform>(image_frame: T) -> VectorDataTable {
-		let corner1 = DVec2::ZERO;
-		let corner2 = DVec2::new(1., 1.);
+	fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDataTable> {
+		graphic_group_table
+			.instances()
+			.map(|element| match element.instance.clone() {
+				GraphicElement::VectorData(mut vector_data) => {
+					// Apply the parent group's transform to each element of vector data
+					for sub_vector_data in vector_data.instances_mut() {
+						*sub_vector_data.transform = *element.transform * *sub_vector_data.transform;
+					}
 
-		let mut subpath = Subpath::new_rect(corner1, corner2);
-		subpath.apply_transform(image_frame.transform());
+					vector_data
+				}
+				GraphicElement::RasterFrame(mut image) => {
+					// Apply the parent group's transform to each element of raster data
+					match &mut image {
+						graphene_core::RasterFrame::ImageFrame(image) => {
+							for instance in image.instances_mut() {
+								*instance.transform = *element.transform * *instance.transform;
+							}
+						}
+						graphene_core::RasterFrame::TextureFrame(image) => {
+							for instance in image.instances_mut() {
+								*instance.transform = *element.transform * *instance.transform;
+							}
+						}
+					}
 
-		let mut vector_data = VectorData::from_subpath(subpath);
-		vector_data.style.set_fill(Fill::Solid(Color::from_rgb_str("777777").unwrap().to_gamma_srgb()));
+					// Convert the image frame into a rectangular subpath with the image's transform
+					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+					subpath.apply_transform(image.transform());
 
-		VectorDataTable::new(vector_data)
-	}
+					// Create a vector data table from the rectangular subpath, with a default black fill
+					let mut vector_data = VectorData::from_subpath(subpath);
+					vector_data.style.set_fill(Fill::Solid(Color::BLACK));
+					VectorDataTable::new(vector_data)
+				}
+				GraphicElement::GraphicGroup(mut graphic_group) => {
+					// Apply the parent group's transform to each element of inner group
+					for sub_element in graphic_group.instances_mut() {
+						*sub_element.transform = *element.transform * *sub_element.transform;
+					}
 
-	fn union_vector_data(graphic_element: &GraphicElement) -> VectorDataTable {
-		match graphic_element {
-			GraphicElement::VectorData(vector_data) => vector_data.clone(),
-			// Union all vector data in the graphic group into a single vector
-			GraphicElement::GraphicGroup(graphic_group) => {
-				let vector_data = collect_vector_data(graphic_group);
-
-				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
-			}
-			GraphicElement::RasterFrame(image) => vector_from_image(image),
-		}
-	}
-
-	fn collect_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDataTable> {
-		// Ensure all non vector data in the graphic group is converted to vector data
-		let vector_data_tables = graphic_group_table.instances().map(|element| union_vector_data(element.instance));
-
-		// Apply the transform from the parent graphic group
-		let transformed_vector_data = vector_data_tables;
-		// TODO: Figure out what to do with this transform
-		// .map(|mut vector_data_table| {
-		// 	*vector_data_table.transform_mut() = graphic_group_table.transform() * vector_data_table.transform();
-		// 	vector_data_table
-		// });
-		transformed_vector_data.collect::<Vec<_>>()
+					// Recursively flatten the inner group into vector data
+					boolean_operation_on_vector_data(&flatten_vector_data(&graphic_group), BooleanOperation::Union)
+				}
+			})
+			.collect()
 	}
 
 	fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorDataTable>) -> VectorDataTable {
@@ -190,7 +199,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 	}
 
 	// The first index is the bottom of the stack
-	let mut result_vector_data_table = boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation);
+	let mut result_vector_data_table = boolean_operation_on_vector_data(&flatten_vector_data(&group_of_paths), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
 	let result_vector_data_table_transform = result_vector_data_table.transform();
