@@ -926,6 +926,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let viewport_center_in_doc_space = transform.inverse().transform_point2(viewport_center);
 
 					let mut positions = Vec::new();
+					let mut artboards = Vec::new(); // Track artboards separately
 
 					for &layer in &layers {
 						if document.network_interface.is_artboard(&layer.to_node(), &[]) {
@@ -938,8 +939,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								}
 
 								positions.push((layer, bounds[0], true));
+								artboards.push(layer); // Add to artboards list
 							}
 						} else {
+							// Skip layers that are children of artboards we're already moving
+							let is_child_of_moving_artboard = artboards.iter().any(|&artboard| {
+								layer.ancestors(document.metadata())
+                        .skip(1) // Skip self
+                        .any(|ancestor| ancestor == artboard)
+							});
+
+							if is_child_of_moving_artboard {
+								continue; // Skip this layer as its parent artboard will be moved
+							}
+
 							if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, responses) {
 								if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
 									if let Some(network) = modify_inputs.network_interface.network(&[]) {
@@ -994,7 +1007,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				}
 			}
-
 			PortfolioMessage::PasteImage {
 				name,
 				image,
