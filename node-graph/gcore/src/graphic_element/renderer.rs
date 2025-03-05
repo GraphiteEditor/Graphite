@@ -338,12 +338,10 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		// TODO: Figure out what to do with this transform
-		// let instance_transform = self.transform();
-		// let mut footprint = footprint;
-		// footprint.transform *= instance_transform;
-
 		for instance in self.instances() {
+			let mut footprint = footprint;
+			footprint.transform *= *instance.transform;
+
 			if let Some(element_id) = instance.source_node_id {
 				instance.instance.collect_metadata(metadata, footprint, Some(*element_id));
 			}
@@ -736,13 +734,8 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-
-		// TODO: Figure out what to do with this transform
-		// if self.graphic_group.transform().matrix2.determinant() != 0. {
-		// subpath.apply_transform(self.graphic_group.transform().inverse());
-		click_targets.push(ClickTarget::new(subpath, 0.));
-		// }
+		let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+		click_targets.push(ClickTarget::new(subpath_rectangle, 0.));
 	}
 
 	#[cfg(feature = "vello")]
@@ -1024,9 +1017,13 @@ impl GraphicElementRendered for GraphicElement {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
-			// TODO: Figure out what to do with this transform
-			// metadata.footprints.insert(element_id, (footprint, self.transform()));
-			metadata.footprints.insert(element_id, (footprint, DAffine2::IDENTITY));
+			let transform = match self {
+				GraphicElement::GraphicGroup(_) => DAffine2::IDENTITY,
+				GraphicElement::VectorData(vector_data) => vector_data.transform(),
+				GraphicElement::RasterFrame(raster_frame) => raster_frame.transform(),
+			};
+
+			metadata.footprints.insert(element_id, (footprint, transform));
 		}
 
 		match self {

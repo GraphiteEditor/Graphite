@@ -172,13 +172,14 @@ async fn transform<T: 'n + 'static>(
 	shear: DVec2,
 	_pivot: DVec2,
 ) -> Instances<T> {
-	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+
 	let footprint = ctx.try_footprint().copied();
 
 	let mut ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
 		if !footprint.ignore_modifications {
-			footprint.apply_transform(&modification);
+			footprint.apply_transform(&matrix);
 		}
 		ctx = ctx.with_footprint(footprint);
 	}
@@ -186,7 +187,7 @@ async fn transform<T: 'n + 'static>(
 	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
 	for data_transform in transform_target.instances_mut() {
-		*data_transform.transform = modification * *data_transform.transform;
+		*data_transform.transform = matrix * *data_transform.transform;
 	}
 
 	transform_target
