@@ -1,5 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
-use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
+use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;

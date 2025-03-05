@@ -56,7 +56,7 @@ mod tests {
 	};
 
 	macro_rules! eval_tests {
-		($($name:ident: $expected:expr => $expr:expr),* $(,)?) => {
+		($($name:ident: $expected:expr_2021 => $expr:expr_2021),* $(,)?) => {
 			$(
 				#[test]
 				fn $name() {

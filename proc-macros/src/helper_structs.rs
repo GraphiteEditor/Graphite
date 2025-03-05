@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::token::Paren;
-use syn::{parenthesized, LitStr, Token};
+use syn::{LitStr, Token, parenthesized};
 
 pub struct IdentList {
 	pub parts: Punctuated<Ident, Token![,]>,

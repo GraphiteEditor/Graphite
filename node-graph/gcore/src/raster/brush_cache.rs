@@ -1,8 +1,8 @@
+use crate::Color;
 use crate::graphene_core::raster::image::ImageFrameTable;
 use crate::raster::Image;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
-use crate::Color;
 
 use dyn_any::DynAny;
 

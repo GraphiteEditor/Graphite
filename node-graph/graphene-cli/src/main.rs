@@ -107,9 +107,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			}
 		}
 		Command::Run { run_loop, .. } => {
-			std::thread::spawn(move || loop {
-				std::thread::sleep(std::time::Duration::from_nanos(10));
-				device.poll(wgpu::Maintain::Poll);
+			std::thread::spawn(move || {
+				loop {
+					std::thread::sleep(std::time::Duration::from_nanos(10));
+					device.poll(wgpu::Maintain::Poll);
+				}
 			});
 			let executor = create_executor(proto_graph)?;
 			let render_config = graphene_core::application_io::RenderConfig::default();

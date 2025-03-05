@@ -105,13 +105,16 @@ pub enum Layout {
 
 impl Layout {
 	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> MenuLayout {
-		if let Self::MenuLayout(mut menu) = self {
-			menu.layout
-				.iter_mut()
-				.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
-			menu
-		} else {
-			panic!("Called unwrap_menu_layout on a widget layout");
+		match self {
+			Self::MenuLayout(mut menu) => {
+				menu.layout
+					.iter_mut()
+					.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
+				menu
+			}
+			_ => {
+				panic!("Called unwrap_menu_layout on a widget layout");
+			}
 		}
 	}
 
@@ -348,11 +351,7 @@ impl LayoutGroup {
 				val.clone_from(&tooltip);
 			}
 		}
-		if is_col {
-			Self::Column { widgets }
-		} else {
-			Self::Row { widgets }
-		}
+		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.

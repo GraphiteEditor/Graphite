@@ -1,4 +1,4 @@
-use graph_craft::{proto::ProtoNetwork, Type};
+use graph_craft::{Type, proto::ProtoNetwork};
 use wgpu_executor::ShaderIO;
 
 use std::io::Write;

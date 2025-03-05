@@ -287,20 +287,28 @@ impl NodeRuntime {
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::GraphicElement>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::Artboard>>() {
-				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			}
-			// Insert the vector modify if we are dealing with vector data
-			else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
-			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
-				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
+			match introspected_data.downcast_ref::<IORecord<Context, graphene_core::GraphicElement>>() {
+				Some(io) => Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails),
+				_ => match introspected_data.downcast_ref::<IORecord<(), graphene_core::GraphicElement>>() {
+					Some(io) => Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails),
+					_ => match introspected_data.downcast_ref::<IORecord<Context, graphene_core::Artboard>>() {
+						Some(io) => Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails),
+						_ => match introspected_data.downcast_ref::<IORecord<(), graphene_core::Artboard>>() {
+							Some(io) => Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails),
+							_ => match introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
+								Some(record) => {
+									self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
+								}
+								_ => match introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
+									Some(record) => {
+										self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
+									}
+									_ => {}
+								},
+							},
+						},
+					},
+				},
 			}
 		}
 	}

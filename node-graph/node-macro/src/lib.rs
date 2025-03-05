@@ -1,12 +1,12 @@
 // TODO: Deprecate and remove this file
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
 use proc_macro_error2::proc_macro_error;
-use quote::{format_ident, quote, ToTokens};
+use proc_macro2::Span;
+use quote::{ToTokens, format_ident, quote};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
-	PathSegment, PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
+	AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PathSegment, PredicateType, ReturnType, Token, TraitBound,
+	Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate, parse_macro_input, punctuated::Punctuated, token::Comma,
 };
 
 mod codegen;
@@ -244,10 +244,11 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	};
 
 	// Extract the output type of the entire node - `()` by default
-	let output = if let ReturnType::Type(_, ty) = &function.sig.output {
-		ty.to_token_stream()
-	} else {
-		quote::quote!(())
+	let output = match &function.sig.output {
+		ReturnType::Type(_, ty) => ty.to_token_stream(),
+		_ => {
+			quote::quote!(())
+		}
 	};
 
 	let num_inputs = parameter_inputs.len();

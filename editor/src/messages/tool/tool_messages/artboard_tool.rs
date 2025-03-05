@@ -277,7 +277,7 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);

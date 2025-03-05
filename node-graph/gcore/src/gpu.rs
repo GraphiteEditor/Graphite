@@ -1,4 +1,4 @@
-use crate::{raster::Sample, Color};
+use crate::{Color, raster::Sample};
 
 use bytemuck::{Pod, Zeroable};
 use spirv_std::image::{Image2d, SampledImage};

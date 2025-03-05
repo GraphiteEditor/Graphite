@@ -977,21 +977,24 @@ impl NodeNetworkInterface {
 				log::error!("Could not get node {node_id} in upstream_nodes_below_layer");
 				break;
 			};
-			if let Some(primary_node_id) = current_node
+			match current_node
 				.inputs
 				.iter()
 				.filter(|input| input.is_exposed_to_frontend(network_path.is_empty()))
 				.nth(if self.is_layer(&current_node_id, network_path) { 1 } else { 0 })
 				.and_then(|left_input| left_input.as_node())
 			{
-				if self.is_chain(&primary_node_id, network_path) {
-					current_node_id = primary_node_id;
-				} else {
-					potential_upstream_nodes.insert(primary_node_id);
+				Some(primary_node_id) => {
+					if self.is_chain(&primary_node_id, network_path) {
+						current_node_id = primary_node_id;
+					} else {
+						potential_upstream_nodes.insert(primary_node_id);
+						break;
+					}
+				}
+				_ => {
 					break;
 				}
-			} else {
-				break;
 			}
 		}
 
@@ -1339,7 +1342,7 @@ impl NodeNetworkInterface {
 
 	/// Layers excluding ones that are children of other layers in the list.
 	// TODO: Cache this
-	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> {
+	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> + use<> {
 		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) {
 			selected_nodes
 				.selected_layers(self.document_metadata())
@@ -2528,10 +2531,9 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &document_node.implementation {
-				network.exports.len()
-			} else {
-				1
+			let number_of_outputs = match &document_node.implementation {
+				DocumentNodeImplementation::Network(network) => network.exports.len(),
+				_ => 1,
 			};
 			// If the node does not have a primary output, shift all ports down a row
 			let mut output_row_count = if !node_metadata.persistent_metadata.has_primary_output { 1 } else { 0 };
@@ -3327,7 +3329,7 @@ impl NodeNetworkInterface {
 		};
 		{
 			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
-			let Some(TaggedValue::VectorModification(ref mut modification)) = value.as_deref_mut() else {
+			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
 				panic!("Path node does not have modification input");
 			};
 
@@ -3845,10 +3847,9 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let previous_metadata = if let NodeInput::Node { node_id, .. } = &previous_input {
-			self.position(node_id, network_path).map(|position| (*node_id, position))
-		} else {
-			None
+		let previous_metadata = match &previous_input {
+			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
+			_ => None,
 		};
 
 		let Some(network) = self.network_mut(network_path) else {
@@ -4679,18 +4680,24 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if node_metadata.position == NodePosition::Absolute(position) {
-				return;
+		match &mut node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Node(node_metadata) => {
+				if node_metadata.position == NodePosition::Absolute(position) {
+					return;
+				}
+				node_metadata.position = NodePosition::Absolute(position);
+				self.transaction_modified();
 			}
-			node_metadata.position = NodePosition::Absolute(position);
-			self.transaction_modified();
-		} else if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if layer_metadata.position == LayerPosition::Absolute(position) {
-				return;
-			}
-			layer_metadata.position = LayerPosition::Absolute(position);
-			self.transaction_modified();
+			_ => match &mut node_metadata.persistent_metadata.node_type_metadata {
+				NodeTypePersistentMetadata::Layer(layer_metadata) => {
+					if layer_metadata.position == LayerPosition::Absolute(position) {
+						return;
+					}
+					layer_metadata.position = LayerPosition::Absolute(position);
+					self.transaction_modified();
+				}
+				_ => {}
+			},
 		}
 	}
 
@@ -4700,14 +4707,17 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if layer_metadata.position == LayerPosition::Stack(y_offset) {
-				return;
+		match &mut node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer_metadata) => {
+				if layer_metadata.position == LayerPosition::Stack(y_offset) {
+					return;
+				}
+				layer_metadata.position = LayerPosition::Stack(y_offset);
+				self.transaction_modified();
 			}
-			layer_metadata.position = LayerPosition::Stack(y_offset);
-			self.transaction_modified();
-		} else {
-			log::error!("Could not set stack position for non layer node {node_id}");
+			_ => {
+				log::error!("Could not set stack position for non layer node {node_id}");
+			}
 		}
 	}
 
@@ -4732,16 +4742,17 @@ impl NodeNetworkInterface {
 			return;
 		};
 		// Set any absolute nodes to chain positioning
-		if let NodeTypePersistentMetadata::Node(NodePersistentMetadata { position }) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if *position == NodePosition::Chain {
-				return;
+		match &mut node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Node(NodePersistentMetadata { position }) => {
+				if *position == NodePosition::Chain {
+					return;
+				}
+				*position = NodePosition::Chain;
+				self.transaction_modified();
 			}
-			*position = NodePosition::Chain;
-			self.transaction_modified();
-		}
-		// If there is an upstream layer then stop breaking the chain
-		else {
-			log::error!("Could not set chain position for layer node {node_id}");
+			_ => {
+				log::error!("Could not set chain position for layer node {node_id}");
+			}
 		}
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		// Reload click target of the layer which encapsulate the chain
@@ -5136,7 +5147,7 @@ impl NodeNetworkInterface {
 		});
 
 		// Try shift every node that is offset from its original position
-		for (node_id, mut offset, _) in stack_dependents_with_position.iter() {
+		for &(ref node_id, mut offset, _) in stack_dependents_with_position.iter() {
 			while offset != 0 {
 				if self.check_collision_with_stack_dependents(node_id, -offset.signum(), network_path).is_empty() {
 					self.vertical_shift_with_push(node_id, -offset.signum(), &mut HashSet::new(), network_path);
@@ -5295,41 +5306,49 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if let LayerPosition::Absolute(layer_position) = &mut layer_metadata.position {
-				*layer_position += shift;
-				self.transaction_modified();
-			} else if let LayerPosition::Stack(y_offset) = &mut layer_metadata.position {
-				let shifted_y_offset = *y_offset as i32 + shift.y;
-				// A layer can only be shifted to a positive y_offset
-				if shifted_y_offset < 0 {
-					log::error!(
-						"Space should be made above the layer before shifting it up. Layer {node_id} current y_offset: {y_offset} shift: {}",
-						shift.y
-					);
+		match &mut node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer_metadata) => {
+				if let LayerPosition::Absolute(layer_position) = &mut layer_metadata.position {
+					*layer_position += shift;
+					self.transaction_modified();
+				} else if let LayerPosition::Stack(y_offset) = &mut layer_metadata.position {
+					let shifted_y_offset = *y_offset as i32 + shift.y;
+					// A layer can only be shifted to a positive y_offset
+					if shifted_y_offset < 0 {
+						log::error!(
+							"Space should be made above the layer before shifting it up. Layer {node_id} current y_offset: {y_offset} shift: {}",
+							shift.y
+						);
+					}
+					if shift.x != 0 {
+						log::error!("Stack layer {node_id} cannot be shifted horizontally.");
+					}
+					let new_y_offset = shifted_y_offset.max(0) as u32;
+					if *y_offset == new_y_offset {
+						return;
+					}
+					*y_offset = new_y_offset;
+					self.transaction_modified();
 				}
-				if shift.x != 0 {
-					log::error!("Stack layer {node_id} cannot be shifted horizontally.");
-				}
-				let new_y_offset = shifted_y_offset.max(0) as u32;
-				if *y_offset == new_y_offset {
-					return;
-				}
-				*y_offset = new_y_offset;
-				self.transaction_modified();
-			}
-			// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
-			self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-		} else if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
-				*node_metadata += shift;
-				self.transaction_modified();
 				// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
 				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-				self.try_set_node_to_chain(node_id, network_path);
-			} else if let NodePosition::Chain = node_metadata.position {
-				self.set_upstream_chain_to_absolute(node_id, network_path);
-				self.shift_node(node_id, shift, network_path);
+			}
+			_ => {
+				match &mut node_metadata.persistent_metadata.node_type_metadata {
+					NodeTypePersistentMetadata::Node(node_metadata) => {
+						if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
+							*node_metadata += shift;
+							self.transaction_modified();
+							// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
+							self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+							self.try_set_node_to_chain(node_id, network_path);
+						} else if let NodePosition::Chain = node_metadata.position {
+							self.set_upstream_chain_to_absolute(node_id, network_path);
+							self.shift_node(node_id, shift, network_path);
+						}
+					}
+					_ => {}
+				}
 			}
 		}
 		// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted

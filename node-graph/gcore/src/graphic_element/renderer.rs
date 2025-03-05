@@ -6,7 +6,7 @@ pub use rect::Rect;
 use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
-use crate::uuid::{generate_uuid, NodeId};
+use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
@@ -914,7 +914,7 @@ impl GraphicElementRendered for RasterFrame {
 		match render_params.image_render_mode {
 			ImageRenderMode::Base64 => {
 				let image = match self {
-					RasterFrame::ImageFrame(ref image) => image,
+					RasterFrame::ImageFrame(image) => image,
 					RasterFrame::TextureFrame(_) => return,
 				};
 

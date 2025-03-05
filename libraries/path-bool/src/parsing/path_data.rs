@@ -1,6 +1,6 @@
-use crate::path::{path_from_commands, path_to_commands, Path};
-use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
 use crate::BooleanError;
+use crate::path::{Path, path_from_commands, path_to_commands};
+use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
 use glam::DVec2;
 use regex::Regex;
 
@@ -18,34 +18,41 @@ pub fn commands_from_path_data(d: &str) -> Result<Vec<PathCommand>, BooleanError
 			return None;
 		}
 
-		if let Some(cap) = re_cmd.captures(&d[*i..]) {
-			*i += cap[0].len();
-			Some(cap[1].chars().next().unwrap())
-		} else {
-			match last_cmd {
+		match re_cmd.captures(&d[*i..]) {
+			Some(cap) => {
+				*i += cap[0].len();
+				Some(cap[1].chars().next().unwrap())
+			}
+			_ => match last_cmd {
 				'M' => Some('L'),
 				'm' => Some('l'),
 				'z' | 'Z' => None,
 				_ => Some(last_cmd),
-			}
+			},
 		}
 	};
 
 	let get_float = |i: &mut usize| -> f64 {
-		if let Some(cap) = re_float.captures(&d[*i..]) {
-			*i += cap[0].len();
-			cap[1].parse().unwrap()
-		} else {
-			panic!("Invalid path data. Expected a number at index {}, got {}", i, &d[*i..]);
+		match re_float.captures(&d[*i..]) {
+			Some(cap) => {
+				*i += cap[0].len();
+				cap[1].parse().unwrap()
+			}
+			_ => {
+				panic!("Invalid path data. Expected a number at index {}, got {}", i, &d[*i..]);
+			}
 		}
 	};
 
 	let get_bool = |i: &mut usize| -> bool {
-		if let Some(cap) = re_bool.captures(&d[*i..]) {
-			*i += cap[0].len();
-			&cap[1] == "1"
-		} else {
-			panic!("Invalid path data. Expected a flag at index {}", i);
+		match re_bool.captures(&d[*i..]) {
+			Some(cap) => {
+				*i += cap[0].len();
+				&cap[1] == "1"
+			}
+			_ => {
+				panic!("Invalid path data. Expected a flag at index {}", i);
+			}
 		}
 	};
 

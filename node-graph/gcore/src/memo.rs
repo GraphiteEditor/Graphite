@@ -27,16 +27,17 @@ where
 		let mut hasher = DefaultHasher::new();
 		input.hash(&mut hasher);
 		let hash = hasher.finish();
-		if let Some(data) = self.cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
-			Box::pin(async move { data })
-		} else {
-			let fut = self.node.eval(input);
-			let cache = self.cache.clone();
-			Box::pin(async move {
-				let value = fut.await;
-				*cache.lock().unwrap() = Some((hash, value.clone()));
-				value
-			})
+		match self.cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
+			Some(data) => Box::pin(async move { data }),
+			_ => {
+				let fut = self.node.eval(input);
+				let cache = self.cache.clone();
+				Box::pin(async move {
+					let value = fut.await;
+					*cache.lock().unwrap() = Some((hash, value.clone()));
+					value
+				})
+			}
 		}
 	}
 
@@ -71,17 +72,20 @@ where
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
 	type Output = DynFuture<'i, T>;
 	fn eval(&'i self, input: I) -> Self::Output {
-		if let Some(cached_value) = self.cache.lock().as_ref().unwrap().deref() {
-			let data = cached_value.clone();
-			Box::pin(async move { data })
-		} else {
-			let fut = self.node.eval(input);
-			let cache = self.cache.clone();
-			Box::pin(async move {
-				let value = fut.await;
-				*cache.lock().unwrap() = Some(value.clone());
-				value
-			})
+		match self.cache.lock().as_ref().unwrap().deref() {
+			Some(cached_value) => {
+				let data = cached_value.clone();
+				Box::pin(async move { data })
+			}
+			_ => {
+				let fut = self.node.eval(input);
+				let cache = self.cache.clone();
+				Box::pin(async move {
+					let value = fut.await;
+					*cache.lock().unwrap() = Some(value.clone());
+					value
+				})
+			}
 		}
 	}
 

@@ -1,12 +1,12 @@
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
-use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
+use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 
 use dyn_any::DynAny;
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::Euclid;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::Euclid;
 
 use bytemuck::{Pod, Zeroable};
 use core::hash::Hash;
@@ -663,11 +663,7 @@ impl Color {
 
 	#[inline(always)]
 	pub fn blend_darker_color(&self, other: Color) -> Color {
-		if self.average_rgb_channels() <= other.average_rgb_channels() {
-			*self
-		} else {
-			other
-		}
+		if self.average_rgb_channels() <= other.average_rgb_channels() { *self } else { other }
 	}
 
 	#[inline(always)]
@@ -682,11 +678,7 @@ impl Color {
 
 	#[inline(always)]
 	pub fn blend_color_dodge(c_b: f32, c_s: f32) -> f32 {
-		if c_s == 1. {
-			1.
-		} else {
-			(c_b / (1. - c_s)).min(1.)
-		}
+		if c_s == 1. { 1. } else { (c_b / (1. - c_s)).min(1.) }
 	}
 
 	#[inline(always)]
@@ -696,11 +688,7 @@ impl Color {
 
 	#[inline(always)]
 	pub fn blend_lighter_color(&self, other: Color) -> Color {
-		if self.average_rgb_channels() >= other.average_rgb_channels() {
-			*self
-		} else {
-			other
-		}
+		if self.average_rgb_channels() >= other.average_rgb_channels() { *self } else { other }
 	}
 
 	pub fn blend_softlight(c_b: f32, c_s: f32) -> f32 {
@@ -745,11 +733,7 @@ impl Color {
 	}
 
 	pub fn blend_hard_mix(c_b: f32, c_s: f32) -> f32 {
-		if Color::blend_linear_light(c_b, c_s) < 0.5 {
-			0.
-		} else {
-			1.
-		}
+		if Color::blend_linear_light(c_b, c_s) < 0.5 { 0. } else { 1. }
 	}
 
 	pub fn blend_difference(c_b: f32, c_s: f32) -> f32 {
@@ -765,11 +749,7 @@ impl Color {
 	}
 
 	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
-		if c_b == 0. {
-			1.
-		} else {
-			c_b / c_s
-		}
+		if c_b == 0. { 1. } else { c_b / c_s }
 	}
 
 	pub fn blend_hue(&self, c_s: Color) -> Color {
@@ -988,20 +968,12 @@ impl Color {
 
 	#[inline(always)]
 	pub fn srgb_to_linear(channel: f32) -> f32 {
-		if channel <= 0.04045 {
-			channel / 12.92
-		} else {
-			((channel + 0.055) / 1.055).powf(2.4)
-		}
+		if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) }
 	}
 
 	#[inline(always)]
 	pub fn linear_to_srgb(channel: f32) -> f32 {
-		if channel <= 0.0031308 {
-			channel * 12.92
-		} else {
-			1.055 * channel.powf(1. / 2.4) - 0.055
-		}
+		if channel <= 0.0031308 { channel * 12.92 } else { 1.055 * channel.powf(1. / 2.4) - 0.055 }
 	}
 
 	#[inline(always)]

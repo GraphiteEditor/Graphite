@@ -189,15 +189,18 @@ impl Dispatcher {
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } = message {
-						self.responses.push(message);
-						self.cleanup_queues(false);
+					match message {
+						FrontendMessage::TriggerFontLoad { .. } => {
+							self.responses.push(message);
+							self.cleanup_queues(false);
 
-						// Return early to avoid running the code after the match block
-						return;
-					} else {
-						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-						self.responses.push(message);
+							// Return early to avoid running the code after the match block
+							return;
+						}
+						_ => {
+							// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
+							self.responses.push(message);
+						}
 					}
 				}
 				Message::Globals(message) => {
@@ -299,11 +302,7 @@ impl Dispatcher {
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
 			if index == queues.len() - 1 {
-				if queue.is_empty() {
-					"└── "
-				} else {
-					"├── "
-				}
+				if queue.is_empty() { "└── " } else { "├── " }
 			} else if queue.is_empty() {
 				"   "
 			} else {

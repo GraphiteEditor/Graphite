@@ -7,7 +7,7 @@ pub(crate) mod path_segment;
 use glam::DVec2;
 
 #[cfg(feature = "parsing")]
-use crate::path_command::{to_absolute_commands, AbsolutePathCommand, PathCommand};
+use crate::path_command::{AbsolutePathCommand, PathCommand, to_absolute_commands};
 use crate::path_segment::PathSegment;
 
 pub type Path = Vec<PathSegment>;

@@ -6,7 +6,7 @@ use crate::proto::{LocalFuture, ProtoNetwork};
 pub struct Compiler {}
 
 impl Compiler {
-	pub fn compile(&self, mut network: NodeNetwork) -> impl Iterator<Item = Result<ProtoNetwork, String>> {
+	pub fn compile(&self, mut network: NodeNetwork) -> impl Iterator<Item = Result<ProtoNetwork, String>> + use<> {
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		network.populate_dependants();
 		for id in node_ids {

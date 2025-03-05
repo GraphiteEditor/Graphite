@@ -326,13 +326,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = new_exposed;
-				} else if !new_exposed {
-					// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
-					responses.add(NodeGraphMessage::DisconnectInput { input_connector });
-					responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
-					return;
+				match &mut input {
+					NodeInput::Value { exposed, .. } => {
+						*exposed = new_exposed;
+					}
+					_ => {
+						if !new_exposed {
+							// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
+							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
+							responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
+							return;
+						}
+					}
 				}
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -1141,11 +1146,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let mut node_wires = Vec::new();
 								let mut stack_wires = Vec::new();
 								for wire in overlapping_wires {
-									if is_stack_wire(&wire) {
-										stack_wires.push(wire)
-									} else {
-										node_wires.push(wire)
-									}
+									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
 								}
 
 								// Auto convert node to layer when inserting on a single stack wire
@@ -2068,26 +2069,25 @@ impl NodeGraphMessageHandler {
 			.iter()
 			.flat_map(|(wire_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, wire_end, index)))
 			.filter_map(|(input, &wire_end, wire_end_input_index)| {
-				if let NodeInput::Node {
-					node_id: wire_start,
-					output_index: wire_start_output_index,
-					// TODO: add ui for lambdas
-					lambda: _,
-				} = *input
-				{
-					Some(FrontendNodeWire {
+				match *input {
+					NodeInput::Node {
+						node_id: wire_start,
+						output_index: wire_start_output_index,
+						// TODO: add ui for lambdas
+						lambda: _,
+					} => Some(FrontendNodeWire {
 						wire_start: OutputConnector::node(wire_start, wire_start_output_index),
 						wire_end: InputConnector::node(wire_end, wire_end_input_index),
 						dashed: false,
-					})
-				} else if let NodeInput::Network { import_index, .. } = *input {
-					Some(FrontendNodeWire {
-						wire_start: OutputConnector::Import(import_index),
-						wire_end: InputConnector::node(wire_end, wire_end_input_index),
-						dashed: false,
-					})
-				} else {
-					None
+					}),
+					_ => match *input {
+						NodeInput::Network { import_index, .. } => Some(FrontendNodeWire {
+							wire_start: OutputConnector::Import(import_index),
+							wire_end: InputConnector::node(wire_end, wire_end_input_index),
+							dashed: false,
+						}),
+						_ => None,
+					},
 				}
 			})
 			.collect::<Vec<_>>();
@@ -2114,12 +2114,15 @@ impl NodeGraphMessageHandler {
 						wire_end: InputConnector::Export(i),
 						dashed,
 					});
-				} else if let NodeInput::Network { import_index, .. } = *export {
-					wires.push(FrontendNodeWire {
-						wire_start: OutputConnector::Import(import_index),
-						wire_end: InputConnector::Export(i),
-						dashed,
-					})
+				} else {
+					match *export {
+						NodeInput::Network { import_index, .. } => wires.push(FrontendNodeWire {
+							wire_start: OutputConnector::Import(import_index),
+							wire_end: InputConnector::Export(i),
+							dashed,
+						}),
+						_ => {}
+					}
 				}
 			}
 		}
@@ -2281,15 +2284,18 @@ impl NodeGraphMessageHandler {
 		let mut current_network = network_interface.nested_network(&current_network_path).unwrap();
 		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in breadcrumb_network_path {
-			if let Some(node) = current_network.nodes.get(node_id) {
-				if let Some(network) = node.implementation.get_network() {
-					current_network = network;
-				};
-				subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
-				current_network_path.push(*node_id)
-			} else {
-				// Could not get node in network in breadcrumb_network_path
-				return None;
+			match current_network.nodes.get(node_id) {
+				Some(node) => {
+					if let Some(network) = node.implementation.get_network() {
+						current_network = network;
+					};
+					subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
+					current_network_path.push(*node_id)
+				}
+				_ => {
+					// Could not get node in network in breadcrumb_network_path
+					return None;
+				}
 			};
 		}
 		Some(subgraph_names)

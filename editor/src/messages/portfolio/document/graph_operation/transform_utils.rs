@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput, value::TaggedValue};
 use graphene_core::vector::PointId;
 
 use glam::{DAffine2, DVec2};
@@ -72,27 +72,34 @@ impl LayerBounds {
 
 /// Get the current affine transform from the transform node's inputs
 pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
-	let translation = if let Some(&TaggedValue::DVec2(translation)) = inputs[1].as_value() {
-		translation
-	} else {
-		DVec2::ZERO
+	let translation = match inputs[1].as_value() {
+		Some(&TaggedValue::DVec2(translation)) => translation,
+		_ => DVec2::ZERO,
 	};
 
-	let angle = if let Some(&TaggedValue::F64(angle)) = inputs[2].as_value() { angle } else { 0. };
+	let angle = match inputs[2].as_value() {
+		Some(&TaggedValue::F64(angle)) => angle,
+		_ => 0.,
+	};
 
-	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[3].as_value() { scale } else { DVec2::ONE };
+	let scale = match inputs[3].as_value() {
+		Some(&TaggedValue::DVec2(scale)) => scale,
+		_ => DVec2::ONE,
+	};
 
-	let shear = if let Some(&TaggedValue::DVec2(shear)) = inputs[4].as_value() { shear } else { DVec2::ZERO };
+	let shear = match inputs[4].as_value() {
+		Some(&TaggedValue::DVec2(shear)) => shear,
+		_ => DVec2::ZERO,
+	};
 
 	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
-	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() {
-		pivot
-	} else {
-		DVec2::splat(0.5)
+	match inputs[5].as_value() {
+		Some(&TaggedValue::DVec2(pivot)) => pivot,
+		_ => DVec2::splat(0.5),
 	}
 }
 

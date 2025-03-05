@@ -1,7 +1,7 @@
 use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::instances::Instances;
-use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::BlendMode;
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
@@ -342,23 +342,26 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 		let current_group_elements = current_group_table.one_instance().instance.elements.clone();
 
 		for (element, reference) in current_group_elements {
-			if let GraphicElement::GraphicGroup(mut nested_group_table) = element {
-				*nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
+			match element {
+				GraphicElement::GraphicGroup(mut nested_group_table) => {
+					*nested_group_table.transform_mut() = nested_group_table.transform() * current_group_table.transform();
 
-				let mut sub_group_table = GraphicGroupTable::default();
-				if fully_flatten {
-					flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
-				} else {
-					let nested_group_table_transform = nested_group_table.transform();
-					for (collection_element, _) in &mut nested_group_table.one_instance_mut().instance.elements {
-						*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
+					let mut sub_group_table = GraphicGroupTable::default();
+					if fully_flatten {
+						flatten_group(&mut sub_group_table, nested_group_table, fully_flatten);
+					} else {
+						let nested_group_table_transform = nested_group_table.transform();
+						for (collection_element, _) in &mut nested_group_table.one_instance_mut().instance.elements {
+							*collection_element.transform_mut() = nested_group_table_transform * collection_element.transform();
+						}
+						sub_group_table = nested_group_table;
 					}
-					sub_group_table = nested_group_table;
-				}
 
-				collection_group.append(&mut sub_group_table.one_instance_mut().instance.elements);
-			} else {
-				collection_group.push((element, reference));
+					collection_group.append(&mut sub_group_table.one_instance_mut().instance.elements);
+				}
+				_ => {
+					collection_group.push((element, reference));
+				}
 			}
 		}
 

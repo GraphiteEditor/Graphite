@@ -1075,9 +1075,14 @@ impl ShapeState {
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 					}
-				} else if let Some(handles) = point.get_handle_pair(&vector_data) {
-					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				} else {
+					match point.get_handle_pair(&vector_data) {
+						Some(handles) => {
+							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+						_ => {}
+					}
 				}
 			}
 		}
@@ -1289,10 +1294,13 @@ impl ShapeState {
 
 			for point in self.selected_points().filter(|point| point.as_handle().is_some()) {
 				let anchor = point.get_anchor(&vector_data);
-				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
-				} else {
-					points_to_select.push((layer, anchor, None));
+				match point.get_handle_pair(&vector_data) {
+					Some(handles) => {
+						points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
+					}
+					_ => {
+						points_to_select.push((layer, anchor, None));
+					}
 				}
 			}
 		}

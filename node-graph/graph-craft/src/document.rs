@@ -3,16 +3,16 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::DynAny;
 use graphene_core::memo::MemoHashGuard;
-pub use graphene_core::uuid::generate_uuid;
 pub use graphene_core::uuid::NodeId;
+pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 pub mod value;
 
 use glam::IVec2;
 use log::Metadata;
 use rustc_hash::FxHashMap;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 /// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
@@ -297,24 +297,25 @@ impl DocumentNode {
 			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
 			_ => ProtoNodeIdentifier { name: fqn.name },
 		};
-		let (input, mut args) = if let Some(ty) = self.manual_composition {
-			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
-		} else {
-			let first = self.inputs.remove(0);
-			match first {
-				NodeInput::Value { tagged_value, .. } => {
-					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
+		let (input, mut args) = match self.manual_composition {
+			Some(ty) => (ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![])),
+			_ => {
+				let first = self.inputs.remove(0);
+				match first {
+					NodeInput::Value { tagged_value, .. } => {
+						assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
+						(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
+					}
+					NodeInput::Node { node_id, output_index, lambda } => {
+						assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
+						let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
+						(node, ConstructionArgs::Nodes(vec![]))
+					}
+					NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
+					NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
+					NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
+					NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
 				}
-				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
-					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
-					(node, ConstructionArgs::Nodes(vec![]))
-				}
-				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
-				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
-				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
-				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
 			}
 		};
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
@@ -455,33 +456,17 @@ impl NodeInput {
 	}
 
 	pub fn as_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, .. } = self {
-			Some(tagged_value)
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
 	}
 	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
-		if let NodeInput::Value { tagged_value, .. } = self {
-			Some(tagged_value.inner_mut())
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
 	}
 	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, exposed: false } = self {
-			Some(tagged_value)
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, exposed: false } = self { Some(tagged_value) } else { None }
 	}
 
 	pub fn as_node(&self) -> Option<NodeId> {
-		if let NodeInput::Node { node_id, .. } = self {
-			Some(*node_id)
-		} else {
-			None
-		}
+		if let NodeInput::Node { node_id, .. } = self { Some(*node_id) } else { None }
 	}
 }
 
@@ -942,12 +927,7 @@ impl NodeNetwork {
 	fn replace_node_inputs(&mut self, node_id: NodeId, old_input: (NodeId, usize), new_input: (NodeId, usize)) {
 		let Some(node) = self.nodes.get_mut(&node_id) else { return };
 		node.inputs.iter_mut().for_each(|input| {
-			if let NodeInput::Node {
-				node_id: ref mut input_id,
-				ref mut output_index,
-				..
-			} = input
-			{
+			if let NodeInput::Node { node_id: input_id, output_index, .. } = input {
 				if (*input_id, *output_index) == old_input {
 					(*input_id, *output_index) = new_input;
 				}
@@ -1241,12 +1221,7 @@ impl NodeNetwork {
 							}
 						}
 						for node_input in self.exports.iter_mut() {
-							if let NodeInput::Node {
-								ref mut node_id,
-								ref mut output_index,
-								..
-							} = node_input
-							{
+							if let NodeInput::Node { node_id, output_index, .. } = node_input {
 								if *node_id == id {
 									*node_id = input_node_id;
 									*output_index = node_input_output_index;
@@ -1339,16 +1314,17 @@ impl NodeNetwork {
 			.exports
 			.into_iter()
 			.filter_map(move |output| {
-				if let NodeInput::Node { node_id, .. } = output {
-					Some(ProtoNetwork {
-						inputs: Vec::new(), // Inputs field is not used. Should be deleted
-						// inputs: vec![input_node.expect("Set node should always exist")],
-						// inputs: self.imports.clone(),
-						output: node_id,
-						nodes: nodes.clone(),
-					})
-				} else {
-					None
+				match output {
+					NodeInput::Node { node_id, .. } => {
+						Some(ProtoNetwork {
+							inputs: Vec::new(), // Inputs field is not used. Should be deleted
+							// inputs: vec![input_node.expect("Set node should always exist")],
+							// inputs: self.imports.clone(),
+							output: node_id,
+							nodes: nodes.clone(),
+						})
+					}
+					_ => None,
 				}
 			})
 			.collect();
@@ -1478,7 +1454,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(ref network), ..) if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
 	}
 
 	#[test]

@@ -1,4 +1,4 @@
-use crate::aabb::{bounding_box_max_extent, bounding_boxes_overlap, Aabb};
+use crate::aabb::{Aabb, bounding_box_max_extent, bounding_boxes_overlap};
 use crate::epsilons::Epsilons;
 use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
