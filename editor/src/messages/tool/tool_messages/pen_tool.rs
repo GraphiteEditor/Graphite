@@ -16,6 +16,8 @@ use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Color;
 use graphene_std::vector::{HandleId, ManipulatorPointId, SegmentId, VectorData};
 
+use std::fmt;
+
 #[derive(Default)]
 pub struct PenTool {
 	fsm_state: PenToolFsmState,
@@ -62,6 +64,7 @@ pub enum PenToolMessage {
 	Redo,
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
+	ChangeToolMode(ToolMode),
 	RecalculateLatestPointsPosition,
 	RemovePreviousHandle,
 	GRS { grab: Key, rotate: Key, scale: Key },
@@ -92,6 +95,24 @@ pub enum PenOptionsUpdate {
 	StrokeColorType(ToolColorType),
 	WorkingColors(Option<Color>, Option<Color>),
 	OverlayModeType(PenOverlayMode),
+}
+
+impl PenTool {
+	fn tool_mode_widget(&self) -> WidgetHolder {
+		let tool_mode_entries = [ToolMode::Path, ToolMode::Spline]
+			.iter()
+			.map(|mode| {
+				MenuListEntry::new(format!("{mode:?}"))
+					.label(mode.to_string())
+					.on_commit(move |_| PenToolMessage::ChangeToolMode(*mode).into())
+			})
+			.collect();
+
+		DropdownInput::new(vec![tool_mode_entries])
+			.selected_index(Some((self.tool_data.tool_mode) as u32))
+			.tooltip("Select Spline to draw smooth curves or select Path to draw a path.")
+			.widget_holder()
+	}
 }
 
 impl ToolMetadata for PenTool {
@@ -139,6 +160,10 @@ impl LayoutHolder for PenTool {
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.push(create_weight_widget(self.options.line_weight));
+
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+		widgets.push(self.tool_mode_widget());
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
@@ -263,8 +288,25 @@ enum HandleMode {
 	ColinearEquidistant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ToolMode {
+	#[default]
+	Path,
+	Spline,
+}
+
+impl fmt::Display for ToolMode {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ToolMode::Path => write!(f, "Path"),
+			ToolMode::Spline => write!(f, "Spline"),
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
+	tool_mode: ToolMode,
 	snap_manager: SnapManager,
 	latest_points: Vec<LastPoint>,
 	point_index: usize,
@@ -910,6 +952,10 @@ impl Fsm for PenToolFsmState {
 
 		let ToolMessage::Pen(event) = event else { return self };
 		match (self, event) {
+			(state, PenToolMessage::ChangeToolMode(mode)) => {
+				tool_data.tool_mode = mode;
+				state
+			}
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
 				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
 
