@@ -18,7 +18,7 @@ use std::sync::Mutex;
 // use std::sync::Arc;
 // use std::sync::Mutex;
 
-static EDITOR: Mutex<Option<Editor>> = const { Mutex::new(None) };
+// static EDITOR: Mutex<Option<Editor>> = const { Mutex::new(None) };
 static NODE_RUNTIME_IO: Mutex<Option<NodeRuntimeIO>> = const { Mutex::new(None) };
 
 // async fn respond_to(id: Path<String>) -> impl IntoResponse {
@@ -67,9 +67,9 @@ async fn main() {
 	});
 
 	graphite_editor::application::set_uuid_seed(0);
-	let mut editor_lock = EDITOR.lock().unwrap();
-	*editor_lock = Some(Editor::new());
-	drop(editor_lock);
+	// let mut editor_lock = EDITOR.lock().unwrap();
+	// *editor_lock = Some(Editor::new());
+	// drop(editor_lock);
 	let mut runtime_lock = NODE_RUNTIME_IO.lock().unwrap();
 	*runtime_lock = Some(NodeRuntimeIO::new());
 	drop(runtime_lock);
