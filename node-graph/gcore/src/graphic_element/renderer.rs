@@ -359,6 +359,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 					click_target.apply_transform(*instance.transform)
 				}
 
+				log::debug!("new_click_targets for {graphic_group_id:?}: {new_click_targets:?}");
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
@@ -525,8 +526,11 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 				subpath
 			};
-
-			click_targets.extend(instance.instance.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
+			click_targets.extend(instance.instance.stroke_bezier_paths().map(fill).map(|subpath| {
+				let mut click_target = ClickTarget::new(subpath, stroke_width);
+				click_target.apply_transform(*instance.transform);
+				click_target
+			}));
 		}
 	}
 
