@@ -497,24 +497,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 				];
-				for node_id in &document
-					.network_interface
-					.network_metadata(&[])
-					.unwrap()
-					.persistent_metadata
-					.node_metadata
-					.keys()
-					.cloned()
-					.collect::<Vec<NodeId>>()
-				{
-					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document.network_interface.network(&[]).unwrap().nodes.get(node_id).map(|node| node.implementation.clone()) {
+				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				network.generate_node_paths(&[]);
+
+				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
+
+				// Apply upgrades to each node
+				for (node_id, path) in &node_ids {
+					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
+
+					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) =
+						document.network_interface.network(&network_path).unwrap().nodes.get(node_id).map(|node| node.implementation.clone())
+					{
 						for (old, new) in REPLACEMENTS {
 							let node_path_without_type_args = protonode_id.name.split('<').next();
 							if node_path_without_type_args == Some(old) {
 								document
 									.network_interface
-									.replace_implementation(node_id, &[], DocumentNodeImplementation::ProtoNode(new.to_string().into()));
-								document.network_interface.set_manual_compostion(node_id, &[], Some(graph_craft::Type::Generic("T".into())));
+									.replace_implementation(node_id, &network_path, DocumentNodeImplementation::ProtoNode(new.to_string().into()));
+								document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
 							}
 						}
 					}
