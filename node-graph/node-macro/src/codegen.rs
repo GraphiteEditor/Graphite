@@ -520,7 +520,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			);
 		}
 		#[cfg(target_arch = "wasm32")]
-		#[no_mangle]
+		#[unsafe(no_mangle)]
 		extern "C" fn #registry_name() {
 			register_node();
 			register_metadata();
