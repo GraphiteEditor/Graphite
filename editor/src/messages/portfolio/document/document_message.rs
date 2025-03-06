@@ -165,6 +165,9 @@ pub enum DocumentMessage {
 	EndTransaction,
 	CommitTransaction,
 	AbortTransaction,
+	RepeatedAbortTransaction {
+		undo_count: usize,
+	},
 	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
