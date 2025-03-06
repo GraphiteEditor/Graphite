@@ -91,8 +91,6 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
-	/// When the transform is set downstream, all upstream modifications have to be ignored
-	pub ignore_modifications: bool,
 }
 
 impl Default for Footprint {
@@ -107,7 +105,6 @@ impl Footprint {
 			transform: DAffine2::IDENTITY,
 			resolution: glam::UVec2::new(1920, 1080),
 			quality: RenderQuality::Full,
-			ignore_modifications: false,
 		}
 	}
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
@@ -178,9 +175,7 @@ async fn transform<T: 'n + 'static>(
 
 	let mut ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
-		if !footprint.ignore_modifications {
-			footprint.apply_transform(&matrix);
-		}
+		footprint.apply_transform(&matrix);
 		ctx = ctx.with_footprint(footprint);
 	}
 
