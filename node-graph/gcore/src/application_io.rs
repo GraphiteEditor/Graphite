@@ -214,7 +214,7 @@ pub enum ApplicationError {
 	InvalidUrl,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphUpdateMessage {
 	ImaginateStatusUpdate,
 }
@@ -234,7 +234,7 @@ pub trait GetEditorPreferences {
 	fn use_vello(&self) -> bool;
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ExportFormat {
 	#[default]
 	Svg,
@@ -245,7 +245,7 @@ pub enum ExportFormat {
 	Canvas,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
