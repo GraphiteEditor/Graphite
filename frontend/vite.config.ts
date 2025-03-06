@@ -257,10 +257,10 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 	try {
 		// Call `cargo about` in the terminal to generate the license information for Rust crates.
 		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
-		const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
+		const { stdout, stderr, status, error } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
 			cwd: path.join(__dirname, ".."),
 			encoding: "utf8",
-			timeout: 60000, // One minute
+			timeout: 5 * 60000, // Five minutes
 			shell: true,
 			windowsHide: true, // Hide the terminal on Windows
 		});
@@ -268,9 +268,7 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 		// If the command failed, print the error message and exit early.
 		if (status !== 0) {
 			// Cargo returns 101 when the subcommand (`about`) wasn't found, so we skip printing the below error message in that case.
-			if (status !== 101) {
-				console.error("cargo-about failed", status, stderr);
-			}
+			if (status !== 101) console.error("cargo-about failed.\n", "Status: ", status, "Error: ", error, "\nstderr:", stderr);
 			return undefined;
 		}
 
