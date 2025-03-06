@@ -1655,7 +1655,7 @@ impl DocumentMessageHandler {
 				path.pop();
 			}
 		}
-		structure_section.push(space | 1 << 63);
+		structure_section.push(space | (1 << 63));
 	}
 
 	/// Serializes the layer structure into a condensed 1D structure.

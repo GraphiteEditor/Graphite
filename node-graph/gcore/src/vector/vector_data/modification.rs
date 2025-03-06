@@ -132,7 +132,7 @@ impl SegmentModification {
 			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
 			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
 
-			if !start.unwrap_or_default().map_or(true, |start| start.is_finite()) || !end.unwrap_or_default().map_or(true, |end| end.is_finite()) {
+			if !start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
 				warn!("Invalid handles when applying a segment modification");
 				continue;
 			}

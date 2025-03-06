@@ -2114,16 +2114,11 @@ impl NodeGraphMessageHandler {
 						wire_end: InputConnector::Export(i),
 						dashed,
 					});
-				} else {
-					match *export {
-						NodeInput::Network { import_index, .. } => wires.push(FrontendNodeWire {
-							wire_start: OutputConnector::Import(import_index),
-							wire_end: InputConnector::Export(i),
-							dashed,
-						}),
-						_ => {}
-					}
-				}
+				} else if let NodeInput::Network { import_index, .. } = *export { wires.push(FrontendNodeWire {
+    							wire_start: OutputConnector::Import(import_index),
+    							wire_end: InputConnector::Export(i),
+    							dashed,
+    						}) }
 			}
 		}
 		wires

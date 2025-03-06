@@ -366,7 +366,7 @@ impl NodeNetworkInterface {
 
 					// If a chain node does not have a selected downstream layer, then set the position to absolute
 					let downstream_layer = self.downstream_layer(node_id, network_path);
-					if downstream_layer.map_or(true, |downstream_layer| new_ids.keys().all(|key| *key != downstream_layer.to_node())) {
+					if downstream_layer.is_none_or(|downstream_layer| new_ids.keys().all(|key| *key != downstream_layer.to_node())) {
 						let Some(position) = self.position(node_id, network_path) else {
 							log::error!("Could not get position in create_node_template");
 							return None;
@@ -4688,16 +4688,13 @@ impl NodeNetworkInterface {
 				node_metadata.position = NodePosition::Absolute(position);
 				self.transaction_modified();
 			}
-			_ => match &mut node_metadata.persistent_metadata.node_type_metadata {
-				NodeTypePersistentMetadata::Layer(layer_metadata) => {
-					if layer_metadata.position == LayerPosition::Absolute(position) {
-						return;
-					}
-					layer_metadata.position = LayerPosition::Absolute(position);
-					self.transaction_modified();
-				}
-				_ => {}
-			},
+			_ => if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+   					if layer_metadata.position == LayerPosition::Absolute(position) {
+   						return;
+   					}
+   					layer_metadata.position = LayerPosition::Absolute(position);
+   					self.transaction_modified();
+   				},
 		}
 	}
 
@@ -5334,21 +5331,18 @@ impl NodeNetworkInterface {
 				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 			}
 			_ => {
-				match &mut node_metadata.persistent_metadata.node_type_metadata {
-					NodeTypePersistentMetadata::Node(node_metadata) => {
-						if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
-							*node_metadata += shift;
-							self.transaction_modified();
-							// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
-							self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-							self.try_set_node_to_chain(node_id, network_path);
-						} else if let NodePosition::Chain = node_metadata.position {
-							self.set_upstream_chain_to_absolute(node_id, network_path);
-							self.shift_node(node_id, shift, network_path);
-						}
-					}
-					_ => {}
-				}
+				if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+    						if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
+    							*node_metadata += shift;
+    							self.transaction_modified();
+    							// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
+    							self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+    							self.try_set_node_to_chain(node_id, network_path);
+    						} else if let NodePosition::Chain = node_metadata.position {
+    							self.set_upstream_chain_to_absolute(node_id, network_path);
+    							self.shift_node(node_id, shift, network_path);
+    						}
+    					}
 			}
 		}
 		// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted

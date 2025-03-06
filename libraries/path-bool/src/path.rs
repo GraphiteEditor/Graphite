@@ -107,7 +107,7 @@ where
 			let start = seg.start();
 			let mut commands = Vec::new();
 
-			if last_point.map_or(true, |lp| !start.abs_diff_eq(lp, eps)) {
+			if last_point.is_none_or(|lp| !start.abs_diff_eq(lp, eps)) {
 				if last_point.is_some() {
 					commands.push(PathCommand::Absolute(AbsolutePathCommand::Z));
 				}

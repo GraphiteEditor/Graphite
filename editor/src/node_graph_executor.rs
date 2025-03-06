@@ -299,12 +299,9 @@ impl NodeRuntime {
 								Some(record) => {
 									self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
 								}
-								_ => match introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
-									Some(record) => {
-										self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
-									}
-									_ => {}
-								},
+								_ => if let Some(record) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
+        										self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
+        									},
 							},
 						},
 					},

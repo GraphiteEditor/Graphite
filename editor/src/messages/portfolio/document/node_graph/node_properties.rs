@@ -2226,7 +2226,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		&document_node.inputs[backup_color_index].as_value(),
 		&document_node.inputs[backup_gradient_index].as_value(),
 	) {
-		(&Some(&TaggedValue::Fill(ref fill)), &Some(&TaggedValue::OptionalColor(backup_color)), &Some(&TaggedValue::Gradient(ref backup_gradient))) => (fill, backup_color, backup_gradient),
+		(&Some(TaggedValue::Fill(fill)), &Some(&TaggedValue::OptionalColor(backup_color)), &Some(TaggedValue::Gradient(backup_gradient))) => (fill, backup_color, backup_gradient),
 		_ => {
 			return vec![LayoutGroup::Row { widgets: widgets_first_row }];
 		}

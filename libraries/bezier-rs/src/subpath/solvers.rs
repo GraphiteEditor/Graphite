@@ -954,19 +954,19 @@ mod tests {
 
 		let curve = Bezier::from_quadratic_dvec2(DVec2::new(189., 289.), DVec2::new(9., 286.), DVec2::new(45., 410.));
 		let curve_intersecting = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(curve_intersecting.is_inside_subpath(&boundary_polygon, None, None), false);
+		assert!(!curve_intersecting.is_inside_subpath(&boundary_polygon, None, None));
 
 		let curve = Bezier::from_quadratic_dvec2(DVec2::new(115., 37.), DVec2::new(51.4, 91.8), DVec2::new(76.5, 242.));
 		let curve_outside = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(curve_outside.is_inside_subpath(&boundary_polygon, None, None), false);
+		assert!(!curve_outside.is_inside_subpath(&boundary_polygon, None, None));
 
 		let curve = Bezier::from_cubic_dvec2(DVec2::new(210.1, 133.5), DVec2::new(150.2, 436.9), DVec2::new(436., 285.), DVec2::new(247.6, 240.7));
 		let curve_inside = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(curve_inside.is_inside_subpath(&boundary_polygon, None, None), true);
+		assert!(curve_inside.is_inside_subpath(&boundary_polygon, None, None));
 
 		let line = Bezier::from_linear_dvec2(DVec2::new(101., 101.5), DVec2::new(150.2, 499.));
 		let line_inside = Subpath::<EmptyId>::from_bezier(&line);
-		assert_eq!(line_inside.is_inside_subpath(&boundary_polygon, None, None), true);
+		assert!(line_inside.is_inside_subpath(&boundary_polygon, None, None));
 	}
 
 	#[test]

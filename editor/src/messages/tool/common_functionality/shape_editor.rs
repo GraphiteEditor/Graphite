@@ -1075,15 +1075,10 @@ impl ShapeState {
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 					}
-				} else {
-					match point.get_handle_pair(&vector_data) {
-						Some(handles) => {
-							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
-						_ => {}
-					}
-				}
+				} else if let Some(handles) = point.get_handle_pair(&vector_data) {
+    							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+    							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+    						}
 			}
 		}
 	}
