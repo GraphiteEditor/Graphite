@@ -183,6 +183,8 @@ struct RectangleToolData {
 	data: Resize,
 	auto_panning: AutoPanning,
 	layer: Option<LayerNodeIdentifier>,
+	/// The transform of the rectangle layer in document space at the start of the transformation.
+	original_transform: DAffine2,
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	pivot: Pivot,
@@ -286,7 +288,10 @@ impl Fsm for RectangleToolFsmState {
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
-						let selected = [tool_data.layer.unwrap()];
+						let layer = tool_data.layer.unwrap();
+						tool_data.original_transform = document.metadata().transform_to_document(layer);
+
+						let selected = [layer];
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -410,23 +415,33 @@ impl Fsm for RectangleToolFsmState {
 							points: &mut tool_data.snap_candidates,
 							snap_data: SnapData::ignore(document, input, &ignore),
 						});
-						let (position, size) = edges.new_size(input.mouse.position, bounds.original_bound_transform, center, lock_ratio, snap);
-						let (_delta, pivot) = edges.bounds_to_scale_transform(position, size);
 
-						let (position, size) = (position.min(position + size), size.abs());
-						let transformation = DAffine2::from_translation(pivot) * DAffine2::from_translation(position);
+						let (position, size) = edges.new_size(input.mouse.position, bounds.original_bound_transform, center, lock_ratio, snap);
+						// Normalise so the size is always positive
+						let (position, size) = (position + size / 2., size.abs());
+
+						// Compute the offset needed for the top left in bounds space
+						let original_position = (edges.bounds[0] + edges.bounds[1]) / 2.;
+						let translation_bounds_space = position - original_position;
+
+						// Compute a transformation from bounds->viewport->layer
+						let transform_to_layer = document.metadata().transform_to_viewport(layer).inverse() * bounds.original_bound_transform;
+						let size_layer = transform_to_layer.transform_vector2(size);
+
+						// Find the translation necessary from the original position in viewport space
+						let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
 
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 1),
-							input: NodeInput::value(TaggedValue::F64(size.x), false),
+							input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
 						});
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 2),
-							input: NodeInput::value(TaggedValue::F64(size.y), false),
+							input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
 						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer: layer,
-							transform: transformation,
+							transform: DAffine2::from_translation(translation_viewport) * document.metadata().document_to_viewport * tool_data.original_transform,
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
