@@ -618,7 +618,7 @@ impl Fsm for TextToolFsmState {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
-						let center_position = center_bool.then_some(bounds.center_of_transformation);
+						let center_position = center_bool.then_some(bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.));
 
 						let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
 						let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {
