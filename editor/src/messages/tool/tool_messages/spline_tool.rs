@@ -188,35 +188,35 @@ impl ToolTransition for SplineTool {
 }
 
 #[derive(Clone, Debug)]
-enum EndpointPosition {
+pub(super) enum EndpointPosition {
 	Start,
 	End,
 }
 
 #[derive(Clone, Debug, Default)]
-struct SplineToolData {
+pub(super) struct SplineToolData {
 	/// List of points inserted.
-	points: Vec<(PointId, DVec2)>,
+	pub points: Vec<(PointId, DVec2)>,
 	/// Point to be inserted.
-	next_point: DVec2,
+	pub next_point: DVec2,
 	/// Point that was inserted temporarily to show preview.
-	preview_point: Option<PointId>,
+	pub preview_point: Option<PointId>,
 	/// Segment that was inserted temporarily to show preview.
-	preview_segment: Option<SegmentId>,
-	extend: bool,
-	weight: f64,
+	pub preview_segment: Option<SegmentId>,
+	pub extend: bool,
+	pub weight: f64,
 	/// The layer we are editing.
-	current_layer: Option<LayerNodeIdentifier>,
+	pub current_layer: Option<LayerNodeIdentifier>,
 	/// The layers to merge to the current layer before we merge endpoints in merge_endpoint field.
-	merge_layers: HashSet<LayerNodeIdentifier>,
+	pub merge_layers: HashSet<LayerNodeIdentifier>,
 	/// The endpoint IDs to merge with the spline's start/end endpoint after spline drawing is finished.
-	merge_endpoints: Vec<(EndpointPosition, PointId)>,
-	snap_manager: SnapManager,
-	auto_panning: AutoPanning,
+	pub merge_endpoints: Vec<(EndpointPosition, PointId)>,
+	pub snap_manager: SnapManager,
+	pub auto_panning: AutoPanning,
 }
 
 impl SplineToolData {
-	fn cleanup(&mut self) {
+	pub fn cleanup(&mut self) {
 		self.current_layer = None;
 		self.merge_layers = HashSet::new();
 		self.merge_endpoints = Vec::new();
@@ -227,7 +227,7 @@ impl SplineToolData {
 	}
 
 	/// Get the snapped point while ignoring current layer
-	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> SnappedPoint {
+	pub fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> SnappedPoint {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let ignore = if let Some(layer) = self.current_layer { vec![layer] } else { vec![] };
 		let snap_data = SnapData::ignore(document, input, &ignore);
@@ -369,7 +369,7 @@ impl Fsm for SplineToolFsmState {
 					extend_spline(tool_data, false, responses);
 					tool_data.preview_point = preview_point;
 
-					if try_merging_lastest_endpoint(document, tool_data, preferences).is_some() {
+					if try_merging_latest_endpoint(document, tool_data, preferences).is_some() {
 						responses.add(SplineToolMessage::Confirm);
 					}
 				}
@@ -461,7 +461,7 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler) -> Option<()> {
+pub(super) fn try_merging_latest_endpoint(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler) -> Option<()> {
 	if tool_data.points.len() < 2 {
 		return None;
 	};
@@ -483,7 +483,7 @@ fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &m
 	Some(())
 }
 
-fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+pub(super) fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
 	delete_preview(tool_data, responses);
 
 	let Some(layer) = tool_data.current_layer else { return };
@@ -514,7 +514,7 @@ fn extend_spline(tool_data: &mut SplineToolData, show_preview: bool, responses: 
 	}
 }
 
-fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) {
+pub(super) fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Message>) {
 	let Some(layer) = tool_data.current_layer else { return };
 
 	if let Some(id) = tool_data.preview_point {
