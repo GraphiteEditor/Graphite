@@ -803,7 +803,7 @@ impl PenToolData {
 		if self.modifiers.lock_angle {
 			self.set_lock_angle(&vector_data, point, segment);
 		}
-		self.handle_mode = HandleMode::ColinearEquidistant;
+		self.handle_mode = HandleMode::Free;
 	}
 
 	// Stores the segment and point ID of the clicked endpoint
