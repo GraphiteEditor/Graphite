@@ -339,10 +339,10 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for instance in self.instances() {
-			let mut footprint = footprint;
-			footprint.transform *= *instance.transform;
-
 			if let Some(element_id) = instance.source_node_id {
+				let mut footprint = footprint;
+				footprint.transform *= *instance.transform;
+
 				instance.instance.collect_metadata(metadata, footprint, Some(*element_id));
 			}
 		}
@@ -352,7 +352,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 			for instance in self.instances() {
 				let mut new_click_targets = Vec::new();
-
 				instance.instance.add_upstream_click_targets(&mut new_click_targets);
 
 				for click_target in new_click_targets.iter_mut() {
