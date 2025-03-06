@@ -327,7 +327,7 @@ pub async fn imaginate<'a, P: Pixel>(
 				set_progress(ImaginateStatus::Failed(err.to_string()));
 			}
 		};
-		Image::empty()
+		Image::default()
 	})
 }
 

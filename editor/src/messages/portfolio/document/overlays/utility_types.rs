@@ -42,6 +42,30 @@ impl OverlayContext {
 		self.dashed_polygon(&quad.0, color_fill, None, None, None);
 	}
 
+	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let normal = direction.perp();
+		let top = base + direction * size;
+		let edge1 = base + normal * size / 2.;
+		let edge2 = base - normal * size / 2.;
+
+		self.start_dpi_aware_transform();
+
+		self.render_context.begin_path();
+		self.render_context.move_to(top.x, top.y);
+		self.render_context.line_to(edge1.x, edge1.y);
+		self.render_context.line_to(edge2.x, edge2.y);
+		self.render_context.close_path();
+
+		self.render_context.set_fill_style_str(color_fill);
+		self.render_context.set_stroke_style_str(color_stroke);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
+	}
+
 	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		self.dashed_polygon(&quad.0, color_fill, dash_width, dash_gap_width, dash_offset);
 	}

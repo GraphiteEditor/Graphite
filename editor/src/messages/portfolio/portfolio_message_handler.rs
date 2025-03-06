@@ -457,7 +457,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 35] = [
+				const REPLACEMENTS: [(&str, &str); 34] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -488,7 +488,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::vector::SplinesFromPointsNode", "graphene_core::vector::SplineNode"),
 					("graphene_core::vector::generator_nodes::EllipseGenerator", "graphene_core::vector::generator_nodes::EllipseNode"),
 					("graphene_core::vector::generator_nodes::LineGenerator", "graphene_core::vector::generator_nodes::LineNode"),
-					("graphene_core::vector::generator_nodes::PathGenerator", "graphene_core::vector::generator_nodes::PathNode"),
 					("graphene_core::vector::generator_nodes::RectangleGenerator", "graphene_core::vector::generator_nodes::RectangleNode"),
 					(
 						"graphene_core::vector::generator_nodes::RegularPolygonGenerator",
@@ -498,24 +497,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 				];
-				for node_id in &document
-					.network_interface
-					.network_metadata(&[])
-					.unwrap()
-					.persistent_metadata
-					.node_metadata
-					.keys()
-					.cloned()
-					.collect::<Vec<NodeId>>()
-				{
-					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document.network_interface.network(&[]).unwrap().nodes.get(node_id).map(|node| node.implementation.clone()) {
+				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				network.generate_node_paths(&[]);
+
+				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
+
+				// Apply upgrades to each node
+				for (node_id, path) in &node_ids {
+					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
+
+					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) =
+						document.network_interface.network(&network_path).unwrap().nodes.get(node_id).map(|node| node.implementation.clone())
+					{
 						for (old, new) in REPLACEMENTS {
 							let node_path_without_type_args = protonode_id.name.split('<').next();
 							if node_path_without_type_args == Some(old) {
 								document
 									.network_interface
-									.replace_implementation(node_id, &[], DocumentNodeImplementation::ProtoNode(new.to_string().into()));
-								document.network_interface.set_manual_compostion(node_id, &[], Some(graph_craft::Type::Generic("T".into())));
+									.replace_implementation(node_id, &network_path, DocumentNodeImplementation::ProtoNode(new.to_string().into()));
+								document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
 							}
 						}
 					}
@@ -567,32 +567,49 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.network_interface.delete_nodes(vec![NodeId(0)], true, &[]);
 				}
 
-				let node_ids = document.network_interface.network(&[]).unwrap().nodes.keys().cloned().collect::<Vec<_>>();
-				for node_id in &node_ids {
-					let Some(node_metadata) = document.network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(node_id) else {
+				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				network.generate_node_paths(&[]);
+
+				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
+
+				// Apply upgrades to each node
+				for (node_id, path) in &node_ids {
+					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
+					let network_path = &network_path;
+
+					let Some(node) = document.network_interface.network(network_path).unwrap().nodes.get(node_id).cloned() else {
+						log::error!("could not get node in deserialize_document");
+						continue;
+					};
+
+					// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
+					if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+						document
+							.network_interface
+							.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+					}
+
+					let Some(node_metadata) = document.network_interface.network_metadata(network_path).unwrap().persistent_metadata.node_metadata.get(node_id) else {
 						log::error!("could not get node metadata for node {node_id} in deserialize_document");
 						continue;
 					};
 
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
+						log::error!("could not get reference in deserialize_document");
 						continue;
 					};
 
-					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
-						log::error!("could not get node in deserialize_document");
-						continue;
-					};
 					let inputs_count = node.inputs.len();
 
 					// Upgrade Fill nodes to the format change in #1778
 					if reference == "Fill" && inputs_count == 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
 
-						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 
-						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 
 						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
 						let TaggedValue::FillType(fill_type) = fill_type else { continue };
@@ -622,41 +639,44 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						};
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), &[]);
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Fill(fill.clone()), false), network_path);
 						match fill {
 							Fill::None => {
 								document
 									.network_interface
-									.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), &[]);
+									.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(None), false), network_path);
 							}
 							Fill::Solid(color) => {
 								document
 									.network_interface
-									.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), &[]);
+									.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::OptionalColor(Some(color)), false), network_path);
 							}
 							Fill::Gradient(gradient) => {
 								document
 									.network_interface
-									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), &[]);
+									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), network_path);
 							}
 						}
 					}
 
 					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node
 					if reference == "Splines from Points" {
-						document.network_interface.set_reference(node_id, &[], Some("Spline".to_string()));
+						document.network_interface.set_reference(node_id, network_path, Some("Spline".to_string()));
 					}
 
 					// Upgrade the old "Spline" node to the new "Spline" node
 					if reference == "Spline" {
 						// Retrieve the proto node identifier and verify it is the old "Spline" node, otherwise skip it if this is the new "Spline" node
-						let identifier = document.network_interface.implementation(node_id, &[]).and_then(|implementation| implementation.get_proto_node());
+						let identifier = document
+							.network_interface
+							.implementation(node_id, network_path)
+							.and_then(|implementation| implementation.get_proto_node());
 						if identifier.map(|identifier| &identifier.name) != Some(&"graphene_core::vector::generator_nodes::SplineNode".into()) {
 							continue;
 						}
 
 						// Obtain the document node for the given node ID, extract the vector points, and create vector data from the list of points
-						let node = document.network_interface.document_node(node_id, &[]).unwrap();
+						let node = document.network_interface.document_node(node_id, network_path).unwrap();
 						let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
 							log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 							continue;
@@ -666,14 +686,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						// Retrieve the output connectors linked to the "Spline" node's output port
 						let spline_outputs = document
 							.network_interface
-							.outward_wires(&[])
+							.outward_wires(network_path)
 							.unwrap()
 							.get(&OutputConnector::node(*node_id, 0))
 							.expect("Vec of InputConnector Spline node is connected to its output port 0.")
 							.clone();
 
 						// Get the node's current position in the graph
-						let Some(node_position) = document.network_interface.position(node_id, &[]) else {
+						let Some(node_position) = document.network_interface.position(node_id, network_path) else {
 							log::error!("Could not get position of spline node.");
 							continue;
 						};
@@ -696,20 +716,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let new_path_id = *new_ids.get(&NodeId(1)).unwrap();
 
 						// Remove the old "Spline" node from the document
-						document.network_interface.delete_nodes(vec![*node_id], false, &[]);
+						document.network_interface.delete_nodes(vec![*node_id], false, network_path);
 
 						// Insert the new "Path" and "Spline" nodes into the network interface with generated IDs
-						document.network_interface.insert_node_group(nodes.clone(), new_ids, &[]);
+						document.network_interface.insert_node_group(nodes.clone(), new_ids, network_path);
 
 						// Reposition the new "Spline" node to match the original "Spline" node's position
-						document.network_interface.shift_node(&new_spline_id, node_position, &[]);
+						document.network_interface.shift_node(&new_spline_id, node_position, network_path);
 
 						// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
-						document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), &[]);
+						document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), network_path);
 
 						// Redirect each output connection from the old node to the new "Spline" node's output port
 						for input_connector in spline_outputs {
-							document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), &[]);
+							document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), network_path);
 						}
 					}
 
@@ -717,14 +737,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if reference == "Text" && inputs_count != 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
 
-						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 
-						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
-						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), &[]);
-						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), &[]);
-						document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
 						document.network_interface.set_input(
 							&InputConnector::node(*node_id, 4),
 							if inputs_count == 6 {
@@ -732,7 +752,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							} else {
 								NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false)
 							},
-							&[],
+							network_path,
 						);
 						document.network_interface.set_input(
 							&InputConnector::node(*node_id, 5),
@@ -741,17 +761,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							} else {
 								NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false)
 							},
-							&[],
+							network_path,
 						);
 						document.network_interface.set_input(
 							&InputConnector::node(*node_id, 6),
 							NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
-							&[],
+							network_path,
 						);
 						document.network_interface.set_input(
 							&InputConnector::node(*node_id, 7),
 							NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
-							&[],
+							network_path,
 						);
 					}
 
@@ -759,34 +779,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if (reference == "Sine" || reference == "Cosine" || reference == "Tangent") && inputs_count == 1 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
 
-						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 
-						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), &[]);
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 					}
 
 					// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
 					if reference == "Modulo" && inputs_count == 2 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
-						document.network_interface.replace_implementation(node_id, &[], document_node.implementation.clone());
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
 
-						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), &[]);
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 
-						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), &[]);
-						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), &[]);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), &[]);
+							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 					}
 
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" && upgrade_from_before_returning_nested_click_targets {
-						let label = document.network_interface.frontend_display_name(node_id, &[]);
+						let label = document.network_interface.frontend_display_name(node_id, network_path);
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
@@ -795,25 +815,27 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if reference == "Image" && inputs_count == 1 {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
 						let new_image_node = node_definition.default_node_template();
-						document.network_interface.replace_implementation(node_id, &[], new_image_node.document_node.implementation);
+						document.network_interface.replace_implementation(node_id, network_path, new_image_node.document_node.implementation);
 
 						// Insert a new empty input for the image
 						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", &[*node_id]);
-						document.network_interface.set_reference(node_id, &[], Some("Image".to_string()));
+						document.network_interface.set_reference(node_id, network_path, Some("Image".to_string()));
 					}
 
 					if reference == "Noise Pattern" && inputs_count == 15 {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(reference).unwrap();
 						let new_noise_pattern_node = node_definition.default_node_template();
-						document.network_interface.replace_implementation(node_id, &[], new_noise_pattern_node.document_node.implementation);
+						document
+							.network_interface
+							.replace_implementation(node_id, network_path, new_noise_pattern_node.document_node.implementation);
 
-						let old_inputs = document.network_interface.replace_inputs(node_id, new_noise_pattern_node.document_node.inputs.clone(), &[]);
+						let old_inputs = document.network_interface.replace_inputs(node_id, new_noise_pattern_node.document_node.inputs.clone(), network_path);
 
 						document
 							.network_interface
-							.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), &[]);
+							.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 						for (i, input) in old_inputs.iter().enumerate() {
-							document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), &[]);
+							document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), network_path);
 						}
 					}
 				}
@@ -866,13 +888,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.load_document(document, document_id, responses, to_front);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
-				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
+				let mut all_new_ids = Vec::new();
+				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let nodes = entry.clone().nodes;
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 						let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
-						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
+						all_new_ids.extend(new_ids.values().cloned());
+						responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index });
 					}
 				};
@@ -880,9 +904,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
-					paste(entry, responses)
+					paste(entry, responses, &mut all_new_ids)
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {

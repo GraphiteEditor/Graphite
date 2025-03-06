@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrame;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
@@ -48,15 +48,12 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	let mut current_and_other_layer_is_spline = false;
 
-	match (find_spline(document, first_layer), find_spline(document, second_layer)) {
-		(Some(current_layer_spline), Some(other_layer_spline)) => {
-			responses.add(NodeGraphMessage::DeleteNodes {
-				node_ids: [current_layer_spline, other_layer_spline].to_vec(),
-				delete_children: false,
-			});
-			current_and_other_layer_is_spline = true;
-		}
-		_ => {}
+	if let (Some(current_layer_spline), Some(other_layer_spline)) = (find_spline(document, first_layer), find_spline(document, second_layer)) {
+		responses.add(NodeGraphMessage::DeleteNodes {
+			node_ids: [current_layer_spline, other_layer_spline].to_vec(),
+			delete_children: false,
+		});
+		current_and_other_layer_is_spline = true;
 	}
 
 	// Move the `second_layer` below the `first_layer` for positioning purposes
@@ -210,7 +207,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image_frame: ImageFrameTable<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id,

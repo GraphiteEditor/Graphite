@@ -336,6 +336,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
 		entry!(KeyDown(KeyG); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::UngroupSelectedLayers),
 		entry!(KeyDown(KeyN); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::CreateEmptyFolder),
+		entry!(KeyDown(Backslash); modifiers=[Alt], action_dispatch=DocumentMessage::SelectParentLayer),
 		entry!(KeyDown(BracketLeft); modifiers=[Alt], action_dispatch=DocumentMessage::SelectionStepBack),
 		entry!(KeyDown(BracketRight); modifiers=[Alt], action_dispatch=DocumentMessage::SelectionStepForward),
 		entry!(KeyDown(MouseBack); action_dispatch=DocumentMessage::SelectionStepBack),

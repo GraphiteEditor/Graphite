@@ -324,10 +324,10 @@ impl SnapManager {
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
 		if screen_bounds.intersects(layer_bounds) {
-			if !self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
+			if self.alignment_candidates.as_ref().is_none_or(|candidates| candidates.len() <= 100) {
 				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);
 			}
-			if quad.intersects(layer_bounds) && !self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
+			if quad.intersects(layer_bounds) && self.candidates.as_ref().is_none_or(|candidates| candidates.len() <= 10) {
 				self.candidates.get_or_insert_with(Vec::new).push(layer);
 			}
 		}
