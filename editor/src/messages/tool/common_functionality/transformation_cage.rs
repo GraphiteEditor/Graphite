@@ -254,40 +254,36 @@ impl SelectedEdges {
 		(DAffine2::from_scale(enlargement_factor), pivot)
 	}
 
-	// TODO: Add free movement when Ctrl is pressed to allow dragging the whole edge, not just sliding it
-	pub fn skew_transform(&self, mouse: DVec2, to_viewport_transform: DAffine2, _free_movement: bool) -> DAffine2 {
-		// Skip if the matrix is singular (as it isn't really possible to skew).
+	pub fn skew_transform(&self, mouse: DVec2, to_viewport_transform: DAffine2, free_movement: bool) -> DAffine2 {
+		// Skip if the matrix is singular
 		if !to_viewport_transform.matrix2.determinant().recip().is_finite() {
 			return DAffine2::IDENTITY;
 		}
 
 		let opposite = self.pivot_from_bounds(self.bounds[0], self.bounds[1]);
-		// This is the current handle that goes under the mouse.
 		let dragging_point = self.pivot_from_bounds(self.bounds[1], self.bounds[0]);
 
-		let mut new_dragging_point = to_viewport_transform.transform_point2(dragging_point);
+		let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
 		let parallel_to_x = self.top || self.bottom;
 		let parallel_to_y = !parallel_to_x && (self.left || self.right);
 
-		// The target point is the projection in viewport space onto the line that the skew is parallel to.
-		if parallel_to_x {
-			new_dragging_point += (mouse - new_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::X));
-		} else if parallel_to_y {
-			new_dragging_point += (mouse - new_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::Y));
-		}
-		new_dragging_point = to_viewport_transform.inverse().transform_point2(new_dragging_point);
+		let drag_vector = mouse - viewport_dragging_point;
+		let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
 
-		let movement = new_dragging_point - dragging_point;
+		let bounds = (self.bounds[1] - self.bounds[0]).abs();
+		let sign = if self.top || self.left { -1. } else { 1. };
+		let signed_bounds = sign * bounds;
 
-		// Produce a skew that moves the dragging point to the new dragging point (assuming the opposite is origin).
+		let scale_factor = if parallel_to_x { signed_bounds.y.recip() } else { signed_bounds.x.recip() };
+		let scaled_document_drag = document_drag_vector * scale_factor;
+
 		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
-			1.,
-			if parallel_to_y { movement.y / (dragging_point - opposite).x } else { 0. },
-			if parallel_to_x { movement.x / (dragging_point - opposite).y } else { 0. },
-			1.,
+			1. + if parallel_to_y && free_movement { scaled_document_drag.x } else { 0. },
+			if parallel_to_y { scaled_document_drag.y } else { 0. },
+			if parallel_to_x { scaled_document_drag.x } else { 0. },
+			1. + if parallel_to_x && free_movement { scaled_document_drag.y } else { 0. },
 		]));
 
-		// Combine that with a transform that makes opposite the origin.
 		DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite)
 	}
 }
@@ -810,21 +806,29 @@ fn skew_transform_correct() {
 		let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
 
 		// This is the current handle that goes under the mouse.
+		let opposite = edge.pivot_from_bounds(edge.bounds[0], edge.bounds[1]);
 		let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
 
+		let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
 		let parallel_to_x = edge.top || edge.bottom;
 		let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
 
-		// The target point is the projection in viewport space onto the line that the skew is parallel to.
-		let mut target_dragging_point = to_viewport_transform.transform_point2(dragging_point);
-		if parallel_to_x {
-			target_dragging_point += (mouse - target_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::X));
-		} else if parallel_to_y {
-			target_dragging_point += (mouse - target_dragging_point).project_onto(to_viewport_transform.transform_vector2(DVec2::Y));
-		}
+		let drag_vector = mouse - viewport_dragging_point;
+		let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
 
-		// Compute the final point in viewport space.
-		let final_dragging_point = to_viewport_transform.transform_point2(final_transform.transform_point2(dragging_point));
-		assert_eq!(final_dragging_point, target_dragging_point);
+		let sign = if edge.top || edge.left { -1. } else { 1. };
+		let scale_factor = (edge.bounds[1] - edge.bounds[0])[parallel_to_x as usize].abs().recip() * sign;
+		let scaled_document_drag = document_drag_vector * scale_factor;
+
+		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
+			1.,
+			if parallel_to_y { scaled_document_drag.y } else { 0. },
+			if parallel_to_x { scaled_document_drag.x } else { 0. },
+			1.,
+		]));
+
+		let constructed_transform = DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite);
+
+		assert_eq!(constructed_transform, final_transform);
 	}
 }
