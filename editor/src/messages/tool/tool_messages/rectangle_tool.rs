@@ -337,7 +337,10 @@ impl Fsm for RectangleToolFsmState {
 			}
 			(RectangleToolFsmState::Ready, RectangleToolMessage::PointerMove { .. }) => {
 				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+				let mut cursor = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, false, None));
 
 				// Dragging the pivot overrules the other operations
 				if tool_data.pivot.is_over(input.mouse.position) {
