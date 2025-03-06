@@ -6,6 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 
+use dyn_any::DynAny;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod};
@@ -19,7 +20,7 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
-use graphene_std::application_io::TextureFrame;
+use graphene_std::application_io::TextureFrameTable;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
@@ -89,20 +90,24 @@ pub fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize
 	widgets
 }
 
-pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>), context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn property_from_type(
+	node_id: NodeId,
+	index: usize,
+	ty: &Type,
+	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+	context: &mut NodePropertiesContext,
+) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
 	let Some(name) = context.network_interface.input_name(&node_id, index, context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
-		return vec![];
+		return Err(vec![]);
 	};
-
 	let Some(network) = context.network_interface.network(context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
-		return vec![];
+		return Err(vec![]);
 	};
-
 	let Some(document_node) = network.nodes.get(&node_id) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the document node does not exist");
-		return vec![];
+		return Err(vec![]);
 	};
 
 	let (mut number_min, mut number_max, range) = number_options;
@@ -154,7 +159,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(false), true),
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrame>() => {
+						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => {
 							raster_widget(document_node, node_id, index, name, true).into()
 						}
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(document_node, node_id, index, name, true).into(),
@@ -247,7 +252,7 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 									))
 									.widget_holder(),
 							]);
-							widgets.into()
+							return Err(vec![widgets.into()]);
 						}
 					}
 				}
@@ -255,10 +260,12 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, numbe
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, context),
-		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
+		Type::Future(out) => return property_from_type(node_id, index, out, number_options, context),
 	};
+
 	extra_widgets.push(widgets);
-	extra_widgets
+
+	Ok(extra_widgets)
 }
 
 pub fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
@@ -2122,7 +2129,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 				let mut number_options = (None, None, None);
 				let input_type = match implementation {
-					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
+					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						if let Some(field) = graphene_core::registry::NODE_METADATA
 							.lock()
 							.unwrap()
@@ -2130,13 +2137,23 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = (field.number_min, field.number_max, field.number_mode_range);
+							if let Some(ref default) = field.default_type {
+								break 'early_return default.clone();
+							}
 						}
 						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
 							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
 							return Vec::new();
 						};
-						let first_node_io = implementations.keys().next().unwrap_or(const { &graphene_std::NodeIOTypes::empty() });
-						let Some(input_type) = first_node_io.inputs.get(input_index) else {
+						let proto_node_identifier = proto_node_identifier.clone();
+						let mut input_types = implementations
+							.keys()
+							.filter_map(|item| item.inputs.get(input_index))
+							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, context).is_ok())
+							.collect::<Vec<_>>();
+						input_types.sort_by_key(|ty| ty.type_name());
+						let input_type = input_types.first().cloned();
+						let Some(input_type) = input_type else {
 							log::error!("Could not get input type for protonode {proto_node_identifier:?} at index {input_index:?}");
 							return Vec::new();
 						};
@@ -2145,7 +2162,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
 				};
 
-				property_from_type(node_id, input_index, &input_type, number_options, context)
+				property_from_type(node_id, input_index, &input_type, number_options, context).unwrap_or_else(|value| value)
 			});
 			layout.extend(row);
 		}

@@ -132,14 +132,15 @@ impl<'i, Root: Node<'i, I>, I: 'i + From<()>> ConsNode<I, Root> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{ops::IdentityNode, value::ValueNode};
+	use crate::generic::FnNode;
+	use crate::value::ValueNode;
 
 	#[test]
 	fn compose() {
 		let value = ValueNode::new(4u32);
-		let compose = value.then(IdentityNode::new());
+		let compose = value.then(FnNode::new(|x| x));
 		assert_eq!(compose.eval(()), &4u32);
-		let type_erased = &compose as &dyn for<'i> Node<'i, (), Output = &'i u32>;
+		let type_erased = &compose as &dyn Node<'_, (), Output = &'_ u32>;
 		assert_eq!(type_erased.eval(()), &4u32);
 	}
 
@@ -148,7 +149,7 @@ mod test {
 		let value = ValueNode::new(5);
 
 		assert_eq!(value.eval(()), &5);
-		let id = IdentityNode::new();
+		let id = FnNode::new(|x| x);
 
 		let compose = ComposeNode::new(&value, &id);
 

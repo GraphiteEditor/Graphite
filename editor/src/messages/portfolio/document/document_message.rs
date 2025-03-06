@@ -60,6 +60,9 @@ pub enum DocumentMessage {
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
+	RotateSelectedLayers {
+		degrees: f64,
+	},
 	GraphViewOverlay {
 		open: bool,
 	},
@@ -109,6 +112,7 @@ pub enum DocumentMessage {
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,
+	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
 	SelectedLayersLowerToBack,
@@ -161,6 +165,9 @@ pub enum DocumentMessage {
 	EndTransaction,
 	CommitTransaction,
 	AbortTransaction,
+	RepeatedAbortTransaction {
+		undo_count: usize,
+	},
 	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,

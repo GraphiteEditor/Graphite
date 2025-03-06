@@ -1,11 +1,10 @@
-use crate::transform::Footprint;
-
 use bezier_rs::{ManipulatorGroup, Subpath};
+use graphene_core::transform::Transform;
+use graphene_core::transform::TransformMut;
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
-use graphene_core::{transform::Transform, GraphicGroup};
-use graphene_core::{Color, GraphicElement, GraphicGroupTable};
+use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 
@@ -13,23 +12,8 @@ use glam::{DAffine2, DVec2};
 use std::ops::Mul;
 
 #[node_macro::node(category(""))]
-async fn boolean_operation<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroupTable,
-		Footprint -> GraphicGroupTable,
-	)]
-	group_of_paths: impl Node<F, Output = GraphicGroupTable>,
-	operation: BooleanOperation,
-) -> VectorDataTable {
-	let group_of_paths = group_of_paths.eval(footprint).await;
-	let group_of_paths = group_of_paths.one_item();
-
-	fn vector_from_image<T: Transform>(image_frame: T) -> VectorData {
+async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
+	fn vector_from_image<T: Transform>(image_frame: T) -> VectorDataTable {
 		let corner1 = DVec2::ZERO;
 		let corner2 = DVec2::new(1., 1.);
 
@@ -39,18 +23,14 @@ async fn boolean_operation<F: 'n + Send>(
 		let mut vector_data = VectorData::from_subpath(subpath);
 		vector_data.style.set_fill(Fill::Solid(Color::from_rgb_str("777777").unwrap().to_gamma_srgb()));
 
-		vector_data
+		VectorDataTable::new(vector_data)
 	}
 
-	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
+	fn union_vector_data(graphic_element: &GraphicElement) -> VectorDataTable {
 		match graphic_element {
-			GraphicElement::VectorData(vector_data) => {
-				let vector_data = vector_data.one_item();
-				vector_data.clone()
-			}
+			GraphicElement::VectorData(vector_data) => vector_data.clone(),
 			// Union all vector data in the graphic group into a single vector
 			GraphicElement::GraphicGroup(graphic_group) => {
-				let graphic_group = graphic_group.one_item();
 				let vector_data = collect_vector_data(graphic_group);
 
 				boolean_operation_on_vector_data(&vector_data, BooleanOperation::Union)
@@ -59,28 +39,32 @@ async fn boolean_operation<F: 'n + Send>(
 		}
 	}
 
-	fn collect_vector_data(graphic_group: &GraphicGroup) -> Vec<VectorData> {
+	fn collect_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDataTable> {
+		let graphic_group = graphic_group_table.one_instance();
+
 		// Ensure all non vector data in the graphic group is converted to vector data
-		let vector_data = graphic_group.iter().map(|(element, _)| union_vector_data(element));
+		let vector_data_tables = graphic_group.instance.iter().map(|(element, _)| union_vector_data(element));
 
 		// Apply the transform from the parent graphic group
-		let transformed_vector_data = vector_data.map(|mut vector_data| {
-			vector_data.transform = graphic_group.transform * vector_data.transform;
-			vector_data
+		let transformed_vector_data = vector_data_tables.map(|mut vector_data_table| {
+			*vector_data_table.transform_mut() = graphic_group.transform() * vector_data_table.transform();
+			vector_data_table
 		});
 		transformed_vector_data.collect::<Vec<_>>()
 	}
 
-	fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorData>) -> VectorData {
+	fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorDataTable>) -> VectorDataTable {
 		let mut vector_data = vector_data.into_iter();
 		let mut result = vector_data.next().cloned().unwrap_or_default();
 		let mut next_vector_data = vector_data.next();
 
 		while let Some(lower_vector_data) = next_vector_data {
-			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+			let transform_of_lower_into_space_of_upper = result.transform().inverse() * lower_vector_data.transform();
 
-			let upper_path_string = to_path(&result, DAffine2::IDENTITY);
-			let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
+			let result = result.one_instance_mut().instance;
+
+			let upper_path_string = to_path(result, DAffine2::IDENTITY);
+			let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
 
 			#[allow(unused_unsafe)]
 			let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
@@ -93,49 +77,58 @@ async fn boolean_operation<F: 'n + Send>(
 
 			next_vector_data = vector_data.next();
 		}
+
 		result
 	}
 
-	fn boolean_operation_on_vector_data(vector_data: &[VectorData], boolean_operation: BooleanOperation) -> VectorData {
+	fn boolean_operation_on_vector_data(vector_data_table: &[VectorDataTable], boolean_operation: BooleanOperation) -> VectorDataTable {
 		match boolean_operation {
 			BooleanOperation::Union => {
 				// Reverse vector data so that the result style is the style of the first vector data
-				let mut vector_data = vector_data.iter().rev();
-				let mut result = vector_data.next().cloned().unwrap_or_default();
-				let mut second_vector_data = Some(vector_data.next().unwrap_or(const { &VectorData::empty() }));
+				let mut vector_data_table = vector_data_table.iter().rev();
+				let mut result_vector_data_table = vector_data_table.next().cloned().unwrap_or_default();
 
 				// Loop over all vector data and union it with the result
+				let default = VectorDataTable::default();
+				let mut second_vector_data = Some(vector_data_table.next().unwrap_or(&default));
 				while let Some(lower_vector_data) = second_vector_data {
-					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+					let transform_of_lower_into_space_of_upper = result_vector_data_table.transform().inverse() * lower_vector_data.transform();
 
-					let upper_path_string = to_path(&result, DAffine2::IDENTITY);
-					let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
+					let result_vector_data = result_vector_data_table.one_instance_mut().instance;
+
+					let upper_path_string = to_path(result_vector_data, DAffine2::IDENTITY);
+					let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
 					let boolean_operation_result = from_path(&boolean_operation_string);
 
-					result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
-					result.point_domain = boolean_operation_result.point_domain;
-					result.segment_domain = boolean_operation_result.segment_domain;
-					result.region_domain = boolean_operation_result.region_domain;
-					second_vector_data = vector_data.next();
+					result_vector_data.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+					result_vector_data.point_domain = boolean_operation_result.point_domain;
+					result_vector_data.segment_domain = boolean_operation_result.segment_domain;
+					result_vector_data.region_domain = boolean_operation_result.region_domain;
+
+					second_vector_data = vector_data_table.next();
 				}
-				result
+
+				result_vector_data_table
 			}
-			BooleanOperation::SubtractFront => subtract(vector_data.iter()),
-			BooleanOperation::SubtractBack => subtract(vector_data.iter().rev()),
+			BooleanOperation::SubtractFront => subtract(vector_data_table.iter()),
+			BooleanOperation::SubtractBack => subtract(vector_data_table.iter().rev()),
 			BooleanOperation::Intersect => {
-				let mut vector_data = vector_data.iter().rev();
+				let mut vector_data = vector_data_table.iter().rev();
 				let mut result = vector_data.next().cloned().unwrap_or_default();
-				let mut second_vector_data = Some(vector_data.next().unwrap_or(const { &VectorData::empty() }));
+				let default = VectorDataTable::default();
+				let mut second_vector_data = Some(vector_data.next().unwrap_or(&default));
 
 				// For each vector data, set the result to the intersection of that data and the result
 				while let Some(lower_vector_data) = second_vector_data {
-					let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+					let transform_of_lower_into_space_of_upper = result.transform().inverse() * lower_vector_data.transform();
 
-					let upper_path_string = to_path(&result, DAffine2::IDENTITY);
-					let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
+					let result = result.one_instance_mut().instance;
+
+					let upper_path_string = to_path(result, DAffine2::IDENTITY);
+					let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
@@ -147,62 +140,67 @@ async fn boolean_operation<F: 'n + Send>(
 					result.region_domain = boolean_operation_result.region_domain;
 					second_vector_data = vector_data.next();
 				}
+
 				result
 			}
 			BooleanOperation::Difference => {
-				let mut vector_data_iter = vector_data.iter().rev();
-				let mut any_intersection = VectorData::empty();
-				let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(const { &VectorData::empty() }));
+				let mut vector_data_iter = vector_data_table.iter().rev();
+				let mut any_intersection = VectorDataTable::default();
+				let default = VectorDataTable::default();
+				let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(&default));
 
 				// Find where all vector data intersect at least once
 				while let Some(lower_vector_data) = second_vector_data {
-					let all_other_vector_data = boolean_operation_on_vector_data(&vector_data.iter().filter(|v| v != &lower_vector_data).cloned().collect::<Vec<_>>(), BooleanOperation::Union);
+					let all_other_vector_data = boolean_operation_on_vector_data(&vector_data_table.iter().filter(|v| v != &lower_vector_data).cloned().collect::<Vec<_>>(), BooleanOperation::Union);
+					let all_other_vector_data_instance = all_other_vector_data.one_instance();
 
-					let transform_of_lower_into_space_of_upper = all_other_vector_data.transform.inverse() * lower_vector_data.transform;
+					let transform_of_lower_into_space_of_upper = all_other_vector_data.transform().inverse() * lower_vector_data.transform();
 
-					let upper_path_string = to_path(&all_other_vector_data, DAffine2::IDENTITY);
-					let lower_path_string = to_path(lower_vector_data, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_path(all_other_vector_data_instance.instance, DAffine2::IDENTITY);
+					let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-					let mut boolean_intersection_result = from_path(&boolean_intersection_string);
+					let mut boolean_intersection_result = VectorDataTable::new(from_path(&boolean_intersection_string));
+					*boolean_intersection_result.transform_mut() = all_other_vector_data_instance.transform();
 
-					boolean_intersection_result.transform = all_other_vector_data.transform;
-					boolean_intersection_result.style = all_other_vector_data.style.clone();
-					boolean_intersection_result.alpha_blending = all_other_vector_data.alpha_blending;
+					boolean_intersection_result.one_instance_mut().instance.style = all_other_vector_data_instance.instance.style.clone();
+					*boolean_intersection_result.one_instance_mut().alpha_blending = *all_other_vector_data_instance.alpha_blending;
 
-					let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
+					let transform_of_lower_into_space_of_upper = boolean_intersection_result.one_instance_mut().transform().inverse() * any_intersection.transform();
 
-					let upper_path_string = to_path(&boolean_intersection_result, DAffine2::IDENTITY);
-					let lower_path_string = to_path(&any_intersection, transform_of_lower_into_space_of_upper);
+					let upper_path_string = to_path(boolean_intersection_result.one_instance_mut().instance, DAffine2::IDENTITY);
+					let lower_path_string = to_path(any_intersection.one_instance_mut().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let union_result = from_path(&unsafe { boolean_union(upper_path_string, lower_path_string) });
-					any_intersection = union_result;
+					*any_intersection.one_instance_mut().instance = union_result;
 
-					any_intersection.transform = boolean_intersection_result.transform;
-					any_intersection.style = boolean_intersection_result.style.clone();
-					any_intersection.alpha_blending = boolean_intersection_result.alpha_blending;
+					*any_intersection.transform_mut() = boolean_intersection_result.transform();
+					any_intersection.one_instance_mut().instance.style = boolean_intersection_result.one_instance_mut().instance.style.clone();
+					any_intersection.one_instance_mut().alpha_blending = boolean_intersection_result.one_instance_mut().alpha_blending;
 
 					second_vector_data = vector_data_iter.next();
 				}
 				// Subtract the area where they intersect at least once from the union of all vector data
-				let union = boolean_operation_on_vector_data(vector_data, BooleanOperation::Union);
+				let union = boolean_operation_on_vector_data(vector_data_table, BooleanOperation::Union);
 				boolean_operation_on_vector_data(&[union, any_intersection], BooleanOperation::SubtractFront)
 			}
 		}
 	}
 
 	// The first index is the bottom of the stack
-	let mut boolean_operation_result = boolean_operation_on_vector_data(&collect_vector_data(group_of_paths), operation);
+	let mut result_vector_data_table = boolean_operation_on_vector_data(&collect_vector_data(&group_of_paths), operation);
 
-	let transform = boolean_operation_result.transform;
-	VectorData::transform(&mut boolean_operation_result, transform);
-	boolean_operation_result.style.set_stroke_transform(DAffine2::IDENTITY);
-	boolean_operation_result.transform = DAffine2::IDENTITY;
-	boolean_operation_result.upstream_graphic_group = Some(GraphicGroupTable::new(group_of_paths.clone()));
+	// Replace the transformation matrix with a mutation of the vector points themselves
+	let result_vector_data_table_transform = result_vector_data_table.transform();
+	*result_vector_data_table.transform_mut() = DAffine2::IDENTITY;
+	let result_vector_data = result_vector_data_table.one_instance_mut().instance;
+	VectorData::transform(result_vector_data, result_vector_data_table_transform);
+	result_vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
+	result_vector_data.upstream_graphic_group = Some(group_of_paths.clone());
 
-	VectorDataTable::new(boolean_operation_result)
+	result_vector_data_table
 }
 
 fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {

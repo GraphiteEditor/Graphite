@@ -468,8 +468,8 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => (node_id, input_index),
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
-					// The outermost network export defaults to an ArtboardGroup.
-					return Some((concrete!(graphene_core::ArtboardGroup), TypeSource::OuterMostExportDefault));
+					// The outermost network export defaults to an ArtboardGroupTable.
+					return Some((concrete!(graphene_core::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_types(encapsulating_node_id, encapsulating_node_id_path).into_iter().nth(export_index).flatten();
@@ -5333,7 +5333,7 @@ impl NodeNetworkInterface {
 		// If a non artboard layer is attempted to be connected to the exports, and there is already an artboard connected, then connect the layer to the artboard.
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next() {
 			if parent == LayerNodeIdentifier::ROOT_PARENT
-				&& !self.reference(&layer.to_node(), network_path).is_some_and(|reference| *reference == Some("Artboard".to_string()))
+				&& self.reference(&layer.to_node(), network_path).is_none_or(|reference| *reference != Some("Artboard".to_string()))
 				&& self.is_artboard(&first_layer.to_node(), network_path)
 			{
 				parent = first_layer;
@@ -6221,10 +6221,11 @@ impl PropertiesRow {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 3] = [
+	const REPLACEMENTS: [(&str, &str); 4] = [
 		("VectorData", "Instances<VectorData>"),
 		("GraphicGroup", "Instances<GraphicGroup>"),
-		("ImageFrame", "Instances<ImageFrame>"),
+		("ImageFrame", "Instances<Image>"),
+		("Instances<ImageFrame>", "Instances<Image>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;

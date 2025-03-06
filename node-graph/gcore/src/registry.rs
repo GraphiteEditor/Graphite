@@ -1,13 +1,13 @@
+use crate::transform::Footprint;
+use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
+
+use dyn_any::{DynAny, StaticType};
+
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
-
-use dyn_any::DynAny;
-
-use crate::transform::Footprint;
-use crate::NodeIO;
-use crate::NodeIOTypes;
 
 pub mod types {
 	/// 0% - 100%
@@ -47,6 +47,7 @@ pub struct FieldMetadata {
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,
+	pub default_type: Option<Type>,
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
@@ -153,11 +154,6 @@ impl NodeContainer {
 	}
 }
 
-use crate::Node;
-use crate::WasmNotSend;
-use dyn_any::StaticType;
-use std::marker::PhantomData;
-
 /// Boxes the input and downcasts the output.
 /// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
 #[derive(Clone)]
@@ -166,7 +162,11 @@ pub struct DowncastBothNode<I, O> {
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<'input, O: 'input + StaticType + WasmNotSend, I: 'input + StaticType + WasmNotSend> Node<'input, I> for DowncastBothNode<I, O> {
+impl<'input, O, I> Node<'input, I> for DowncastBothNode<I, O>
+where
+	O: 'input + StaticType + WasmNotSend,
+	I: 'input + StaticType + WasmNotSend,
+{
 	type Output = DynFuture<'input, O>;
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -234,9 +234,11 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, _I: 'input + StaticType + WasmNotSend, _O: 'input + StaticType + WasmNotSend, N: 'input> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
+impl<'input, _I, _O, N> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
 where
-	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
+	_I: 'input + dyn_any::StaticType + WasmNotSend,
+	_O: 'input + dyn_any::StaticType + WasmNotSend,
+	N: 'input + Node<'input, _I, Output = DynFuture<'input, _O>>,
 {
 	type Output = FutureAny<'input>;
 	#[inline]
@@ -275,9 +277,11 @@ where
 		self.node.serialize()
 	}
 }
-impl<'input, _I: 'input + StaticType, _O: 'input + StaticType, N: 'input> DynAnyNode<_I, _O, N>
+impl<'input, _I, _O, N> DynAnyNode<_I, _O, N>
 where
-	N: Node<'input, _I, Output = DynFuture<'input, _O>>,
+	_I: 'input + dyn_any::StaticType,
+	_O: 'input + dyn_any::StaticType,
+	N: 'input + Node<'input, _I, Output = DynFuture<'input, _O>>,
 {
 	pub const fn new(node: N) -> Self {
 		Self {

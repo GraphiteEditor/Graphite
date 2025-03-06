@@ -78,6 +78,8 @@ pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 pub const MIN_LENGTH_FOR_MIDPOINT_VISIBILITY: f64 = 20.;
 pub const MIN_LENGTH_FOR_CORNERS_VISIBILITY: f64 = 12.;
+/// The width or height that the transform cage needs to be (at least) before the corner resize handle click targets take up their full surroundings. Otherwise, when less than this value, the interior edge resize handle takes precedence so the corner handles don't eat into the edge area, making it harder to resize the cage from its edges.
+pub const MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS: f64 = 10.;
 /// When the width or height of the transform cage is less than this value, only the exterior of the bounding box will act as a click target for resizing.
 pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 /// When dragging the edge of a cage with Alt, it centers around the pivot.
@@ -85,6 +87,11 @@ pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 ///
 /// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
 pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
+
+// SKEW TRIANGLES
+pub const SKEW_TRIANGLE_SIZE: f64 = 7.;
+pub const SKEW_TRIANGLE_OFFSET: f64 = 4.;
+pub const MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY: f64 = 48.;
 
 // PATH TOOL
 pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
