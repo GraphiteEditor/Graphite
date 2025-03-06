@@ -61,6 +61,25 @@ impl<T> Instances<T> {
 		}
 	}
 
+	pub fn push_instance(&mut self, instance: Instance<T>) -> InstanceMut<T>
+	where
+		T: Clone,
+	{
+		self.id.push(*instance.id);
+		self.instance.push(instance.instance.clone());
+		self.transform.push(*instance.transform);
+		self.alpha_blending.push(*instance.alpha_blending);
+		self.source_node_id.push(*instance.source_node_id);
+
+		InstanceMut {
+			id: self.id.last_mut().expect("Shouldn't be empty"),
+			instance: self.instance.last_mut().expect("Shouldn't be empty"),
+			transform: self.transform.last_mut().expect("Shouldn't be empty"),
+			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
+			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
+		}
+	}
+
 	pub fn one_instance(&self) -> Instance<T> {
 		Instance {
 			id: self.id.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
