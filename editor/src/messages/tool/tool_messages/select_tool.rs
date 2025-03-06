@@ -1576,7 +1576,7 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::SkewingBounds { .. } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock slide")]),
+					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
