@@ -566,8 +566,28 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.network_interface.delete_nodes(vec![NodeId(0)], true, &[]);
 				}
 
-				let node_ids = document.network_interface.network(&[]).unwrap().nodes.keys().cloned().collect::<Vec<_>>();
-				for node_id in &node_ids {
+				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				network.generate_node_paths(&[]);
+
+				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
+
+				// Apply upgrades to each node
+				for (node_id, path) in &node_ids {
+					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
+					let network_path = &network_path;
+
+					let Some(node) = document.network_interface.network(network_path).unwrap().nodes.get(node_id).cloned() else {
+						log::error!("could not get node in deserialize_document");
+						continue;
+					};
+
+					// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
+					if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
+						document
+							.network_interface
+							.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+					}
+
 					let Some(node_metadata) = document.network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(node_id) else {
 						log::error!("could not get node metadata for node {node_id} in deserialize_document");
 						continue;
@@ -578,16 +598,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						continue;
 					};
 
-					let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(node_id) else {
-						log::error!("could not get node in deserialize_document");
-						continue;
-					};
 					let inputs_count = node.inputs.len();
-
-					// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
-					if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
-						document.network_interface.set_manual_compostion(node_id, &[], graph_craft::concrete!(graphene_std::Context).into());
-					}
 
 					// Upgrade Fill nodes to the format change in #1778
 					if reference == "Fill" && inputs_count == 8 {
