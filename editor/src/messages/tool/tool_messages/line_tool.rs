@@ -142,6 +142,12 @@ enum LineToolFsmState {
 	Drawing,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LineEnd {
+	Start,
+	End,
+}
+
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
 	drag_start: DVec2,
@@ -152,8 +158,7 @@ struct LineToolData {
 	editing_layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
-	// True means dragging end point, false means dragging start point
-	dragging_end: Option<bool>,
+	dragging_endpoint: Option<LineEnd>,
 }
 
 impl Fsm for LineToolFsmState {
@@ -214,7 +219,7 @@ impl Fsm for LineToolFsmState {
 					let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
 
 					if start_click || end_click {
-						tool_data.dragging_end = Some(end_click);
+						tool_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
 						tool_data.drag_start = if end_click { *document_start } else { *document_end };
 						tool_data.editing_layer = Some(*layer);
 						return LineToolFsmState::Drawing;
@@ -249,9 +254,7 @@ impl Fsm for LineToolFsmState {
 				LineToolFsmState::Drawing
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
-				let Some(layer) = tool_data.editing_layer else {
-					return LineToolFsmState::Ready;
-				};
+				let Some(layer) = tool_data.editing_layer else { return LineToolFsmState::Ready };
 
 				tool_data.drag_current = document.metadata().transform_to_viewport(layer).inverse().transform_point2(input.mouse.position);
 
@@ -260,10 +263,8 @@ impl Fsm for LineToolFsmState {
 				let snap_data = SnapData::ignore(document, input, &ignore);
 				let mut document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
-				if let Some(dragging_end) = tool_data.dragging_end {
-					if !dragging_end {
-						document_points.swap(0, 1);
-					}
+				if tool_data.dragging_endpoint == Some(LineEnd::Start) {
+					document_points.swap(0, 1);
 				}
 
 				let Some(node_id) = graph_modification_utils::get_line_id(layer, &document.network_interface) else {
@@ -287,7 +288,7 @@ impl Fsm for LineToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
-				self
+				LineToolFsmState::Drawing
 			}
 			(_, LineToolMessage::PointerMove { .. }) => {
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
@@ -298,7 +299,7 @@ impl Fsm for LineToolFsmState {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
-				self
+				LineToolFsmState::Drawing
 			}
 			(state, LineToolMessage::PointerOutsideViewport { center, lock_angle, snap_angle }) => {
 				// Auto-panning
@@ -319,7 +320,7 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.editing_layer.take();
-				if tool_data.dragging_end.is_none() {
+				if tool_data.dragging_endpoint.is_none() {
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 				LineToolFsmState::Ready
