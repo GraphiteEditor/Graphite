@@ -28,10 +28,7 @@ std = [
 	"image",
 	"reflections",
 ]
-reflections = [
-	"alloc",
-	"ctor",
-]
+reflections = ["alloc", "ctor"]
 serde = [
 	"dep:serde",
 	"glam/serde",
@@ -67,7 +64,7 @@ rand_chacha = { workspace = true, optional = true }
 bezier-rs = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
-vello = { workspace  = true, optional = true }
+vello = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 specta = { workspace = true, optional = true }
 rustybuzz = { workspace = true, optional = true }
@@ -80,6 +77,8 @@ image = { workspace = true, optional = true, default-features = false, features 
 	"png",
 ] }
 math-parser = { path = "../../libraries/math-parser" }
+rustc-hash = { workspace = true }
+petgraph = "0.7.1"
 
 [dev-dependencies]
 # Workspace dependencies
