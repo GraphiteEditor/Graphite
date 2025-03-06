@@ -588,7 +588,10 @@ impl Fsm for TextToolFsmState {
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
 
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false));
+				let mut cursor = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map_or(MouseCursorIcon::Text, |bounds| bounds.get_cursor(input, false, false, None));
 				if layer.is_none() || cursor == MouseCursorIcon::Default {
 					cursor = MouseCursorIcon::Text;
 				}
