@@ -1008,7 +1008,15 @@ impl Fsm for PenToolFsmState {
 
 				PenToolFsmState::SplineDrawing
 			}
-			(PenToolFsmState::SplineDrawing, PenToolMessage::PointerMove { .. }) => {
+			(
+				PenToolFsmState::SplineDrawing,
+				PenToolMessage::PointerMove {
+					snap_angle,
+					break_handle,
+					lock_angle,
+					colinear,
+				},
+			) => {
 				let tool_data = &mut tool_data.spline_mode_tool_data;
 				let Some(layer) = tool_data.current_layer else { return PenToolFsmState::Ready };
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
@@ -1027,12 +1035,28 @@ impl Fsm for PenToolFsmState {
 				extend_spline(tool_data, true, responses);
 
 				// Auto-panning
-				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
+				let messages = [
+					PenToolMessage::PointerOutsideViewport {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
+					PenToolMessage::PointerMove {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+					}
+					.into(),
+				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PenToolFsmState::SplineDrawing
 			}
 			(PenToolFsmState::SplineDrawing, PenToolMessage::PointerOutsideViewport { .. }) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
