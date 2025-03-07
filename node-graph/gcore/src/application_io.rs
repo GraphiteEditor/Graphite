@@ -87,7 +87,14 @@ impl Hash for ImageTexture {
 
 impl PartialEq for ImageTexture {
 	fn eq(&self, other: &Self) -> bool {
-		self.texture == other.texture
+		#[cfg(feature = "wgpu")]
+		{
+			self.texture == other.texture
+		}
+		#[cfg(not(feature = "wgpu"))]
+		{
+			true // Unit values are always equal
+		}
 	}
 }
 

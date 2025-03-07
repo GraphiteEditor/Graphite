@@ -408,4 +408,19 @@ impl<'a> NodeGraphLayer<'a> {
 		// TODO: Find a better way to accept a node input rather than using its index (which is quite unclear and fragile)
 		self.find_node_inputs(node_name)?.get(index)?.as_value()
 	}
+
+	// Check if the current layer is backed by a raster image
+	pub fn is_raster_image(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+		// Create a NodeGraphLayer instance with the layer node identifier
+		let layer = NodeGraphLayer::new(layer, network_interface);
+		// Get the last node in the layer's flow and check if it is a raster image
+		if let Some(node_id) = layer.horizontal_layer_flow().last() {
+			let node_name = network_interface.frontend_display_name(&node_id, &[]);
+			if let Some(TaggedValue::ImageFrame(_)) = layer.find_input(&node_name, 1) {
+				// The layer is backed by a raster image
+				return true;
+			}
+		}
+		false
+	}
 }

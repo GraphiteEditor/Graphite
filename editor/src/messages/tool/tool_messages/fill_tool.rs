@@ -1,7 +1,8 @@
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+
 use super::tool_prelude::*;
 
 use graphene_core::vector::style::Fill;
-
 #[derive(Default)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
@@ -87,6 +88,10 @@ impl Fsm for FillToolFsmState {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;
 				};
+				// Check if the layer is a raster image, if so, return early for now to avoid errors
+				if NodeGraphLayer::is_raster_image(layer_identifier, &(document.network_interface)) {
+					return self;
+				}
 				let fill = match color_event {
 					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
 					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
