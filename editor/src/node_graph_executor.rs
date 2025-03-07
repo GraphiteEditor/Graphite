@@ -460,7 +460,7 @@ impl NodeGraphExecutor {
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
 		self.node_graph_hash = generate_uuid();
-		let mut network = document.network_interface.network(&[]).unwrap().clone();
+		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
 		self.sender.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
@@ -469,11 +469,11 @@ impl NodeGraphExecutor {
 
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, ignore_hash: bool) -> Result<(), String> {
-		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
+		let network_hash = document.network_interface.document_network().current_hash();
 		if network_hash != self.node_graph_hash || ignore_hash {
 			self.node_graph_hash = network_hash;
 			self.sender
-				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone()))
+				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.document_network().clone()))
 				.map_err(|e| e.to_string())?;
 		}
 		Ok(())
@@ -513,7 +513,7 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
-		let network = document.network_interface.network(&[]).unwrap().clone();
+		let network = document.network_interface.document_network().clone();
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {

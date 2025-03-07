@@ -409,7 +409,7 @@ impl<'a> NodeGraphLayer<'a> {
 			.skip(1)// Skip self
 			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
 			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
-			.and_then(|node_id| self.network_interface.network(&[]).unwrap().nodes.get(&node_id).map(|node| &node.inputs))
+			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
 	/// Find a specific input of a node within the layer's primary flow

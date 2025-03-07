@@ -769,7 +769,7 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
+				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
@@ -802,7 +802,7 @@ impl Fsm for PathToolFsmState {
 						} else {
 							let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
 
-							for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+							for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 								// The points which are part of only one segment will be rendered
