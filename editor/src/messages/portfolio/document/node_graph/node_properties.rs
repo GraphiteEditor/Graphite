@@ -101,7 +101,7 @@ pub(crate) fn property_from_type(
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
 		return Err(vec![]);
 	};
-	let Some(network) = context.network_interface.network(context.selection_network_path) else {
+	let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
 		return Err(vec![]);
 	};
@@ -1171,7 +1171,10 @@ pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 }
 
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
-	let network = context.network_interface.network(context.selection_network_path).ok_or("network not found in get_document_node")?;
+	let network = context
+		.network_interface
+		.nested_network(context.selection_network_path)
+		.ok_or("network not found in get_document_node")?;
 	network.nodes.get(&node_id).ok_or(format!("node {node_id} not found in get_document_node"))
 }
 
@@ -1818,7 +1821,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 // 	let image_size = context
 // 		.executor
 // 		.introspect_node_in_network(
-// 			context.network_interface.network(&[]).unwrap(),
+// 			context.network_interface.document_network().unwrap(),
 // 			&imaginate_node,
 // 			|network| {
 // 				network

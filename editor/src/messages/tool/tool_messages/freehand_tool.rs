@@ -210,7 +210,7 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.weight = tool_options.line_weight;
 
 				// Extend an endpoint of the selected path
-				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
 					tool_data.layer = Some(layer);

@@ -71,17 +71,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					has_active_document = true;
 					rulers_visible = document.rulers_visible;
 					node_graph_open = document.is_graph_overlay_open();
-					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+					let selected_nodes = document.network_interface.selected_nodes();
 					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
-					has_selection_history = document
-						.network_interface
-						.network_metadata(&[])
-						.map(|metadata| {
-							let metadata = &metadata.persistent_metadata;
-							(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
-						})
-						.unwrap_or((false, false));
+					has_selection_history = {
+						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
+						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
+					};
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -249,13 +245,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						buffer.push(CopyBufferEntry {
 							nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
-							selected: active_document
-								.network_interface
-								.selected_nodes(&[])
-								.unwrap()
-								.selected_layers_contains(layer, active_document.metadata()),
-							visible: active_document.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &active_document.network_interface),
-							locked: active_document.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &active_document.network_interface),
+							selected: active_document.network_interface.selected_nodes().selected_layers_contains(layer, active_document.metadata()),
+							visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
+							locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
 						});
 					}
@@ -497,7 +489,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 				];
-				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
 
 				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
@@ -506,8 +498,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				for (node_id, path) in &node_ids {
 					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
 
-					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) =
-						document.network_interface.network(&network_path).unwrap().nodes.get(node_id).map(|node| node.implementation.clone())
+					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document
+						.network_interface
+						.nested_network(&network_path)
+						.unwrap()
+						.nodes
+						.get(node_id)
+						.map(|node| node.implementation.clone())
 					{
 						for (old, new) in REPLACEMENTS {
 							let node_path_without_type_args = protonode_id.name.split('<').next();
@@ -527,8 +524,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 					for node_id in &document
 						.network_interface
-						.network_metadata(&[])
-						.unwrap()
+						.document_network_metadata()
 						.persistent_metadata
 						.node_metadata
 						.keys()
@@ -537,8 +533,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					{
 						if let Some(reference) = document
 							.network_interface
-							.network_metadata(&[])
-							.unwrap()
+							.document_network_metadata()
 							.persistent_metadata
 							.node_metadata
 							.get(node_id)
@@ -557,8 +552,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				if document
 					.network_interface
-					.network_metadata(&[])
-					.unwrap()
+					.document_network_metadata()
 					.persistent_metadata
 					.node_metadata
 					.iter()
@@ -567,7 +561,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.network_interface.delete_nodes(vec![NodeId(0)], true, &[]);
 				}
 
-				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
 
 				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
@@ -577,7 +571,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
 					let network_path = &network_path;
 
-					let Some(node) = document.network_interface.network(network_path).unwrap().nodes.get(node_id).cloned() else {
+					let Some(node) = document.network_interface.nested_network(network_path).unwrap().nodes.get(node_id).cloned() else {
 						log::error!("could not get node in deserialize_document");
 						continue;
 					};
@@ -595,7 +589,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
-						log::error!("could not get reference in deserialize_document");
+						// TODO: Investigate if this should be an expected case, because currently it runs hundreds of times normally.
+						// TODO: Either delete the commented out error below if this is normal, or fix the underlying issue if this is not expected.
+						// log::error!("could not get reference in deserialize_document");
 						continue;
 					};
 
@@ -1147,7 +1143,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			common.extend(document.actions());
 
 			// Extend with actions that must have a selected layer
-			if document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).next().is_some() {
+			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
 				common.extend(actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,
@@ -1160,7 +1156,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 }
 
 impl PortfolioMessageHandler {
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
+		Self { executor, ..Default::default() }
+	}
+
+	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync>, IntrospectError> {
 		self.executor.introspect_node(node_path).await
 	}
 

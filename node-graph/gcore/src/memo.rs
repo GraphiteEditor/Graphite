@@ -134,9 +134,9 @@ where
 		})
 	}
 
-	fn serialize(&self) -> Option<Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<Arc<dyn core::any::Any + Send + Sync>> {
 		let io = self.io.lock().unwrap();
-		(io).as_ref().map(|output| output.clone() as Arc<dyn core::any::Any>)
+		(io).as_ref().map(|output| output.clone() as Arc<dyn core::any::Any + Send + Sync>)
 	}
 }
 

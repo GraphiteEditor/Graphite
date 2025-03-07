@@ -394,13 +394,22 @@ impl<'a> NodeGraphLayer<'a> {
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 	}
 
+	/// Node id of a protonode if it exists in the layer's primary flow
+	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: &'static str) -> Option<NodeId> {
+		self.horizontal_layer_flow().find(move |node_id| {
+			self.network_interface
+				.implementation(node_id, &[])
+				.is_some_and(move |implementation| *implementation == graph_craft::document::DocumentNodeImplementation::proto(protonode_identifier))
+		})
+	}
+
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
 		self.horizontal_layer_flow()
 			.skip(1)// Skip self
 			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
 			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
-			.and_then(|node_id| self.network_interface.network(&[]).unwrap().nodes.get(&node_id).map(|node| &node.inputs))
+			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
 	/// Find a specific input of a node within the layer's primary flow
