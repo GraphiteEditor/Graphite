@@ -229,11 +229,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
 		self.layer_node.or_else(|| {
-			let Some(network) = self.network_interface.network(&[]) else {
-				log::error!("Document network does not exist in ModifyInputsContext::get_output_node");
-				return None;
-			};
-			let export_node = network.exports.first().and_then(|export| export.as_node())?;
+			let export_node = self.network_interface.document_network().exports.first().and_then(|export| export.as_node())?;
 			if self.network_interface.is_layer(&export_node, &[]) {
 				Some(LayerNodeIdentifier::new(export_node, self.network_interface, &[]))
 			} else {
@@ -266,7 +262,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 
 			let is_traversal_start = |node_id: NodeId| {
-				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
+				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id))
 			};
 
 			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[])) {
@@ -373,7 +369,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let (layer_transform, transform_node_id) = self
 			.existing_node_id("Transform", false)
 			.and_then(|transform_node_id| {
-				let document_node = self.network_interface.network(&[])?.nodes.get(&transform_node_id)?;
+				let document_node = self.network_interface.document_network().nodes.get(&transform_node_id)?;
 				Some((transform_utils::get_current_transform(&document_node.inputs), transform_node_id))
 			})
 			.unzip();

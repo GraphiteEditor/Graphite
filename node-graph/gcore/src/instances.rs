@@ -118,9 +118,15 @@ impl<T> Instances<T> {
 	}
 }
 
-impl<T: Default + Hash> Default for Instances<T> {
+impl<T: Default + Hash + 'static> Default for Instances<T> {
 	fn default() -> Self {
-		Self::new(T::default())
+		use core::any::TypeId;
+		if TypeId::of::<T>() == TypeId::of::<crate::Artboard>() {
+			// TODO: Remove the 'static trait bound when this special casing is removed by making all types return empty
+			Self::empty()
+		} else {
+			Self::new(T::default())
+		}
 	}
 }
 

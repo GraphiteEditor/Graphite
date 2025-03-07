@@ -19,7 +19,7 @@ impl CompassRose {
 		layer_transform * bounds_transform
 	}
 	pub fn refresh_position(&mut self, document: &DocumentMessageHandler) {
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
 
 		let Some(first) = layers.next() else { return };

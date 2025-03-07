@@ -15,6 +15,13 @@ impl Editor {
 		Self { dispatcher: Dispatcher::new() }
 	}
 
+	#[cfg(test)]
+	pub(crate) fn new_local_executor() -> (Self, crate::node_graph_executor::NodeRuntime) {
+		let (runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
+		let dispatcher = Dispatcher::with_executor(executor);
+		(Self { dispatcher }, runtime)
+	}
+
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
 		self.dispatcher.handle_message(message, true);
 

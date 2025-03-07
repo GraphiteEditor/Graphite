@@ -116,7 +116,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
-				let Some(artboard) = network_interface.network(&[]).and_then(|network| network.nodes.get(&id)) else {
+				let Some(artboard) = network_interface.document_network().nodes.get(&id) else {
 					log::error!("Artboard not created");
 					return;
 				};
@@ -218,7 +218,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				// Go through all artboards and create merge nodes
 				for artboard in network_interface.all_artboards() {
 					let node_id = NodeId::new();
-					let Some(document_node) = network_interface.network(&[]).and_then(|network| network.nodes.get(&artboard.to_node())) else {
+					let Some(document_node) = network_interface.document_network().nodes.get(&artboard.to_node()) else {
 						log::error!("Artboard not created");
 						responses.add(DocumentMessage::AbortTransaction);
 						return;

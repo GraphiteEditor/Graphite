@@ -417,7 +417,7 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+	let selected_nodes = document.network_interface.selected_nodes();
 	let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
 
@@ -485,12 +485,9 @@ impl Fsm for TextToolFsmState {
 				}
 
 				// TODO: implement bounding box for multiple layers
-				let layer = document
-					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let selected = document.network_interface.selected_nodes();
+				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
+				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
 				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
 				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
@@ -550,12 +547,9 @@ impl Fsm for TextToolFsmState {
 					edges
 				});
 
-				let selected = document
-					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let selected = document.network_interface.selected_nodes();
+				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
+				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
 
 				if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
@@ -569,9 +563,7 @@ impl Fsm for TextToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
 
-						if let Some(selected) = selected {
-							bounds.center_of_transformation = graph_modification_utils::get_viewport_pivot(selected, &document.network_interface);
-						}
+						bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
 					}
 					tool_data.get_snap_candidates(document, font_cache);
 
@@ -581,12 +573,9 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
 				// This ensures the cursor only changes if a layer is selected
-				let layer = document
-					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
+				let selected = document.network_interface.selected_nodes();
+				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
+				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
 
 				let mut cursor = tool_data
 					.bounding_box_manager
@@ -621,7 +610,7 @@ impl Fsm for TextToolFsmState {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
-						let center_position = center_bool.then_some(bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.));
+						let center_position = center_bool.then_some(bounds.center_of_transformation);
 
 						let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
 						let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {

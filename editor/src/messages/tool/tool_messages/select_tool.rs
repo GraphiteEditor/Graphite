@@ -497,15 +497,14 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-				let selected_layers_count = document.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&document.network_interface).count();
+				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers, but not artboards
 				for layer in document
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 				{
@@ -520,8 +519,7 @@ impl Fsm for SelectToolFsmState {
 				// Update bounds
 				let transform = document
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.map(|layer| document.metadata().transform_to_viewport(layer));
@@ -536,8 +534,7 @@ impl Fsm for SelectToolFsmState {
 
 				let bounds = document
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.filter_map(|layer| {
@@ -729,7 +726,7 @@ impl Fsm for SelectToolFsmState {
 				else if !input.keyboard.get(Key::MouseMiddle as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
-					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(hovered_layer, document.metadata()));
+					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
@@ -792,12 +789,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document
-					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.collect();
+				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
@@ -845,7 +837,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -903,7 +895,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -1035,7 +1027,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -1073,7 +1065,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -1117,7 +1109,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.layers_dragging.retain(|layer| {
 						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 						} else {
 							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
 							false
@@ -1271,8 +1263,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
 							.network_interface
-							.selected_nodes(&[])
-							.unwrap()
+							.selected_nodes()
 							.selected_layers(document.metadata())
 							.filter(|&layer| !path.starts_with(layer, document.metadata()))
 							.collect();
@@ -1379,7 +1370,7 @@ impl Fsm for SelectToolFsmState {
 					intersection.into_iter().collect()
 				};
 
-				let current_selected: HashSet<_> = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
+				let current_selected: HashSet<_> = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				let negative_selection = input.keyboard.key(remove_from_selection);
 				let selection_modified = new_selected != current_selected;
 				// Negative selection when both Shift and Ctrl are pressed
@@ -1425,7 +1416,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
-				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = document.network_interface.selected_nodes();
 				let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 
 				if let Some(layer) = selected_layers.next() {
@@ -1451,7 +1442,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
 					if *layer != LayerNodeIdentifier::ROOT_PARENT {
-						document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+						document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 					} else {
 						false
 					}
@@ -1595,7 +1586,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		let ancestor = layer
 			.ancestors(document.metadata())
 			.filter(not_artboard(document))
-			.find(|&ancestor| document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(ancestor, document.metadata()));
+			.find(|&ancestor| document.network_interface.selected_nodes().selected_layers_contains(ancestor, document.metadata()));
 
 		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
 		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
@@ -1648,7 +1639,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
-			.is_some_and(|parent| document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(parent, document.metadata()))
+			.is_some_and(|parent| document.network_interface.selected_nodes().selected_layers_contains(parent, document.metadata()))
 	}) else {
 		return;
 	};

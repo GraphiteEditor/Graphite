@@ -177,8 +177,7 @@ impl Fsm for LineToolFsmState {
 
 				tool_data.selected_layers_with_position = document
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter_map(|layer| {
 						let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line")?;

@@ -1461,7 +1461,7 @@ const WINDOW_SIZE: usize = 1024;
 
 #[cfg(feature = "alloc")]
 #[node_macro::node(category(""))]
-fn generate_curves<C: Channel + super::Linear>(_: impl Ctx, curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
+fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
 
 	let [mut pos, mut param]: [[f32; 2]; 2] = [[0.; 2], curve.first_handle];
