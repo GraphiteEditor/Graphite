@@ -2529,7 +2529,7 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 5] {
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 7] {
 	[
 		IconButton::new("ZoomIn", 24)
 			.tooltip("Zoom In")
@@ -2547,6 +2547,11 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
+		CheckboxInput::new(navigation_handler.canvas_flipped)
+			.on_update(|_| NavigationMessage::FlipCanvas.into())
+			.tooltip("Flip Canvas Horizontally")
+			.widget_holder(),
+		TextLabel::new("Flip Canvas").widget_holder(),
 		// PopoverButton::new()
 		// 	.popover_layout(vec![
 		// 		LayoutGroup::Row {

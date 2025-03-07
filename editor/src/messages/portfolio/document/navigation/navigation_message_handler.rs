@@ -30,6 +30,7 @@ pub struct NavigationMessageHandler {
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
 	abortable_pan_start: Option<f64>,
+	pub canvas_flipped: bool,
 }
 
 impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
@@ -459,6 +460,35 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				self.mouse_position = ipp.mouse.position;
 			}
+			NavigationMessage::FlipCanvas => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get mutable PTZ in FlipCanvas");
+					return;
+				};
+
+				// Calculate document center point before flipping
+				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+				let viewport_center = ipp.viewport_bounds.center();
+				let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
+
+				// Toggle the document-specific flip state
+				self.canvas_flipped = !self.canvas_flipped;
+
+				// Calculate the new document-to-viewport transform after flipping
+				let new_document_to_viewport = self.calculate_offset_transform(viewport_center, ptz);
+
+				// Calculate where the center point would be after flipping
+				let new_document_center = new_document_to_viewport.inverse().transform_point2(viewport_center);
+
+				// Calculate the offset needed to keep the same center point
+				let center_offset = document_center - new_document_center;
+
+				// Apply the offset to the pan to maintain the same view center
+				ptz.pan -= center_offset;
+
+				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(BroadcastEvent::CanvasTransformed);
+			}
 		}
 	}
 
@@ -521,10 +551,11 @@ impl NavigationMessageHandler {
 		// Try to avoid fractional coordinates to reduce anti aliasing.
 		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
+		let scale_vec = if self.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);
-		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
+		let scale_transform = DAffine2::from_scale(scale_vec);
 		let angle_transform = DAffine2::from_angle(self.snapped_tilt(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
