@@ -45,7 +45,6 @@ pub use crate::messages::tool::tool_messages::pen_tool::{PenToolMessage, PenTool
 pub use crate::messages::tool::tool_messages::polygon_tool::{PolygonToolMessage, PolygonToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::rectangle_tool::{RectangleToolMessage, RectangleToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::select_tool::{SelectToolMessage, SelectToolMessageDiscriminant};
-pub use crate::messages::tool::tool_messages::spline_tool::{SplineToolMessage, SplineToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextToolMessageDiscriminant};
 
 // Helper
