@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, TaggedValue};
-use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
+use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
@@ -346,7 +346,7 @@ impl NodeRuntime {
 	}
 }
 
-pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 	let runtime = NODE_RUNTIME.lock();
 	if let Some(ref mut runtime) = runtime.as_ref() {
 		return runtime.executor.introspect(path);
@@ -396,6 +396,22 @@ impl Default for NodeGraphExecutor {
 }
 
 impl NodeGraphExecutor {
+	/// A local runtime is useful on threads since having global state causes flakes
+	#[cfg(test)]
+	pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
+		let (request_sender, request_receiver) = std::sync::mpsc::channel();
+		let (response_sender, response_receiver) = std::sync::mpsc::channel();
+		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
+
+		let node_executor = Self {
+			futures: Default::default(),
+			sender: request_sender,
+			receiver: response_receiver,
+			node_graph_hash: 0,
+		};
+		(node_runtime, node_executor)
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&self, render_config: RenderConfig) -> u64 {
 		let execution_id = generate_uuid();
@@ -405,7 +421,7 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		introspect_node(path).await
 	}
 
@@ -439,9 +455,20 @@ impl NodeGraphExecutor {
 		Some(extract_data(downcasted))
 	}
 
-	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
-		// Get the node graph layer
+	/// Updates the network to monitor all inputs. Useful for the testing.
+	#[cfg(test)]
+	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
+		// We should always invalidate the cache.
+		self.node_graph_hash = generate_uuid();
+		let mut network = document.network_interface.network(&[]).unwrap().clone();
+		let instrumented = Instrumented::new(&mut network);
+
+		self.sender.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
+		Ok(instrumented)
+	}
+
+	/// Update the cached network if necessary.
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.network(&[]).unwrap().current_hash();
 		if network_hash != self.node_graph_hash || ignore_hash {
 			self.node_graph_hash = network_hash;
@@ -449,7 +476,11 @@ impl NodeGraphExecutor {
 				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.network(&[]).unwrap().clone()))
 				.map_err(|e| e.to_string())?;
 		}
+		Ok(())
+	}
 
+	/// Adds an evaluate request for whatever current network is cached.
+	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
@@ -469,6 +500,13 @@ impl NodeGraphExecutor {
 		let execution_id = self.queue_execution(render_config);
 
 		self.futures.insert(execution_id, ExecutionContext { export_config: None });
+		Ok(())
+	}
+
+	/// Evaluates a node graph, computing the entire graph
+	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
+		self.update_node_graph(document, ignore_hash)?;
+		self.submit_current_node_graph_evaluation(document, viewport_resolution)?;
 
 		Ok(())
 	}
@@ -673,5 +711,101 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 		Ok(())
+	}
+}
+
+/// Stores all of the monitor nodes that have been attached to a graph
+#[derive(Default)]
+pub struct Instrumented {
+	protonodes_by_name: HashMap<String, Vec<Vec<Vec<NodeId>>>>,
+	protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
+}
+
+impl Instrumented {
+	/// Adds montior nodes to the network
+	fn add(&mut self, network: &mut NodeNetwork, path: &mut Vec<NodeId>) {
+		// Required to do seperately to satiate the borrow checker.
+		let mut monitor_nodes = Vec::new();
+		for (id, node) in network.nodes.iter_mut() {
+			// Recursively instrument
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				path.push(*id);
+				self.add(nested, path);
+				path.pop();
+			}
+			let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
+			for input in &mut node.inputs {
+				let node_id = NodeId::new();
+				let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+				monitor_nodes.push((old_input, node_id));
+				path.push(node_id);
+				monitor_node_ids.push(path.clone());
+				path.pop();
+			}
+			if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
+				path.push(*id);
+				self.protonodes_by_name.entry(identifier.name.to_string()).or_default().push(monitor_node_ids.clone());
+				self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
+				path.pop();
+			}
+		}
+		for (input, monitor_id) in monitor_nodes {
+			let monitor_node = DocumentNode {
+				inputs: vec![input],
+				implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+				manual_composition: Some(graph_craft::generic!(T)),
+				skip_deduplication: true,
+				..Default::default()
+			};
+			network.nodes.insert(monitor_id, monitor_node);
+		}
+	}
+
+	/// Instrument a graph and return a new [Instrumented] state.
+	pub fn new(network: &mut NodeNetwork) -> Self {
+		let mut instrumented = Self::default();
+		instrumented.add(network, &mut Vec::new());
+		instrumented
+	}
+
+	fn downcast<Input: graphene_std::NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
+	where
+		Input::Result: Send + Sync + Clone + 'static,
+	{
+		// This is quite inflexible since it only allows the footprint as inputs.
+		if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
+			Some(x.output.clone())
+		} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
+			Some(x.output.clone())
+		} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
+			Some(x.output.clone())
+		} else {
+			panic!("cannot downcast type for introspection");
+		}
+	}
+
+	/// Grab all of the values of the input every time it occurs in the graph.
+	pub fn grab_all_input<'a, Input: graphene_std::NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
+	where
+		Input::Result: Send + Sync + Clone + 'static,
+	{
+		self.protonodes_by_name
+			.get(Input::identifier())
+			.map_or([].as_slice(), |x| x.as_slice())
+			.iter()
+			.filter_map(|inputs| inputs.get(Input::INDEX))
+			.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
+			.filter_map(Instrumented::downcast::<Input>)
+	}
+
+	pub fn grab_protonode_input<Input: graphene_std::NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
+	where
+		Input::Result: Send + Sync + Clone + 'static,
+	{
+		let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
+
+		let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
+
+		Self::downcast::<Input>(dynamic)
 	}
 }
