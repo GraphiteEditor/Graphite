@@ -1479,7 +1479,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
 			}
 			NodeGraphMessage::ToggleLocked { node_id } => {
-				let Some(node_metadata) = network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(&node_id) else {
+				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&node_id) else {
 					log::error!("Cannot get node {:?} in NodeGraphMessage::ToggleLocked", node_id);
 					return;
 				};
@@ -2315,7 +2315,7 @@ impl NodeGraphMessageHandler {
 			}
 		}
 
-		for (&node_id, node_metadata) in &network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata {
+		for (&node_id, node_metadata) in &network_interface.document_network_metadata().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface, &[]);
 

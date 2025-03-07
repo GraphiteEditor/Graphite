@@ -74,14 +74,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let selected_nodes = document.network_interface.selected_nodes();
 					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
-					has_selection_history = document
-						.network_interface
-						.network_metadata(&[])
-						.map(|metadata| {
-							let metadata = &metadata.persistent_metadata;
-							(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
-						})
-						.unwrap_or((false, false));
+					has_selection_history = {
+						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
+						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
+					};
 				}
 				self.menu_bar_message_handler.process_message(
 					message,
@@ -528,8 +524,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 					for node_id in &document
 						.network_interface
-						.network_metadata(&[])
-						.unwrap()
+						.document_network_metadata()
 						.persistent_metadata
 						.node_metadata
 						.keys()
@@ -538,8 +533,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					{
 						if let Some(reference) = document
 							.network_interface
-							.network_metadata(&[])
-							.unwrap()
+							.document_network_metadata()
 							.persistent_metadata
 							.node_metadata
 							.get(node_id)
@@ -558,8 +552,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				if document
 					.network_interface
-					.network_metadata(&[])
-					.unwrap()
+					.document_network_metadata()
 					.persistent_metadata
 					.node_metadata
 					.iter()

@@ -781,8 +781,7 @@ impl EditorHandle {
 		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 		for node in document
 			.network_interface
-			.network_metadata(&[])
-			.unwrap()
+			.document_network_metadata()
 			.persistent_metadata
 			.node_metadata
 			.iter()
@@ -853,8 +852,7 @@ impl EditorHandle {
 		document.network_interface.load_structure();
 		for node in document
 			.network_interface
-			.network_metadata(&[])
-			.unwrap()
+			.document_network_metadata()
 			.persistent_metadata
 			.node_metadata
 			.iter()

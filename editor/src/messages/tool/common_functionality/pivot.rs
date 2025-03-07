@@ -103,11 +103,7 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for layer in document
-			.network_interface
-			.selected_nodes()
-			.selected_visible_and_unlocked_layers(&document.network_interface)
-		{
+		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			// Only update the pivot when computed position is finite.
 			if transform.matrix2.determinant().abs() <= f64::EPSILON {

@@ -1821,7 +1821,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 // 	let image_size = context
 // 		.executor
 // 		.introspect_node_in_network(
-// 			context.network_interface.network(&[]).unwrap(),
+// 			context.network_interface.document_network().unwrap(),
 // 			&imaginate_node,
 // 			|network| {
 // 				network

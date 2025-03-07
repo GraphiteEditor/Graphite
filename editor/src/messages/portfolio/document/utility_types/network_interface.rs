@@ -88,6 +88,10 @@ impl NodeNetworkInterface {
 		Some(node_metadata)
 	}
 
+	pub fn document_network_metadata(&self) -> &NodeNetworkMetadata {
+		&self.network_metadata
+	}
+
 	// TODO: Make private and use .field_name getter methods
 	/// The network metadata should always exist for the current network
 	pub fn network_metadata(&self, network_path: &[NodeId]) -> Option<&NodeNetworkMetadata> {
@@ -1255,8 +1259,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
-		self.network_metadata(&[])
-			.unwrap()
+		self.document_network_metadata()
 			.persistent_metadata
 			.node_metadata
 			.iter()
@@ -3163,9 +3166,7 @@ impl NodeNetworkInterface {
 		self.document_metadata.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
 
 		// Only load structure if there is a root node
-		let Some(root_node) = self.root_node(&[]) else {
-			return;
-		};
+		let Some(root_node) = self.root_node(&[]) else { return };
 
 		let Some(first_root_layer) = self.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow).find_map(|node_id| {
 			if self.is_layer(&node_id, &[]) {
