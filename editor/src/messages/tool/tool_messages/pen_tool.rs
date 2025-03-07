@@ -308,7 +308,7 @@ impl PenToolData {
 
 	// When the vector data transform changes, the positions of the points must be recalculated.
 	fn recalculate_latest_points_position(&mut self, document: &DocumentMessageHandler) {
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		if let (Some(layer), None) = (selected_layers.next(), selected_layers.next()) {
 			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
@@ -374,7 +374,7 @@ impl PenToolData {
 
 		// Get close path
 		let mut end = None;
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
@@ -587,7 +587,7 @@ impl PenToolData {
 		let relative = self.latest_point().map(|point| point.pos);
 		self.next_point = self.compute_snapped_angle(snap_data, transform, false, mouse, relative, true);
 
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
@@ -691,7 +691,7 @@ impl PenToolData {
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		self.handle_end = None;
 
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
@@ -893,7 +893,7 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none());
 		let mut transform = layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
@@ -1197,7 +1197,7 @@ impl Fsm for PenToolFsmState {
 						.descendants(document.metadata())
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 					if let Some((other_layer, _, _)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, layers, preferences) {
-						let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+						let selected_nodes = document.network_interface.selected_nodes();
 						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 						if let Some(current_layer) = selected_layers.next().filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer) {
 							merge_layers(document, current_layer, other_layer, responses);

@@ -108,8 +108,12 @@ impl NodeNetworkInterface {
 		self.transaction_status
 	}
 
+	pub fn selected_nodes(&self) -> SelectedNodes {
+		self.selected_nodes_in_nested_network(&[]).unwrap_or_default()
+	}
+
 	/// Get the selected nodes for the network at the network_path
-	pub fn selected_nodes(&self, network_path: &[NodeId]) -> Option<SelectedNodes> {
+	pub fn selected_nodes_in_nested_network(&self, network_path: &[NodeId]) -> Option<SelectedNodes> {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
@@ -1269,7 +1273,7 @@ impl NodeNetworkInterface {
 			log::error!("Currently can only get deepest common ancestor in the document network");
 			return Vec::new();
 		}
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in deepest_common_ancestor");
 			return Vec::new();
 		};
@@ -1311,7 +1315,7 @@ impl NodeNetworkInterface {
 
 	/// Calculates the selected layer bounds in document space
 	pub fn selected_bounds_document_space(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in shallowest_unique_layers");
 			return None;
 		};
@@ -1325,7 +1329,7 @@ impl NodeNetworkInterface {
 	/// Layers excluding ones that are children of other layers in the list.
 	// TODO: Cache this
 	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> {
-		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes(network_path) {
+		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) {
 			selected_nodes
 				.selected_layers(self.document_metadata())
 				.map(|layer| {
@@ -1748,7 +1752,7 @@ impl NodeNetworkInterface {
 
 	// This function always has to be in sync with the selected nodes.
 	fn load_stack_dependents(&mut self, network_path: &[NodeId]) {
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in load_stack_dependents");
 			return;
 		};
@@ -2737,7 +2741,7 @@ impl NodeNetworkInterface {
 // Helper functions for mutable getters
 impl NodeNetworkInterface {
 	pub fn upstream_chain_nodes(&mut self, network_path: &[NodeId]) -> Vec<NodeId> {
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in upstream_chain_nodes");
 			return Vec::new();
 		};
@@ -3068,7 +3072,7 @@ impl NodeNetworkInterface {
 
 	/// Get the combined bounding box of the click targets of the selected nodes in the node graph in layer space
 	pub fn selected_nodes_bounding_box(&mut self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		let Some(selected_nodes) = self.selected_nodes(network_path) else {
+		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
 			log::error!("Could not get selected nodes in selected_nodes_bounding_box_viewport");
 			return None;
 		};
@@ -4919,7 +4923,10 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn shift_selected_nodes(&mut self, direction: Direction, shift_without_push: bool, network_path: &[NodeId]) {
-		let Some(mut node_ids) = self.selected_nodes(network_path).map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>()) else {
+		let Some(mut node_ids) = self
+			.selected_nodes_in_nested_network(network_path)
+			.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect::<HashSet<_>>())
+		else {
 			log::error!("Could not get selected nodes in shift_selected_nodes");
 			return;
 		};
@@ -5093,7 +5100,7 @@ impl NodeNetworkInterface {
 				if *offset == 0 {
 					return None;
 				}
-				if self.selected_nodes(network_path).is_some_and(|selected_nodes| {
+				if self.selected_nodes_in_nested_network(network_path).is_some_and(|selected_nodes| {
 					selected_nodes
 						.selected_nodes()
 						.any(|selected_node| selected_node == node_id || self.owned_nodes(node_id, network_path).is_some_and(|owned_nodes| owned_nodes.contains(selected_node)))

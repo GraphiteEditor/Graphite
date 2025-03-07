@@ -71,7 +71,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					has_active_document = true;
 					rulers_visible = document.rulers_visible;
 					node_graph_open = document.is_graph_overlay_open();
-					let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+					let selected_nodes = document.network_interface.selected_nodes();
 					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
 					has_selection_history = document
@@ -249,13 +249,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						buffer.push(CopyBufferEntry {
 							nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
-							selected: active_document
-								.network_interface
-								.selected_nodes(&[])
-								.unwrap()
-								.selected_layers_contains(layer, active_document.metadata()),
-							visible: active_document.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &active_document.network_interface),
-							locked: active_document.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &active_document.network_interface),
+							selected: active_document.network_interface.selected_nodes().selected_layers_contains(layer, active_document.metadata()),
+							visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
+							locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
 						});
 					}
@@ -1149,7 +1145,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			common.extend(document.actions());
 
 			// Extend with actions that must have a selected layer
-			if document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).next().is_some() {
+			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
 				common.extend(actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,

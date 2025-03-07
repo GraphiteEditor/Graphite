@@ -543,8 +543,7 @@ impl<'a> Selected<'a> {
 
 		let mut transform = self
 			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_visible_and_unlocked_layers(self.network_interface)
 			.find(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.map(|layer| metadata.transform_to_viewport(layer))
