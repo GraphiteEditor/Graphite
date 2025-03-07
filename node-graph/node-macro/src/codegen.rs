@@ -5,7 +5,10 @@ use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
 use quote::{format_ident, quote};
-use syn::{parse_quote, punctuated::Punctuated, spanned::Spanned, token::Comma, Error, Ident, Token, WhereClause, WherePredicate};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::token::Comma;
+use syn::{parse_quote, Error, Ident, PatIdent, Token, WhereClause, WherePredicate};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -37,7 +40,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 	let input_ident = &input.pat_ident;
-	let input_type = &input.ty;
 
 	let field_idents: Vec<_> = fields
 		.iter()
@@ -78,12 +80,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		}
 	};
 
+	let mut future_idents = Vec::new();
+
 	let field_types: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { ty, .. } => ty.clone(),
 			ParsedField::Node { output_type, input_type, .. } => match parsed.is_async {
-				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output: core::future::Future<Output=#output_type> + #graphene_core::WasmNotSend>),
+				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
 				false => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = #output_type>),
 			},
 		})
@@ -164,7 +168,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let eval_args = fields.iter().map(|field| match field {
 		ParsedField::Regular { pat_ident, .. } => {
 			let name = &pat_ident.ident;
-			quote! { let #name = self.#name.eval(()); }
+			quote! { let #name = self.#name.eval(__input.clone()).await; }
 		}
 		ParsedField::Node { pat_ident, .. } => {
 			let name = &pat_ident.ident;
@@ -181,16 +185,32 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	});
 	let all_implementation_types = all_implementation_types.chain(input.implementations.iter().cloned());
 
+	let input_type = &parsed.input.ty;
 	let mut clauses = Vec::new();
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
 		clauses.push(match (field, *is_async) {
-			(ParsedField::Regular { ty, .. }, _) => quote!(#name: #graphene_core::Node<'n, (), Output = #ty> ),
-			(ParsedField::Node { input_type, output_type, .. }, false) => {
-				quote!(for<'all_input> #name: #graphene_core::Node<'all_input, #input_type, Output = #output_type> + #graphene_core::WasmNotSync)
+			(ParsedField::Regular { ty, .. }, _) => {
+				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
+				let id = future_idents.len();
+				let fut_ident = format_ident!("F{}", id);
+				future_idents.push(fut_ident.clone());
+				quote!(
+					#fut_ident: core::future::Future<Output = #ty> + #graphene_core::WasmNotSend + 'n,
+					for<'all> #all_lifetime_ty: #graphene_core::WasmNotSend,
+					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident> + #graphene_core::WasmNotSync
+				)
 			}
 			(ParsedField::Node { input_type, output_type, .. }, true) => {
-				quote!(for<'all_input> #name: #graphene_core::Node<'all_input, #input_type, Output: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend> + #graphene_core::WasmNotSync)
+				let id = future_idents.len();
+				let fut_ident = format_ident!("F{}", id);
+				future_idents.push(fut_ident.clone());
+
+				quote!(
+					#fut_ident: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend + 'n,
+					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident > + #graphene_core::WasmNotSync
+				)
 			}
+			(ParsedField::Node { .. }, false) => unreachable!(),
 		});
 	}
 	let where_clause = where_clause.clone().unwrap_or(WhereClause {
@@ -210,24 +230,16 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	});
 
 	let async_keyword = is_async.then(|| quote!(async));
+	let await_keyword = is_async.then(|| quote!(.await));
 
-	let eval_impl = if *is_async {
-		quote! {
-			type Output = #graphene_core::registry::DynFuture<'n, #output_type>;
-			#[inline]
-			fn eval(&'n self, __input: #input_type) -> Self::Output {
+	let eval_impl = quote! {
+		type Output = #graphene_core::registry::DynFuture<'n, #output_type>;
+		#[inline]
+		fn eval(&'n self, __input: #input_type) -> Self::Output {
+			Box::pin(async move {
 				#(#eval_args)*
-				Box::pin(self::#fn_name(__input #(, #field_names)*))
-			}
-		}
-	} else {
-		quote! {
-			type Output = #output_type;
-			#[inline]
-			fn eval(&'n self, __input: #input_type) -> Self::Output {
-				#(#eval_args)*
-				self::#fn_name(__input #(, #field_names)*)
-			}
+				self::#fn_name(__input #(, #field_names)*) #await_keyword
+			})
 		}
 	};
 	let path = match parsed.attributes.path {
@@ -241,14 +253,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier);
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
 		#[allow(clippy::too_many_arguments)]
-		#async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
+		pub(crate) #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#[automatically_derived]
-		impl<'n, #(#fn_generics,)* #(#struct_generics,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
+		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#struct_where_clause
 		{
 			#eval_impl
@@ -257,10 +270,13 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		pub use #mod_name::#struct_name;
 
 		#[doc(hidden)]
+		#node_input_accessor
+
+		#[doc(hidden)]
 		mod #mod_name {
 			use super::*;
 			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
@@ -317,13 +333,100 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	})
 }
 
+/// Generates strongly typed utilites to access inputs
+fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::GenericParam], field_idents: &[&PatIdent], graphene_core: &TokenStream2, identifier: &TokenStream2) -> TokenStream2 {
+	if parsed.attributes.skip_impl {
+		return quote! {};
+	}
+	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
+
+	let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
+
+	let mut generated_input_accessor = Vec::new();
+	for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
+		let mut ty = match parsed_input {
+			ParsedField::Regular { ty, .. } => ty,
+			ParsedField::Node { output_type, .. } => output_type,
+		}
+		.clone();
+
+		// We only want the necessary generics.
+		let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
+		// TODO: figure out a better name that doesn't conflict with so many types
+		let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
+		let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
+
+		// Only create structs with phantom data where necessary.
+		generated_input_accessor.push(if phantom_data_declerations.is_empty() {
+			quote! {
+				pub struct #struct_name;
+			}
+		} else {
+			quote! {
+				pub struct #struct_name <#(#used),*>{
+					#(#phantom_data_declerations,)*
+				}
+			}
+		});
+		generated_input_accessor.push(quote! {
+			impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+				const INDEX: usize = #input_index;
+				fn identifier() -> &'static str {
+					protonode_identifier()
+				}
+				type Result = #ty;
+			}
+		})
+	}
+
+	quote! {
+		pub mod #inputs_module_name {
+			use super::*;
+
+			pub fn protonode_identifier() -> &'static str {
+				// Storing the string in a once lock should reduce allocations (since we call this in a loop)?
+				static NODE_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+				NODE_NAME.get_or_init(|| #identifier )
+			}
+			#(#generated_input_accessor)*
+		}
+	}
+}
+
+/// It is necessary to generate PhantomData for each fn generic to avoid compiler errors.
+fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::GenericParam>) -> (Vec<TokenStream2>, Vec<TokenStream2>) {
+	let mut phantom_data_declerations = Vec::new();
+	let mut fn_generic_params = Vec::new();
+
+	for fn_generic_param in fn_generics {
+		let field_name = format_ident!("phantom_{}", phantom_data_declerations.len());
+
+		match fn_generic_param {
+			crate::GenericParam::Lifetime(lifetime_param) => {
+				let lifetime = &lifetime_param.lifetime;
+
+				fn_generic_params.push(quote! {#lifetime});
+				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<&#lifetime ()>})
+			}
+			crate::GenericParam::Type(type_param) => {
+				let generic_name = &type_param.ident;
+
+				fn_generic_params.push(quote! {#generic_name});
+				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<#generic_name>});
+			}
+			_ => {}
+		}
+	}
+	(fn_generic_params, phantom_data_declerations)
+}
+
 fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], struct_name: &Ident, identifier: &TokenStream2) -> Result<TokenStream2, syn::Error> {
 	if parsed.attributes.skip_impl {
 		return Ok(quote!());
 	}
 
 	let mut constructors = Vec::new();
-	let unit = parse_quote!(());
+	let unit = parse_quote!(gcore::Context);
 	let parameter_types: Vec<_> = parsed
 		.fields
 		.iter()
@@ -331,9 +434,9 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			match field {
 				ParsedField::Regular { implementations, ty, .. } => {
 					if !implementations.is_empty() {
-						implementations.iter().map(|ty| (&unit, ty, false)).collect()
+						implementations.iter().map(|ty| (&unit, ty)).collect()
 					} else {
-						vec![(&unit, ty, false)]
+						vec![(&unit, ty)]
 					}
 				}
 				ParsedField::Node {
@@ -343,20 +446,19 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 					..
 				} => {
 					if !implementations.is_empty() {
-						implementations.iter().map(|impl_| (&impl_.input, &impl_.output, true)).collect()
+						implementations.iter().map(|impl_| (&impl_.input, &impl_.output)).collect()
 					} else {
-						vec![(input_type, output_type, true)]
+						vec![(input_type, output_type)]
 					}
 				}
 			}
 			.into_iter()
-			.map(|(input, out, node)| (substitute_lifetimes(input.clone()), substitute_lifetimes(out.clone()), node))
+			.map(|(input, out)| (substitute_lifetimes(input.clone(), "_"), substitute_lifetimes(out.clone(), "_")))
 			.collect::<Vec<_>>()
 		})
 		.collect();
 
 	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
-	let future_node = (!parsed.is_async).then(|| quote!(let node = gcore::registry::FutureWrapperNode::new(node);));
 
 	for i in 0..max_implementations.unwrap_or(0) {
 		let mut temp_constructors = Vec::new();
@@ -365,38 +467,24 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 		for (j, types) in parameter_types.iter().enumerate() {
 			let field_name = field_names[j];
-			let (input_type, output_type, impl_node) = &types[i.min(types.len() - 1)];
+			let (input_type, output_type) = &types[i.min(types.len() - 1)];
 
 			let node = matches!(parsed.fields[j], ParsedField::Node { .. });
 
 			let downcast_node = quote!(
-			let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
-			 );
-			temp_constructors.push(if node {
-				if !parsed.is_async {
-					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
-				}
-				downcast_node
-			} else {
-				quote!(
-						#downcast_node
-						let #field_name = #field_name.eval(()).await;
-						let #field_name = ClonedNode::new(#field_name);
-						let #field_name: TypeNode<_, #input_type, #output_type> = TypeNode::new(#field_name);
-						// try polling futures
-				)
-			});
-			temp_node_io.push(quote!(fn_type!(#input_type, #output_type, alias: #output_type)));
-			match parsed.is_async && *impl_node {
-				true => panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>)),
-				false => panic_node_types.push(quote!(#input_type, #output_type)),
-			};
+				let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
+			);
+			if node && !parsed.is_async {
+				return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
+			}
+			temp_constructors.push(downcast_node);
+			temp_node_io.push(quote!(fn_type_fut!(#input_type, #output_type, alias: #output_type)));
+			panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
 		}
 		let input_type = match parsed.input.implementations.is_empty() {
 			true => parsed.input.ty.clone(),
 			false => parsed.input.implementations[i.min(parsed.input.implementations.len() - 1)].clone(),
 		};
-		let node_io = if parsed.is_async { quote!(to_async_node_io) } else { quote!(to_node_io) };
 		constructors.push(quote!(
 			(
 				|args| {
@@ -404,14 +492,13 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 						#(#temp_constructors;)*
 						let node = #struct_name::new(#(#field_names,)*);
 						// try polling futures
-						#future_node
 						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox<'_>
 					})
 				}, {
 					let node = #struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
 					let params = vec![#(#temp_node_io,)*];
-					let mut node_io = NodeIO::<'_, #input_type>::#node_io(&node, params);
+					let mut node_io = NodeIO::<'_, #input_type>::to_async_node_io(&node, params);
 					node_io
 
 				}
@@ -443,11 +530,11 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 
 use syn::{visit_mut::VisitMut, GenericArgument, Lifetime, Type};
 
-struct LifetimeReplacer;
+struct LifetimeReplacer(&'static str);
 
 impl VisitMut for LifetimeReplacer {
 	fn visit_lifetime_mut(&mut self, lifetime: &mut Lifetime) {
-		lifetime.ident = syn::Ident::new("_", lifetime.ident.span());
+		lifetime.ident = syn::Ident::new(self.0, lifetime.ident.span());
 	}
 
 	fn visit_type_mut(&mut self, ty: &mut Type) {
@@ -472,7 +559,87 @@ impl VisitMut for LifetimeReplacer {
 }
 
 #[must_use]
-fn substitute_lifetimes(mut ty: Type) -> Type {
-	LifetimeReplacer.visit_type_mut(&mut ty);
+fn substitute_lifetimes(mut ty: Type, lifetime: &'static str) -> Type {
+	LifetimeReplacer(lifetime).visit_type_mut(&mut ty);
 	ty
+}
+
+/// Get only the necessary generics.
+struct FilterUsedGenerics {
+	all: Vec<crate::GenericParam>,
+	used: Vec<bool>,
+}
+
+impl VisitMut for FilterUsedGenerics {
+	fn visit_lifetime_mut(&mut self, used_lifetime: &mut syn::Lifetime) {
+		for (generic, used) in self.all.iter().zip(self.used.iter_mut()) {
+			let crate::GenericParam::Lifetime(lifetime_param) = generic else { continue };
+			if used_lifetime == &lifetime_param.lifetime {
+				*used = true;
+			}
+		}
+	}
+
+	fn visit_path_mut(&mut self, path: &mut syn::Path) {
+		for (index, (generic, used)) in self.all.iter().zip(self.used.iter_mut()).enumerate() {
+			let crate::GenericParam::Type(type_param) = generic else { continue };
+			if path.leading_colon.is_none() && !path.segments.is_empty() && path.segments[0].arguments.is_none() && path.segments[0].ident == type_param.ident {
+				*used = true;
+				// Sometimes the generics conflict with the type name so we rename the generics.
+				path.segments[0].ident = format_ident!("G{index}");
+			}
+		}
+		for mut el in Punctuated::pairs_mut(&mut path.segments) {
+			self.visit_path_segment_mut(el.value_mut());
+		}
+	}
+}
+
+impl FilterUsedGenerics {
+	fn new(fn_generics: &[crate::GenericParam]) -> (Vec<crate::GenericParam>, Self) {
+		let mut all_possible_generics = fn_generics.to_vec();
+		// The 'n lifetime may also be needed; we must add it in
+		all_possible_generics.insert(0, syn::GenericParam::Lifetime(syn::LifetimeParam::new(Lifetime::new("'n", proc_macro2::Span::call_site()))));
+
+		let modified = all_possible_generics
+			.iter()
+			.cloned()
+			.enumerate()
+			.map(|(index, mut generic)| {
+				let crate::GenericParam::Type(type_param) = &mut generic else { return generic };
+				// Sometimes the generics conflict with the type name so we rename the generics.
+				type_param.ident = format_ident!("G{index}");
+				generic
+			})
+			.collect::<Vec<_>>();
+
+		let generic_collector = Self {
+			used: vec![false; all_possible_generics.len()],
+			all: all_possible_generics,
+		};
+
+		(modified, generic_collector)
+	}
+
+	fn used<'a>(&'a self, modified: &'a [crate::GenericParam]) -> impl Iterator<Item = &'a crate::GenericParam> {
+		modified.iter().zip(&self.used).filter(|(_, used)| **used).map(move |(value, _)| value)
+	}
+
+	fn filter_unnecessary_generics(&mut self, modified: &mut Vec<syn::GenericParam>, ty: &mut Type) -> Vec<syn::GenericParam> {
+		self.used.fill(false);
+
+		// Find out which generics are necessary to support the node input
+		self.visit_type_mut(ty);
+
+		// Sometimes generics may reference other generics. This is a non-optimal way of dealing with that.
+		for _ in 0..=self.all.len() {
+			for (index, item) in modified.iter_mut().enumerate() {
+				if self.used[index] {
+					self.visit_generic_param_mut(item);
+				}
+			}
+		}
+
+		self.used(&*modified).cloned().collect()
+	}
 }

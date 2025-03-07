@@ -318,7 +318,7 @@ impl Fsm for SplineToolFsmState {
 					}
 				}
 
-				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = document.network_interface.selected_nodes();
 				let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
 				let selected_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 

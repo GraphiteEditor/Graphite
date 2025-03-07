@@ -20,7 +20,7 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
-use graphene_std::application_io::TextureFrame;
+use graphene_std::application_io::TextureFrameTable;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
@@ -101,7 +101,7 @@ pub(crate) fn property_from_type(
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
 		return Err(vec![]);
 	};
-	let Some(network) = context.network_interface.network(context.selection_network_path) else {
+	let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
 		return Err(vec![]);
 	};
@@ -159,7 +159,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(false), true),
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrame>() => {
+						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => {
 							raster_widget(document_node, node_id, index, name, true).into()
 						}
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(document_node, node_id, index, name, true).into(),
@@ -260,7 +260,7 @@ pub(crate) fn property_from_type(
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, context),
-		Type::Future(_) => vec![TextLabel::new("Future type (not supported)").widget_holder()].into(),
+		Type::Future(out) => return property_from_type(node_id, index, out, number_options, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -1171,7 +1171,10 @@ pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 }
 
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
-	let network = context.network_interface.network(context.selection_network_path).ok_or("network not found in get_document_node")?;
+	let network = context
+		.network_interface
+		.nested_network(context.selection_network_path)
+		.ok_or("network not found in get_document_node")?;
 	network.nodes.get(&node_id).ok_or(format!("node {node_id} not found in get_document_node"))
 }
 
@@ -1818,7 +1821,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 // 	let image_size = context
 // 		.executor
 // 		.introspect_node_in_network(
-// 			context.network_interface.network(&[]).unwrap(),
+// 			context.network_interface.document_network().unwrap(),
 // 			&imaginate_node,
 // 			|network| {
 // 				network

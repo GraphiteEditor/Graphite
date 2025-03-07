@@ -1,5 +1,5 @@
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
-use super::{Alpha, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
+use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
 
 use dyn_any::DynAny;
 #[cfg(feature = "serde")]
@@ -255,6 +255,11 @@ impl RGBMut for Color {
 	}
 	fn set_blue(&mut self, blue: Self::ColorChannel) {
 		self.blue = blue;
+	}
+}
+impl AlphaMut for Color {
+	fn set_alpha(&mut self, value: Self::AlphaChannel) {
+		self.alpha = value;
 	}
 }
 

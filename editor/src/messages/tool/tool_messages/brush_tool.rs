@@ -264,14 +264,14 @@ impl BrushToolData {
 	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.transform = DAffine2::IDENTITY;
 
-		if document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).count() != 1 {
+		if document.network_interface.selected_nodes().selected_layers(document.metadata()).count() != 1 {
 			return None;
 		}
-		let layer = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).next()?;
+		let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next()?;
 
 		self.layer = Some(layer);
 		for node_id in document.network_interface.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow) {
-			let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(&node_id) else {
+			let Some(node) = document.network_interface.document_network().nodes.get(&node_id) else {
 				continue;
 			};
 			let Some(reference) = document.network_interface.reference(&node_id, &[]) else {

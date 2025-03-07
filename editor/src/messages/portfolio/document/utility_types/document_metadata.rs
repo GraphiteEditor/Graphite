@@ -198,7 +198,7 @@ impl LayerNodeIdentifier {
 		debug_assert!(
 			network_interface.is_layer(&node_id, network_path),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
-			network_interface.network(network_path).unwrap().nodes.get(&node_id)
+			network_interface.nested_network(network_path).unwrap().nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
 	}
