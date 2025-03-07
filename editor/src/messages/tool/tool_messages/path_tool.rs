@@ -479,39 +479,39 @@ impl PathToolData {
 		self.drag_start_pos = input.mouse.position;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
+
 		// Check if clicking on an already selected point
-		if let Some((layer, nearest_point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
-			let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
+		if let Some(layer) = shape_editor
+			.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+			.filter(|(_, nearest_point)| shape_editor.selected_points().any(|&point| *nearest_point == point))
+			.map(|(layer, _)| layer)
+		{
+			// If clicking on an already selected point, don't change selection. Instead, start dragging immediately.
+			responses.add(DocumentMessage::StartTransaction);
 
-			// If clicking on an already selected point, don't change selection
-			// Instead, start dragging immediately
-			if clicked_selected {
-				responses.add(DocumentMessage::StartTransaction);
+			// Create a SelectedPointsInfo with all currently selected points
+			let points = shape_editor
+				.selected_shape_state
+				.iter()
+				.flat_map(|(&layer, state)| state.selected().map(move |point_id| ManipulatorPointInfo { layer, point_id }))
+				.collect();
 
-				// Get the vector data for the current layer
-				let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+			// Offset is distance between point and cursor ( in this case it is zero )
+			let offset = DVec2 { x: 0., y: 0. };
 
-				// Create a SelectedPointsInfo with all currently selected points
-				let points = shape_editor
-					.selected_shape_state
-					.iter()
-					.flat_map(|(layer, state)| state.selected().map(|point_id| ManipulatorPointInfo { layer: *layer, point_id }))
-					.collect();
+			// Get the vector data for the current layer
+			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 
-				// Offset is distance between point and cursor ( in this case it is zero )
-				let offset = DVec2 { x: 0.0, y: 0.0 };
+			let selected_points = SelectedPointsInfo { points, offset, vector_data };
 
-				let selected_points = SelectedPointsInfo { points, offset, vector_data };
+			// Start dragging without changing selection
+			self.start_dragging_point(selected_points, input, document, shape_editor);
+			responses.add(OverlaysMessage::Draw);
 
-				// Start dragging without changing selection
-				self.start_dragging_point(selected_points, input, document, shape_editor);
-				responses.add(OverlaysMessage::Draw);
-
-				return PathToolFsmState::Dragging(self.dragging_state);
-			}
+			PathToolFsmState::Dragging(self.dragging_state)
 		}
 		// Select the first point within the threshold (in pixels)
-		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
+		else if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
 			responses.add(DocumentMessage::StartTransaction);
 
 			if let Some(selected_points) = selected_points {
