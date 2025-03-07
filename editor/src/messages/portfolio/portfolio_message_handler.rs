@@ -595,7 +595,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					};
 
 					let Some(ref reference) = node_metadata.persistent_metadata.reference.clone() else {
-						log::error!("could not get reference in deserialize_document");
+						// TODO: Investigate if this should be an expected case, because currently it runs hundreds of times normally.
+						// TODO: Either delete the commented out error below if this is normal, or fix the underlying issue if this is not expected.
+						// log::error!("could not get reference in deserialize_document");
 						continue;
 					};
 
