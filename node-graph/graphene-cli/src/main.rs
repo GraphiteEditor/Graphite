@@ -29,6 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		.arg(arg!(<document> "Path to the Graphite document").value_parser(value_parser!(PathBuf)))
 		.arg(arg!([image] "Image to read").value_parser(value_parser!(PathBuf)))
 		.arg(arg!(--"no-run" "Disables running the node graph"))
+		.arg(arg!(--proto "Print proto graph"))
 		.get_matches();
 
 	let document_path = matches.get_one::<PathBuf>("document").expect("No document path provided");
@@ -60,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		editor_preferences: Box::new(EditorPreferences::default()),
 	});
 
-	let executor = create_executor(document_string, editor_api)?;
+	let executor = create_executor(document_string, editor_api, matches.get_flag("proto"))?;
 	let render_config = graphene_core::application_io::RenderConfig::default();
 
 	if run {
@@ -114,13 +115,16 @@ fn fix_nodes(network: &mut NodeNetwork) {
 	}
 }
 
-fn create_executor(document_string: String, editor_api: Arc<WasmEditorApi>) -> Result<DynamicExecutor, Box<dyn Error>> {
+fn create_executor(document_string: String, editor_api: Arc<WasmEditorApi>, print_proto: bool) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
 
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 	let compiler = Compiler {};
 	let protograph = compiler.compile_single(wrapped_network)?;
+	if print_proto {
+		println!("{}", protograph);
+	}
 	let executor = block_on(DynamicExecutor::new(protograph)).unwrap();
 	Ok(executor)
 }
