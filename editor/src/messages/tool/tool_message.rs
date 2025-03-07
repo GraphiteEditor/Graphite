@@ -31,8 +31,6 @@ pub enum ToolMessage {
 	#[child]
 	Freehand(FreehandToolMessage),
 	#[child]
-	Spline(SplineToolMessage),
-	#[child]
 	Line(LineToolMessage),
 	#[child]
 	Rectangle(RectangleToolMessage),

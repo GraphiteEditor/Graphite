@@ -1,4 +1,3 @@
-use super::spline_tool::{delete_preview, extend_spline, try_merging_latest_endpoint, EndpointPosition, SplineToolData};
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
@@ -18,6 +17,11 @@ use graphene_core::Color;
 use graphene_std::vector::{HandleId, ManipulatorPointId, SegmentId, VectorData};
 
 use std::fmt;
+
+// TODO: refactor the code into new module for drawing a Path.
+mod spline_mode;
+
+use spline_mode::*;
 
 #[derive(Default)]
 pub struct PenTool {
@@ -330,7 +334,7 @@ impl fmt::Display for ToolMode {
 
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	spline_mode_tool_data: SplineToolData,
+	spline_mode_tool_data: SplineModeToolData,
 
 	snap_manager: SnapManager,
 	latest_points: Vec<LastPoint>,
