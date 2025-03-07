@@ -795,11 +795,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.collect();
+				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
@@ -847,7 +843,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -905,7 +901,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -1037,7 +1033,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -1075,7 +1071,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+								document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -1119,7 +1115,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.layers_dragging.retain(|layer| {
 						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+							document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 						} else {
 							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
 							false
@@ -1452,7 +1448,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
 					if *layer != LayerNodeIdentifier::ROOT_PARENT {
-						document.network_interface.network(&[]).unwrap().nodes.contains_key(&layer.to_node())
+						document.network_interface.document_network().nodes.contains_key(&layer.to_node())
 					} else {
 						false
 					}

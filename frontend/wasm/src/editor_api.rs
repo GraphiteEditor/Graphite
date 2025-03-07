@@ -790,7 +790,7 @@ impl EditorHandle {
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>()
 		{
-			let Some(document_node) = document.network_interface.network(&[]).unwrap().nodes.get(&node) else {
+			let Some(document_node) = document.network_interface.document_network().nodes.get(&node) else {
 				log::error!("Could not get document node in document network");
 				return;
 			};
@@ -803,8 +803,7 @@ impl EditorHandle {
 						.is_some_and(|reference| *reference == Some("To Artboard".to_string()))
 						&& document
 							.network_interface
-							.network(&[])
-							.unwrap()
+							.document_network()
 							.nodes
 							.get(node_id)
 							.is_some_and(|document_node| document_node.inputs.len() != 6)
@@ -880,7 +879,7 @@ impl EditorHandle {
 				if !updated_nodes.insert(transform_node_id) {
 					return;
 				}
-				let Some(inputs) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
+				let Some(inputs) = modify_inputs.network_interface.document_network().nodes.get(&transform_node_id).map(|node| &node.inputs) else {
 					log::error!("Could not get transform node in document network");
 					return;
 				};
@@ -897,7 +896,7 @@ impl EditorHandle {
 				if !updated_nodes.insert(shape_node_id) {
 					return;
 				}
-				let Some(shape_node) = modify_inputs.network_interface.network(&[]).unwrap().nodes.get(&shape_node_id) else {
+				let Some(shape_node) = modify_inputs.network_interface.document_network().nodes.get(&shape_node_id) else {
 					log::error!("Could not get shape node in document network");
 					return;
 				};

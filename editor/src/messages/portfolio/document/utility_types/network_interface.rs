@@ -61,18 +61,26 @@ impl PartialEq for NodeNetworkInterface {
 // Public immutable getters for the network interface
 impl NodeNetworkInterface {
 	// TODO: Make private and use .field_name getter methods
+	/// Gets the network of the root document
+	pub fn document_network(&self) -> &NodeNetwork {
+		self.network
+			.nested_network(&[])
+			.expect("Could not get root document network in NodeNetworkInterface::document_network()")
+	}
+
+	// TODO: Make private and use .field_name getter methods
 	/// Gets the nested network based on network_path
-	pub fn network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
+	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.network.nested_network(network_path) else {
-			log::error!("Could not get nested network with path {network_path:?}");
+			log::error!("Could not get nested network with path {network_path:?} in NodeNetworkInterface::network");
 			return None;
 		};
 		Some(network)
 	}
 
-	// TODO: Make private and use .field_name getter methods. For example network_interface.inputs(node_id, network_path) rather than getting the node then getting inputs
+	/// Get the specified document node in the nested network based on node_id and network_path
 	pub fn document_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNode> {
-		let network = self.network(network_path)?;
+		let network = self.nested_network(network_path)?;
 		let Some(node_metadata) = network.nodes.get(node_id) else {
 			log::error!("Could not get document node with id {node_id} in network {network_path:?}");
 			return None;
@@ -221,7 +229,7 @@ impl NodeNetworkInterface {
 
 	/// Check if the specified node id is connected to the output
 	pub fn connected_to_output(&self, target_node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in connected_to_output");
 			return false;
 		};
@@ -444,7 +452,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn input_from_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<&NodeInput> {
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in input_from_connector");
 			return None;
 		};
@@ -829,7 +837,7 @@ impl NodeNetworkInterface {
 				.input_ports
 				.iter()
 				.filter_map(|(export_index, click_target)| {
-					let Some(network) = self.network(network_path) else {
+					let Some(network) = self.nested_network(network_path) else {
 						log::error!("Could not get network in frontend_exports");
 						return None;
 					};
@@ -1077,7 +1085,7 @@ impl NodeNetworkInterface {
 
 	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
 	pub fn root_node(&self, network_path: &[NodeId]) -> Option<RootNode> {
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in root_node");
 			return None;
 		};
@@ -1394,7 +1402,7 @@ impl NodeNetworkInterface {
 
 	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
 	pub fn upstream_flow_back_from_nodes<'a>(&'a self, mut node_ids: Vec<NodeId>, network_path: &'a [NodeId], mut flow_type: FlowType) -> impl Iterator<Item = NodeId> + 'a {
-		let (Some(network), Some(network_metadata)) = (self.network(network_path), self.network_metadata(network_path)) else {
+		let (Some(network), Some(network_metadata)) = (self.nested_network(network_path), self.network_metadata(network_path)) else {
 			log::error!("Could not get network or network_metadata in upstream_flow_back_from_nodes");
 			return FlowIter {
 				stack: Vec::new(),
@@ -1955,7 +1963,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in load_export_ports");
 			return;
 		};
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
@@ -2054,7 +2062,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in load_export_ports");
 			return;
 		};
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get current network in load_export_ports");
 			return;
 		};
@@ -2315,7 +2323,7 @@ impl NodeNetworkInterface {
 
 	fn load_outward_wires(&mut self, network_path: &[NodeId]) {
 		let mut outward_wires = HashMap::new();
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in load_outward_wires");
 			return;
 		};
@@ -2605,7 +2613,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn try_load_all_node_click_targets(&mut self, network_path: &[NodeId]) {
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in load_all_node_click_targets");
 			return;
 		};
@@ -2722,7 +2730,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn unload_all_nodes_click_targets(&mut self, network_path: &[NodeId]) {
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in unload_all_nodes_click_targets");
 			return;
 		};
@@ -2899,7 +2907,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in node_from_click");
 			return None;
 		};
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in node_from_click");
 			return None;
 		};
@@ -2936,7 +2944,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in visibility_from_click");
 			return None;
 		};
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in visibility_from_click");
 			return None;
 		};
@@ -2966,7 +2974,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in input_connector_from_click");
 			return None;
 		};
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in input_connector_from_click");
 			return None;
 		};
@@ -2999,7 +3007,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in output_connector_from_click");
 			return None;
 		};
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in output_connector_from_click");
 			return None;
 		};
@@ -3233,7 +3241,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let nodes: HashSet<NodeId> = self.network(&[]).unwrap().nodes.keys().cloned().collect::<HashSet<_>>();
+		let nodes: HashSet<NodeId> = self.document_network().nodes.keys().cloned().collect::<HashSet<_>>();
 
 		self.document_metadata.upstream_transforms.retain(|node, _| nodes.contains(node));
 		self.document_metadata.vector_modify.retain(|node, _| nodes.contains(node));
@@ -4577,7 +4585,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn toggle_preview(&mut self, toggle_id: NodeId, network_path: &[NodeId]) {
-		let Some(network) = self.network(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			return;
 		};
 		// If new_export is None then disconnect

@@ -493,7 +493,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 				];
-				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
 
 				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
@@ -502,8 +502,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				for (node_id, path) in &node_ids {
 					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
 
-					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) =
-						document.network_interface.network(&network_path).unwrap().nodes.get(node_id).map(|node| node.implementation.clone())
+					if let Some(DocumentNodeImplementation::ProtoNode(protonode_id)) = document
+						.network_interface
+						.nested_network(&network_path)
+						.unwrap()
+						.nodes
+						.get(node_id)
+						.map(|node| node.implementation.clone())
 					{
 						for (old, new) in REPLACEMENTS {
 							let node_path_without_type_args = protonode_id.name.split('<').next();
@@ -563,7 +568,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					document.network_interface.delete_nodes(vec![NodeId(0)], true, &[]);
 				}
 
-				let mut network = document.network_interface.network(&[]).unwrap().clone();
+				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
 
 				let node_ids: Vec<_> = network.recursive_nodes().map(|(&id, node)| (id, node.original_location.path.clone().unwrap())).collect();
@@ -573,7 +578,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let network_path: Vec<_> = path.iter().copied().take(path.len() - 1).collect();
 					let network_path = &network_path;
 
-					let Some(node) = document.network_interface.network(network_path).unwrap().nodes.get(node_id).cloned() else {
+					let Some(node) = document.network_interface.nested_network(network_path).unwrap().nodes.get(node_id).cloned() else {
 						log::error!("could not get node in deserialize_document");
 						continue;
 					};

@@ -1228,7 +1228,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.into_iter()
 					.filter(|(node_id, _)|
 						// Ensure that the layer is in the document network to prevent logging an error
-						self.network_interface.network(&[]).unwrap().nodes.contains_key(node_id))
+						self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, click_targets)| {
 						self.network_interface.is_layer(&node_id, &[]).then(|| {
 							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
@@ -1604,7 +1604,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
-		self.network_interface.network(&[]).unwrap()
+		self.network_interface.document_network()
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
@@ -1771,7 +1771,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.network(&[]).unwrap().current_hash())
+		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
 	}
 
 	pub fn is_auto_saved(&self) -> bool {

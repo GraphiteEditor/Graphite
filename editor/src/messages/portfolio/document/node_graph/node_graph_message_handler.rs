@@ -1041,7 +1041,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					// Try expand the upstream chain for all layers if there is an eligible node
-					let Some(network) = network_interface.network(selection_network_path) else { return };
+					let Some(network) = network_interface.nested_network(selection_network_path) else { return };
 					for layer in network
 						.nodes
 						.keys()
@@ -1063,7 +1063,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let has_primary_output_connection = network_interface
 							.outward_wires(selection_network_path)
 							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
-						let Some(network) = network_interface.network(selection_network_path) else {
+						let Some(network) = network_interface.nested_network(selection_network_path) else {
 							return;
 						};
 						if let Some(selected_node) = network.nodes.get(&selected_node_id) {
@@ -1167,7 +1167,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									None
 								};
 								if let Some(overlapping_wire) = overlapping_wire {
-									let Some(network) = network_interface.network(selection_network_path) else {
+									let Some(network) = network_interface.nested_network(selection_network_path) else {
 										return;
 									};
 									// Ensure connection is to first visible input of selected node. If it does not have an input then do not connect
@@ -1739,7 +1739,7 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
@@ -1961,7 +1961,7 @@ impl NodeGraphMessageHandler {
 					],
 				}];
 
-				let Some(network) = context.network_interface.network(context.selection_network_path) else {
+				let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
 					warn!("No network in collate_properties");
 					return Vec::new();
 				};
@@ -2059,7 +2059,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_wires(network_interface: &NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNodeWire> {
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get network when collecting wires");
 			return Vec::new();
 		};
@@ -2132,7 +2132,7 @@ impl NodeGraphMessageHandler {
 		};
 		let mut can_be_layer_lookup = HashSet::new();
 		let mut position_lookup = HashMap::new();
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
@@ -2148,7 +2148,7 @@ impl NodeGraphMessageHandler {
 			}
 		}
 		let mut frontend_inputs_lookup = frontend_inputs_lookup(breadcrumb_network_path, network_interface);
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
@@ -2224,7 +2224,7 @@ impl NodeGraphMessageHandler {
 					connected_to,
 				});
 			}
-			let Some(network) = network_interface.network(breadcrumb_network_path) else {
+			let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 				log::error!("Could not get nested network when collecting nodes");
 				return Vec::new();
 			};
@@ -2278,7 +2278,7 @@ impl NodeGraphMessageHandler {
 
 	fn collect_subgraph_names(network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<Vec<String>> {
 		let mut current_network_path = vec![];
-		let mut current_network = network_interface.network(&current_network_path).unwrap();
+		let mut current_network = network_interface.nested_network(&current_network_path).unwrap();
 		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in breadcrumb_network_path {
 			if let Some(node) = current_network.nodes.get(node_id) {
@@ -2449,7 +2449,7 @@ type FrontendInputsLookup = HashMap<NodeId, Vec<Option<InputLookup>>>;
 
 /// Create a lookup hashmap that can be used to create the frontend inputs. This is needed because `input_type` requires a mutable `network_interface`.
 fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface: &mut NodeNetworkInterface) -> FrontendInputsLookup {
-	let Some(network) = network_interface.network(breadcrumb_network_path) else {
+	let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 		return Default::default();
 	};
 	let mut frontend_inputs_lookup = HashMap::new();
