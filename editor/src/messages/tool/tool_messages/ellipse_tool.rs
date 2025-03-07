@@ -318,7 +318,6 @@ impl Fsm for EllipseToolFsmState {
 
 #[cfg(test)]
 mod test_ellipse {
-
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_core::vector::generator_nodes::ellipse;
@@ -363,7 +362,7 @@ mod test_ellipse {
 			ResolvedEllipse {
 				radius_x: 4.5,
 				radius_y: 5.,
-				transform: DAffine2::from_translation(DVec2::new(14.5, 5.)) // Uses centre
+				transform: DAffine2::from_translation(DVec2::new(14.5, 5.)) // Uses center
 			}
 		);
 	}
@@ -381,7 +380,7 @@ mod test_ellipse {
 			ResolvedEllipse {
 				radius_x: 10.,
 				radius_y: 10.,
-				transform: DAffine2::from_translation(DVec2::new(0., 20.)) // Uses centre
+				transform: DAffine2::from_translation(DVec2::new(0., 20.)) // Uses center
 			}
 		);
 	}
@@ -392,9 +391,10 @@ mod test_ellipse {
 		editor.new_document().await;
 		editor
 			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
 				angle_radians: f64::consts::FRAC_PI_4,
 			})
-			.await; // 45 degree rotation of content clockwise
+			.await;
 		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT).await; // Viewport coordinates
 
 		let ellipse = get_ellipse(&mut editor).await;
@@ -414,14 +414,15 @@ mod test_ellipse {
 	}
 
 	#[tokio::test]
-	async fn ellipse_draw_centre_square_rotated() {
+	async fn ellipse_draw_center_square_rotated() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor
 			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
 				angle_radians: f64::consts::FRAC_PI_4,
 			})
-			.await; // 45 degree rotation of content clockwise
+			.await;
 		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await; // Viewport coordinates
 
 		let ellipse = get_ellipse(&mut editor).await;

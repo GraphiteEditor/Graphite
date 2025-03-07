@@ -5,8 +5,10 @@ use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
 use quote::{format_ident, quote};
-use syn::PatIdent;
-use syn::{parse_quote, punctuated::Punctuated, spanned::Spanned, token::Comma, Error, Ident, Token, WhereClause, WherePredicate};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::token::Comma;
+use syn::{parse_quote, Error, Ident, PatIdent, Token, WhereClause, WherePredicate};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -251,7 +253,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
-	let node_input_accessor = generate_node_input_references(parsed, &&fn_generics, &field_idents, &graphene_core, &identifier);
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier);
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -347,11 +349,13 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 			ParsedField::Node { output_type, .. } => output_type,
 		}
 		.clone();
+
 		// We only want the necessary generics.
 		let used = generic_collector.filter_unnecessary_generics(&mut modified, &mut ty);
 		// TODO: figure out a better name that doesn't conflict with so many types
 		let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
 		let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
+
 		// Only create structs with phantom data where necessary.
 		generated_input_accessor.push(if phantom_data_declerations.is_empty() {
 			quote! {
@@ -374,7 +378,8 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 			}
 		})
 	}
-	return quote! {
+
+	quote! {
 		pub mod #inputs_module_name {
 			use super::*;
 
@@ -385,23 +390,27 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 			}
 			#(#generated_input_accessor)*
 		}
-	};
+	}
 }
 
 /// It is necessary to generate PhantomData for each fn generic to avoid compiler errors.
 fn generate_phantom_data<'a>(fn_generics: impl Iterator<Item = &'a crate::GenericParam>) -> (Vec<TokenStream2>, Vec<TokenStream2>) {
 	let mut phantom_data_declerations = Vec::new();
 	let mut fn_generic_params = Vec::new();
+
 	for fn_generic_param in fn_generics {
 		let field_name = format_ident!("phantom_{}", phantom_data_declerations.len());
+
 		match fn_generic_param {
 			crate::GenericParam::Lifetime(lifetime_param) => {
 				let lifetime = &lifetime_param.lifetime;
+
 				fn_generic_params.push(quote! {#lifetime});
 				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<&#lifetime ()>})
 			}
 			crate::GenericParam::Type(type_param) => {
 				let generic_name = &type_param.ident;
+
 				fn_generic_params.push(quote! {#generic_name});
 				phantom_data_declerations.push(quote! {#field_name: core::marker::PhantomData<#generic_name>});
 			}
@@ -574,7 +583,7 @@ impl VisitMut for FilterUsedGenerics {
 	fn visit_path_mut(&mut self, path: &mut syn::Path) {
 		for (index, (generic, used)) in self.all.iter().zip(self.used.iter_mut()).enumerate() {
 			let crate::GenericParam::Type(type_param) = generic else { continue };
-			if path.leading_colon.is_none() && path.segments.len() >= 1 && path.segments[0].arguments.is_none() && path.segments[0].ident == type_param.ident {
+			if path.leading_colon.is_none() && !path.segments.is_empty() && path.segments[0].arguments.is_none() && path.segments[0].ident == type_param.ident {
 				*used = true;
 				// Sometimes the generics conflict with the type name so we rename the generics.
 				path.segments[0].ident = format_ident!("G{index}");
@@ -591,6 +600,7 @@ impl FilterUsedGenerics {
 		let mut all_possible_generics = fn_generics.to_vec();
 		// The 'n lifetime may also be needed; we must add it in
 		all_possible_generics.insert(0, syn::GenericParam::Lifetime(syn::LifetimeParam::new(Lifetime::new("'n", proc_macro2::Span::call_site()))));
+
 		let modified = all_possible_generics
 			.iter()
 			.cloned()
@@ -602,19 +612,25 @@ impl FilterUsedGenerics {
 				generic
 			})
 			.collect::<Vec<_>>();
+
 		let generic_collector = Self {
 			used: vec![false; all_possible_generics.len()],
 			all: all_possible_generics,
 		};
+
 		(modified, generic_collector)
 	}
+
 	fn used<'a>(&'a self, modified: &'a [crate::GenericParam]) -> impl Iterator<Item = &'a crate::GenericParam> {
 		modified.iter().zip(&self.used).filter(|(_, used)| **used).map(move |(value, _)| value)
 	}
+
 	fn filter_unnecessary_generics(&mut self, modified: &mut Vec<syn::GenericParam>, ty: &mut Type) -> Vec<syn::GenericParam> {
 		self.used.fill(false);
+
 		// Find out which generics are necessary to support the node input
 		self.visit_type_mut(ty);
+
 		// Sometimes generics may reference other generics. This is a non-optimal way of dealing with that.
 		for _ in 0..=self.all.len() {
 			for (index, item) in modified.iter_mut().enumerate() {
@@ -623,7 +639,7 @@ impl FilterUsedGenerics {
 				}
 			}
 		}
-		let used = self.used(&*modified).cloned().collect::<Vec<_>>();
-		used
+
+		self.used(&*modified).cloned().collect()
 	}
 }

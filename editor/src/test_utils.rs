@@ -8,11 +8,12 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
-use glam::DVec2;
+
 use graph_craft::document::DocumentNode;
+use graphene_core::raster::color::Color;
 use graphene_core::InputAccessor;
 
-use graphene_core::raster::color::Color;
+use glam::DVec2;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -42,26 +43,34 @@ impl EditorTestUtils {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let exector = &mut portfolio.executor;
 			let document = portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap();
-			let viewport_resolution = glam::UVec2::ONE;
+
 			let instrumented = exector.update_node_graph_instrumented(document).expect("update_node_graph_instrumented failed");
+
+			let viewport_resolution = glam::UVec2::ONE;
 			exector
 				.submit_current_node_graph_evaluation(document, viewport_resolution)
 				.expect("submit_current_node_graph_evaluation failed");
 			runtime.run().await;
+
 			let mut messages = VecDeque::new();
 			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
 			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+
 			for message in frontend_messages {
 				message.check_node_graph_error();
 			}
+
 			instrumented
 		}
+
 		run(&mut self.editor, &mut self.runtime)
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) {
 		self.editor.handle_message(message);
-		self.eval_graph().await; // Required to process any buffered messages
+
+		// Required to process any buffered messages
+		self.eval_graph().await;
 	}
 
 	pub async fn new_document(&mut self) {
@@ -83,7 +92,9 @@ impl EditorTestUtils {
 
 	pub async fn click_tool(&mut self, typ: ToolType, button: MouseKeys, position: DVec2, modifier_keys: ModifierKeys) {
 		self.select_tool(typ).await;
+
 		self.move_mouse(position.x, position.y, modifier_keys, MouseKeys::empty()).await;
+
 		self.mousedown(
 			EditorMouseState {
 				editor_position: position,
@@ -93,6 +104,7 @@ impl EditorTestUtils {
 			modifier_keys,
 		)
 		.await;
+
 		self.mouseup(
 			EditorMouseState {
 				editor_position: position,
@@ -105,9 +117,13 @@ impl EditorTestUtils {
 
 	pub async fn drag_tool(&mut self, typ: ToolType, x1: f64, y1: f64, x2: f64, y2: f64, modifier_keys: ModifierKeys) {
 		self.select_tool(typ).await;
+
 		self.move_mouse(x1, y1, modifier_keys, MouseKeys::empty()).await;
+
 		self.left_mousedown(x1, y1, modifier_keys).await;
+
 		self.move_mouse(x2, y2, modifier_keys, MouseKeys::LEFT).await;
+
 		self.mouseup(
 			EditorMouseState {
 				editor_position: (x2, y2).into(),
@@ -121,9 +137,13 @@ impl EditorTestUtils {
 
 	pub async fn drag_tool_cancel_rmb(&mut self, typ: ToolType) {
 		self.select_tool(typ).await;
+
 		self.move_mouse(50., 50., ModifierKeys::default(), MouseKeys::empty()).await;
+
 		self.left_mousedown(50., 50., ModifierKeys::default()).await;
+
 		self.move_mouse(100., 100., ModifierKeys::default(), MouseKeys::LEFT).await;
+
 		self.mousedown(
 			EditorMouseState {
 				editor_position: (100., 100.).into(),
@@ -170,6 +190,7 @@ impl EditorTestUtils {
 
 	pub async fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
 		let key_repeat = false;
+
 		self.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat }).await;
 		self.handle_message(InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat }).await;
 	}
@@ -215,9 +236,7 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraph { nodes, .. } = self else {
-			return;
-		};
+		let FrontendMessage::UpdateNodeGraph { nodes, .. } = self else { return };
 
 		for node in nodes {
 			if let Some(error) = &node.errors {

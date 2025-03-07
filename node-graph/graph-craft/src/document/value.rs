@@ -150,6 +150,7 @@ tagged_value! {
 	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
+	Artboard(graphene_core::Artboard),
 	String(String),
 	U32(u32),
 	U64(u64),
@@ -214,7 +215,6 @@ tagged_value! {
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 	FontCache(Arc<graphene_core::text::FontCache>),
-	Artboard(graphene_core::Artboard),
 }
 
 impl TaggedValue {

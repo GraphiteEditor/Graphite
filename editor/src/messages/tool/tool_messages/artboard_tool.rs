@@ -255,7 +255,7 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::Dragging
 				} else {
-					tool_data.draw.start(document, &input);
+					tool_data.draw.start(document, input);
 
 					ArtboardToolFsmState::Drawing
 				};
@@ -558,7 +558,6 @@ impl Fsm for ArtboardToolFsmState {
 
 #[cfg(test)]
 mod test_artboard {
-
 	pub use crate::test_utils::test_prelude::*;
 
 	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_core::Artboard> {
@@ -597,10 +596,12 @@ mod test_artboard {
 		editor.new_document().await;
 		editor
 			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
 				angle_radians: f64::consts::FRAC_PI_4,
 			})
-			.await; // 45 degree rotation of content clockwise
-		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await; // Viewport coordinates
+			.await;
+		// Viewport coordinates
+		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await;
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
@@ -610,16 +611,18 @@ mod test_artboard {
 	}
 
 	#[tokio::test]
-	async fn artboard_draw_centre_square_rotated() {
+	async fn artboard_draw_center_square_rotated() {
 		let mut editor = EditorTestUtils::create();
 
 		editor.new_document().await;
 		editor
 			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
 				angle_radians: f64::consts::FRAC_PI_4,
 			})
-			.await; // 45 degree rotation of content clockwise
-		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await; // Viewport coordinates
+			.await;
+		// Viewport coordinates
+		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await;
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
