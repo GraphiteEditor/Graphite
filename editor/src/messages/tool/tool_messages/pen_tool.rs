@@ -152,13 +152,19 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl LayoutHolder for PenTool {
 	fn layout(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
+		let mut widgets = Vec::new();
+
+		widgets.push(self.tool_mode_widget());
+
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
 			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
 			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value.as_solid())).into(),
-		);
+		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
@@ -173,10 +179,6 @@ impl LayoutHolder for PenTool {
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.push(create_weight_widget(self.options.line_weight));
-
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
-		widgets.push(self.tool_mode_widget());
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
