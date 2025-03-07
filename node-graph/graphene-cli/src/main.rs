@@ -7,10 +7,11 @@ use graphene_core::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
+use clap::{arg, command, value_parser};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use interpreted_executor::util::wrap_network_in_scope;
-use std::{error::Error, sync::Arc};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 struct UpdateLogger {}
 
@@ -24,9 +25,15 @@ impl NodeGraphUpdateSender for UpdateLogger {
 async fn main() -> Result<(), Box<dyn Error>> {
 	init_logging();
 
-	let document_path = std::env::args().nth(1).expect("No document path provided");
+	let matches = command!()
+		.arg(arg!(<document> "Path to the Graphite document").value_parser(value_parser!(PathBuf)))
+		.arg(arg!([image] "Image to read").value_parser(value_parser!(PathBuf)))
+		.arg(arg!(--"no-run" "Disables running the node graph"))
+		.get_matches();
 
-	let image_path = std::env::args().nth(2);
+	let document_path = matches.get_one::<PathBuf>("document").expect("No document path provided");
+
+	let image_path = matches.get_one::<PathBuf>("image");
 
 	let document_string = std::fs::read_to_string(&document_path).expect("Failed to read document");
 
@@ -36,11 +43,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
 	}
 
-	let device = application_io.gpu_executor().unwrap().context.device.clone();
-	std::thread::spawn(move || loop {
-		std::thread::sleep(std::time::Duration::from_nanos(10));
-		device.poll(wgpu::Maintain::Poll);
-	});
+	let run = !matches.get_flag("no-run");
+
+	if run {
+		let device = application_io.gpu_executor().unwrap().context.device.clone();
+		std::thread::spawn(move || loop {
+			std::thread::sleep(std::time::Duration::from_nanos(10));
+			device.poll(wgpu::Maintain::Poll);
+		});
+	}
 
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
@@ -52,10 +63,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let executor = create_executor(document_string, editor_api)?;
 	let render_config = graphene_core::application_io::RenderConfig::default();
 
-	loop {
-		let _result = (&executor).execute(render_config).await?;
-		std::thread::sleep(std::time::Duration::from_millis(16));
+	if run {
+		loop {
+			let _result = (&executor).execute(render_config).await?;
+			std::thread::sleep(std::time::Duration::from_millis(16));
+		}
 	}
+
+	Ok(())
 }
 
 fn init_logging() {

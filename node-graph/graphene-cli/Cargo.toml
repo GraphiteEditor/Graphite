@@ -45,6 +45,9 @@ image = { workspace = true, default-features = false, features = [
 	"png",
 ] }
 
+# Required dependencies
+clap = { version = "4.5.31", features = ["cargo"] }
+
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }
 gpu-executor = { path = "../gpu-executor", optional = true }
