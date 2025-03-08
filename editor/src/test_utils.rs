@@ -10,8 +10,8 @@ use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
 
 use graph_craft::document::DocumentNode;
-use graphene_core::raster::color::Color;
 use graphene_core::InputAccessor;
+use graphene_core::raster::color::Color;
 
 use glam::DVec2;
 
@@ -256,7 +256,7 @@ pub mod test_prelude {
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
-	pub use crate::messages::tool::common_functionality::graph_modification_utils::{is_layer_fed_by_node_of_name, NodeGraphLayer};
+	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;
 	pub use crate::node_graph_executor::NodeRuntime;
 	pub use crate::test_utils::EditorTestUtils;
@@ -266,7 +266,7 @@ pub mod test_prelude {
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_core::raster::{Color, Image};
 	pub use graphene_core::{InputAccessor, InputAccessorSource};
-	pub use graphene_std::{transform::Footprint, GraphicGroup};
+	pub use graphene_std::{GraphicGroup, transform::Footprint};
 
 	#[macro_export]
 	macro_rules! float_eq {

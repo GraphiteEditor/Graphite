@@ -586,7 +586,7 @@ impl ShapeState {
 			.flat_map(|(data, selection_state)| {
 				selection_state.selected_points.iter().filter_map(move |&point| {
 					let Some(data) = &data else { return None };
-					let Some(_) = point.get_handle_pair(&data) else { return None }; // ignores the endpoints.
+					let _ = point.get_handle_pair(data)?; // ignores the endpoints.
 					Some(data.colinear(point))
 				})
 			});
@@ -1076,9 +1076,9 @@ impl ShapeState {
 						}
 					}
 				} else if let Some(handles) = point.get_handle_pair(&vector_data) {
-    							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-    							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-    						}
+					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 			}
 		}
 	}
