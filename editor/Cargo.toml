@@ -43,7 +43,7 @@ bezier-rs = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true, features = ["serde", "debug-glam-assert"] }
 derivative = { workspace = true }
-specta.workspace = true
+specta = { workspace = true }
 image = { workspace = true, features = ["bmp", "png"] }
 dyn-any = { workspace = true }
 num_enum = { workspace = true }

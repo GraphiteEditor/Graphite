@@ -85,7 +85,7 @@ fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["i128"] }
-specta = { git = "https://github.com/specta-rs/specta.git", features = [
+specta = { version = "2.0.0-rc.22", features = [
 	"glam",
 	"derive",
 	# "typescript",
