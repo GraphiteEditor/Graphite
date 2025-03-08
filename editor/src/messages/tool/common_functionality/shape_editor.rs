@@ -575,7 +575,7 @@ impl ShapeState {
 		Some(())
 	}
 
-	/// Iterates over the selected manipulator groups, returning whether their handles have mixed, colinear, or free angles.
+	/// Iterates over the selected manipulator groups exluding endpoints, returning whether their handles have mixed, colinear, or free angles.
 	/// If there are no points selected this function returns mixed.
 	pub fn selected_manipulator_angles(&self, network_interface: &NodeNetworkInterface) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
@@ -583,7 +583,13 @@ impl ShapeState {
 			.selected_shape_state
 			.iter()
 			.map(|(&layer, selection_state)| (network_interface.compute_modified_vector(layer), selection_state))
-			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().is_some_and(|data| data.colinear(point))));
+			.flat_map(|(data, selection_state)| {
+				selection_state.selected_points.iter().filter_map(move |&point| {
+					let Some(data) = &data else { return None };
+					let Some(_) = point.get_handle_pair(&data) else { return None }; // ignores the endpoints.
+					Some(data.colinear(point))
+				})
+			});
 
 		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
 		if points_colinear_status.any(|point| first_is_colinear != point) {
