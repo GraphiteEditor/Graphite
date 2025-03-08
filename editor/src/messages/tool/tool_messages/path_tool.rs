@@ -372,6 +372,7 @@ struct PathToolData {
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
+	saved_points_before_click: Vec<ManipulatorPointId>,
 }
 
 impl PathToolData {
@@ -382,6 +383,10 @@ impl PathToolData {
 
 	fn remove_saved_points(&mut self) {
 		self.saved_points_before_anchor_select_toggle.clear();
+	}
+
+	fn save_points_before_click(&mut self, points: Vec<ManipulatorPointId>) {
+		self.saved_points_before_click = points;
 	}
 
 	pub fn selection_quad(&self) -> Quad {
@@ -503,7 +508,7 @@ impl PathToolData {
 			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 
 			let selected_points = SelectedPointsInfo { points, offset, vector_data };
-
+			self.save_points_before_click(old_selection.clone());
 			// Start dragging without changing selection
 			self.start_dragging_point(selected_points, input, document, shape_editor);
 			responses.add(OverlaysMessage::Draw);
@@ -1204,6 +1209,19 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
+				let extend_selection = input.keyboard.get(extend_selection as usize);
+
+				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+
+				if let Some((layer, nearest_point)) = nearest_point {
+					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && extend_selection {
+						let was_previously_selected = tool_data.saved_points_before_click.iter().any(|&point| nearest_point == point);
+						if was_previously_selected {
+							shape_editor.selected_shape_state.entry(layer).or_default().deselect_point(nearest_point);
+							responses.add(OverlaysMessage::Draw);
+						}
+					}
+				}
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
@@ -1218,10 +1236,6 @@ impl Fsm for PathToolFsmState {
 					tool_data.remove_saved_points();
 					tool_data.select_anchor_toggled = false;
 				}
-
-				let extend_selection = input.keyboard.get(extend_selection as usize);
-
-				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !extend_selection {
