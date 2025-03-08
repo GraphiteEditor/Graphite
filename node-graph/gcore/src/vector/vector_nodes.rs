@@ -8,7 +8,7 @@ use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
 use crate::{Color, GraphicElement, GraphicGroup, GraphicGroupTable};
 
-use bezier_rs::{Bezier, Cap, Join, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -1135,15 +1135,81 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 		}
 	}
 
-	fn calculate_distance_to_spilt(bezier1: Bezier, bezier2: Bezier, bevel_length: f64) -> f64 {
-		let v1 = (bezier1.end - bezier1.start).normalize();
-		let v2 = (bezier1.end - bezier2.end).normalize();
+	fn calculate_distance_to_spilt(bezier1: bezier_rs::Bezier, bezier2: bezier_rs::Bezier, bevel_length: f64) -> f64 {
+		if bezier1.is_linear() && bezier2.is_linear() {
+			let v1 = (bezier1.end - bezier1.start).normalize();
+			let v2 = (bezier1.end - bezier2.end).normalize();
 
-		let dot_product = v1.dot(v2);
+			let dot_product = v1.dot(v2);
 
-		let angle_rad = dot_product.acos();
+			let angle_rad = dot_product.acos();
 
-		bevel_length / ((angle_rad / 2.0).sin())
+			bevel_length / ((angle_rad / 2.0).sin())
+		} else {
+			let length1 = bezier1.length(None);
+			let length2 = bezier2.length(None);
+
+			let max_split = length1.min(length2);
+			const EUCLIDEAN_ERROR: f64 = 0.001;
+
+			// Adaptive sampling approach
+			let mut split_distance = 0.0;
+			let mut best_diff = f64::MAX;
+			let mut current_best_distance = 0.0;
+
+			// Start with coarse sampling to find promising regions
+			const INITIAL_SAMPLES: usize = 50;
+			for i in 0..=INITIAL_SAMPLES {
+				let distance_sample = max_split * (i as f64 / INITIAL_SAMPLES as f64);
+
+				let parametric1 = bezier1.euclidean_to_parametric_with_total_length((distance_sample / length1).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length1);
+				let parametric2 = bezier2.euclidean_to_parametric_with_total_length((distance_sample / length2).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length2);
+
+				let x_point = bezier1.evaluate(TValue::Parametric(1.0 - parametric1));
+				let y_point = bezier2.evaluate(TValue::Parametric(parametric2));
+
+				let distance = x_point.distance(y_point);
+				let diff = (bevel_length - distance).abs();
+
+				if diff < best_diff {
+					best_diff = diff;
+					current_best_distance = distance_sample;
+				}
+
+				if bevel_length - distance < 0.0 {
+					split_distance = distance_sample;
+
+					if i > 0 {
+						let prev_sample = max_split * ((i - 1) as f64 / INITIAL_SAMPLES as f64);
+
+						const REFINE_STEPS: usize = 10;
+						for j in 1..=REFINE_STEPS {
+							let refined_sample = prev_sample + (distance_sample - prev_sample) * (j as f64 / REFINE_STEPS as f64);
+
+							let parametric1 = bezier1.euclidean_to_parametric_with_total_length((refined_sample / length1).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length1);
+							let parametric2 = bezier2.euclidean_to_parametric_with_total_length((refined_sample / length2).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length2);
+
+							let x_point = bezier1.evaluate(TValue::Parametric(1.0 - parametric1));
+							let y_point = bezier2.evaluate(TValue::Parametric(parametric2));
+
+							let distance = x_point.distance(y_point);
+
+							if bevel_length - distance < 0.0 {
+								split_distance = refined_sample;
+								break;
+							}
+						}
+					}
+					break;
+				}
+			}
+
+			if split_distance == 0.0 && current_best_distance > 0.0 {
+				split_distance = current_best_distance;
+			}
+
+			split_distance
+		}
 	}
 
 	fn update_existing_segments(vector_data: &mut VectorData, distance: f64, segments_connected: &mut [u8]) -> Vec<[usize; 2]> {
