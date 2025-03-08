@@ -57,8 +57,8 @@ graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
 
 # Required dependencies
-criterion = { version = "0.5", features = ["html_reports"]}
-iai-callgrind = { version = "0.12.3"}
+criterion = { version = "0.5", features = ["html_reports"] }
+iai-callgrind = { version = "0.12.3" }
 
 # Benchmarks
 [[bench]]
