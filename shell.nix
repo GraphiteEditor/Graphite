@@ -41,7 +41,6 @@ in
     packages = with pkgs; [
       rustc-wasm
       nodejs
-      # cargo
       cargo-watch
       cargo-nextest
       cargo-expand

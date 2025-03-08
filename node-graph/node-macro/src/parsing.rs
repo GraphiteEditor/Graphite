@@ -339,17 +339,11 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					ty: (**ty).clone(),
 					implementations,
 				});
+			} else if let Pat::Ident(pat_ident) = &**pat {
+				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
+				fields.push(field);
 			} else {
-				match &**pat {
-					Pat::Ident(pat_ident) => {
-						let field =
-							parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
-						fields.push(field);
-					}
-					_ => {
-						return Err(Error::new_spanned(pat, "Expected a simple identifier for the field name"));
-					}
-				}
+				return Err(Error::new_spanned(pat, "Expected a simple identifier for the field name"));
 			}
 		} else {
 			return Err(Error::new_spanned(arg, "Expected a typed argument (e.g., `x: i32`)"));

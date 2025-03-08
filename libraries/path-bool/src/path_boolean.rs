@@ -523,13 +523,12 @@ fn find_vertices(edges: &[MajorGraphEdgeStage2], bounding_box: Aabb) -> MajorGra
 	for (seg, parent, bounding_box) in edges {
 		let mut get_vertex = |point: DVec2| -> MajorVertexKey {
 			let box_around_point = bounding_box_around_point(point, EPS.point);
-			match vertex_tree.find(&box_around_point).iter().next() {
-				Some(&existing_vertex) => existing_vertex,
-				_ => {
-					let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
-					vertex_tree.insert(box_around_point, vertex_key);
-					vertex_key
-				}
+			if let Some(&existing_vertex) = vertex_tree.find(&box_around_point).iter().next() {
+				existing_vertex
+			} else {
+				let vertex_key = graph.vertices.insert(MajorGraphVertex { point, outgoing_edges: Vec::new() });
+				vertex_tree.insert(box_around_point, vertex_key);
+				vertex_key
 			}
 		};
 
@@ -1343,7 +1342,7 @@ fn get_selected_faces<'a>(predicate: &'a impl Fn(u8) -> bool, flags: &'a HashMap
 	flags.iter().filter_map(|(key, &flag)| predicate(flag).then_some(*key))
 }
 
-fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + 'a + use<'a> {
+fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + use<'a> {
 	let face_set: HashSet<_> = faces.iter().copied().collect();
 	// TODO: Try using a binary search to avoid the hashset construction
 	let is_removed_edge = |edge: &DualGraphHalfEdge| face_set.contains(&edge.incident_vertex) == face_set.contains(&edges[edge.twin.unwrap()].incident_vertex);

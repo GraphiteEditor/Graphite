@@ -320,7 +320,7 @@ pub fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let &Some(&TaggedValue::Bool(x)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::Bool(x)) = input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			checkbox_input
@@ -349,7 +349,7 @@ pub fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let &Some(&TaggedValue::Footprint(footprint)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::Footprint(footprint)) = input.as_non_exposed_value() {
 		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
 		let bounds = footprint.scale();
 		let oversample = footprint.resolution.as_dvec2() / bounds;
@@ -759,7 +759,7 @@ pub fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::RedGreenBlue(mode)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::RedGreenBlue(mode)) = input.as_non_exposed_value() {
 		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
@@ -786,7 +786,7 @@ pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::RedGreenBlueAlpha(mode)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::RedGreenBlueAlpha(mode)) = input.as_non_exposed_value() {
 		let calculation_modes = [RedGreenBlueAlpha::Red, RedGreenBlueAlpha::Green, RedGreenBlueAlpha::Blue, RedGreenBlueAlpha::Alpha];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
@@ -814,7 +814,7 @@ pub fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, n
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::NoiseType(noise_type)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::NoiseType(noise_type)) = input.as_non_exposed_value() {
 		let entries = NoiseType::list()
 			.iter()
 			.map(|noise_type| {
@@ -840,7 +840,7 @@ pub fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::FractalType(fractal_type)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::FractalType(fractal_type)) = input.as_non_exposed_value() {
 		let entries = FractalType::list()
 			.iter()
 			.map(|fractal_type| {
@@ -866,7 +866,7 @@ pub fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId,
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::CellularDistanceFunction(cellular_distance_function)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::CellularDistanceFunction(cellular_distance_function)) = input.as_non_exposed_value() {
 		let entries = CellularDistanceFunction::list()
 			.iter()
 			.map(|cellular_distance_function| {
@@ -895,7 +895,7 @@ pub fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::CellularReturnType(cellular_return_type)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::CellularReturnType(cellular_return_type)) = input.as_non_exposed_value() {
 		let entries = CellularReturnType::list()
 			.iter()
 			.map(|cellular_return_type| {
@@ -921,7 +921,7 @@ pub fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: us
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::DomainWarpType(domain_warp_type)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::DomainWarpType(domain_warp_type)) = input.as_non_exposed_value() {
 		let entries = DomainWarpType::list()
 			.iter()
 			.map(|domain_warp_type| {
@@ -947,7 +947,7 @@ pub fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, n
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::BlendMode(blend_mode)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::BlendMode(blend_mode)) = input.as_non_exposed_value() {
 		let entries = BlendMode::list_svg_subset()
 			.iter()
 			.map(|category| {
@@ -980,7 +980,7 @@ pub fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, inde
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::LuminanceCalculation(calculation)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::LuminanceCalculation(calculation)) = input.as_non_exposed_value() {
 		let calculation_modes = LuminanceCalculation::list();
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
@@ -1008,7 +1008,7 @@ pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: No
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::BooleanOperation(calculation)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::BooleanOperation(calculation)) = input.as_non_exposed_value() {
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
 		let mut entries = Vec::with_capacity(operations.len());
@@ -1037,7 +1037,7 @@ pub fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::LineCap(line_cap)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::LineCap(line_cap)) = input.as_non_exposed_value() {
 		let entries = [("Butt", LineCap::Butt), ("Round", LineCap::Round), ("Square", LineCap::Square)]
 			.into_iter()
 			.map(|(name, val)| {
@@ -1062,7 +1062,7 @@ pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::LineJoin(line_join)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::LineJoin(line_join)) = input.as_non_exposed_value() {
 		let entries = [("Miter", LineJoin::Miter), ("Bevel", LineJoin::Bevel), ("Round", LineJoin::Round)]
 			.into_iter()
 			.map(|(name, val)| {
@@ -1150,7 +1150,7 @@ pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
-	if let &Some(&TaggedValue::CentroidType(centroid_type)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::CentroidType(centroid_type)) = input.as_non_exposed_value() {
 		let entries = vec![
 			RadioEntryData::new("area")
 				.label("Area")
@@ -1230,8 +1230,8 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
 	let randomize_index = 5;
-	Ok(match &document_node.inputs.get(randomize_index).and_then(|input| input.as_value()) {
-		&Some(&TaggedValue::Bool(randomize_enabled)) => randomize_enabled,
+	Ok(match document_node.inputs.get(randomize_index).and_then(|input| input.as_value()) {
+		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
 }
@@ -1248,8 +1248,8 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	// Monochrome
 	let monochrome_index = 1;
 	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", CheckboxInput::default(), true);
-	let is_monochrome = match &document_node.inputs[monochrome_index].as_value() {
-		&Some(&TaggedValue::Bool(monochrome_choice)) => monochrome_choice,
+	let is_monochrome = match document_node.inputs[monochrome_index].as_value() {
+		Some(TaggedValue::Bool(monochrome_choice)) => *monochrome_choice,
 		_ => false,
 	};
 
@@ -1281,7 +1281,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	};
 
 	let is_output_channel = match &document_node.inputs[output_channel_index].as_value() {
-		&Some(&TaggedValue::RedGreenBlue(choice)) => choice,
+		Some(TaggedValue::RedGreenBlue(choice)) => choice,
 		_ => {
 			warn!("Channel Mixer node properties panel could not be displayed.");
 			return vec![];
@@ -1381,7 +1381,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	}
 
 	let colors_choice_index = match &document_node.inputs[colors_index].as_value() {
-		&Some(&TaggedValue::SelectiveColorChoice(choice)) => choice,
+		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
 		_ => {
 			warn!("Selective Color node properties panel could not be displayed.");
 			return vec![];
@@ -1414,7 +1414,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let &Some(&TaggedValue::RelativeAbsolute(relative_or_absolute)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::RelativeAbsolute(relative_or_absolute)) = input.as_non_exposed_value() {
 		let entries = vec![
 			RadioEntryData::new("relative")
 				.label("Relative")
@@ -1500,7 +1500,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let &Some(&TaggedValue::Bool(is_individual)) = &input.as_non_exposed_value() {
+	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
 		let Some(input) = document_node.inputs.get(corner_radius_index) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -2221,15 +2221,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 
 	let mut widgets_first_row = start_widgets(document_node, node_id, fill_index, "Fill", FrontendGraphDataType::General, true);
 
-	let (fill, backup_color, backup_gradient) = match (
+	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), &Some(&TaggedValue::OptionalColor(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
 		&document_node.inputs[fill_index].as_value(),
 		&document_node.inputs[backup_color_index].as_value(),
 		&document_node.inputs[backup_gradient_index].as_value(),
 	) {
-		(&Some(TaggedValue::Fill(fill)), &Some(&TaggedValue::OptionalColor(backup_color)), &Some(TaggedValue::Gradient(backup_gradient))) => (fill, backup_color, backup_gradient),
-		_ => {
-			return vec![LayoutGroup::Row { widgets: widgets_first_row }];
-		}
+		(fill, backup_color, backup_gradient)
+	} else {
+		return vec![LayoutGroup::Row { widgets: widgets_first_row }];
 	};
 	let fill2 = fill.clone();
 	let backup_color_fill: Fill = backup_color.into();

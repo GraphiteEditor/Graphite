@@ -376,17 +376,14 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = match &**value {
-					TaggedValue::EditorApi(api) => {
-						let editor_api = UpcastAsRefNode::new(api.clone());
-						let node = Box::new(editor_api) as TypeErasedBox<'_>;
-						NodeContainer::new(node)
-					}
-					_ => {
-						let upcasted = UpcastNode::new(value.to_owned());
-						let node = Box::new(upcasted) as TypeErasedBox<'_>;
-						NodeContainer::new(node)
-					}
+				let node = if let TaggedValue::EditorApi(api) = &**value {
+					let editor_api = UpcastAsRefNode::new(api.clone());
+					let node = Box::new(editor_api) as TypeErasedBox<'_>;
+					NodeContainer::new(node)
+				} else {
+					let upcasted = UpcastNode::new(value.to_owned());
+					let node = Box::new(upcasted) as TypeErasedBox<'_>;
+					NodeContainer::new(node)
 				};
 				self.store_node(node, id, path.into());
 			}

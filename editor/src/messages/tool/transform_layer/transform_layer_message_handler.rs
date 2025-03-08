@@ -190,15 +190,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let selected_points = shape_editor.selected_points().collect::<Vec<_>>();
 
 				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
-				match calculate_pivot(&selected_points, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point)) {
-					Some((new_pivot, grab_target)) => {
-						*selected.pivot = new_pivot;
-						self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
-						self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
-					}
-					_ => {
-						log::warn!("Failed to calculate pivot.");
-					}
+				if let Some((new_pivot, grab_target)) = calculate_pivot(&selected_points, &vector_data, viewspace, |point: &ManipulatorPointId| get_location(&point)) {
+					*selected.pivot = new_pivot;
+					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
+					self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
+				} else {
+					log::warn!("Failed to calculate pivot.");
 				}
 			}
 

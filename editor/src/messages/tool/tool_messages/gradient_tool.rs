@@ -408,19 +408,18 @@ impl Fsm for GradientToolFsmState {
 						}
 
 						// Use the already existing gradient if it exists
-						let gradient = match get_gradient(layer, &document.network_interface) {
-							Some(gradient) => gradient.clone(),
-							_ => {
-								// Generate a new gradient
-								Gradient::new(
-									DVec2::ZERO,
-									global_tool_data.secondary_color,
-									DVec2::ONE,
-									global_tool_data.primary_color,
-									DAffine2::IDENTITY,
-									tool_options.gradient_type,
-								)
-							}
+						let gradient = if let Some(gradient) = get_gradient(layer, &document.network_interface) {
+							gradient.clone()
+						} else {
+							// Generate a new gradient
+							Gradient::new(
+								DVec2::ZERO,
+								global_tool_data.secondary_color,
+								DVec2::ONE,
+								global_tool_data.primary_color,
+								DAffine2::IDENTITY,
+								tool_options.gradient_type,
+							)
 						};
 						let selected_gradient = SelectedGradient::new(gradient, layer, document).with_gradient_start(input.mouse.position);
 

@@ -179,7 +179,7 @@ impl Bezier {
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/local-extrema/solo" title="Local Extrema Demo"></iframe>
-	pub fn local_extrema(&self) -> [impl Iterator<Item = f64> + use<>; 2] {
+	pub fn local_extrema(&self) -> [impl Iterator<Item = f64>; 2] {
 		self.unrestricted_local_extrema().map(|t_values| t_values.into_iter().flatten().filter(|&t| t > 0. && t < 1.))
 	}
 
@@ -257,7 +257,7 @@ impl Bezier {
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns list of `t`-values representing the inflection points of the curve.
 	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
-	pub fn unrestricted_inflections(&self) -> impl Iterator<Item = f64> + use<> {
+	pub fn unrestricted_inflections(&self) -> impl Iterator<Item = f64> {
 		match self.handles {
 			// There exists no inflection points for linear and quadratic beziers.
 			BezierHandles::Linear => [None; 3],

@@ -326,18 +326,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				match &mut input {
-					NodeInput::Value { exposed, .. } => {
-						*exposed = new_exposed;
-					}
-					_ => {
-						if !new_exposed {
-							// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
-							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
-							responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
-							return;
-						}
-					}
+				if let NodeInput::Value { exposed, .. } = &mut input {
+					*exposed = new_exposed;
+				} else if !new_exposed {
+					// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
+					responses.add(NodeGraphMessage::DisconnectInput { input_connector });
+					responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
+					return;
 				}
 
 				responses.add(DocumentMessage::AddTransaction);

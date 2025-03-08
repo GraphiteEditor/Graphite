@@ -292,13 +292,13 @@ impl PointsList {
 	}
 
 	#[inline(always)]
-	pub fn list_cell_and_neighbors(&self) -> impl Iterator<Item = DVec2> + use<> {
+	pub fn list_cell_and_neighbors(&self) -> impl Iterator<Item = DVec2> {
 		// The negative bit is used to store whether a point belongs to a neighboring cell
 		self.storage_slots.into_iter().take(self.length).map(|point| (point.x.abs(), point.y.abs()).into())
 	}
 
 	#[inline(always)]
-	pub fn list_cell(&self) -> impl Iterator<Item = DVec2> + use<> {
+	pub fn list_cell(&self) -> impl Iterator<Item = DVec2> {
 		// The negative bit is used to store whether a point belongs to a neighboring cell
 		self.storage_slots
 			.into_iter()
@@ -355,7 +355,7 @@ impl AccelerationGrid {
 	}
 
 	#[inline(always)]
-	pub fn nearby_points(&self, point: DVec2) -> impl Iterator<Item = DVec2> + use<> {
+	pub fn nearby_points(&self, point: DVec2) -> impl Iterator<Item = DVec2> {
 		let x = (point.x / self.size).floor() as usize;
 		let y = (point.y / self.size).floor() as usize;
 

@@ -297,25 +297,24 @@ impl DocumentNode {
 			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
 			_ => ProtoNodeIdentifier { name: fqn.name },
 		};
-		let (input, mut args) = match self.manual_composition {
-			Some(ty) => (ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![])),
-			_ => {
-				let first = self.inputs.remove(0);
-				match first {
-					NodeInput::Value { tagged_value, .. } => {
-						assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-						(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
-					}
-					NodeInput::Node { node_id, output_index, lambda } => {
-						assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
-						let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
-						(node, ConstructionArgs::Nodes(vec![]))
-					}
-					NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
-					NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
-					NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
-					NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
+		let (input, mut args) = if let Some(ty) = self.manual_composition {
+			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
+		} else {
+			let first = self.inputs.remove(0);
+			match first {
+				NodeInput::Value { tagged_value, .. } => {
+					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
+					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
 				}
+				NodeInput::Node { node_id, output_index, lambda } => {
+					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
+					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
+					(node, ConstructionArgs::Nodes(vec![]))
+				}
+				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
+				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
+				NodeInput::Reflection(_) => unreachable!("Reflection input was not resolved"),
 			}
 		};
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non-resolved input");
@@ -1314,17 +1313,16 @@ impl NodeNetwork {
 			.exports
 			.into_iter()
 			.filter_map(move |output| {
-				match output {
-					NodeInput::Node { node_id, .. } => {
-						Some(ProtoNetwork {
-							inputs: Vec::new(), // Inputs field is not used. Should be deleted
-							// inputs: vec![input_node.expect("Set node should always exist")],
-							// inputs: self.imports.clone(),
-							output: node_id,
-							nodes: nodes.clone(),
-						})
-					}
-					_ => None,
+				if let NodeInput::Node { node_id, .. } = output {
+					Some(ProtoNetwork {
+						inputs: Vec::new(), // Inputs field is not used. Should be deleted
+						// inputs: vec![input_node.expect("Set node should always exist")],
+						// inputs: self.imports.clone(),
+						output: node_id,
+						nodes: nodes.clone(),
+					})
+				} else {
+					None
 				}
 			})
 			.collect();

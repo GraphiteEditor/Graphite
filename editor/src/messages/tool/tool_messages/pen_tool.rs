@@ -751,8 +751,8 @@ impl PenToolData {
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2, responses: &mut VecDeque<Message>) {
 		let vector_data = document.network_interface.compute_modified_vector(layer);
-		let (handle_start, in_segment) = match &vector_data {
-			Some(vector_data) => vector_data
+		let (handle_start, in_segment) = if let Some(vector_data) = &vector_data {
+			vector_data
 				.segment_bezier_iter()
 				.find_map(|(segment_id, bezier, start, end)| {
 					let is_end = point == end;
@@ -779,8 +779,9 @@ impl PenToolData {
 					let in_segment = if is_end { Some(segment_id) } else { None };
 					(mirrored_handle, in_segment)
 				})
-				.unwrap_or_else(|| (position, None)),
-			_ => (position, None),
+				.unwrap_or_else(|| (position, None))
+		} else {
+			(position, None)
 		};
 
 		let in_segment = if self.modifiers.lock_angle { self.end_point_segment } else { in_segment };

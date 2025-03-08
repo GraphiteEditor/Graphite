@@ -498,67 +498,57 @@ impl PathToolData {
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
 		// Select the first point within the threshold (in pixels)
-		match shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
-			Some(selected_points) => {
-				responses.add(DocumentMessage::StartTransaction);
+		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
+			responses.add(DocumentMessage::StartTransaction);
 
-				if let Some(selected_points) = selected_points {
-					self.drag_start_pos = input.mouse.position;
+			if let Some(selected_points) = selected_points {
+				self.drag_start_pos = input.mouse.position;
 
-					// If selected points contain only handles and there was some selection before, then it is stored and becomes restored upon release
-					let mut dragging_only_handles = true;
-					for point in &selected_points.points {
-						if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
-							dragging_only_handles = false;
-							break;
-						}
-					}
-					if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
-						self.saved_points_before_handle_drag = old_selection;
-					}
-
-					self.start_dragging_point(selected_points, input, document, shape_editor);
-					responses.add(OverlaysMessage::Draw);
-				}
-				PathToolFsmState::Dragging(self.dragging_state)
-			}
-			_ => {
-				match shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
-					Some(closed_segment) => {
-						responses.add(DocumentMessage::StartTransaction);
-						if direct_insert_without_sliding {
-							self.start_insertion(responses, closed_segment);
-							self.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
-						} else {
-							self.start_insertion(responses, closed_segment)
-						}
-					}
-					_ => {
-						if let Some(layer) = document.click(input) {
-							shape_editor.deselect_all_points();
-							if extend_selection {
-								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
-							} else {
-								responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
-							}
-							self.drag_start_pos = input.mouse.position;
-							self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-							responses.add(DocumentMessage::StartTransaction);
-
-							PathToolFsmState::Dragging(self.dragging_state)
-						}
-						// Start drawing
-						else {
-							self.drag_start_pos = input.mouse.position;
-							self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-							let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-							PathToolFsmState::Drawing { selection_shape }
-						}
+				// If selected points contain only handles and there was some selection before, then it is stored and becomes restored upon release
+				let mut dragging_only_handles = true;
+				for point in &selected_points.points {
+					if matches!(point.point_id, ManipulatorPointId::Anchor(_)) {
+						dragging_only_handles = false;
+						break;
 					}
 				}
+				if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
+					self.saved_points_before_handle_drag = old_selection;
+				}
+
+				self.start_dragging_point(selected_points, input, document, shape_editor);
+				responses.add(OverlaysMessage::Draw);
 			}
+			PathToolFsmState::Dragging(self.dragging_state)
+		} else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
+			responses.add(DocumentMessage::StartTransaction);
+			if direct_insert_without_sliding {
+				self.start_insertion(responses, closed_segment);
+				self.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
+			} else {
+				self.start_insertion(responses, closed_segment)
+			}
+		} else if let Some(layer) = document.click(input) {
+			shape_editor.deselect_all_points();
+			if extend_selection {
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+			} else {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+			}
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
+			responses.add(DocumentMessage::StartTransaction);
+
+			PathToolFsmState::Dragging(self.dragging_state)
+		}
+		// Start drawing
+		else {
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
+			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+			PathToolFsmState::Drawing { selection_shape }
 		}
 	}
 

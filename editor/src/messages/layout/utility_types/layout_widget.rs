@@ -105,16 +105,13 @@ pub enum Layout {
 
 impl Layout {
 	pub fn unwrap_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) -> MenuLayout {
-		match self {
-			Self::MenuLayout(mut menu) => {
-				menu.layout
-					.iter_mut()
-					.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
-				menu
-			}
-			_ => {
-				panic!("Called unwrap_menu_layout on a widget layout");
-			}
+		if let Self::MenuLayout(mut menu) = self {
+			menu.layout
+				.iter_mut()
+				.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
+			menu
+		} else {
+			panic!("Called unwrap_menu_layout on a widget layout");
 		}
 	}
 

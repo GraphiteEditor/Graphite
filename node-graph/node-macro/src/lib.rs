@@ -244,11 +244,10 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 	};
 
 	// Extract the output type of the entire node - `()` by default
-	let output = match &function.sig.output {
-		ReturnType::Type(_, ty) => ty.to_token_stream(),
-		_ => {
-			quote::quote!(())
-		}
+	let output = if let ReturnType::Type(_, ty) = &function.sig.output {
+		ty.to_token_stream()
+	} else {
+		quote::quote!(())
 	};
 
 	let num_inputs = parameter_inputs.len();

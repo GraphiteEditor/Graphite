@@ -18,41 +18,34 @@ pub fn commands_from_path_data(d: &str) -> Result<Vec<PathCommand>, BooleanError
 			return None;
 		}
 
-		match re_cmd.captures(&d[*i..]) {
-			Some(cap) => {
-				*i += cap[0].len();
-				Some(cap[1].chars().next().unwrap())
-			}
-			_ => match last_cmd {
+		if let Some(cap) = re_cmd.captures(&d[*i..]) {
+			*i += cap[0].len();
+			Some(cap[1].chars().next().unwrap())
+		} else {
+			match last_cmd {
 				'M' => Some('L'),
 				'm' => Some('l'),
 				'z' | 'Z' => None,
 				_ => Some(last_cmd),
-			},
+			}
 		}
 	};
 
 	let get_float = |i: &mut usize| -> f64 {
-		match re_float.captures(&d[*i..]) {
-			Some(cap) => {
-				*i += cap[0].len();
-				cap[1].parse().unwrap()
-			}
-			_ => {
-				panic!("Invalid path data. Expected a number at index {}, got {}", i, &d[*i..]);
-			}
+		if let Some(cap) = re_float.captures(&d[*i..]) {
+			*i += cap[0].len();
+			cap[1].parse().unwrap()
+		} else {
+			panic!("Invalid path data. Expected a number at index {}, got {}", i, &d[*i..]);
 		}
 	};
 
 	let get_bool = |i: &mut usize| -> bool {
-		match re_bool.captures(&d[*i..]) {
-			Some(cap) => {
-				*i += cap[0].len();
-				&cap[1] == "1"
-			}
-			_ => {
-				panic!("Invalid path data. Expected a flag at index {}", i);
-			}
+		if let Some(cap) = re_bool.captures(&d[*i..]) {
+			*i += cap[0].len();
+			&cap[1] == "1"
+		} else {
+			panic!("Invalid path data. Expected a flag at index {}", i);
 		}
 	};
 
