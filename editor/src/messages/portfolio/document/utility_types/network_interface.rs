@@ -977,24 +977,21 @@ impl NodeNetworkInterface {
 				log::error!("Could not get node {node_id} in upstream_nodes_below_layer");
 				break;
 			};
-			match current_node
+			if let Some(primary_node_id) = current_node
 				.inputs
 				.iter()
 				.filter(|input| input.is_exposed_to_frontend(network_path.is_empty()))
 				.nth(if self.is_layer(&current_node_id, network_path) { 1 } else { 0 })
 				.and_then(|left_input| left_input.as_node())
 			{
-				Some(primary_node_id) => {
-					if self.is_chain(&primary_node_id, network_path) {
-						current_node_id = primary_node_id;
-					} else {
-						potential_upstream_nodes.insert(primary_node_id);
-						break;
-					}
-				}
-				_ => {
+				if self.is_chain(&primary_node_id, network_path) {
+					current_node_id = primary_node_id;
+				} else {
+					potential_upstream_nodes.insert(primary_node_id);
 					break;
 				}
+			} else {
+				break;
 			}
 		}
 
@@ -4680,21 +4677,18 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		match &mut node_metadata.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Node(node_metadata) => {
-				if node_metadata.position == NodePosition::Absolute(position) {
-					return;
-				}
-				node_metadata.position = NodePosition::Absolute(position);
-				self.transaction_modified();
+		if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			if node_metadata.position == NodePosition::Absolute(position) {
+				return;
 			}
-			_ => if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-   					if layer_metadata.position == LayerPosition::Absolute(position) {
-   						return;
-   					}
-   					layer_metadata.position = LayerPosition::Absolute(position);
-   					self.transaction_modified();
-   				},
+			node_metadata.position = NodePosition::Absolute(position);
+			self.transaction_modified();
+		} else if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			if layer_metadata.position == LayerPosition::Absolute(position) {
+				return;
+			}
+			layer_metadata.position = LayerPosition::Absolute(position);
+			self.transaction_modified();
 		}
 	}
 
@@ -5332,17 +5326,17 @@ impl NodeNetworkInterface {
 			}
 			_ => {
 				if let NodeTypePersistentMetadata::Node(node_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-    						if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
-    							*node_metadata += shift;
-    							self.transaction_modified();
-    							// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
-    							self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-    							self.try_set_node_to_chain(node_id, network_path);
-    						} else if let NodePosition::Chain = node_metadata.position {
-    							self.set_upstream_chain_to_absolute(node_id, network_path);
-    							self.shift_node(node_id, shift, network_path);
-    						}
-    					}
+					if let NodePosition::Absolute(node_metadata) = &mut node_metadata.position {
+						*node_metadata += shift;
+						self.transaction_modified();
+						// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted
+						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+						self.try_set_node_to_chain(node_id, network_path);
+					} else if let NodePosition::Chain = node_metadata.position {
+						self.set_upstream_chain_to_absolute(node_id, network_path);
+						self.shift_node(node_id, shift, network_path);
+					}
+				}
 			}
 		}
 		// Unload click targets for all upstream nodes, since they may have been derived from the node that was shifted

@@ -212,9 +212,9 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	let mut widgets = Vec::new();
 	fn update_val<I, F: Fn(&mut GridSnapping, &I)>(grid: &GridSnapping, update: F) -> impl Fn(&I) -> Message + use<I, F> {
-		let new_grid = grid.clone();
+		let grid = grid.clone();
 		move |input: &I| {
-			let mut grid = new_grid.clone();
+			let mut grid = grid.clone();
 			update(&mut grid, input);
 			DocumentMessage::GridOptions(grid).into()
 		}

@@ -189,18 +189,15 @@ impl Dispatcher {
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
-					match message {
-						FrontendMessage::TriggerFontLoad { .. } => {
-							self.responses.push(message);
-							self.cleanup_queues(false);
+					if let FrontendMessage::TriggerFontLoad { .. } = message {
+						self.responses.push(message);
+						self.cleanup_queues(false);
 
-							// Return early to avoid running the code after the match block
-							return;
-						}
-						_ => {
-							// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
-							self.responses.push(message);
-						}
+						// Return early to avoid running the code after the match block
+						return;
+					} else {
+						// `FrontendMessage`s are saved and will be sent to the frontend after the message queue is done being processed
+						self.responses.push(message);
 					}
 				}
 				Message::Globals(message) => {

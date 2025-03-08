@@ -2080,14 +2080,12 @@ impl NodeGraphMessageHandler {
 						wire_end: InputConnector::node(wire_end, wire_end_input_index),
 						dashed: false,
 					}),
-					_ => match *input {
-						NodeInput::Network { import_index, .. } => Some(FrontendNodeWire {
-							wire_start: OutputConnector::Import(import_index),
-							wire_end: InputConnector::node(wire_end, wire_end_input_index),
-							dashed: false,
-						}),
-						_ => None,
-					},
+					NodeInput::Network { import_index, .. } => Some(FrontendNodeWire {
+						wire_start: OutputConnector::Import(import_index),
+						wire_end: InputConnector::node(wire_end, wire_end_input_index),
+						dashed: false,
+					}),
+					_ => None,
 				}
 			})
 			.collect::<Vec<_>>();
@@ -2114,11 +2112,13 @@ impl NodeGraphMessageHandler {
 						wire_end: InputConnector::Export(i),
 						dashed,
 					});
-				} else if let NodeInput::Network { import_index, .. } = *export { wires.push(FrontendNodeWire {
-    							wire_start: OutputConnector::Import(import_index),
-    							wire_end: InputConnector::Export(i),
-    							dashed,
-    						}) }
+				} else if let NodeInput::Network { import_index, .. } = *export {
+					wires.push(FrontendNodeWire {
+						wire_start: OutputConnector::Import(import_index),
+						wire_end: InputConnector::Export(i),
+						dashed,
+					})
+				}
 			}
 		}
 		wires
@@ -2279,19 +2279,12 @@ impl NodeGraphMessageHandler {
 		let mut current_network = network_interface.nested_network(&current_network_path).unwrap();
 		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in breadcrumb_network_path {
-			match current_network.nodes.get(node_id) {
-				Some(node) => {
-					if let Some(network) = node.implementation.get_network() {
-						current_network = network;
-					};
-					subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
-					current_network_path.push(*node_id)
-				}
-				_ => {
-					// Could not get node in network in breadcrumb_network_path
-					return None;
-				}
+			let node = current_network.nodes.get(node_id)?;
+			if let Some(network) = node.implementation.get_network() {
+				current_network = network;
 			};
+			subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
+			current_network_path.push(*node_id)
 		}
 		Some(subgraph_names)
 	}
