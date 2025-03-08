@@ -114,28 +114,8 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<h3>— Alpha 3 —</h3>
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Stackable adjustment layers</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Boolean operations for shapes</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Editable nested node subgraphs</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Procedurally alterable vector data</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>New vector 2D renderer (with <a target="_blank" href="https://github.com/linebender/vello">Vello</a>)</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 26" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Interactive graph auto-layout</span>
+			<span>Procedural vector editing and usability</span>
 		</div>
 		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -146,10 +126,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<h3>— Alpha 4 —</h3>
 		</div>
 		<div class="feature-icon ongoing">
-			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
-		</div>
-		<div class="feature-icon ongoing">
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Lambda nodes</span>
 		</div>
@@ -157,13 +133,17 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Graph data attribute spreadsheets</span>
 		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Node versioning</span>
+		<div class="feature-icon ongoing">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Contextual properties panel</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Node versioning</span>
 		</div>
 		<div class="feature-icon" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
