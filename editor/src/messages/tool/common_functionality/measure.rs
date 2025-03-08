@@ -40,6 +40,24 @@ fn draw_line_with_length(line_start: DVec2, line_end: DVec2, transform: DAffine2
 	overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), TEXT_PADDING, [pivot_x, pivot_y]);
 }
 
+/// Draws a dashed outline around a rectangle to visualize the AABB
+fn draw_dashed_rect_outline(rect: Rect, transform: DAffine2, overlay_context: &mut OverlayContext) {
+	let min = rect.min();
+	let max = rect.max();
+
+	// Create the four corners of the rectangle
+	let top_left = transform.transform_point2(DVec2::new(min.x, min.y));
+	let top_right = transform.transform_point2(DVec2::new(max.x, min.y));
+	let bottom_right = transform.transform_point2(DVec2::new(max.x, max.y));
+	let bottom_left = transform.transform_point2(DVec2::new(min.x, max.y));
+
+	// Draw the four sides as dashed lines
+	overlay_context.dashed_line(top_left, top_right, None, Some(2.), Some(4.), Some(0.5));
+	overlay_context.dashed_line(top_right, bottom_right, None, Some(2.), Some(4.), Some(0.5));
+	overlay_context.dashed_line(bottom_right, bottom_left, None, Some(2.), Some(4.), Some(0.5));
+	overlay_context.dashed_line(bottom_left, top_left, None, Some(2.), Some(4.), Some(0.5));
+}
+
 /// Checks if the selected bounds overlap with the hovered bounds on the Y-axis.
 fn does_overlap_y(selected_bounds: Rect, hovered_bounds: Rect) -> bool {
 	selected_bounds.min().x < hovered_bounds.max().x && selected_bounds.max().x > hovered_bounds.min().x
@@ -423,7 +441,8 @@ fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transfor
 
 /// Overlays measurement lines between selected and hovered bounds based on their spatial relationships.
 pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
-	// TODO: Apply object rotation to bounds before drawing lines for all cases.
+	draw_dashed_rect_outline(selected_bounds, transform, overlay_context);
+	draw_dashed_rect_outline(hovered_bounds, transform, overlay_context);
 
 	let (selected_min, selected_max) = (selected_bounds.min(), selected_bounds.max());
 	let (hovered_min, hovered_max) = (hovered_bounds.min(), hovered_bounds.max());
