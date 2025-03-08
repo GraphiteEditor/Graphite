@@ -7,7 +7,7 @@ use graphene_core::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
-use clap::{arg, command, value_parser};
+use clap::{arg, command, value_parser, Command};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -28,8 +28,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let matches = command!()
 		.arg(arg!(<document> "Path to the Graphite document").value_parser(value_parser!(PathBuf)))
 		.arg(arg!([image] "Image to read").value_parser(value_parser!(PathBuf)))
-		.arg(arg!(--"no-run" "Disables running the node graph"))
-		.arg(arg!(--proto "Print proto graph"))
+		.subcommand(Command::new("compile").about("Compile to proto graph and print"))
+		.subcommand(Command::new("run").about("Compile and run document displaying output"))
+		.subcommand_required(true)
 		.get_matches();
 
 	let document_path = matches.get_one::<PathBuf>("document").expect("No document path provided");
@@ -44,7 +45,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
 	}
 
-	let run = !matches.get_flag("no-run");
+	let subcommand = matches.subcommand().unwrap().0;
+	let run = subcommand == "run";
 
 	if run {
 		let device = application_io.gpu_executor().unwrap().context.device.clone();
@@ -61,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		editor_preferences: Box::new(EditorPreferences::default()),
 	});
 
-	let executor = create_executor(document_string, editor_api, matches.get_flag("proto"))?;
+	let executor = create_executor(document_string, editor_api, subcommand == "compile")?;
 	let render_config = graphene_core::application_io::RenderConfig::default();
 
 	if run {
