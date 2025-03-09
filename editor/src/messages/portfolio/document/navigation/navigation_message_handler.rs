@@ -396,9 +396,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						..
 					} => {
 						let tilt_raw_not_snapped = {
+							// Compute the angle in document space to counter for any flipping
+							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
 							let half_viewport = ipp.viewport_bounds.size() / 2.;
-							let start_offset = self.mouse_position - half_viewport;
-							let end_offset = ipp.mouse.position - half_viewport;
+							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
+							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
 
 							tilt_raw_not_snapped + angle
@@ -465,24 +467,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					return;
 				};
 
-				// Calculate document center point before flipping
-				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
-				let viewport_center = ipp.viewport_bounds.center();
-				let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
-
 				ptz.canvas_flipped = !ptz.canvas_flipped;
-
-				// Calculate the new document-to-viewport transform after flipping
-				let new_document_to_viewport = self.calculate_offset_transform(viewport_center, ptz);
-
-				// Calculate where the center point would be after flipping
-				let new_document_center = new_document_to_viewport.inverse().transform_point2(viewport_center);
-
-				// Calculate the offset needed to keep the same center point
-				let center_offset = document_center - new_document_center;
-
-				// Apply the offset to the pan to maintain the same view center
-				ptz.pan -= center_offset;
 
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(BroadcastEvent::CanvasTransformed);
@@ -544,12 +529,12 @@ impl NavigationMessageHandler {
 		let tilt = ptz.tilt();
 		let zoom = ptz.zoom();
 
-		let scaled_center = viewport_center / self.snapped_zoom(zoom);
+		let scale = self.snapped_zoom(zoom);
+		let scale_vec = if ptz.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
+		let scaled_center = viewport_center / scale_vec;
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
-		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
-		let scale_vec = if ptz.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);

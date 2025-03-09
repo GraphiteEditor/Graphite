@@ -342,34 +342,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
+					let [min, max] = [bounds[0].min(bounds[1]), bounds[0].max(bounds[1])];
 
 					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
 
 					// Calculate position of the text
-					let corner_pos = bounds[0].min(bounds[1]);
-
-					if self.document_ptz.canvas_flipped {
-						// When canvas is flipped, adjust the position to maintain top-left placement
-						// First get the width of the artboard
-						let width = (bounds[1].x - bounds[0].x).abs();
-
-						// Create a transform that puts the text at the true top-left regardless of flip
-						let transform = self.metadata().document_to_viewport
-							* DAffine2::from_translation(DVec2::new(corner_pos.x + width, corner_pos.y))
-							* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
-							* DAffine2::from_translation(-DVec2::Y * 4.)
-							* DAffine2::from_scale(DVec2::new(-1.0, 1.0)); // Counter the flip for the text itself
-
-						overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
+					let corner_pos = if !self.document_ptz.canvas_flipped {
+						min // Use the top left corner
 					} else {
-						// Original behavior for non-flipped canvas
-						let transform = self.metadata().document_to_viewport
-							* DAffine2::from_translation(corner_pos)
-							* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
-							* DAffine2::from_translation(-DVec2::Y * 4.);
+						DVec2::new(max.x, min.y) // Use the top right corner (appears to be the top left due to flipping)
+					};
 
-						overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
-					}
+					// When canvas is flipped, reverse the flip so the text reads in the same direction
+					let scale = if !self.document_ptz.canvas_flipped { DVec2::ONE } else { DVec2::new(-1., 1.) };
+
+					// Create a transform that puts the text at the true top-left regardless of flip
+					let transform = self.metadata().document_to_viewport
+						* DAffine2::from_translation(corner_pos)
+						* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
+						* DAffine2::from_translation(-DVec2::Y * 4.)
+						* DAffine2::from_scale(scale); // Counter the flip for the text itself
+
+					overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
