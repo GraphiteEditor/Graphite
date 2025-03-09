@@ -4,3 +4,6 @@ target/
 perf.data*
 profile.json
 flamegraph.svg
+
+.cursor/
+.vscode/
