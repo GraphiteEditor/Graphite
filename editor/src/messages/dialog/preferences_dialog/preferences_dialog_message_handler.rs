@@ -55,6 +55,22 @@ impl PreferencesDialogMessageHandler {
 			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
 		];
 
+		let zoom_rate_tooltip = "Adjust the zoom speed when using the scroll wheel.";
+        let zoom_rate_input = vec![
+            Separator::new(SeparatorType::Unrelated).widget_holder(),
+            NumberInput::new(preferences.zoom_wheel_rate.unwrap_or(0.005)) // Default fallback
+                .label("Zoom Wheel Rate")
+                .unit("x")
+                .tooltip(zoom_rate_tooltip)
+                .min(0.001)
+                .max(0.1)
+                .on_update(|number_input: &NumberInput| {
+                    PreferencesMessage::ZoomWheelRate { rate: number_input.value }.into()
+                })
+                .widget_holder(),
+            TextLabel::new("Zoom Wheel Rate").table_align(true).tooltip(zoom_rate_tooltip).widget_holder(),
+        ];
+
 		// =======
 		// EDITING
 		// =======
@@ -185,6 +201,7 @@ impl PreferencesDialogMessageHandler {
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: navigation_header },
 			LayoutGroup::Row { widgets: zoom_with_scroll },
+			LayoutGroup::Row { widgets: zoom_rate_input },
 			LayoutGroup::Row { widgets: editing_header },
 			LayoutGroup::Row { widgets: selection_label },
 			LayoutGroup::Row { widgets: selection_mode },
