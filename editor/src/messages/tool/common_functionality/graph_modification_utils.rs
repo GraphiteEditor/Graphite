@@ -1,5 +1,6 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
@@ -418,18 +419,21 @@ impl<'a> NodeGraphLayer<'a> {
 		self.find_node_inputs(node_name)?.get(index)?.as_value()
 	}
 
-	// Check if the current layer is backed by a raster image
-	pub fn is_raster_image(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-		// Create a NodeGraphLayer instance with the layer node identifier
+	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
 		let layer = NodeGraphLayer::new(layer, network_interface);
-		// Get the last node in the layer's flow and check if it is a raster image
-		if let Some(node_id) = layer.horizontal_layer_flow().last() {
-			let node_name = network_interface.frontend_display_name(&node_id, &[]);
-			if let Some(TaggedValue::ImageFrame(_)) = layer.find_input(&node_name, 1) {
-				// The layer is backed by a raster image
-				return true;
+
+		// Iterate through all nodes in the horizontal layer flow
+		for node_id in layer.horizontal_layer_flow() {
+			// Get the node reference name
+			if let Some(Some(node_name)) = layer.network_interface.reference(&node_id, &[]) {
+				if let Some(node_type) = resolve_document_node_type(node_name) {
+					if node_type.category.contains("Raster") {
+						return true;
+					}
+				}
 			}
 		}
+
 		false
 	}
 }
