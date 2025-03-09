@@ -396,9 +396,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						..
 					} => {
 						let tilt_raw_not_snapped = {
+							// Compute the angle in document space to counter for any flipping
+							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
 							let half_viewport = ipp.viewport_bounds.size() / 2.;
-							let start_offset = self.mouse_position - half_viewport;
-							let end_offset = ipp.mouse.position - half_viewport;
+							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
+							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
 
 							tilt_raw_not_snapped + angle
@@ -459,6 +461,17 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				self.mouse_position = ipp.mouse.position;
 			}
+			NavigationMessage::FlipCanvas => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get mutable PTZ in FlipCanvas");
+					return;
+				};
+
+				ptz.canvas_flipped = !ptz.canvas_flipped;
+
+				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(BroadcastEvent::CanvasTransformed);
+			}
 		}
 	}
 
@@ -516,15 +529,16 @@ impl NavigationMessageHandler {
 		let tilt = ptz.tilt();
 		let zoom = ptz.zoom();
 
-		let scaled_center = viewport_center / self.snapped_zoom(zoom);
+		let scale = self.snapped_zoom(zoom);
+		let scale_vec = if ptz.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
+		let scaled_center = viewport_center / scale_vec;
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
-		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);
-		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
+		let scale_transform = DAffine2::from_scale(scale_vec);
 		let angle_transform = DAffine2::from_angle(self.snapped_tilt(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
