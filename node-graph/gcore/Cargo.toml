@@ -28,10 +28,7 @@ std = [
 	"image",
 	"reflections",
 ]
-reflections = [
-	"alloc",
-	"ctor",
-]
+reflections = ["alloc", "ctor"]
 serde = [
 	"dep:serde",
 	"glam/serde",
@@ -67,7 +64,7 @@ rand_chacha = { workspace = true, optional = true }
 bezier-rs = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
-vello = { workspace  = true, optional = true }
+vello = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 specta = { workspace = true, optional = true }
 rustybuzz = { workspace = true, optional = true }
