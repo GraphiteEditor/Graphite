@@ -150,8 +150,6 @@ mod test_fill {
 	}
 
 	#[tokio::test]
-	// TODO: fix https://github.com/GraphiteEditor/Graphite/issues/2270
-	#[should_panic]
 	async fn ignore_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
