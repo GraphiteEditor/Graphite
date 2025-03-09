@@ -17,4 +17,5 @@ pub enum PreferencesMessage {
 	GraphWireStyle { style: GraphWireStyle },
 	// ImaginateRefreshFrequency { seconds: f64 },
 	// ImaginateServerHostname { hostname: String },
+	ZoomWheelRate { rate: f64 },
 }
