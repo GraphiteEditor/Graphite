@@ -518,7 +518,7 @@ impl PathToolData {
 		// Select the first point within the threshold (in pixels)
 		else if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
 			responses.add(DocumentMessage::StartTransaction);
-
+			self.save_points_before_click(old_selection.clone());
 			if let Some(selected_points) = selected_points {
 				self.drag_start_pos = input.mouse.position;
 
