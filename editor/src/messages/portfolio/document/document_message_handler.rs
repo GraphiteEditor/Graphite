@@ -21,8 +21,8 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
-use crate::messages::tool::tool_messages::tool_prelude::Key;
-use crate::messages::tool::utility_types::ToolType;
+use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
+use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo, ToolType};
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use bezier_rs::Subpath;
@@ -498,6 +498,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					self.update_node_graph_hints(responses);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}
@@ -2401,6 +2402,22 @@ impl DocumentMessageHandler {
 		// If moving down, insert below this layer. If moving up, insert above this layer.
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
+	}
+
+	fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
+		let hint_data = HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]),
+			HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Node"), HintInfo::keys([Key::Control], "Keep Children").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Dragged Selected")]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Node"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Definition")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate")]),
+			HintGroup(vec![HintInfo::keys([Key::Control, Key::KeyD], "Duplicate")]),
+		]);
+
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
 
