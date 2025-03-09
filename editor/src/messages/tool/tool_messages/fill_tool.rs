@@ -1,7 +1,6 @@
 use super::tool_prelude::*;
-
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_core::vector::style::Fill;
-
 #[derive(Default)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
@@ -87,6 +86,10 @@ impl Fsm for FillToolFsmState {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;
 				};
+				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
+				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
+					return self;
+				}
 				let fill = match color_event {
 					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
 					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
@@ -147,8 +150,6 @@ mod test_fill {
 	}
 
 	#[tokio::test]
-	// TODO: fix https://github.com/GraphiteEditor/Graphite/issues/2270
-	#[should_panic]
 	async fn ignore_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
