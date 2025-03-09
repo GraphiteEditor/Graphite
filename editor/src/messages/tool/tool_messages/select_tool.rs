@@ -1355,71 +1355,27 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
-				let quad = tool_data.selection_quad();
-
-				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
-					selection_mode => selection_mode,
+				let selected = match selection_shape {
+					SelectionShapeType::Box => {
+						let selection_box = tool_data.selection_box();
+						tool_action_data.document.get_layers_in_box(selection_box, tool_action_data.input)
+					}
+					SelectionShapeType::Lasso => tool_data.intersect_lasso_no_artboards(tool_action_data.document, tool_action_data.input),
 				};
 
-				let intersection: Vec<LayerNodeIdentifier> = match selection_shape {
-					SelectionShapeType::Box => document.intersect_quad_no_artboards(quad, input).collect(),
-					SelectionShapeType::Lasso => tool_data.intersect_lasso_no_artboards(document, input),
-				};
-				let new_selected: HashSet<_> = if selection_mode == SelectionMode::Enclosed {
-					let is_inside = |layer: &LayerNodeIdentifier| match selection_shape {
-						SelectionShapeType::Box => document.is_layer_fully_inside(layer, quad),
-						SelectionShapeType::Lasso => tool_data.is_layer_inside_lasso_polygon(layer, document, input),
-					};
-					intersection.into_iter().filter(is_inside).collect()
-				} else {
-					intersection.into_iter().collect()
-				};
-
-				let current_selected: HashSet<_> = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
-				let negative_selection = input.keyboard.key(remove_from_selection);
-				let selection_modified = new_selected != current_selected;
-				// Negative selection when both Shift and Ctrl are pressed
-				if negative_selection {
-					let updated_selection = current_selected
-						.into_iter()
-						.filter(|layer| !new_selected.iter().any(|selected| layer.starts_with(*selected, document.metadata())))
-						.collect();
-					tool_data.layers_dragging = updated_selection;
-				} else if selection_modified {
-					let parent_selected: HashSet<_> = new_selected
-						.into_iter()
-						.map(|layer| {
-							// Find the parent node
-							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
-						})
-						.collect();
-					tool_data.layers_dragging.extend(parent_selected.iter().copied());
+				if has_drawn {
+					if remove_from_selection {
+						responses.add(DocumentMessage::RemoveFromSelection { selected });
+					} else {
+						// Use the appropriate manipulation based on the nested selection behavior
+						match tool_data.nested_selection_behavior {
+							NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(responses, selected, tool_data, tool_action_data.document),
+							NestedSelectionBehavior::Deepest => drag_deepest_manipulation(responses, selected, tool_data, tool_action_data.document),
+						}
+					}
 				}
 
-				if negative_selection || selection_modified {
-					responses.add(NodeGraphMessage::SelectedNodesSet {
-						nodes: tool_data
-							.layers_dragging
-							.iter()
-							.filter_map(|layer| {
-								if *layer != LayerNodeIdentifier::ROOT_PARENT {
-									Some(layer.to_node())
-								} else {
-									log::error!("ROOT_PARENT cannot be part of tool_data.layers_dragging");
-									None
-								}
-							})
-							.collect(),
-					});
-				}
-
-				tool_data.lasso_polygon.clear();
-
-				responses.add(OverlaysMessage::Draw);
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
+				SelectToolFsmState::Ready { selection: tool_data.nested_selection_behavior }
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::Enter) => {
 				let selected_nodes = document.network_interface.selected_nodes();
@@ -1588,31 +1544,16 @@ fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifi
 }
 
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	for layer in selected {
-		let ancestor = layer
-			.ancestors(document.metadata())
-			.filter(not_artboard(document))
-			.find(|&ancestor| document.network_interface.selected_nodes().selected_layers_contains(ancestor, document.metadata()));
-
-		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
-		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
-		tool_data.layers_dragging.push(new_selected);
+	// Only apply shallowest manipulation if we're in Shallow Select mode
+	if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest {
+		let selected: Vec<_> = selected.into_iter().filter(not_artboard(document)).collect();
+		if !selected.is_empty() {
+			responses.add(DocumentMessage::SetSelectedLayers { selected });
+		}
+	} else {
+		// In Deep Select mode, use the deepest manipulation logic
+		drag_deepest_manipulation(responses, selected, tool_data, document);
 	}
-
-	responses.add(NodeGraphMessage::SelectedNodesSet {
-		nodes: tool_data
-			.layers_dragging
-			.iter()
-			.filter_map(|layer| {
-				if *layer != LayerNodeIdentifier::ROOT_PARENT {
-					Some(layer.to_node())
-				} else {
-					log::error!("ROOT_PARENT cannot be part of tool_data.layers_dragging");
-					None
-				}
-			})
-			.collect(),
-	});
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
