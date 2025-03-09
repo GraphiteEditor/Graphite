@@ -2547,7 +2547,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
-		CheckboxInput::new(navigation_handler.canvas_flipped)
+		CheckboxInput::new(ptz.canvas_flipped)
 			.on_update(|_| NavigationMessage::FlipCanvas.into())
 			.tooltip("Flip Canvas Horizontally")
 			.widget_holder(),

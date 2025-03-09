@@ -639,11 +639,18 @@ pub struct PTZ {
 	tilt: f64,
 	/// Scale factor.
 	zoom: f64,
+	/// Whether the canvas is horizontally flipped.
+	pub canvas_flipped: bool,
 }
 
 impl Default for PTZ {
 	fn default() -> Self {
-		Self { pan: DVec2::ZERO, tilt: 0., zoom: 1. }
+		Self {
+			pan: DVec2::ZERO,
+			tilt: 0.,
+			zoom: 1.,
+			canvas_flipped: false,
+		}
 	}
 }
 

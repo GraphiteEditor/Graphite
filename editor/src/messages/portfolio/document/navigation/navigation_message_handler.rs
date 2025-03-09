@@ -30,7 +30,6 @@ pub struct NavigationMessageHandler {
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
 	abortable_pan_start: Option<f64>,
-	pub canvas_flipped: bool,
 }
 
 impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
@@ -471,8 +470,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let viewport_center = ipp.viewport_bounds.center();
 				let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
 
-				// Toggle the document-specific flip state
-				self.canvas_flipped = !self.canvas_flipped;
+				ptz.canvas_flipped = !ptz.canvas_flipped;
 
 				// Calculate the new document-to-viewport transform after flipping
 				let new_document_to_viewport = self.calculate_offset_transform(viewport_center, ptz);
@@ -551,7 +549,7 @@ impl NavigationMessageHandler {
 		// Try to avoid fractional coordinates to reduce anti aliasing.
 		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
-		let scale_vec = if self.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
+		let scale_vec = if ptz.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);
