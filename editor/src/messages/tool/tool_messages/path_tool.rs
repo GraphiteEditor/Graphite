@@ -520,9 +520,7 @@ impl PathToolData {
 				responses.add(OverlaysMessage::Draw);
 			}
 			PathToolFsmState::Dragging(self.dragging_state)
-		}
-		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
-		else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
+		} else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
 			responses.add(DocumentMessage::StartTransaction);
 			if direct_insert_without_sliding {
 				self.start_insertion(responses, closed_segment);
@@ -530,9 +528,7 @@ impl PathToolData {
 			} else {
 				self.start_insertion(responses, closed_segment)
 			}
-		}
-		// We didn't find a segment path, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input) {
+		} else if let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
 			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });

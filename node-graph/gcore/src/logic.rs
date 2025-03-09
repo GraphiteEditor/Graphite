@@ -1,6 +1,6 @@
-use crate::vector::VectorDataTable;
 use crate::Context;
 use crate::Ctx;
+use crate::vector::VectorDataTable;
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]

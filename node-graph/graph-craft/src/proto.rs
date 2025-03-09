@@ -1,4 +1,4 @@
-use crate::document::{value, InlineRust};
+use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
 
 pub use graphene_core::registry::*;

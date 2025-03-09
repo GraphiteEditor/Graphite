@@ -5,13 +5,13 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
 use graphene_core::vector::VectorModificationType;
+use graphene_core::vector::brush_stroke::BrushStroke;
+use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};

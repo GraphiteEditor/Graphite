@@ -12,8 +12,8 @@ use crate::messages::tool::common_functionality::utility_functions::{closest_poi
 
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
-use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Color;
+use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, ManipulatorPointId, SegmentId, VectorData};
 
 #[derive(Default)]

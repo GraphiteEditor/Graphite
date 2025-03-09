@@ -4,10 +4,10 @@ use gpu_compiler_bin_wrapper::CompileRequest;
 use tower_http::cors::CorsLayer;
 
 use axum::{
+	Router,
 	extract::{Json, State},
 	http::StatusCode,
 	routing::{get, post},
-	Router,
 };
 
 struct AppState {

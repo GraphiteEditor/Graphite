@@ -9,11 +9,11 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
-use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
@@ -52,10 +52,9 @@ impl NodePropertiesContext<'_> {
 						log::error!("Could not get input properties row in call_widget_override");
 						return Vec::new();
 					};
-					if let Some(tooltip) = &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
-						layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>()
-					} else {
-						layout_group
+					match &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
+						Some(tooltip) => layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>(),
+						_ => layout_group,
 					}
 				})
 				.map_err(|error| {

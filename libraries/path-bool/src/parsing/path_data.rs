@@ -1,6 +1,6 @@
-use crate::path::{path_from_commands, path_to_commands, Path};
-use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
 use crate::BooleanError;
+use crate::path::{Path, path_from_commands, path_to_commands};
+use crate::path_command::{AbsolutePathCommand, PathCommand, RelativePathCommand};
 use glam::DVec2;
 use regex::Regex;
 

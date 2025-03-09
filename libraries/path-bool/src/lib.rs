@@ -24,7 +24,7 @@ pub(crate) use util::*;
 pub use intersection_path_segment::path_segment_intersection;
 #[cfg(feature = "parsing")]
 pub use parsing::path_data::{path_from_path_data, path_to_path_data};
-pub use path_boolean::{path_boolean, BooleanError, FillRule, PathBooleanOperation, EPS};
+pub use path_boolean::{BooleanError, EPS, FillRule, PathBooleanOperation, path_boolean};
 pub use path_segment::PathSegment;
 
 #[cfg(test)]

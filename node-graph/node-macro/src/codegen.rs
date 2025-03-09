@@ -2,13 +2,13 @@ use std::sync::atomic::AtomicU64;
 
 use crate::parsing::*;
 use convert_case::{Case, Casing};
-use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{parse_quote, Error, Ident, PatIdent, Token, WhereClause, WherePredicate};
+use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -68,8 +68,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
-	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, gen)| {
-		quote! { pub(super) #name: #gen }
+	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, r#gen)| {
+		quote! { pub(super) #name: #r#gen }
 	});
 
 	let graphene_core = match graphene_core_crate {
@@ -225,8 +225,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	);
 	struct_where_clause.predicates.extend(extra_where);
 
-	let new_args = struct_generics.iter().zip(field_names.iter()).map(|(gen, name)| {
-		quote! { #name: #gen }
+	let new_args = struct_generics.iter().zip(field_names.iter()).map(|(r#gen, name)| {
+		quote! { #name: #r#gen }
 	});
 
 	let async_keyword = is_async.then(|| quote!(async));
@@ -520,7 +520,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			);
 		}
 		#[cfg(target_arch = "wasm32")]
-		#[no_mangle]
+		#[unsafe(no_mangle)]
 		extern "C" fn #registry_name() {
 			register_node();
 			register_metadata();
@@ -528,7 +528,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	})
 }
 
-use syn::{visit_mut::VisitMut, GenericArgument, Lifetime, Type};
+use syn::{GenericArgument, Lifetime, Type, visit_mut::VisitMut};
 
 struct LifetimeReplacer(&'static str);
 

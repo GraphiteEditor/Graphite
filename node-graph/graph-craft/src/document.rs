@@ -3,16 +3,16 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::DynAny;
 use graphene_core::memo::MemoHashGuard;
-pub use graphene_core::uuid::generate_uuid;
 pub use graphene_core::uuid::NodeId;
+pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 pub mod value;
 
 use glam::IVec2;
 use log::Metadata;
 use rustc_hash::FxHashMap;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 /// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
@@ -455,33 +455,17 @@ impl NodeInput {
 	}
 
 	pub fn as_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, .. } = self {
-			Some(tagged_value)
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
 	}
 	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
-		if let NodeInput::Value { tagged_value, .. } = self {
-			Some(tagged_value.inner_mut())
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
 	}
 	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, exposed: false } = self {
-			Some(tagged_value)
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, exposed: false } = self { Some(tagged_value) } else { None }
 	}
 
 	pub fn as_node(&self) -> Option<NodeId> {
-		if let NodeInput::Node { node_id, .. } = self {
-			Some(*node_id)
-		} else {
-			None
-		}
+		if let NodeInput::Node { node_id, .. } = self { Some(*node_id) } else { None }
 	}
 }
 
@@ -942,12 +926,7 @@ impl NodeNetwork {
 	fn replace_node_inputs(&mut self, node_id: NodeId, old_input: (NodeId, usize), new_input: (NodeId, usize)) {
 		let Some(node) = self.nodes.get_mut(&node_id) else { return };
 		node.inputs.iter_mut().for_each(|input| {
-			if let NodeInput::Node {
-				node_id: ref mut input_id,
-				ref mut output_index,
-				..
-			} = input
-			{
+			if let NodeInput::Node { node_id: input_id, output_index, .. } = input {
 				if (*input_id, *output_index) == old_input {
 					(*input_id, *output_index) = new_input;
 				}
@@ -1241,12 +1220,7 @@ impl NodeNetwork {
 							}
 						}
 						for node_input in self.exports.iter_mut() {
-							if let NodeInput::Node {
-								ref mut node_id,
-								ref mut output_index,
-								..
-							} = node_input
-							{
+							if let NodeInput::Node { node_id, output_index, .. } = node_input {
 								if *node_id == id {
 									*node_id = input_node_id;
 									*output_index = node_input_output_index;
@@ -1478,7 +1452,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(ref network), ..) if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
 	}
 
 	#[test]

@@ -1,7 +1,7 @@
 use crate::{RawImage, RawPixel};
 
 impl RawImage {
-	pub fn scale_white_balance_fn(&self) -> impl Fn(RawPixel) -> u16 {
+	pub fn scale_white_balance_fn(&self) -> impl Fn(RawPixel) -> u16 + use<> {
 		let Some(mut white_balance) = self.white_balance else { todo!() };
 
 		if white_balance[1] == 0. {

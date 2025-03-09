@@ -1,7 +1,7 @@
-use crate::{Pixel, RawImage, CHANNELS_IN_RGB};
+use crate::{CHANNELS_IN_RGB, Pixel, RawImage};
 
 impl RawImage {
-	pub fn convert_to_rgb_fn(&self) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] {
+	pub fn convert_to_rgb_fn(&self) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] + use<> {
 		let Some(camera_to_rgb) = self.camera_to_rgb else { todo!() };
 
 		move |pixel: Pixel| {

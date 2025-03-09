@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput, value::TaggedValue};
 use graphene_core::Color;
 
 #[derive(Default)]

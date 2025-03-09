@@ -13,10 +13,10 @@ use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, res
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{load_face, Font, FontCache, TypesettingConfig};
-use graphene_core::vector::style::Fill;
 use graphene_core::Color;
+use graphene_core::renderer::Quad;
+use graphene_core::text::{Font, FontCache, TypesettingConfig, load_face};
+use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
 pub struct TextTool {

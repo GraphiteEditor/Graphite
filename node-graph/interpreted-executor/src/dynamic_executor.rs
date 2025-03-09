@@ -1,12 +1,12 @@
 use crate::node_registry;
 
 use dyn_any::StaticType;
-use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
+use graph_craft::Type;
 use graph_craft::document::NodeId;
+use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
-use graph_craft::Type;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;

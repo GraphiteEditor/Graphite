@@ -586,7 +586,7 @@ impl ShapeState {
 			.flat_map(|(data, selection_state)| {
 				selection_state.selected_points.iter().filter_map(move |&point| {
 					let Some(data) = &data else { return None };
-					let Some(_) = point.get_handle_pair(&data) else { return None }; // ignores the endpoints.
+					let _ = point.get_handle_pair(data)?; // ignores the endpoints.
 					Some(data.colinear(point))
 				})
 			});
@@ -1289,10 +1289,13 @@ impl ShapeState {
 
 			for point in self.selected_points().filter(|point| point.as_handle().is_some()) {
 				let anchor = point.get_anchor(&vector_data);
-				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
-				} else {
-					points_to_select.push((layer, anchor, None));
+				match point.get_handle_pair(&vector_data) {
+					Some(handles) => {
+						points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
+					}
+					_ => {
+						points_to_select.push((layer, anchor, None));
+					}
 				}
 			}
 		}

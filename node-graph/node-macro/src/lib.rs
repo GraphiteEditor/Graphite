@@ -1,12 +1,12 @@
 // TODO: Deprecate and remove this file
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
 use proc_macro_error2::proc_macro_error;
-use quote::{format_ident, quote, ToTokens};
+use proc_macro2::Span;
+use quote::{ToTokens, format_ident, quote};
 use syn::{
-	parse_macro_input, punctuated::Punctuated, token::Comma, AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments,
-	PathSegment, PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
+	AngleBracketedGenericArguments, AssocType, FnArg, GenericArgument, GenericParam, Ident, ItemFn, Lifetime, Pat, PatIdent, PathArguments, PathSegment, PredicateType, ReturnType, Token, TraitBound,
+	Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate, parse_macro_input, punctuated::Punctuated, token::Comma,
 };
 
 mod codegen;

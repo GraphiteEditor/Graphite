@@ -1,13 +1,13 @@
 use convert_case::{Case, Casing};
 use indoc::{formatdoc, indoc};
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, ToTokens};
+use quote::{ToTokens, format_ident};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	parse_quote, AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -519,11 +519,7 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
 						let output_type = args.args.iter().find_map(|arg| {
 							if let syn::GenericArgument::AssocType(assoc_type) = arg {
-								if assoc_type.ident == "Output" {
-									Some(assoc_type.ty.clone())
-								} else {
-									None
-								}
+								if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
 							} else {
 								None
 							}
@@ -597,8 +593,8 @@ impl ParsedNodeFn {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use proc_macro2::Span;
 	use proc_macro_crate::FoundCrate;
+	use proc_macro2::Span;
 	use quote::{quote, quote_spanned};
 	use syn::parse_quote;
 	fn pat_ident(name: &str) -> PatIdent {

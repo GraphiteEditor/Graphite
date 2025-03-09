@@ -150,7 +150,9 @@ impl NodeContainer {
 
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		unsafe {
+			std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		}
 	}
 }
 

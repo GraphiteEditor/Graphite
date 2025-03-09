@@ -1,6 +1,6 @@
 use crate::transform::Transform;
-use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
 use crate::vector::ConcatElement;
+use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
 
 use dyn_any::DynAny;
 
@@ -220,7 +220,7 @@ impl SegmentDomain {
 			.zip(&self.start_point)
 			.zip(&self.end_point)
 			.filter(|((_, start), end)| **start >= points_length || **end >= points_length)
-			.map(|x| *x.0 .0)
+			.map(|x| *x.0.0)
 			.collect::<Vec<_>>();
 
 		let can_delete = || {
