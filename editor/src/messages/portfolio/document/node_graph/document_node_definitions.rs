@@ -727,7 +727,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					manual_composition: Some(concrete!(Context)),
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode")),
 					inputs: vec![
-						NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::None, false),
 						NodeInput::value(TaggedValue::Bool(true), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::F64(10.), false),
