@@ -1,11 +1,11 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
+use graph_craft::concrete;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
@@ -419,21 +419,12 @@ impl<'a> NodeGraphLayer<'a> {
 		self.find_node_inputs(node_name)?.get(index)?.as_value()
 	}
 
-	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-		let layer = NodeGraphLayer::new(layer, network_interface);
-
-		// Iterate through all nodes in the horizontal layer flow
-		for node_id in layer.horizontal_layer_flow() {
-			// Get the node reference name
-			if let Some(Some(node_name)) = layer.network_interface.reference(&node_id, &[]) {
-				if let Some(node_type) = resolve_document_node_type(node_name) {
-					if node_type.category.contains("Raster") {
-						return true;
-					}
-				}
-			}
+	/// Check if a layer is a raster layer
+	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type();
+		if layer_input_type == concrete!(graphene_core::raster::image::ImageFrameTable<graphene_core::Color>) {
+			return true;
 		}
-
 		false
 	}
 }

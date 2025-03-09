@@ -87,7 +87,7 @@ impl Fsm for FillToolFsmState {
 					return self;
 				};
 				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
-				if NodeGraphLayer::is_raster_layer(layer_identifier, &document.network_interface) {
+				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
 					return self;
 				}
 				let fill = match color_event {
