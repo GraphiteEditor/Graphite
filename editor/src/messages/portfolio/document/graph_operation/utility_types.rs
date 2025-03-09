@@ -244,31 +244,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Start from the layer node or export
 		let output_layer = self.get_output_layer()?;
 
-		let upstream = self
-			.network_interface
-			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
-
-		// Take until another layer node is found (but not the first layer node)
-		let mut existing_node_id = None;
-		for upstream_node in upstream.collect::<Vec<_>>() {
-			// Check if this is the node we have been searching for.
-			if self
-				.network_interface
-				.reference(&upstream_node, &[])
-				.is_some_and(|node_reference| *node_reference == Some(reference.to_string()))
-			{
-				existing_node_id = Some(upstream_node);
-				break;
-			}
-
-			let is_traversal_start = |node_id: NodeId| {
-				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id))
-			};
-
-			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[])) {
-				break;
-			}
-		}
+		let existing_node_id = Self::locate_existing_id(output_layer, self.network_interface, reference);
 
 		// Create a new node if the node does not exist and update its inputs
 		if create_if_nonexistent {
@@ -276,6 +252,30 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		existing_node_id
+	}
+
+	/// Gets the node id of a node with a specific reference that is upstream from the layer node.
+	pub fn locate_existing_id(output_layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, reference: &str) -> Option<NodeId> {
+		let upstream = network_interface.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
+
+		// Look at all of the upstream nodes
+		for upstream_node in upstream {
+			// Check if this is the node we have been searching for.
+			if network_interface
+				.reference(&upstream_node, &[])
+				.is_some_and(|node_reference| *node_reference == Some(reference.to_string()))
+			{
+				return Some(upstream_node);
+			}
+
+			let is_traversal_start = |node_id: NodeId| output_layer.to_node() == node_id || network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id));
+
+			// Take until another layer node is found (but not the first layer node)
+			if !is_traversal_start(upstream_node) && (network_interface.is_layer(&upstream_node, &[])) {
+				return None;
+			}
+		}
+		None
 	}
 
 	/// Create a new node inside the layer
