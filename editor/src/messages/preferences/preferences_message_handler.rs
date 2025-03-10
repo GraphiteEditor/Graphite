@@ -14,6 +14,7 @@ pub struct PreferencesMessageHandler {
 	pub use_vello: bool,
 	pub vector_meshes: bool,
 	pub graph_wire_style: GraphWireStyle,
+	pub viewport_zoom_wheel_rate: f64,
 }
 
 impl PreferencesMessageHandler {
@@ -48,6 +49,7 @@ impl Default for PreferencesMessageHandler {
 			use_vello,
 			vector_meshes: false,
 			graph_wire_style: GraphWireStyle::default(),
+			viewport_zoom_wheel_rate: (1. / 600.) * 3.,
 		}
 	}
 }
@@ -102,6 +104,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::GraphWireStyle { style } => {
 				self.graph_wire_style = style;
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			PreferencesMessage::ViewportZoomWheelRate { rate } => {
+				log::info!("pref_mess_handler zRate: {}", rate);
+				self.viewport_zoom_wheel_rate = rate;
 			}
 		}
 		// TODO: Reenable when Imaginate is restored (and move back up one line since the auto-formatter doesn't like it in that block)

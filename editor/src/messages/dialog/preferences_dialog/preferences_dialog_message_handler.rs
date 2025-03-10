@@ -55,6 +55,27 @@ impl PreferencesDialogMessageHandler {
 			TextLabel::new("Zoom with Scroll").table_align(true).tooltip(zoom_with_scroll_tooltip).widget_holder(),
 		];
 
+		let zoom_rate_tooltip = "Adjust how fast zooming occurs when using the scroll wheel";
+		let zoom_rate = vec![
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Zoom Rate: ").table_align(true).tooltip(zoom_rate_tooltip).widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(map_zoom_rate_to_display(preferences.viewport_zoom_wheel_rate)))
+        .tooltip(zoom_rate_tooltip)
+        .min(1.0)
+        .max(100.0)
+        .display_decimal_places(0)  // Display as whole numbers
+        .on_update(|number_input: &NumberInput| {
+            if let Some(display_value) = number_input.value {
+                let actual_rate = map_display_to_zoom_rate(display_value);
+                PreferencesMessage::ViewportZoomWheelRate { rate: actual_rate }.into()
+            } else {
+                PreferencesMessage::ViewportZoomWheelRate { rate: (1. / 600.) * 3. }.into()
+            }
+        })
+        .widget_holder(),
+		];
+
 		// =======
 		// EDITING
 		// =======
@@ -184,6 +205,7 @@ impl PreferencesDialogMessageHandler {
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: navigation_header },
+			LayoutGroup::Row { widgets: zoom_rate },
 			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: editing_header },
 			LayoutGroup::Row { widgets: selection_label },
@@ -248,5 +270,43 @@ impl PreferencesDialogMessageHandler {
 			icon: Self::ICON.into(),
 			title: Self::TITLE.into(),
 		});
+	}
+}
+// Map the actual rate value to display value (1-100)
+fn map_zoom_rate_to_display(rate: f64) -> f64 {
+	let value = if rate <= 0.0001 {
+		1.0
+	} else if rate >= 0.05 {
+		100.0
+	} else {
+		// Calculate the logarithmic position between 0.0001 and 0.05
+		let log_min = 0.0001_f64.ln();
+		let log_max = 0.05_f64.ln();
+		let log_val = rate.ln();
+
+		// Map to 1-100 range
+		let normalized = (log_val - log_min) / (log_max - log_min);
+		1.0 + 99.0 * normalized
+	};
+
+	value.round()
+}
+
+// Map the display value (1-100) back to the actual rate value
+fn map_display_to_zoom_rate(display: f64) -> f64 {
+	if display <= 1.0 {
+		0.0001
+	} else if display >= 100.0 {
+		0.05
+	} else {
+		// Normalize to 0-1 range
+		let normalized = (display - 1.0) / 99.0;
+
+		let log_min = 0.0001_f64.ln();
+		let log_max = 0.05_f64.ln();
+		let log_val = log_min + normalized * (log_max - log_min);
+
+		// Convert back to actual value
+		log_val.exp()
 	}
 }
