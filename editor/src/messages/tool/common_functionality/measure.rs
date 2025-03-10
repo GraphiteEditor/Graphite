@@ -52,10 +52,10 @@ fn draw_dashed_rect_outline(rect: Rect, transform: DAffine2, overlay_context: &m
 	let bottom_left = transform.transform_point2(DVec2::new(min.x, max.y));
 
 	// Draw the four sides as dashed lines
-	overlay_context.dashed_line(top_left, top_right, None, Some(2.), Some(4.), Some(0.5));
-	overlay_context.dashed_line(top_right, bottom_right, None, Some(2.), Some(4.), Some(0.5));
-	overlay_context.dashed_line(bottom_right, bottom_left, None, Some(2.), Some(4.), Some(0.5));
-	overlay_context.dashed_line(bottom_left, top_left, None, Some(2.), Some(4.), Some(0.5));
+	draw_dashed_line(top_left, top_right, transform, overlay_context);
+	draw_dashed_line(top_right, bottom_right, transform, overlay_context);
+	draw_dashed_line(bottom_right, bottom_left, transform, overlay_context);
+	draw_dashed_line(bottom_left, top_left, transform, overlay_context);
 }
 
 /// Checks if the selected bounds overlap with the hovered bounds on the Y-axis.
