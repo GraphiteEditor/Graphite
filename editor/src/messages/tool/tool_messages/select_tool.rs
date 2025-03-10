@@ -739,12 +739,32 @@ impl Fsm for SelectToolFsmState {
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
 						if !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
-							let hovered_bounds = document
-								.metadata()
-								.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer));
+							// Get all selected layers and compute their viewport-aligned AABB
+							let selected_bounds_viewport = document
+								.network_interface
+								.selected_nodes()
+								.selected_visible_and_unlocked_layers(&document.network_interface)
+								.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+								.filter_map(|layer| {
+									// Get the layer's bounding box in its local space
+									let local_bounds = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY)?;
+									// Transform the bounds directly to viewport space
+									let viewport_quad = document.metadata().transform_to_viewport(layer) * Quad::from_box(local_bounds);
+									// Convert the quad to an AABB in viewport space
+									Some(Rect::from_box(viewport_quad.bounding_box()))
+								})
+								.reduce(Rect::combine_bounds);
 
-							if let [Some(selected_bounds), Some(hovered_bounds)] = [bounds, hovered_bounds].map(|rect| rect.map(Rect::from_box)) {
-								measure::overlay(selected_bounds, hovered_bounds, transform, document.metadata().document_to_viewport, &mut overlay_context);
+							// Get the hovered layer's viewport-aligned AABB
+							let hovered_bounds_viewport = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY).map(|bounds| {
+								let viewport_quad = document.metadata().transform_to_viewport(layer) * Quad::from_box(bounds);
+								Rect::from_box(viewport_quad.bounding_box())
+							});
+
+							// Use the viewport-aligned AABBs for measurement
+							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
+								// Since we're already in viewport space, use identity transform
+								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
 							}
 						}
 					}
