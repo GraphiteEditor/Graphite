@@ -469,6 +469,19 @@ impl RegionDomain {
 		self.id.retain(&f);
 	}
 
+	/// Like `retain` but also gives the function access to the segment range.
+	///
+	/// Note that this function requires an allocation that `retain` avoids.
+	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &core::ops::RangeInclusive<SegmentId>) -> bool) {
+		let keep = self.id.iter().zip(self.segment_range.iter()).map(|(id, range)| f(id, range)).collect::<Vec<_>>();
+		let mut iter = keep.iter().copied();
+		self.segment_range.retain(|_| iter.next().unwrap());
+		let mut iter = keep.iter().copied();
+		self.fill.retain(|_| iter.next().unwrap());
+		let mut iter = keep.iter().copied();
+		self.id.retain(|_| iter.next().unwrap());
+	}
+
 	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
 		if self.id.contains(&id) {
 			warn!("Duplicate region");
