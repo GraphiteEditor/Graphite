@@ -15,7 +15,7 @@ pub enum PreferencesMessage {
 	VectorMeshes { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
 	GraphWireStyle { style: GraphWireStyle },
+	ZoomWheelRate { rate: f64 },
 	// ImaginateRefreshFrequency { seconds: f64 },
 	// ImaginateServerHostname { hostname: String },
-	ZoomWheelRate { rate: f64 },
 }

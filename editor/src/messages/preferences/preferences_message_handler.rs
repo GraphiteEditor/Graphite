@@ -14,7 +14,7 @@ pub struct PreferencesMessageHandler {
 	pub use_vello: bool,
 	pub vector_meshes: bool,
 	pub graph_wire_style: GraphWireStyle,
-	pub zoom_wheel_rate: Option<f64>,
+	pub zoom_wheel_rate: f64,
 }
 
 impl PreferencesMessageHandler {
@@ -42,7 +42,7 @@ impl Default for PreferencesMessageHandler {
 		} = Default::default();
 
 		Self {
-			zoom_wheel_rate: Some(VIEWPORT_ZOOM_WHEEL_RATE),
+			zoom_wheel_rate: (1. / 600.) * 3.,
 			imaginate_server_hostname: host_name,
 			imaginate_refresh_frequency: 1.,
 			selection_mode: SelectionMode::Touched,
@@ -59,9 +59,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 		match message {
 			//zoom rate
 			PreferencesMessage::ZoomWheelRate { rate } => {
-                self.zoom_wheel_rate = Some(rate);
-                // Store in preferences (assuming a Preferences struct exists)
-                preferences.zoom_wheel_rate = Some(rate);
+                self.zoom_wheel_rate = rate;
             }
             _ => {}
 			// Management messages
