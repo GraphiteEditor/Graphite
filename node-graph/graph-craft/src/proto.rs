@@ -695,13 +695,14 @@ impl TypingContext {
 
 		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
 		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_subtype(from: &Type, to: &Type) -> bool {
+		fn valid_type(from: &Type, to: &Type) -> bool {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
 				// Check inner type for futures
 				(Type::Future(type1), Type::Future(type2)) => type1 == type2,
-				// Loose comparison of function types, where loose means that functions are considered on a "greater than or equal to" basis of its function type's generality.
+				// Direct comparison of two function types.
+				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
 				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
 				// This allows us to supply anything to a function that is satisfied with `()`.
@@ -710,8 +711,9 @@ impl TypingContext {
 				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
 				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
 				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_subtype(out2, out1) && (valid_subtype(in1, in2) || **in1 == concrete!(())),
+				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
 				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -723,7 +725,7 @@ impl TypingContext {
 		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| valid_subtype(&node_io.call_argument, &primary_input_or_call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
+			.filter(|node_io| valid_type(&node_io.call_argument, &primary_input_or_call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -757,7 +759,7 @@ impl TypingContext {
 						.cloned()
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
-						.filter(|(_, (p1, p2))| !valid_subtype(p1, p2))
+						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
 						.map(|(index, ty)| {
 							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
 							let i = if using_manual_composition { i } else { i + 1 };
