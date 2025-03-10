@@ -252,7 +252,8 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let use_vello = use_vello && surface_handle.is_some();
 
 	let mut metadata = RenderMetadata {
-		footprints: HashMap::new(),
+		upstream_footprints: HashMap::new(),
+		local_transforms: HashMap::new(),
 		click_targets: HashMap::new(),
 		clip_targets: HashSet::new(),
 	};

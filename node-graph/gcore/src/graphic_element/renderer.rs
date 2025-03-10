@@ -271,7 +271,8 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 #[derive(Debug, Default, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RenderMetadata {
-	pub footprints: HashMap<NodeId, (Footprint, DAffine2)>,
+	pub upstream_footprints: HashMap<NodeId, Footprint>,
+	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
 }
@@ -726,7 +727,8 @@ impl GraphicElementRendered for Artboard {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
-			metadata.footprints.insert(element_id, (footprint, DAffine2::from_translation(self.location.as_dvec2())));
+			metadata.upstream_footprints.insert(element_id, footprint);
+			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
 			if self.clip {
 				metadata.clip_targets.insert(element_id);
 			}
@@ -862,7 +864,8 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
-		metadata.footprints.insert(element_id, (footprint, instance_transform));
+		metadata.upstream_footprints.insert(element_id, footprint);
+		metadata.local_transforms.insert(element_id, instance_transform);
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -943,7 +946,8 @@ impl GraphicElementRendered for RasterFrame {
 
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
-		metadata.footprints.insert(element_id, (footprint, self.transform()));
+		metadata.upstream_footprints.insert(element_id, footprint);
+		metadata.local_transforms.insert(element_id, self.transform());
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -1019,13 +1023,19 @@ impl GraphicElementRendered for GraphicElement {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
-			let transform = match self {
-				GraphicElement::GraphicGroup(_) => DAffine2::IDENTITY,
-				GraphicElement::VectorData(vector_data) => vector_data.transform(),
-				GraphicElement::RasterFrame(raster_frame) => raster_frame.transform(),
-			};
-
-			metadata.footprints.insert(element_id, (footprint, transform));
+			match self {
+				GraphicElement::GraphicGroup(_) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+				}
+				GraphicElement::VectorData(vector_data) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+					metadata.local_transforms.insert(element_id, vector_data.transform());
+				}
+				GraphicElement::RasterFrame(raster_frame) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+					metadata.local_transforms.insert(element_id, raster_frame.transform());
+				}
+			}
 		}
 
 		match self {

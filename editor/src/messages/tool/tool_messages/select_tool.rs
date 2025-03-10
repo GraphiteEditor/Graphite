@@ -6,8 +6,7 @@ use crate::consts::{
 	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::graph_operation::transform_utils;
-use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -529,20 +528,8 @@ impl Fsm for SelectToolFsmState {
 					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| {
-						let transform = document.metadata().transform_to_viewport(layer);
-
-						if let Some(node) =
-							ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, &document.network_interface).and_then(|node_id| document.network_interface.document_node(&node_id, &[]))
-						{
-							// TODO: Figure out and fix why this incorrectly applies the rotation twice if it's a leaf layer (VectorData, ImageFrame, etc. rather than a group)
-							let transform_node_transformation = transform_utils::get_current_transform(node.inputs.as_slice());
-							return transform_node_transformation * transform;
-						};
-
-						transform
-					})
-					.unwrap_or(DAffine2::IDENTITY);
+					.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+					.unwrap_or_default();
 
 				// Check if the matrix is not invertible
 				let mut transform_tampered = false;

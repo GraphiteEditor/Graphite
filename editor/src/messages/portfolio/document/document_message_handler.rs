@@ -1219,8 +1219,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::UpdateUpstreamTransforms { upstream_transforms } => {
-				self.network_interface.update_transforms(upstream_transforms);
+			DocumentMessage::UpdateUpstreamTransforms {
+				upstream_footprints,
+				local_transforms,
+			} => {
+				self.network_interface.update_transforms(upstream_footprints, local_transforms);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
