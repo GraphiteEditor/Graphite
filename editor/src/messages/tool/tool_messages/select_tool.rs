@@ -767,10 +767,7 @@ impl Fsm for SelectToolFsmState {
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
 								// Since we're already in viewport space, use identity transform
 
-								if let Some(bounds) = bounds {
-									let selected_bounds_transformed = Rect::from_box(bounds);
-									measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, bounding_box_manager, &mut overlay_context);
-								}
+								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, bounding_box_manager, &mut overlay_context);
 							}
 						}
 					}

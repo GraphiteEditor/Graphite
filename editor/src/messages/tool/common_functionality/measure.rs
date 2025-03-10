@@ -1,4 +1,4 @@
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE};
+use crate::consts::COLOR_OVERLAY_BLUE;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graphene_std::renderer::Rect;
