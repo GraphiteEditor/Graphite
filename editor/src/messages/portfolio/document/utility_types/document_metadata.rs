@@ -300,7 +300,7 @@ impl LayerNodeIdentifier {
 
 	/// Add a child towards the bottom of the Layers panel
 	pub fn push_child(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
-		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
+		//assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
 		let parent = metadata.get_structure_mut(self);
 		let old_last_child = parent.last_child.replace(new);
 		parent.first_child.get_or_insert(new);
