@@ -1,8 +1,9 @@
-use crate::consts::COLOR_OVERLAY_BLUE;
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::tool::tool_messages::tool_prelude::*;
-
 use graphene_std::renderer::Rect;
+
+use super::transformation_cage::BoundingBoxManager;
 
 /// Draws a dashed line between two points transformed by the given affine transformation.
 fn draw_dashed_line(line_start: DVec2, line_end: DVec2, transform: DAffine2, overlay_context: &mut OverlayContext) {
@@ -440,10 +441,10 @@ fn handle_two_axis_overlap(selected_bounds: Rect, hovered_bounds: Rect, transfor
 }
 
 /// Overlays measurement lines between selected and hovered bounds based on their spatial relationships.
-pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
+pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2, document_to_viewport: DAffine2, bounding_box_manager: &mut BoundingBoxManager, overlay_context: &mut OverlayContext) {
 	draw_dashed_rect_outline(selected_bounds, transform, overlay_context);
 	draw_dashed_rect_outline(hovered_bounds, transform, overlay_context);
-
+	bounding_box_manager.render_overlays(overlay_context);
 	let (selected_min, selected_max) = (selected_bounds.min(), selected_bounds.max());
 	let (hovered_min, hovered_max) = (hovered_bounds.min(), hovered_bounds.max());
 

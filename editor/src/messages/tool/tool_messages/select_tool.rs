@@ -739,6 +739,8 @@ impl Fsm for SelectToolFsmState {
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
 						if !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
+							let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+
 							// Get all selected layers and compute their viewport-aligned AABB
 							let selected_bounds_viewport = document
 								.network_interface
@@ -764,7 +766,11 @@ impl Fsm for SelectToolFsmState {
 							// Use the viewport-aligned AABBs for measurement
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
 								// Since we're already in viewport space, use identity transform
-								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
+
+								if let Some(bounds) = bounds {
+									let selected_bounds_transformed = Rect::from_box(bounds);
+									measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, bounding_box_manager, &mut overlay_context);
+								}
 							}
 						}
 					}
