@@ -57,7 +57,7 @@ impl OriginalTransforms {
 
 	/// Gets the transform from the most downstream transform node
 	fn get_layer_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DAffine2> {
-		let transform_node_id = ModifyInputsContext::locate_existing_id(layer, network_interface, "Transform")?;
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
 
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))

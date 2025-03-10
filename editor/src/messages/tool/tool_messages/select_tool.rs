@@ -6,7 +6,7 @@ use crate::consts::{
 	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -23,6 +23,7 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
 use bezier_rs::Subpath;
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_core::text::load_face;
@@ -523,16 +524,34 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Update bounds
-				let transform = document
+				let mut transform = document
 					.network_interface
 					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport(layer));
+					.map(|layer| {
+						let transform = document.metadata().transform_to_viewport(layer);
 
-				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
-				let mut transform_tampered = false;
+						if let Some(node) =
+							ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, &document.network_interface).and_then(|node_id| document.network_interface.document_node(&node_id, &[]))
+						{
+							if let (Some(&TaggedValue::F64(angle)), Some(&TaggedValue::DVec2(skew))) = (node.inputs[2].as_value(), node.inputs[3].as_value()) {
+								// TODO: Figure out and fix why this incorrectly applies the rotation twice if it's a leaf layer (VectorData, ImageFrame, etc. rather than a group)
+								return DAffine2::from_angle(angle) * transform;
+
+								// TODO: Include skew in the transform cage, since rotation and skew are the two parts that affect the basis for the space in which the bounding box is calculated
+								// 	let mut skew_matrix = DAffine2::IDENTITY;
+								// 	skew_matrix.matrix2.x_axis[0] = skew.x.tan();
+								// 	skew_matrix.matrix2.y_axis[1] = skew.y.tan();
+							}
+						};
+
+						transform
+					})
+					.unwrap_or(DAffine2::IDENTITY);
+
 				// Check if the matrix is not invertible
+				let mut transform_tampered = false;
 				if transform.matrix2.determinant() == 0. {
 					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 					transform_tampered = true;
@@ -549,6 +568,7 @@ impl Fsm for SelectToolFsmState {
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
 					.reduce(graphene_core::renderer::Quad::combine_bounds);
+
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 

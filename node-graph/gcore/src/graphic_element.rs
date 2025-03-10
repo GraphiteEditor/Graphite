@@ -289,7 +289,8 @@ async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElemen
 	stack
 }
 
-#[node_macro::node(category("General"))]
+// TODO: Once we have nicely working spreadsheet tables, test this and make it nicely user-facing and move it from "Debug" to "General"
+#[node_macro::node(category("Debug"))]
 async fn concatenate<T: Clone>(
 	_: impl Ctx,
 	#[implementations(

@@ -358,7 +358,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 					click_target.apply_transform(*instance.transform)
 				}
 
-				log::debug!("new_click_targets for {graphic_group_id:?}: {new_click_targets:?}");
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
