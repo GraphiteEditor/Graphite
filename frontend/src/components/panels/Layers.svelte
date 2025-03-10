@@ -135,8 +135,11 @@
 		editor.handle.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClick(id: bigint) {
-		editor.handle.toggleLayerExpansion(id);
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
+		const [accel, oppositeAccel] = platformIsMac() ? [e.metaKey, e.ctrlKey] : [e.ctrlKey, e.metaKey];
+		const collapseRecursive = e.altKey || accel || oppositeAccel;
+		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		e.stopPropagation();
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -433,7 +436,7 @@
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
 							title={listing.entry.expanded ? "Collapse" : `Expand${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
-							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
 					{/if}
