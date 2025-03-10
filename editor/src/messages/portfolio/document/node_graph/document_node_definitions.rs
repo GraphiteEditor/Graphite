@@ -2255,7 +2255,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override("Skew", WidgetOverride::Hidden),
+						PropertiesRow::with_override(
+							"Skew",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: "°".to_string(),
+								..Default::default()
+							}),
+						),
 						PropertiesRow::with_override("Pivot", WidgetOverride::Hidden),
 					],
 					output_names: vec!["Data".to_string()],

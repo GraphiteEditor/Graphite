@@ -6,6 +6,7 @@ use crate::consts::{
 	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -23,7 +24,6 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
 use bezier_rs::Subpath;
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_core::text::load_face;
@@ -535,15 +535,9 @@ impl Fsm for SelectToolFsmState {
 						if let Some(node) =
 							ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, &document.network_interface).and_then(|node_id| document.network_interface.document_node(&node_id, &[]))
 						{
-							if let (Some(&TaggedValue::F64(angle)), Some(&TaggedValue::DVec2(skew))) = (node.inputs[2].as_value(), node.inputs[3].as_value()) {
-								// TODO: Figure out and fix why this incorrectly applies the rotation twice if it's a leaf layer (VectorData, ImageFrame, etc. rather than a group)
-								return DAffine2::from_angle(angle) * transform;
-
-								// TODO: Include skew in the transform cage, since rotation and skew are the two parts that affect the basis for the space in which the bounding box is calculated
-								// 	let mut skew_matrix = DAffine2::IDENTITY;
-								// 	skew_matrix.matrix2.x_axis[0] = skew.x.tan();
-								// 	skew_matrix.matrix2.y_axis[1] = skew.y.tan();
-							}
+							// TODO: Figure out and fix why this incorrectly applies the rotation twice if it's a leaf layer (VectorData, ImageFrame, etc. rather than a group)
+							let transform_node_transformation = transform_utils::get_current_transform(node.inputs.as_slice());
+							return transform_node_transformation * transform;
 						};
 
 						transform
