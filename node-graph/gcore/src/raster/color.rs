@@ -815,17 +815,19 @@ impl Color {
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a261", color.rgba_hex())
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61);
+	/// assert_eq!("5267fa61", color.rgba_hex());
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgba_hex(&self) -> String {
+		let unassociated = self.to_unassociated_alpha();
+		let gamma_color = unassociated.to_gamma_srgb();
 		format!(
 			"{:02x?}{:02x?}{:02x?}{:02x?}",
-			(self.r() * 255.) as u8,
-			(self.g() * 255.) as u8,
-			(self.b() * 255.) as u8,
-			(self.a() * 255.) as u8,
+			(gamma_color.r() * 255.) as u8,
+			(gamma_color.g() * 255.) as u8,
+			(gamma_color.b() * 255.) as u8,
+			(gamma_color.a() * 255.) as u8,
 		)
 	}
 
@@ -834,16 +836,18 @@ impl Color {
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color1 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a261", color1.rgb_optional_a_hex());
-	/// let color2 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0xFF).to_gamma_srgb();
+	/// let color1 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61);
+	/// assert_eq!("5267fa61", color1.rgb_optional_a_hex());
+	/// let color2 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0xFF);
 	/// assert_eq!("5267fa", color2.rgb_optional_a_hex());
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgb_optional_a_hex(&self) -> String {
-		let mut result = format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8);
+		let unassociated = self.to_unassociated_alpha();
+		let gamma_color = unassociated.to_gamma_srgb();
+		let mut result = format!("{:02x?}{:02x?}{:02x?}", (gamma_color.r() * 255.) as u8, (gamma_color.g() * 255.) as u8, (gamma_color.b() * 255.) as u8);
 		if self.a() < 1. {
-			let _ = write!(&mut result, "{:02x?}", (self.a() * 255.) as u8);
+			let _ = write!(&mut result, "{:02x?}", (unassociated.a() * 255.) as u8);
 		}
 		result
 	}
@@ -851,12 +855,14 @@ impl Color {
 	/// Return a 6-character RGB hex string (without a # prefix).
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a2", color.rgb_hex())
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61);
+	/// assert_eq!("5267fa", color.rgb_hex());
 	/// ```
 	#[cfg(feature = "std")]
 	pub fn rgb_hex(&self) -> String {
-		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
+		let unassociated = self.to_unassociated_alpha();
+		let gamma_color = unassociated.to_gamma_srgb();
+		format!("{:02x?}{:02x?}{:02x?}", (gamma_color.r() * 255.) as u8, (gamma_color.g() * 255.) as u8, (gamma_color.b() * 255.) as u8)
 	}
 
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.
