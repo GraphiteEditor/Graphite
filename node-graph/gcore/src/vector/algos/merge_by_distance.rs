@@ -4,10 +4,7 @@ use glam::DVec2;
 use petgraph::prelude::UnGraphMap;
 use rustc_hash::FxHashSet;
 
-use super::PointId;
-use super::VectorData;
-
-use super::VectorDataIndex;
+use crate::vector::{PointId, VectorData, VectorDataIndex};
 
 impl VectorData {
 	/// Collapse all nodes with all edges < distance

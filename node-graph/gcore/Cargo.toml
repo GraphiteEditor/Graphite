@@ -78,7 +78,9 @@ image = { workspace = true, optional = true, default-features = false, features 
 ] }
 math-parser = { path = "../../libraries/math-parser" }
 rustc-hash = { workspace = true }
-petgraph = "0.7.1"
+petgraph = { version = "0.7.1", default-features = false, features = [
+	"graphmap",
+] }
 
 [dev-dependencies]
 # Workspace dependencies
