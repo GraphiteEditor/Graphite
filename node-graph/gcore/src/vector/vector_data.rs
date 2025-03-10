@@ -15,7 +15,6 @@ use dyn_any::DynAny;
 
 use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
-use std::borrow::Cow;
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
@@ -99,24 +98,6 @@ impl core::hash::Hash for VectorData {
 		self.region_domain.hash(state);
 		self.style.hash(state);
 		self.colinear_manipulators.hash(state);
-	}
-}
-
-impl<'a> From<&'a VectorData> for Cow<'a, VectorData> {
-	fn from(value: &'a VectorData) -> Self {
-		Self::Borrowed(value)
-	}
-}
-
-impl<'a> From<&'a mut VectorData> for Cow<'a, VectorData> {
-	fn from(value: &'a mut VectorData) -> Self {
-		Self::Borrowed(value)
-	}
-}
-
-impl From<VectorData> for Cow<'static, VectorData> {
-	fn from(value: VectorData) -> Self {
-		Self::Owned(value)
 	}
 }
 
