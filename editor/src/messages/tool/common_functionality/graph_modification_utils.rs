@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
+use graph_craft::concrete;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
@@ -416,5 +417,17 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn find_input(&self, node_name: &str, index: usize) -> Option<&'a TaggedValue> {
 		// TODO: Find a better way to accept a node input rather than using its index (which is quite unclear and fragile)
 		self.find_node_inputs(node_name)?.get(index)?.as_value()
+	}
+
+	/// Check if a layer is a raster layer
+	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type();
+		if layer_input_type == concrete!(graphene_core::raster::image::ImageFrameTable<graphene_core::Color>)
+			|| layer_input_type == concrete!(graphene_core::application_io::TextureFrameTable)
+			|| layer_input_type == concrete!(graphene_std::RasterFrame)
+		{
+			return true;
+		}
+		false
 	}
 }
