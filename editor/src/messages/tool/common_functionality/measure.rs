@@ -24,19 +24,23 @@ fn draw_line_with_length(line_start: DVec2, line_end: DVec2, transform: DAffine2
 		.trim_end_matches('.')
 		.to_string();
 
-	const TEXT_PADDING: f64 = 5.;
-	// Calculate midpoint of the line
-	let midpoint = (min_viewport + max_viewport) / 2.;
+	debug!("{}", transform_to_document.transform_vector2(line_end - line_start).length());
+	const TOLERANCE: f64 = 0.01;
+	if transform_to_document.transform_vector2(line_end - line_start).length() >= TOLERANCE {
+		const TEXT_PADDING: f64 = 5.;
+		// Calculate midpoint of the line
+		let midpoint = (min_viewport + max_viewport) / 2.;
 
-	// Adjust text position based on line orientation and flags
-	// Determine text position based on line orientation and flags
-	let (pivot_x, pivot_y) = match (label_alignment.is_vertical_line, label_alignment.text_on_left, label_alignment.text_on_top) {
-		(true, true, _) => (Pivot::End, Pivot::Middle),     // Vertical line, text on the left
-		(true, false, _) => (Pivot::Start, Pivot::Middle),  // Vertical line, text on the right
-		(false, _, true) => (Pivot::Middle, Pivot::End),    // Horizontal line, text on top
-		(false, _, false) => (Pivot::Middle, Pivot::Start), // Horizontal line, text on bottom
-	};
-	overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), TEXT_PADDING, [pivot_x, pivot_y]);
+		// Adjust text position based on line orientation and flags
+		// Determine text position based on line orientation and flags
+		let (pivot_x, pivot_y) = match (label_alignment.is_vertical_line, label_alignment.text_on_left, label_alignment.text_on_top) {
+			(true, true, _) => (Pivot::End, Pivot::Middle),     // Vertical line, text on the left
+			(true, false, _) => (Pivot::Start, Pivot::Middle),  // Vertical line, text on the right
+			(false, _, true) => (Pivot::Middle, Pivot::End),    // Horizontal line, text on top
+			(false, _, false) => (Pivot::Middle, Pivot::Start), // Horizontal line, text on bottom
+		};
+		overlay_context.text(&length, COLOR_OVERLAY_BLUE, None, DAffine2::from_translation(midpoint), TEXT_PADDING, [pivot_x, pivot_y]);
+	}
 }
 
 /// Draws a dashed outline around a rectangle to visualize the AABB
@@ -59,12 +63,12 @@ fn draw_dashed_rect_outline(rect: Rect, transform: DAffine2, overlay_context: &m
 
 /// Checks if the selected bounds overlap with the hovered bounds on the Y-axis.
 fn does_overlap_y(selected_bounds: Rect, hovered_bounds: Rect) -> bool {
-	selected_bounds.min().x < hovered_bounds.max().x && selected_bounds.max().x > hovered_bounds.min().x
+	selected_bounds.min().x <= hovered_bounds.max().x && selected_bounds.max().x >= hovered_bounds.min().x
 }
 
 /// Checks if the selected bounds overlap with the hovered bounds on the X-axis.
 fn does_overlap_x(selected_bounds: Rect, hovered_bounds: Rect) -> bool {
-	selected_bounds.min().y < hovered_bounds.max().y && selected_bounds.max().y > hovered_bounds.min().y
+	selected_bounds.min().y <= hovered_bounds.max().y && selected_bounds.max().y >= hovered_bounds.min().y
 }
 
 /// Draws measurements when both X and Y axes are involved in the overlap between selected and hovered bounds.
@@ -108,8 +112,8 @@ fn draw_single_axis_zero_crossings(selected_bounds: Rect, hovered_bounds: Rect, 
 	let (selected_min, selected_max) = (selected_bounds.min(), selected_bounds.max());
 	let (hovered_min, hovered_max) = (hovered_bounds.min(), hovered_bounds.max());
 
-	let overlap_y = does_overlap_y(selected_bounds, hovered_bounds);
-	let overlap_x = does_overlap_x(selected_bounds, hovered_bounds);
+	let overlap_y = does_overlap_y(selected_bounds, hovered_bounds) || does_overlap_y(hovered_bounds, selected_bounds);
+	let overlap_x = does_overlap_x(selected_bounds, hovered_bounds) || does_overlap_x(hovered_bounds, selected_bounds);
 
 	let selected_on_bottom = selected_bounds.center().y > hovered_bounds.center().y;
 	let selected_on_right = selected_bounds.center().x > hovered_bounds.center().x;
@@ -168,8 +172,8 @@ fn draw_single_axis_one_crossings(selected_bounds: Rect, hovered_bounds: Rect, t
 	let selected_center = selected_bounds.center();
 	let hovered_center = hovered_bounds.center();
 
-	let overlap_y = does_overlap_y(selected_bounds, hovered_bounds);
-	let overlap_x = does_overlap_x(selected_bounds, hovered_bounds);
+	let overlap_y = does_overlap_y(selected_bounds, hovered_bounds) || does_overlap_y(hovered_bounds, selected_bounds);
+	let overlap_x = does_overlap_x(selected_bounds, hovered_bounds) || does_overlap_x(hovered_bounds, selected_bounds);
 
 	if overlap_y {
 		let selected_facing_edge = if hovered_max.y < selected_min.y { selected_min.y } else { selected_max.y };
@@ -446,8 +450,8 @@ pub fn overlay(selected_bounds: Rect, hovered_bounds: Rect, transform: DAffine2,
 	let (hovered_min, hovered_max) = (hovered_bounds.min(), hovered_bounds.max());
 
 	// Determine axis overlaps
-	let overlap_x = selected_min.x <= hovered_max.x && selected_max.x >= hovered_min.x;
-	let overlap_y = selected_min.y <= hovered_max.y && selected_max.y >= hovered_min.y;
+	let overlap_y = does_overlap_y(selected_bounds, hovered_bounds) || does_overlap_y(hovered_bounds, selected_bounds);
+	let overlap_x = does_overlap_x(selected_bounds, hovered_bounds) || does_overlap_x(hovered_bounds, selected_bounds);
 	let overlap_axes = match (overlap_x, overlap_y) {
 		(true, true) => 2,
 		(true, false) | (false, true) => 1,
