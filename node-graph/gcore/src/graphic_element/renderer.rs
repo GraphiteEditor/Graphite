@@ -428,12 +428,9 @@ impl GraphicElementRendered for VectorDataTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instances() {
 			let multiplied_transform = render.transform * *instance.transform;
-			let set_stroke_transform = instance
-				.instance
-				.style
-				.stroke()
-				.map(|stroke| stroke.transform)
-				.filter(|transform| transform.matrix2.determinant() != 0.);
+			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
+			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*instance.transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
@@ -451,6 +448,7 @@ impl GraphicElementRendered for VectorDataTable {
 				attributes.push("transform", matrix);
 
 				let defs = &mut attributes.0.svg_defs;
+
 				let fill_and_stroke = instance
 					.instance
 					.style

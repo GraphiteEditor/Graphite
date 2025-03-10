@@ -171,6 +171,7 @@ pub enum DocumentMessage {
 	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
+		recursive: bool,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
