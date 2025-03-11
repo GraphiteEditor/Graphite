@@ -3401,7 +3401,23 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|definition| !definition.category.is_empty())
-		.map(|definition| FrontendNodeType::new(definition.identifier, definition.category))
+		.map(|definition| {
+			let input_types = definition
+				.node_template
+				.document_node
+				.inputs
+				.iter()
+				.filter_map(|node_input| {
+					if let Some(node_value) = node_input.as_value() {
+						Some(node_value.ty().nested_type().to_string())
+					} else {
+						None
+					}
+				})
+				.collect::<Vec<String>>();
+
+			FrontendNodeType::with_input_types(definition.identifier, definition.category, input_types)
+		})
 		.collect()
 }
 
