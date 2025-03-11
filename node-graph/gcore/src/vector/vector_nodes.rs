@@ -15,39 +15,55 @@ use rand::{Rng, SeedableRng};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
-trait VectorIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = &mut VectorData>;
+trait VectorDataTableIterMut {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<VectorData>>;
 }
 
-impl VectorIterMut for GraphicGroupTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = &mut VectorData> {
+impl VectorDataTableIterMut for GraphicGroupTable {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<VectorData>> {
 		// Grab only the direct children
 		self.instances_mut()
 			.filter_map(|element| element.instance.as_vector_data_mut())
-			.map(move |vector_data| vector_data.one_instance_mut().instance)
+			.flat_map(move |vector_data| vector_data.instances_mut())
 	}
 }
 
-impl VectorIterMut for VectorDataTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = &mut VectorData> {
-		self.instances_mut().map(|instance| instance.instance)
+impl VectorDataTableIterMut for VectorDataTable {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<VectorData>> {
+		self.instances_mut()
 	}
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn assign_colors<T: VectorIterMut>(
+async fn assign_colors<T>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable)]
 	#[widget(ParsedWidgetOverride::Hidden)]
+	/// The vector elements, or group of vector elements, to apply the fill and/or stroke style to.
 	mut vector_group: T,
-	#[default(true)] fill: bool,
+	#[default(true)]
+	/// Whether to style the fill.
+	fill: bool,
+	/// Whether to style the stroke.
 	stroke: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")] gradient: GradientStops,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
+	/// The range of colors to select from.
+	gradient: GradientStops,
+	/// Whether to reverse the gradient.
 	reverse: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")] randomize: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")] seed: SeedValue,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")] repeat_every: u32,
-) -> T {
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")]
+	/// Whether to randomize the color selection for each element from throughout the gradient.
+	randomize: bool,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
+	/// The seed used for randomization.
+	seed: SeedValue,
+	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
+	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
+	repeat_every: u32,
+) -> T
+where
+	T: VectorDataTableIterMut + 'n + Send,
+{
 	let length = vector_group.vector_iter_mut().count();
 	let gradient = if reverse { gradient.reversed() } else { gradient };
 
@@ -66,11 +82,11 @@ async fn assign_colors<T: VectorIterMut>(
 		let color = gradient.evalute(factor);
 
 		if fill {
-			vector_data.style.set_fill(Fill::Solid(color));
+			vector_data.instance.style.set_fill(Fill::Solid(color));
 		}
 		if stroke {
-			if let Some(stroke) = vector_data.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
-				vector_data.style.set_stroke(stroke);
+			if let Some(stroke) = vector_data.instance.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
+				vector_data.instance.style.set_stroke(stroke);
 			}
 		}
 	}
@@ -79,7 +95,7 @@ async fn assign_colors<T: VectorIterMut>(
 }
 
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+async fn fill<F: Into<Fill> + 'n + Send, V>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
@@ -91,7 +107,8 @@ async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Sen
 		GraphicGroupTable,
 		GraphicGroupTable
 	)]
-	mut vector_data: TargetTy,
+	/// The vector elements, or group of vector elements, to apply the fill to.
+	mut vector_data: V,
 	#[implementations(
 		Fill,
 		Option<Color>,
@@ -103,22 +120,29 @@ async fn fill<FillTy: Into<Fill> + 'n + Send, TargetTy: VectorIterMut + 'n + Sen
 		Gradient,
 	)]
 	#[default(Color::BLACK)]
-	fill: FillTy,
+	/// The fill to paint the path with.
+	fill: F,
 	_backup_color: Option<Color>,
 	_backup_gradient: Gradient,
-) -> TargetTy {
+) -> V
+where
+	V: VectorDataTableIterMut + 'n + Send,
+{
 	let fill: Fill = fill.into();
 	for target in vector_data.vector_iter_mut() {
-		target.style.set_fill(fill.clone());
+		target.instance.style.set_fill(fill.clone());
 	}
 
 	vector_data
 }
 
+/// Applies a stroke style to the vector data contained in the input.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMut + 'n + Send>(
+async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	_: impl Ctx,
-	#[implementations(VectorDataTable, VectorDataTable, GraphicGroupTable, GraphicGroupTable)] mut vector_data: TargetTy,
+	#[implementations(VectorDataTable, VectorDataTable, GraphicGroupTable, GraphicGroupTable)]
+	/// The vector elements, or group of vector elements, to apply the stroke to.
+	mut vector_data: Instances<V>,
 	#[implementations(
 		Option<Color>,
 		Color,
@@ -126,14 +150,26 @@ async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMu
 		Color,
 	)]
 	#[default(Color::BLACK)]
-	color: ColorTy,
-	#[default(2.)] weight: f64,
+	/// The stroke color.
+	color: C,
+	#[default(2.)]
+	/// The stroke weight.
+	weight: f64,
+	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_lengths: Vec<f64>,
+	/// The offset distance from the starting point of the dash pattern.
 	dash_offset: f64,
+	/// The shape of the stroke at open endpoints.
 	line_cap: crate::vector::style::LineCap,
+	/// The curvature of the bent stroke at sharp corners.
 	line_join: LineJoin,
-	#[default(4.)] miter_limit: f64,
-) -> TargetTy {
+	#[default(4.)]
+	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
+	miter_limit: f64,
+) -> Instances<V>
+where
+	Instances<V>: VectorDataTableIterMut + 'n + Send,
+{
 	let stroke = Stroke {
 		color: color.into(),
 		weight,
@@ -144,8 +180,10 @@ async fn stroke<ColorTy: Into<Option<Color>> + 'n + Send, TargetTy: VectorIterMu
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
 	};
-	for target in vector_data.vector_iter_mut() {
-		target.style.set_stroke(stroke.clone());
+	for vector in vector_data.vector_iter_mut() {
+		let mut stroke = stroke.clone();
+		stroke.transform *= *vector.transform;
+		vector.instance.style.set_stroke(stroke);
 	}
 
 	vector_data

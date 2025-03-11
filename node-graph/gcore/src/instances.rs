@@ -139,8 +139,11 @@ impl<T> Instances<T> {
 
 impl<T: Default + Hash + 'static> Default for Instances<T> {
 	fn default() -> Self {
+		// TODO: Remove once all types have been converted to tables
+		let converted_to_tables = [TypeId::of::<crate::Artboard>(), TypeId::of::<crate::GraphicElement>()];
+
 		use core::any::TypeId;
-		if TypeId::of::<T>() == TypeId::of::<crate::Artboard>() {
+		if converted_to_tables.contains(&TypeId::of::<T>()) {
 			// TODO: Remove the 'static trait bound when this special casing is removed by making all types return empty
 			Self::empty()
 		} else {

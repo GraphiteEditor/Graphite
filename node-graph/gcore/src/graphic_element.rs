@@ -79,7 +79,10 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 		}
 		EitherFormat::OldGraphicGroupTable(old) => {
 			let mut graphic_group_table = GraphicGroupTable::empty();
-			for (graphic_element, source_node_id) in old.instances().next().unwrap().instance.elements.clone() {
+			for (graphic_element, source_node_id) in old.instances().next().map(|instance| instance.instance.elements.clone()).unwrap_or_else(|| {
+				warn!("OldGraphicGroupTable is empty, returning empty GraphicGroupTable");
+				vec![]
+			}) {
 				let pushed = graphic_group_table.push(graphic_element);
 				*pushed.source_node_id = source_node_id;
 			}
