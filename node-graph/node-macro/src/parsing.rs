@@ -4,8 +4,11 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, ToTokens};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
-use syn::{AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, WhereClause};
+use syn::{
+	parse_quote, AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
+};
 
 use crate::codegen::generate_node_code;
 
@@ -548,10 +551,12 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 // Modify the new_node_fn function to use the code generation
 pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 	let parse_result = parse_node_fn(attr, item.clone());
-	let Ok(parsed_node) = parse_result else {
+	let Ok(mut parsed_node) = parse_result else {
 		let e = parse_result.unwrap_err();
 		return Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error();
 	};
+
+	parsed_node.replace_impl_trait_in_input();
 	if let Err(e) = crate::validation::validate_node_fn(&parsed_node) {
 		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
 	}
@@ -560,6 +565,31 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 		Err(e) => {
 			// Return the error as a compile error
 			Error::new(e.span(), format!("Failed to parse node function: {}", e)).to_compile_error()
+		}
+	}
+}
+
+impl ParsedNodeFn {
+	fn replace_impl_trait_in_input(&mut self) {
+		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
+			let ident = Ident::new("_Input", impl_trait.span());
+			let mut bounds = impl_trait.bounds;
+			bounds.push(parse_quote!('n));
+			self.fn_generics.push(GenericParam::Type(TypeParam {
+				attrs: Default::default(),
+				ident: ident.clone(),
+				colon_token: Some(Default::default()),
+				bounds,
+				eq_token: None,
+				default: None,
+			}));
+			self.input.ty = parse_quote!(#ident);
+			if self.input.implementations.is_empty() {
+				self.input.implementations.push(parse_quote!(gcore::Context));
+			}
+		}
+		if self.input.pat_ident.ident == "_" {
+			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
 	}
 }
@@ -774,7 +804,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: (), #[default(50.)] radius: f64) -> VectorData {
+			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> VectorData {
 				// Implementation details...
 			}
 		);
@@ -795,7 +825,7 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("_"),
-				ty: parse_quote!(()),
+				ty: parse_quote!(impl Ctx),
 				implementations: Punctuated::new(),
 			},
 			output_type: parse_quote!(VectorData),

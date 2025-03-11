@@ -162,7 +162,7 @@ impl Default for ProtoNode {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProtoNodeInput {
-	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
+	/// This input will be converted to `()` as the call argument.
 	None,
 	/// A ManualComposition input represents an input that opts out of being resolved through the `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated
 	/// result to this node. Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
@@ -203,6 +203,7 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
+
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -212,6 +213,7 @@ impl ProtoNode {
 			ProtoNodeInput::Node(id) => (id, false).hash(&mut hasher),
 			ProtoNodeInput::NodeLambda(id) => (id, true).hash(&mut hasher),
 		};
+
 		Some(NodeId(hasher.finish()))
 	}
 
@@ -224,7 +226,7 @@ impl ProtoNode {
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
-			input: ProtoNodeInput::None,
+			input: ProtoNodeInput::ManualComposition(concrete!(Context)),
 			original_location: OriginalLocation {
 				path: Some(path),
 				inputs_exposed: vec![false; inputs_exposed],
@@ -552,10 +554,11 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
-				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}", index + 1);
-				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
+				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}, found: {_found}", index + 1);
+				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n").replace("Option<Arc<OwnedContextImpl>>", "Context");
 				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
 				errors.sort();
+				let inputs = inputs.replace("Option<Arc<OwnedContextImpl>>", "Context");
 				write!(
 					f,
 					"This node isn't compatible with the com-\n\
@@ -651,9 +654,9 @@ impl TypingContext {
 		let inputs = match node.construction_args {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
-				assert!(matches!(node.input, ProtoNodeInput::None));
+				assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![v.ty()]);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -696,6 +699,8 @@ impl TypingContext {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+				// Check inner type for futures
+				(Type::Future(type1), Type::Future(type2)) => type1 == type2,
 				// Loose comparison of function types, where loose means that functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
 				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
@@ -918,12 +923,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(12083027370457564588),
-				NodeId(10127202135369428481),
-				NodeId(3781642984881236270),
-				NodeId(12160249450476233602),
-				NodeId(17962581471057044127),
-				NodeId(7906594012485169109)
+				NodeId(8409339180888025381),
+				NodeId(210279231591542793),
+				NodeId(11043024792989571946),
+				NodeId(16261870568621497283),
+				NodeId(6520148642810552409),
+				NodeId(8779776256867305756)
 			]
 		);
 	}

@@ -175,7 +175,7 @@ impl LayoutHolder for PathTool {
 		// TODO: Remove `unwrap_or_default` once checkboxes are capable of displaying a mixed state
 		.unwrap_or_default();
 		let colinear_handle_checkbox = CheckboxInput::new(colinear_handles_state)
-			.disabled(self.tool_data.selection_status.is_none())
+			.disabled(!self.tool_data.can_toggle_colinearity)
 			.on_update(|&CheckboxInput { checked, .. }| {
 				if checked {
 					PathToolMessage::ManipulatorMakeHandlesColinear.into()
@@ -186,7 +186,7 @@ impl LayoutHolder for PathTool {
 			.tooltip(colinear_handles_tooltip)
 			.widget_holder();
 		let colinear_handles_label = TextLabel::new("Colinear Handles")
-			.disabled(self.tool_data.selection_status.is_none())
+			.disabled(!self.tool_data.can_toggle_colinearity)
 			.tooltip(colinear_handles_tooltip)
 			.widget_holder();
 
@@ -359,7 +359,10 @@ struct PathToolData {
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
 	/// Describes information about the selected point(s), if any, across one or multiple shapes and manipulator point types (anchor or handle).
 	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
+	/// NOTE: It must be updated using `update_selection_status` to ensure `can_toggle_colinearity` stays synchronized with the current selection.
 	selection_status: SelectionStatus,
+	/// `true` if we can change the current selection to colinear or not.
+	can_toggle_colinearity: bool,
 	segment: Option<ClosestSegment>,
 	snap_cache: SnapCache,
 	double_click_handled: bool,
@@ -413,6 +416,20 @@ impl PathToolData {
 		} else {
 			[self.drag_start_pos, self.previous_mouse_position]
 		}
+	}
+
+	fn update_selection_status(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
+		let selection_status = get_selection_status(&document.network_interface, shape_editor);
+
+		self.can_toggle_colinearity = match &selection_status {
+			SelectionStatus::None => false,
+			SelectionStatus::One(single_selected_point) => {
+				let vector_data = document.network_interface.compute_modified_vector(single_selected_point.layer).unwrap();
+				single_selected_point.id.get_handle_pair(&vector_data).is_some()
+			}
+			SelectionStatus::Multiple(_) => true,
+		};
+		self.selection_status = selection_status;
 	}
 
 	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
@@ -769,7 +786,7 @@ impl Fsm for PathToolFsmState {
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
 				// Set the newly targeted layers to visible
-				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
+				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
@@ -802,7 +819,7 @@ impl Fsm for PathToolFsmState {
 						} else {
 							let mut segment_endpoints: HashMap<SegmentId, Vec<PointId>> = HashMap::new();
 
-							for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+							for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 								// The points which are part of only one segment will be rendered
@@ -1302,7 +1319,7 @@ impl Fsm for PathToolFsmState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
 					colinear,
 				};
-				tool_data.selection_status = get_selection_status(&document.network_interface, shape_editor);
+				tool_data.update_selection_status(shape_editor, document);
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {

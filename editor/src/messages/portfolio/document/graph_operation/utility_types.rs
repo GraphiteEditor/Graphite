@@ -8,7 +8,7 @@ use bezier_rs::Subpath;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -126,7 +126,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::default()), true)),
+			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
@@ -212,12 +212,11 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: ImageFrameTable<Color>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
-		let image = resolve_document_node_type("Image").expect("Image node does not exist").node_template_input_override([
-			Some(NodeInput::value(TaggedValue::None, false)),
-			Some(NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::new(image_frame)), false)),
-		]);
+		let image = resolve_document_node_type("Image")
+			.expect("Image node does not exist")
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
 
 		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
@@ -230,11 +229,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
 		self.layer_node.or_else(|| {
-			let Some(network) = self.network_interface.network(&[]) else {
-				log::error!("Document network does not exist in ModifyInputsContext::get_output_node");
-				return None;
-			};
-			let export_node = network.exports.first().and_then(|export| export.as_node())?;
+			let export_node = self.network_interface.document_network().exports.first().and_then(|export| export.as_node())?;
 			if self.network_interface.is_layer(&export_node, &[]) {
 				Some(LayerNodeIdentifier::new(export_node, self.network_interface, &[]))
 			} else {
@@ -267,7 +262,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 
 			let is_traversal_start = |node_id: NodeId| {
-				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.network(&[]).unwrap().exports.iter().any(|export| export.as_node() == Some(node_id))
+				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id))
 			};
 
 			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[])) {
@@ -374,7 +369,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let (layer_transform, transform_node_id) = self
 			.existing_node_id("Transform", false)
 			.and_then(|transform_node_id| {
-				let document_node = self.network_interface.network(&[])?.nodes.get(&transform_node_id)?;
+				let document_node = self.network_interface.document_network().nodes.get(&transform_node_id)?;
 				Some((transform_utils::get_current_transform(&document_node.inputs), transform_node_id))
 			})
 			.unzip();

@@ -9,7 +9,7 @@ use crate::transform::{Footprint, Transform};
 use crate::uuid::{generate_uuid, NodeId};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable, RasterFrame};
+use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -276,6 +276,7 @@ pub struct RenderMetadata {
 	pub clip_targets: HashSet<NodeId>,
 }
 
+// TODO: Rename to "Graphical"
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
@@ -291,14 +292,7 @@ pub trait GraphicElementRendered {
 	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
 
 	#[cfg(feature = "vello")]
-	fn to_vello_scene(&self, transform: DAffine2, context: &mut RenderContext) -> Scene {
-		let mut scene = vello::Scene::new();
-		self.render_to_vello(&mut scene, transform, context);
-		scene
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_condext: &mut RenderContext) {}
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_context: &mut RenderContext) {}
 
 	fn contains_artboard(&self) -> bool {
 		false
@@ -311,40 +305,54 @@ pub trait GraphicElementRendered {
 	}
 }
 
-impl GraphicElementRendered for GraphicGroup {
+impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		render.parent_tag(
-			"g",
-			|attributes| {
-				let matrix = format_transform_matrix(self.transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
+		for instance in self.instances() {
+			render.parent_tag(
+				"g",
+				|attributes| {
+					let matrix = format_transform_matrix(instance.transform());
+					if !matrix.is_empty() {
+						attributes.push("transform", matrix);
+					}
 
-				if self.alpha_blending.opacity < 1. {
-					attributes.push("opacity", self.alpha_blending.opacity.to_string());
-				}
+					if instance.alpha_blending.opacity < 1. {
+						attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+					}
 
-				if self.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", self.alpha_blending.blend_mode.render());
-				}
-			},
-			|render| {
-				for (element, _) in self.iter() {
-					element.render_svg(render, render_params);
-				}
-			},
-		);
+					if instance.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+				},
+				|render| {
+					for (element, _) in instance.instance.iter() {
+						element.render_svg(render, render_params);
+					}
+				},
+			);
+		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.iter().filter_map(|(element, _)| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
+		self.instances()
+			.flat_map(|instance| {
+				instance
+					.instance
+					.iter()
+					.filter_map(|(element, _)| element.bounding_box(transform * instance.transform()))
+					.reduce(Quad::combine_bounds)
+			})
+			.reduce(Quad::combine_bounds)
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		footprint.transform *= self.transform;
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		let instance_transform = self.transform();
+		let instance = self.one_instance().instance;
 
-		for (element, element_id) in self.elements.iter() {
+		let mut footprint = footprint;
+		footprint.transform *= instance_transform;
+
+		for (element, element_id) in instance.elements.iter() {
 			if let Some(element_id) = element_id {
 				element.collect_metadata(metadata, footprint, Some(*element_id));
 			}
@@ -352,104 +360,79 @@ impl GraphicElementRendered for GraphicGroup {
 
 		if let Some(graphic_group_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
-			self.add_upstream_click_targets(&mut all_upstream_click_targets);
+
+			for (element, _) in instance.elements.iter() {
+				let mut new_click_targets = Vec::new();
+
+				element.add_upstream_click_targets(&mut new_click_targets);
+
+				for click_target in new_click_targets.iter_mut() {
+					click_target.apply_transform(element.transform())
+				}
+
+				all_upstream_click_targets.extend(new_click_targets);
+			}
+
 			metadata.click_targets.insert(graphic_group_id, all_upstream_click_targets);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for (element, _) in self.elements.iter() {
-			let mut new_click_targets = Vec::new();
+		for instance in self.instances() {
+			for (element, _) in instance.instance.elements.iter() {
+				let mut new_click_targets = Vec::new();
 
-			element.add_upstream_click_targets(&mut new_click_targets);
+				element.add_upstream_click_targets(&mut new_click_targets);
 
-			for click_target in new_click_targets.iter_mut() {
-				click_target.apply_transform(element.transform())
+				for click_target in new_click_targets.iter_mut() {
+					click_target.apply_transform(element.transform())
+				}
+
+				click_targets.extend(new_click_targets);
+			}
+		}
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+		for instance in self.instances() {
+			let transform = transform * instance.transform();
+			let alpha_blending = *instance.alpha_blending;
+
+			let blending = vello::peniko::BlendMode::new(alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
+			let mut layer = false;
+
+			if alpha_blending.opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
+				if let Some(bounds) = instance.instance.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds) {
+					scene.push_layer(
+						blending,
+						alpha_blending.opacity,
+						kurbo::Affine::IDENTITY,
+						&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+					);
+					layer = true;
+				}
 			}
 
-			click_targets.extend(new_click_targets);
-		}
-	}
+			for (element, _) in instance.instance.iter() {
+				element.render_to_vello(scene, transform, context);
+			}
 
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		let child_transform = transform * self.transform;
-
-		let Some(bounds) = self.bounding_box(transform) else { return };
-		let blending = vello::peniko::BlendMode::new(self.alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
-		let mut layer = false;
-
-		if self.alpha_blending.opacity < 1. || self.alpha_blending.blend_mode != BlendMode::default() {
-			layer = true;
-			scene.push_layer(
-				blending,
-				self.alpha_blending.opacity,
-				kurbo::Affine::IDENTITY,
-				&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-			);
-		}
-
-		for (element, _) in self.iter() {
-			element.render_to_vello(scene, child_transform, context);
-		}
-
-		if layer {
-			scene.pop_layer();
+			if layer {
+				scene.pop_layer();
+			}
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.iter().any(|(element, _)| element.contains_artboard())
-	}
-
-	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		for (element, node_id) in self.elements.iter_mut() {
-			element.new_ids_from_hash(*node_id);
-		}
-	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::GraphicGroup(GraphicGroupTable::new(self.clone()))
-	}
-}
-
-impl GraphicElementRendered for GraphicGroupTable {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for instance in self.instances() {
-			instance.render_svg(render, render_params);
-		}
-	}
-
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.instances().flat_map(|instance| instance.bounding_box(transform)).reduce(Quad::combine_bounds)
-	}
-
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		let instance = self.one_item();
-
-		instance.collect_metadata(metadata, footprint, element_id);
-	}
-
-	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for instance in self.instances() {
-			instance.add_upstream_click_targets(click_targets);
-		}
-	}
-
-	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		for instance in self.instances() {
-			instance.render_to_vello(scene, transform, context);
-		}
-	}
-
-	fn contains_artboard(&self) -> bool {
-		self.instances().any(|instance| instance.contains_artboard())
+		self.instances().any(|instance| instance.instance.iter().any(|(element, _)| element.contains_artboard()))
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
 		for instance in self.instances_mut() {
-			instance.new_ids_from_hash(None);
+			for (element, node_id) in instance.instance.elements.iter_mut() {
+				element.new_ids_from_hash(*node_id);
+			}
 		}
 	}
 
@@ -461,16 +444,18 @@ impl GraphicElementRendered for GraphicGroupTable {
 impl GraphicElementRendered for VectorDataTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instances() {
-			let multiplied_transform = render.transform * instance.transform;
-			let set_stroke_transform = instance.style.stroke().map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(instance.transform);
+			let multiplied_transform = render.transform * instance.transform();
+			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
+			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+			let applied_stroke_transform = set_stroke_transform.unwrap_or(instance.transform());
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-			let layer_bounds = instance.bounding_box().unwrap_or_default();
-			let transformed_bounds = instance.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
+			let layer_bounds = instance.instance.bounding_box().unwrap_or_default();
+			let transformed_bounds = instance.instance.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 			let mut path = String::new();
-			for subpath in instance.stroke_bezier_paths() {
+			for subpath in instance.instance.stroke_bezier_paths() {
 				let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
 			}
 
@@ -480,7 +465,9 @@ impl GraphicElementRendered for VectorDataTable {
 				attributes.push("transform", matrix);
 
 				let defs = &mut attributes.0.svg_defs;
+
 				let fill_and_stroke = instance
+					.instance
 					.style
 					.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
 				attributes.push_val(fill_and_stroke);
@@ -499,22 +486,23 @@ impl GraphicElementRendered for VectorDataTable {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.instances()
 			.flat_map(|instance| {
-				let stroke_width = instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
+				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
 
-				let miter_limit = instance.style.stroke().map(|s| s.line_join_miter_limit).unwrap_or(1.);
+				let miter_limit = instance.instance.style.stroke().map(|s| s.line_join_miter_limit).unwrap_or(1.);
 
 				let scale = transform.decompose_scale();
 
 				// We use the full line width here to account for different styles of line caps
 				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
 
-				instance.bounding_box_with_transform(transform * instance.transform).map(|[a, b]| [a - offset, b + offset])
+				instance.instance.bounding_box_with_transform(transform * instance.transform()).map(|[a, b]| [a - offset, b + offset])
 			})
 			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		let instance = self.one_item();
+		let instance_transform = self.transform();
+		let instance = self.one_instance().instance;
 
 		if let Some(element_id) = element_id {
 			let stroke_width = instance.style.stroke().as_ref().map_or(0., Stroke::weight);
@@ -536,15 +524,15 @@ impl GraphicElementRendered for VectorDataTable {
 		}
 
 		if let Some(upstream_graphic_group) = &instance.upstream_graphic_group {
-			footprint.transform *= instance.transform;
+			footprint.transform *= instance_transform;
 			upstream_graphic_group.collect_metadata(metadata, footprint, None);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for instance in self.instances() {
-			let stroke_width = instance.style.stroke().as_ref().map_or(0., Stroke::weight);
-			let filled = instance.style.fill() != &Fill::None;
+			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
+			let filled = instance.instance.style.fill() != &Fill::None;
 			let fill = |mut subpath: bezier_rs::Subpath<_>| {
 				if filled {
 					subpath.set_closed(true);
@@ -552,7 +540,7 @@ impl GraphicElementRendered for VectorDataTable {
 				subpath
 			};
 
-			click_targets.extend(instance.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
+			click_targets.extend(instance.instance.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget::new(subpath, stroke_width)));
 		}
 	}
 
@@ -564,12 +552,17 @@ impl GraphicElementRendered for VectorDataTable {
 		for instance in self.instances() {
 			let mut layer = false;
 
-			let multiplied_transform = parent_transform * instance.transform;
-			let set_stroke_transform = instance.style.stroke().map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+			let multiplied_transform = parent_transform * instance.transform();
+			let set_stroke_transform = instance
+				.instance
+				.style
+				.stroke()
+				.map(|stroke| stroke.transform)
+				.filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-			let layer_bounds = instance.bounding_box().unwrap_or_default();
+			let layer_bounds = instance.instance.bounding_box().unwrap_or_default();
 
 			if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
@@ -583,11 +576,11 @@ impl GraphicElementRendered for VectorDataTable {
 
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 			let mut path = kurbo::BezPath::new();
-			for subpath in instance.stroke_bezier_paths() {
+			for subpath in instance.instance.stroke_bezier_paths() {
 				subpath.to_vello_path(applied_stroke_transform, &mut path);
 			}
 
-			match instance.style.fill() {
+			match instance.instance.style.fill() {
 				Fill::Solid(color) => {
 					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
 					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
@@ -601,7 +594,7 @@ impl GraphicElementRendered for VectorDataTable {
 						});
 					}
 					// Compute bounding box of the shape to determine the gradient start and end points
-					let bounds = instance.nonzero_bounding_box();
+					let bounds = instance.instance.nonzero_bounding_box();
 					let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 					let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
@@ -638,7 +631,7 @@ impl GraphicElementRendered for VectorDataTable {
 				Fill::None => (),
 			};
 
-			if let Some(stroke) = instance.style.stroke() {
+			if let Some(stroke) = instance.instance.style.stroke() {
 				let color = match stroke.color {
 					Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 					None => peniko::Color::TRANSPARENT,
@@ -676,12 +669,12 @@ impl GraphicElementRendered for VectorDataTable {
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		for instance in self.instances_mut() {
-			instance.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
+			instance.instance.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}
 
 	fn to_graphic_element(&self) -> GraphicElement {
-		let instance = self.one_item();
+		let instance = self.one_instance().instance;
 
 		GraphicElement::VectorData(VectorDataTable::new(instance.clone()))
 	}
@@ -795,49 +788,49 @@ impl GraphicElementRendered for Artboard {
 	}
 }
 
-impl GraphicElementRendered for ArtboardGroup {
+impl GraphicElementRendered for ArtboardGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for (artboard, _) in &self.artboards {
-			artboard.render_svg(render, render_params);
+		for artboard in self.instances() {
+			artboard.instance.render_svg(render, render_params);
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.artboards.iter().filter_map(|(element, _)| element.bounding_box(transform)).reduce(Quad::combine_bounds)
+		self.instances().filter_map(|instance| instance.instance.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
-		for (artboard, element_id) in &self.artboards {
-			artboard.collect_metadata(metadata, footprint, *element_id);
+		for instance in self.instances() {
+			instance.instance.collect_metadata(metadata, footprint, *instance.source_node_id);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for (artboard, _) in &self.artboards {
-			artboard.add_upstream_click_targets(click_targets);
+		for instance in self.instances() {
+			instance.instance.add_upstream_click_targets(click_targets);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
-		for (artboard, _) in &self.artboards {
-			artboard.render_to_vello(scene, transform, context)
+		for instance in self.instances() {
+			instance.instance.render_to_vello(scene, transform, context)
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		!self.artboards.is_empty()
+		self.instances().count() > 0
 	}
 }
 
 impl GraphicElementRendered for ImageFrameTable<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instances() {
-			let transform = instance.transform * render.transform;
+			let transform = instance.transform() * render.transform;
 
 			match render_params.image_render_mode {
 				ImageRenderMode::Base64 => {
-					let image = &instance.image;
+					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
 					}
@@ -874,20 +867,20 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.instances()
 			.flat_map(|instance| {
-				let transform = transform * instance.transform;
+				let transform = transform * instance.transform();
 				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 			})
 			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		let instance = self.one_item();
+		let instance_transform = self.transform();
 
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
-		metadata.footprints.insert(element_id, (footprint, instance.transform));
+		metadata.footprints.insert(element_id, (footprint, instance_transform));
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -900,12 +893,12 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 		use vello::peniko;
 
 		for instance in self.instances() {
-			let image = &instance.image;
+			let image = &instance.instance;
 			if image.data.is_empty() {
 				return;
 			}
 			let image = vello::peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
-			let transform = transform * instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+			let transform = transform * instance.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
 			scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
 		}
@@ -923,8 +916,8 @@ impl GraphicElementRendered for RasterFrame {
 					RasterFrame::TextureFrame(_) => return,
 				};
 
-				for image in image.instances() {
-					let (image, blending) = (&image.image, image.alpha_blending);
+				for instance in image.instances() {
+					let (image, blending) = (&instance.instance, instance.alpha_blending);
 					if image.data.is_empty() {
 						return;
 					}
@@ -998,26 +991,27 @@ impl GraphicElementRendered for RasterFrame {
 		};
 
 		match self {
-			RasterFrame::ImageFrame(image_frame) => {
-				for image_frame in image_frame.instances() {
-					let image = &image_frame.image;
+			RasterFrame::ImageFrame(image) => {
+				for instance in image.instances() {
+					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
 					}
 
 					let image = vello::peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 
-					render_stuff(image, image_frame.alpha_blending);
+					render_stuff(image, *instance.alpha_blending);
 				}
 			}
-			RasterFrame::TextureFrame(texture) => {
-				for texture in texture.instances() {
-					let image = vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, texture.texture.width(), texture.texture.height()).with_extend(peniko::Extend::Repeat);
+			RasterFrame::TextureFrame(image_texture) => {
+				for instance in image_texture.instances() {
+					let image =
+						vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.texture.width(), instance.instance.texture.height()).with_extend(peniko::Extend::Repeat);
 
 					let id = image.data.id();
-					context.resource_overrides.insert(id, texture.texture.clone());
+					context.resource_overrides.insert(id, instance.instance.texture.clone());
 
-					render_stuff(image, texture.alpha_blend);
+					render_stuff(image, *instance.alpha_blending);
 				}
 			}
 		}

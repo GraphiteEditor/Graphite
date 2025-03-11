@@ -210,7 +210,7 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.weight = tool_options.line_weight;
 
 				// Extend an endpoint of the selected path
-				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
 					tool_data.layer = Some(layer);
@@ -311,7 +311,7 @@ impl Fsm for FreehandToolFsmState {
 }
 
 fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVec2, extend: bool, responses: &mut VecDeque<Message>) {
-	if !tool_data.end_point.map_or(true, |(last_pos, _)| position != last_pos) || !position.is_finite() {
+	if !tool_data.end_point.is_none_or(|(last_pos, _)| position != last_pos) || !position.is_finite() {
 		return;
 	}
 

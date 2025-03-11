@@ -397,7 +397,7 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+	let selected_nodes = document.network_interface.selected_nodes();
 	let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
 
@@ -463,7 +463,7 @@ impl Fsm for TextToolFsmState {
 
 					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
 				} else {
-					for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+					for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 						let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer, &document.network_interface) else {
 							continue;
 						};

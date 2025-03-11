@@ -1,6 +1,7 @@
 use super::*;
-use crate::transform::Footprint;
+use crate::transform::TransformMut;
 use crate::uuid::generate_uuid;
+use crate::Ctx;
 
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
@@ -131,7 +132,7 @@ impl SegmentModification {
 			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
 			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
 
-			if !start.unwrap_or_default().map_or(true, |start| start.is_finite()) || !end.unwrap_or_default().map_or(true, |end| end.is_finite()) {
+			if !start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
 				warn!("Invalid handles when applying a segment modification");
 				continue;
 			}
@@ -424,25 +425,15 @@ impl core::hash::Hash for VectorModification {
 
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify<F: 'n + Send + Sync + Clone>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	input: F,
-	#[implementations(
-		() -> VectorDataTable,
-		Footprint -> VectorDataTable,
-	)]
-	vector_data: impl Node<F, Output = VectorDataTable>,
-	modification: Box<VectorModification>,
-) -> VectorDataTable {
-	let mut vector_data = vector_data.eval(input).await;
-	let vector_data = vector_data.one_item_mut();
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
+	let vector_data_transform = *vector_data.one_instance().transform;
+	let vector_data = vector_data.one_instance_mut().instance;
 
 	modification.apply(vector_data);
 
-	VectorDataTable::new(vector_data.clone())
+	let mut result = VectorDataTable::new(vector_data.clone());
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[test]
