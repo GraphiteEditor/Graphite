@@ -704,15 +704,13 @@ impl Fsm for SelectToolFsmState {
 						for layer in intersection.into_iter().filter(is_inside) {
 							draw_layer_outline(layer);
 						}
+					} else if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						for layer in intersection.iter().filter(|layer| !layer.has_children(document.metadata())) {
+							draw_layer_outline(*layer);
+						}
 					} else {
-						if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-							for layer in intersection.iter().filter(|layer| !layer.has_children(document.metadata())) {
-								draw_layer_outline(*layer);
-							}
-						} else {
-							for layer in intersection {
-								draw_layer_outline(layer);
-							}
+						for layer in intersection {
+							draw_layer_outline(layer);
 						}
 					}
 
