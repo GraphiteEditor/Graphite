@@ -8,7 +8,7 @@ use crate::consts::{
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -705,8 +705,14 @@ impl Fsm for SelectToolFsmState {
 							draw_layer_outline(layer);
 						}
 					} else {
-						for layer in intersection {
-							draw_layer_outline(layer);
+						if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+							for layer in intersection.iter().filter(|layer| !layer.has_children(document.metadata())) {
+								draw_layer_outline(*layer);
+							}
+						} else {
+							for layer in intersection {
+								draw_layer_outline(layer);
+							}
 						}
 					}
 
@@ -1387,6 +1393,7 @@ impl Fsm for SelectToolFsmState {
 						.collect();
 					tool_data.layers_dragging = updated_selection;
 				} else if selection_modified {
+					let filtered_selections = filter_nested_selection(document.metadata(), &new_selected);
 					let parent_selected: HashSet<_> = new_selected
 						.into_iter()
 						.map(|layer| {
@@ -1394,7 +1401,11 @@ impl Fsm for SelectToolFsmState {
 							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
 						})
 						.collect();
-					tool_data.layers_dragging.extend(parent_selected.iter().copied());
+					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						tool_data.layers_dragging.extend(filtered_selections);
+					} else {
+						tool_data.layers_dragging.extend(parent_selected.iter().copied());
+					}
 				}
 
 				if negative_selection || selection_modified {
@@ -1679,4 +1690,32 @@ pub fn extend_lasso(lasso_polygon: &mut Vec<DVec2>, point: DVec2) {
 		}
 		lasso_polygon.push(point);
 	}
+}
+
+pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashSet<LayerNodeIdentifier>) -> HashSet<LayerNodeIdentifier> {
+	let mut filtered_selection = HashSet::new();
+
+	// First collect childless layers
+	for &layer in new_selected {
+		if !layer.has_children(metadata) {
+			filtered_selection.insert(layer);
+		}
+	}
+
+	// Then process parents with all children selected
+	for &layer in new_selected {
+		if layer.has_children(metadata) {
+			let all_children_selected = layer.children(metadata).all(|child| new_selected.contains(&child));
+
+			if all_children_selected {
+				// Remove all children of the parent
+				layer.children(metadata).for_each(|child| {
+					filtered_selection.remove(&child);
+				});
+				// Add the parent
+				filtered_selection.insert(layer);
+			}
+		}
+	}
+	filtered_selection
 }
