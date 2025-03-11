@@ -103,6 +103,7 @@ jobs:
 
   cargo-deny:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
 
     steps:
       - name: 📥 Clone and checkout repository
