@@ -1,4 +1,4 @@
-name: "Check Dependencies"
+name: "Audit Security Advisories"
 
 on:
   # Run once each day
@@ -22,15 +22,4 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories
-          manifest-path: libraries/rawkit/Cargo.toml
-
-      - name: 📜 Check crate license compatibility for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check bans licenses sources
-
-      - name: 📜 Check crate license compatibility for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check bans licenses sources
           manifest-path: libraries/rawkit/Cargo.toml

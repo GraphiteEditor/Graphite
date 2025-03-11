@@ -100,3 +100,21 @@ jobs:
   #     - name: 🧪 Run Rust miri
   #       run: |
   #         mold -run cargo +nightly miri nextest run -j32 --all-features
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 📜 Check crate license compatibility for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+
+      - name: 📜 Check crate license compatibility for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+          manifest-path: libraries/rawkit/Cargo.toml
