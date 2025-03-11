@@ -129,8 +129,12 @@ where
 	V: VectorDataTableIterMut + 'n + Send,
 {
 	let fill: Fill = fill.into();
-	for target in vector_data.vector_iter_mut() {
-		target.instance.style.set_fill(fill.clone());
+	for vector in vector_data.vector_iter_mut() {
+		let mut fill = fill.clone();
+		if let Fill::Gradient(gradient) = &mut fill {
+			gradient.transform *= *vector.transform;
+		}
+		vector.instance.style.set_fill(fill);
 	}
 
 	vector_data

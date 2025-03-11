@@ -558,7 +558,7 @@ impl<'a> Selected<'a> {
 			.unwrap_or(DAffine2::IDENTITY);
 
 		if transform.matrix2.determinant().abs() <= f64::EPSILON {
-			transform.matrix2 += DMat2::IDENTITY * 1e-4;
+			transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 		}
 
 		let bounds = self

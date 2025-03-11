@@ -10,7 +10,7 @@ use graphene_core::instances::Instances;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::transform::TransformMut;
@@ -239,7 +239,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
-	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export);
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(ctx.clone()).await;
