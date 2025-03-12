@@ -24,7 +24,6 @@ fn draw_line_with_length(line_start: DVec2, line_end: DVec2, transform: DAffine2
 		.trim_end_matches('.')
 		.to_string();
 
-	debug!("{}", transform_to_document.transform_vector2(line_end - line_start).length());
 	const TOLERANCE: f64 = 0.01;
 	if transform_to_document.transform_vector2(line_end - line_start).length() >= TOLERANCE {
 		const TEXT_PADDING: f64 = 5.;

@@ -546,7 +546,7 @@ impl Fsm for SelectToolFsmState {
 
 				// When not in Drawing State
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
-				// TODO: Don't use `Key::Mmb` directly, instead take it as a variable from the input mappings list like in all other places
+				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
 				if !matches!(self, Self::Drawing { .. }) && !input.keyboard.get(Key::MouseMiddle as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
@@ -583,12 +583,11 @@ impl Fsm for SelectToolFsmState {
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
 								// Since we're already in viewport space, use identity transform
 								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
-								// let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
-								// bounding_box_manager.render_overlays(&mut overlay_context);
 							}
 						}
 					}
 				}
+
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
