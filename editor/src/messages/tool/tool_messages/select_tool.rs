@@ -1308,10 +1308,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
 				tool_data.snap_manager.cleanup(responses);
@@ -1324,10 +1322,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -1338,10 +1334,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
 				tool_data.snap_manager.cleanup(responses);

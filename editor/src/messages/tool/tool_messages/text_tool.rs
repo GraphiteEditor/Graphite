@@ -698,10 +698,8 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::DragStop) => {
-				let response = match input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
+				let drag_too_small = input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
 				tool_data.resize.snap_manager.cleanup(responses);
