@@ -15,17 +15,17 @@ use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_text, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
+use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
 
 use bezier_rs::Subpath;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
-use graphene_core::text::load_face;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
 
@@ -511,28 +511,22 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
 					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-						let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool in `interact()`");
-
-						let buzz_face = font_cache.get(font).map(|data| load_face(data));
-						let far = graphene_core::text::bounding_box(text, buzz_face, typesetting);
-						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document.metadata().transform_to_viewport(layer) * quad;
-
-						overlay_context.dashed_quad(transformed_quad, None, Some(4.), Some(4.), Some(0.5));
+						let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
 					}
 				}
 
 				// Update bounds
-				let transform = document
+				let mut transform = document
 					.network_interface
 					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport(layer));
+					.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+					.unwrap_or_default();
 
-				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
-				let mut transform_tampered = false;
 				// Check if the matrix is not invertible
+				let mut transform_tampered = false;
 				if transform.matrix2.determinant() == 0. {
 					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 					transform_tampered = true;
@@ -549,6 +543,7 @@ impl Fsm for SelectToolFsmState {
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
 					.reduce(graphene_core::renderer::Quad::combine_bounds);
+
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
