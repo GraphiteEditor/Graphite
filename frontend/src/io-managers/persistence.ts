@@ -84,7 +84,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-		if (currentDocumentId) {
+		if (currentDocumentId && currentDocumentId in previouslySavedDocuments) {
 			const doc = previouslySavedDocuments[currentDocumentId];
 			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
 			editor.handle.selectDocument(BigInt(currentDocumentId));

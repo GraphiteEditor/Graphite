@@ -141,14 +141,18 @@ impl Dispatcher {
 					};
 
 					let graphene_std::renderer::RenderMetadata {
-						footprints,
+						upstream_footprints: footprints,
+						local_transforms,
 						click_targets,
 						clip_targets,
 					} = render_metadata;
 
 					// Run these update state messages immediately
 					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints },
+						DocumentMessage::UpdateUpstreamTransforms {
+							upstream_footprints: footprints,
+							local_transforms,
+						},
 						DocumentMessage::UpdateClickTargets { click_targets },
 						DocumentMessage::UpdateClipTargets { clip_targets },
 					];

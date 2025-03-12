@@ -525,7 +525,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(PenToolMessage::Abort);
 					responses.add(ToolMessage::UpdateHints);
 				} else {
-					selected.revert_operation();
 					selected.original_transforms.clear();
 					self.typing.clear();
 					self.transform_operation = TransformOperation::None;
