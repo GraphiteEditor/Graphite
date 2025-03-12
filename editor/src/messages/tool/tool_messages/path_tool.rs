@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
-	ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
+	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
@@ -372,7 +372,7 @@ struct PathToolData {
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
-	saved_points_before_click: Vec<ManipulatorPointId>,
+	last_clicked_point_was_selected: bool,
 }
 
 impl PathToolData {
@@ -383,10 +383,6 @@ impl PathToolData {
 
 	fn remove_saved_points(&mut self) {
 		self.saved_points_before_anchor_select_toggle.clear();
-	}
-
-	fn save_points_before_click(&mut self, points: Vec<ManipulatorPointId>) {
-		self.saved_points_before_click = points;
 	}
 
 	pub fn selection_quad(&self) -> Quad {
@@ -485,41 +481,20 @@ impl PathToolData {
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
-		// Check if clicking on an already selected point
-		if let Some(layer) = shape_editor
-			.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
-			.filter(|(_, nearest_point)| shape_editor.selected_points().any(|&point| *nearest_point == point))
-			.map(|(layer, _)| layer)
-		{
-			// If clicking on an already selected point, don't change selection. Instead, start dragging immediately.
+		// Check if Point already Selected, else select the first point within the threshold (in pixels)
+		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
+			self.last_clicked_point_was_selected = already_selected;
+			// If the point is already selected and we're using shift (extend_selection),
+			// don't change selection.
+			// otherwise select first point within threshold.
+			if !(already_selected && extend_selection) {
+				if let Some(updated_selection_info) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
+					selection_info = updated_selection_info;
+				}
+			}
 
-			// Create a SelectedPointsInfo with all currently selected points
-			let points = shape_editor
-				.selected_shape_state
-				.iter()
-				.flat_map(|(&layer, state)| state.selected().map(move |point_id| ManipulatorPointInfo { layer, point_id }))
-				.collect();
-
-			// Offset is distance between point and cursor ( in this case it is zero )
-			let offset = DVec2 { x: 0., y: 0. };
-
-			// Get the vector data for the current layer
-			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-
-			let selected_points = SelectedPointsInfo { points, offset, vector_data };
-			self.save_points_before_click(old_selection.clone());
-			// Start dragging without changing selection
-			self.start_dragging_point(selected_points, input, document, shape_editor);
-			responses.add(OverlaysMessage::Draw);
-
-			PathToolFsmState::Dragging(self.dragging_state)
-		}
-		// Select the first point within the threshold (in pixels)
-		else if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
-			responses.add(DocumentMessage::StartTransaction);
-			self.save_points_before_click(old_selection.clone());
-			if let Some(selected_points) = selected_points {
+			if let Some(selected_points) = selection_info {
 				self.drag_start_pos = input.mouse.position;
 
 				// If selected points contain only handles and there was some selection before, then it is stored and becomes restored upon release
@@ -1210,19 +1185,23 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
-
+				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 
 				if let Some((layer, nearest_point)) = nearest_point {
-					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && extend_selection {
-						let was_previously_selected = tool_data.saved_points_before_click.iter().any(|&point| nearest_point == point);
-						if was_previously_selected {
+					if !drag_occurred && extend_selection {
+						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
+						debug!("{}", clicked_selected);
+						if clicked_selected && tool_data.last_clicked_point_was_selected {
 							shape_editor.selected_shape_state.entry(layer).or_default().deselect_point(nearest_point);
-							responses.add(OverlaysMessage::Draw);
+						} else {
+							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
 						}
+						responses.add(OverlaysMessage::Draw);
 					}
 				}
-				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+
+				if tool_data.handle_drag_toggle && drag_occurred {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 
@@ -1238,7 +1217,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if let Some((layer, nearest_point)) = nearest_point {
-					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !extend_selection {
+					if !drag_occurred && !extend_selection {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 						if clicked_selected {
 							shape_editor.deselect_all_points();
