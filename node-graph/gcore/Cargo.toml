@@ -49,6 +49,7 @@ rand = { workspace = true, default-features = false, features = ["std_rng"] }
 glam = { workspace = true, default-features = false, features = [
 	"scalar-math",
 ] }
+serde_json = { workspace = true }
 
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
