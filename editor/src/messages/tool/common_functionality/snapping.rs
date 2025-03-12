@@ -187,7 +187,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 	best
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct SnapCache {
 	pub manipulators: HashMap<LayerNodeIdentifier, HashSet<PointId, NoHashBuilder>, NoHashBuilder>,
 	pub unselected: Vec<SnapCandidatePoint>,
