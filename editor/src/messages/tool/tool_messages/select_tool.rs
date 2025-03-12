@@ -523,16 +523,16 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Update bounds
-				let transform = document
+				let mut transform = document
 					.network_interface
 					.selected_nodes()
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport(layer));
+					.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+					.unwrap_or_default();
 
-				let mut transform = transform.unwrap_or(DAffine2::IDENTITY);
-				let mut transform_tampered = false;
 				// Check if the matrix is not invertible
+				let mut transform_tampered = false;
 				if transform.matrix2.determinant() == 0. {
 					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 					transform_tampered = true;
@@ -549,6 +549,7 @@ impl Fsm for SelectToolFsmState {
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
 					.reduce(graphene_core::renderer::Quad::combine_bounds);
+
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
