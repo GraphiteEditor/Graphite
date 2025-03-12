@@ -335,6 +335,7 @@ fn blend_mode<T: SetBlendMode>(
 	mut value: T,
 	blend_mode: BlendMode,
 ) -> T {
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.set_blend_mode(blend_mode);
 	value
 }
@@ -350,7 +351,7 @@ fn opacity<T: MultiplyAlpha>(
 	mut value: T,
 	#[default(100.)] factor: Percentage,
 ) -> T {
-	let opacity_multiplier = factor / 100.;
-	value.multiply_alpha(opacity_multiplier);
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	value.multiply_alpha(factor / 100.);
 	value
 }
