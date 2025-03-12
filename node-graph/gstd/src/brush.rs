@@ -1,4 +1,4 @@
-use crate::raster::{blend_image_closure, BlendImageTupleNode, ExtendImageToBoundsNode};
+use crate::raster::{BlendImageTupleNode, ExtendImageToBoundsNode, blend_image_closure};
 
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
@@ -9,8 +9,8 @@ use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{Alpha, Bitmap, BlendMode, Color, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
-use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorDataTable;
+use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
 
 use glam::{DAffine2, DVec2};

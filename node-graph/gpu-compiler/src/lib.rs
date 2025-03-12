@@ -242,7 +242,7 @@ mod test {
 name = "project-node"
 version = "0.1.0"
 authors = ["Example <john.smith@example.com>", "smith.john@example.com", ]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
 

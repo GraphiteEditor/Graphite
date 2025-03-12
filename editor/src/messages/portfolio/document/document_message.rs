@@ -7,10 +7,10 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 
 use graph_craft::document::NodeId;
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::Color;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
 

@@ -12,9 +12,9 @@
 use glam::{DMat2, DMat3, DVec2};
 use std::f64::consts::{PI, TAU};
 
-use crate::aabb::{bounding_box_around_point, expand_bounding_box, extend_bounding_box, merge_bounding_boxes, Aabb};
-use crate::math::{lerp, vector_angle};
 use crate::EPS;
+use crate::aabb::{Aabb, bounding_box_around_point, expand_bounding_box, extend_bounding_box, merge_bounding_boxes};
+use crate::math::{lerp, vector_angle};
 
 /// Represents a segment of a path in a 2D space, based on the SVG path specification.
 ///
@@ -155,11 +155,7 @@ impl PathSegment {
 				let b = 6. * b;
 				let numerator = a.x * b.y - a.y * b.x;
 				let denominator = a.length_squared() * a.length();
-				if denominator == 0. {
-					0.
-				} else {
-					numerator / denominator
-				}
+				if denominator == 0. { 0. } else { numerator / denominator }
 			}
 			PathSegment::Quadratic(start, control, end) => {
 				// First derivative
@@ -168,11 +164,7 @@ impl PathSegment {
 				let b = 2. * (start - 2. * control + end);
 				let numerator = a.x * b.y - a.y * b.x;
 				let denominator = a.length_squared() * a.length();
-				if denominator == 0. {
-					0.
-				} else {
-					numerator / denominator
-				}
+				if denominator == 0. { 0. } else { numerator / denominator }
 			}
 			PathSegment::Arc(..) => self.arc_segment_to_cubics(0.001)[0].start_curvature(),
 		}

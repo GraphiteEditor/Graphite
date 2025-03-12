@@ -30,7 +30,7 @@ mod tests {
 	const EPSILON: f64 = 1e-10_f64;
 
 	macro_rules! test_end_to_end{
-		($($name:ident: $input:expr => ($expected_value:expr, $expected_unit:expr)),* $(,)?) => {
+		($($name:ident: $input:expr_2021 => ($expected_value:expr_2021, $expected_unit:expr_2021)),* $(,)?) => {
 			$(
 				#[test]
 				fn $name() {

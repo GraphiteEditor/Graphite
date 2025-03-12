@@ -87,12 +87,12 @@ impl<T: ExtractIndex> ExtractIndex for Option<T> {
 }
 impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
-		let Some(ref inner) = self else { return Err(VarArgsResult::NoVarArgs) };
+		let Some(inner) = self else { return Err(VarArgsResult::NoVarArgs) };
 		inner.vararg(index)
 	}
 
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
-		let Some(ref inner) = self else { return Err(VarArgsResult::NoVarArgs) };
+		let Some(inner) = self else { return Err(VarArgsResult::NoVarArgs) };
 		inner.varargs_len()
 	}
 }

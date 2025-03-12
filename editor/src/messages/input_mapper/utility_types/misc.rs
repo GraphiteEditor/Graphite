@@ -1,4 +1,4 @@
-use super::input_keyboard::{all_required_modifiers_pressed, Key, KeysGroup, LayoutKeysGroup};
+use super::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, all_required_modifiers_pressed};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;

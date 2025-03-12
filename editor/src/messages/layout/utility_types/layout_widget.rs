@@ -348,11 +348,7 @@ impl LayoutGroup {
 				val.clone_from(&tooltip);
 			}
 		}
-		if is_col {
-			Self::Column { widgets }
-		} else {
-			Self::Row { widgets }
-		}
+		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.

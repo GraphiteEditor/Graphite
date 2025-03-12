@@ -6,9 +6,9 @@ use dyn_any::StaticType;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 // #[cfg(not(target_arch = "wasm32"))]
 // use std::sync::Mutex;
 #[cfg(feature = "tokio")]
@@ -18,9 +18,9 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
-use web_sys::window;
-#[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
+#[cfg(target_arch = "wasm32")]
+use web_sys::window;
 
 #[derive(Debug)]
 struct WindowWrapper {

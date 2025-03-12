@@ -41,11 +41,7 @@ impl PrimitiveType for TypeAscii {
 
 	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let value = file.read_ascii()?;
-		if value.is_ascii() {
-			Ok(value)
-		} else {
-			Err(TiffError::InvalidValue)
-		}
+		if value.is_ascii() { Ok(value) } else { Err(TiffError::InvalidValue) }
 	}
 }
 

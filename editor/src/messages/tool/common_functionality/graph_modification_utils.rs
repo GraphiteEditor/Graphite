@@ -6,12 +6,12 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::concrete;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrameTable;
+use graph_craft::document::{NodeId, NodeInput, value::TaggedValue};
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
-use graphene_core::Color;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 
 use glam::DVec2;
@@ -385,7 +385,7 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Return an iterator up the horizontal flow of the layer
-	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + 'a {
+	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + use<'a> {
 		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], &[], FlowType::HorizontalFlow)
 	}
 

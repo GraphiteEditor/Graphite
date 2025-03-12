@@ -2,8 +2,8 @@ use gpu_compiler_bin_wrapper::CompileRequest;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
-use graphene_core::raster::adjustments::BlendMode;
 use graphene_core::Color;
+use graphene_core::raster::adjustments::BlendMode;
 use wgpu_executor::{ShaderIO, ShaderInput};
 
 use std::time::Duration;

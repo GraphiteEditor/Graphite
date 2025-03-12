@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use graph_craft::proto::ProtoNetwork;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 

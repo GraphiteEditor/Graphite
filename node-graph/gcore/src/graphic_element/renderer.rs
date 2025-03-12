@@ -6,7 +6,7 @@ pub use rect::Rect;
 use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
-use crate::uuid::{generate_uuid, NodeId};
+use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
@@ -883,7 +883,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 impl GraphicElementRendered for RasterFrame {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			RasterFrame::ImageFrame(ref image) => image.render_svg(render, render_params),
+			RasterFrame::ImageFrame(image) => image.render_svg(render, render_params),
 			RasterFrame::TextureFrame(_) => unimplemented!(),
 		}
 	}

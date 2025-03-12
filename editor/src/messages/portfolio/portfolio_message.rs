@@ -4,9 +4,9 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
+use graphene_core::Color;
 use graphene_core::raster::Image;
 use graphene_core::text::Font;
-use graphene_core::Color;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

@@ -3,7 +3,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 
 use graphene_core::renderer::Quad;
-use graphene_core::text::{load_face, FontCache};
+use graphene_core::text::{FontCache, load_face};
 use graphene_std::vector::PointId;
 
 use glam::DVec2;

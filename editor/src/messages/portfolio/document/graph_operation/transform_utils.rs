@@ -1,7 +1,7 @@
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::{NodeId, NodeInput, value::TaggedValue};
 use graphene_core::vector::PointId;
 
 use glam::{DAffine2, DVec2};
@@ -89,11 +89,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
-	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() {
-		pivot
-	} else {
-		DVec2::splat(0.5)
-	}
+	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() { pivot } else { DVec2::splat(0.5) }
 }
 
 /// ![](https://files.keavon.com/-/OptimisticSpotlessTinamou/capture.png)

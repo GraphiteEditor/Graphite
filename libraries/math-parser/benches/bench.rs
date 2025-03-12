@@ -1,10 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 use math_parser::ast;
 use math_parser::context::EvalContext;
 
 macro_rules! generate_benchmarks {
-    ($( $input:expr ),* $(,)?) => {
+    ($( $input:expr_2021 ),* $(,)?) => {
         fn parsing_bench(c: &mut Criterion) {
             $(
                 c.bench_function(concat!("parse ", $input), |b| {

@@ -14,10 +14,10 @@ use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, piv
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{lines_clipping, load_face, Font, FontCache, TypesettingConfig};
-use graphene_core::vector::style::Fill;
 use graphene_core::Color;
+use graphene_core::renderer::Quad;
+use graphene_core::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
 pub struct TextTool {
@@ -514,7 +514,7 @@ impl Fsm for TextToolFsmState {
 					// The angle is choosen to be parallel to the X axis in the bounds transform.
 					let angle = bounding_box_manager.transform.transform_vector2(DVec2::X).to_angle();
 					// Update pivot
-					tool_data.pivot.update_pivot(&document, &mut overlay_context, angle);
+					tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -607,7 +607,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = center_bool.then_some(bounds.center_of_transformation);
@@ -682,7 +682,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
 					}

@@ -1,7 +1,7 @@
 use super::*;
-use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-use crate::utils::{compute_circular_subpath_details, is_rectangle_inside_other, line_intersection, SubpathTValue};
 use crate::TValue;
+use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
+use crate::utils::{SubpathTValue, compute_circular_subpath_details, is_rectangle_inside_other, line_intersection};
 
 use glam::{DAffine2, DMat2, DVec2};
 use std::f64::consts::PI;
@@ -539,9 +539,9 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::Bezier;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils;
-	use crate::Bezier;
 
 	use glam::DVec2;
 
@@ -629,44 +629,54 @@ mod tests {
 		let mut n = (subpath.len() as i64) - 1;
 
 		let t0 = 0.;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t0)),
-			linear_bezier.evaluate(TValue::Parametric(normalize_t(n, t0))),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t0)),
+				linear_bezier.evaluate(TValue::Parametric(normalize_t(n, t0))),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
 		let t1 = 0.25;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t1)),
-			linear_bezier.evaluate(TValue::Parametric(normalize_t(n, t1))),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t1)),
+				linear_bezier.evaluate(TValue::Parametric(normalize_t(n, t1))),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
 		let t2 = 0.50;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t2)),
-			quadratic_bezier.evaluate(TValue::Parametric(normalize_t(n, t2))),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t2)),
+				quadratic_bezier.evaluate(TValue::Parametric(normalize_t(n, t2))),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
 		let t3 = 0.75;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t3)),
-			quadratic_bezier.evaluate(TValue::Parametric(normalize_t(n, t3))),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t3)),
+				quadratic_bezier.evaluate(TValue::Parametric(normalize_t(n, t3))),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
 		let t4 = 1.;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t4)),
-			quadratic_bezier.evaluate(TValue::Parametric(1.)),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t4)),
+				quadratic_bezier.evaluate(TValue::Parametric(1.)),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
 		// Test closed subpath
 
@@ -674,20 +684,24 @@ mod tests {
 		n = subpath.len() as i64;
 
 		let t5 = 2. / 3.;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t5)),
-			cubic_bezier.evaluate(TValue::Parametric(normalize_t(n, t5))),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t5)),
+				cubic_bezier.evaluate(TValue::Parametric(normalize_t(n, t5))),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
 		let t6 = 1.;
-		assert!(utils::dvec2_compare(
-			subpath.evaluate(SubpathTValue::GlobalParametric(t6)),
-			cubic_bezier.evaluate(TValue::Parametric(1.)),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				subpath.evaluate(SubpathTValue::GlobalParametric(t6)),
+				cubic_bezier.evaluate(TValue::Parametric(1.)),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 	}
 
 	#[test]
@@ -737,35 +751,41 @@ mod tests {
 		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
 		let subpath_intersections = subpath.intersections(&line, None, None);
 
-		assert!(utils::dvec2_compare(
-			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[0].0,
-				t: subpath_intersections[0].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[0].0,
+					t: subpath_intersections[0].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
-		assert!(utils::dvec2_compare(
-			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[1].0,
-				t: subpath_intersections[1].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[1].0,
+					t: subpath_intersections[1].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
-		assert!(utils::dvec2_compare(
-			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[2].0,
-				t: subpath_intersections[2].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[1])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[2].0,
+					t: subpath_intersections[2].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 	}
 
 	#[test]
@@ -816,25 +836,29 @@ mod tests {
 		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
 		let subpath_intersections = subpath.intersections(&line, None, None);
 
-		assert!(utils::dvec2_compare(
-			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[0].0,
-				t: subpath_intersections[0].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[0].0,
+					t: subpath_intersections[0].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
-		assert!(utils::dvec2_compare(
-			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[1].0,
-				t: subpath_intersections[1].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[1].0,
+					t: subpath_intersections[1].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 	}
 
 	#[test]
@@ -884,35 +908,41 @@ mod tests {
 		let quadratic_1_intersections = quadratic_bezier_1.intersections(&line, None, None);
 		let subpath_intersections = subpath.intersections(&line, None, None);
 
-		assert!(utils::dvec2_compare(
-			cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[0].0,
-				t: subpath_intersections[0].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				cubic_bezier.evaluate(TValue::Parametric(cubic_intersections[0])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[0].0,
+					t: subpath_intersections[0].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
-		assert!(utils::dvec2_compare(
-			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[1].0,
-				t: subpath_intersections[1].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[0])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[1].0,
+					t: subpath_intersections[1].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 
-		assert!(utils::dvec2_compare(
-			quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[1])),
-			subpath.evaluate(SubpathTValue::Parametric {
-				segment_index: subpath_intersections[2].0,
-				t: subpath_intersections[2].1
-			}),
-			MAX_ABSOLUTE_DIFFERENCE
-		)
-		.all());
+		assert!(
+			utils::dvec2_compare(
+				quadratic_bezier_1.evaluate(TValue::Parametric(quadratic_1_intersections[1])),
+				subpath.evaluate(SubpathTValue::Parametric {
+					segment_index: subpath_intersections[2].0,
+					t: subpath_intersections[2].1
+				}),
+				MAX_ABSOLUTE_DIFFERENCE
+			)
+			.all()
+		);
 	}
 
 	// TODO: add more intersection tests
@@ -924,19 +954,19 @@ mod tests {
 
 		let curve = Bezier::from_quadratic_dvec2(DVec2::new(189., 289.), DVec2::new(9., 286.), DVec2::new(45., 410.));
 		let curve_intersecting = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(curve_intersecting.is_inside_subpath(&boundary_polygon, None, None), false);
+		assert!(!curve_intersecting.is_inside_subpath(&boundary_polygon, None, None));
 
 		let curve = Bezier::from_quadratic_dvec2(DVec2::new(115., 37.), DVec2::new(51.4, 91.8), DVec2::new(76.5, 242.));
 		let curve_outside = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(curve_outside.is_inside_subpath(&boundary_polygon, None, None), false);
+		assert!(!curve_outside.is_inside_subpath(&boundary_polygon, None, None));
 
 		let curve = Bezier::from_cubic_dvec2(DVec2::new(210.1, 133.5), DVec2::new(150.2, 436.9), DVec2::new(436., 285.), DVec2::new(247.6, 240.7));
 		let curve_inside = Subpath::<EmptyId>::from_bezier(&curve);
-		assert_eq!(curve_inside.is_inside_subpath(&boundary_polygon, None, None), true);
+		assert!(curve_inside.is_inside_subpath(&boundary_polygon, None, None));
 
 		let line = Bezier::from_linear_dvec2(DVec2::new(101., 101.5), DVec2::new(150.2, 499.));
 		let line_inside = Subpath::<EmptyId>::from_bezier(&line);
-		assert_eq!(line_inside.is_inside_subpath(&boundary_polygon, None, None), true);
+		assert!(line_inside.is_inside_subpath(&boundary_polygon, None, None));
 	}
 
 	#[test]

@@ -8,15 +8,15 @@ use bezier_rs::Subpath;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
-use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::GraphicGroupTable;
+use graphene_std::vector::{VectorData, VectorDataTable};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -82,10 +82,9 @@ impl<'a> ModifyInputsContext<'a> {
 			if current_index == insert_index {
 				break;
 			}
-			let next_node_in_stack_id =
-				network_interface
-					.input_from_connector(&post_node_input_connector, &[])
-					.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
+			let next_node_in_stack_id = network_interface
+				.input_from_connector(&post_node_input_connector, &[])
+				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
 
 			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
 				// Only increment index for layer nodes

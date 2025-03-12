@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::NodeId;
-use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
+use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
 
 use glam::DVec2;

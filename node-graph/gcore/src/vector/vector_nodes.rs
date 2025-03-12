@@ -5,8 +5,8 @@ use crate::instances::{InstanceMut, Instances};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
-use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
+use crate::vector::style::LineJoin;
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};

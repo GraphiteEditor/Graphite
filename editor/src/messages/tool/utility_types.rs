@@ -2,8 +2,8 @@
 
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
-use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::broadcast::BroadcastMessage;
+use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
