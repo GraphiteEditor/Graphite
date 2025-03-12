@@ -57,7 +57,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			"documents_tab_order",
 			(old) => {
 				const order = old || [];
-				return order.filter(docId => docId !== id);
+				return order.filter((docId) => docId !== id);
 			},
 			graphiteStore,
 		);
@@ -67,7 +67,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			const documentIndex = getFromStore(portfolio).activeDocumentIndex;
 			const documentId = String(getFromStore(portfolio).documents[documentIndex].id);
 
-			const tabOrder = await get<string[]>("documents_tab_order", graphiteStore) || [];
+			const tabOrder = (await get<string[]>("documents_tab_order", graphiteStore)) || [];
 			if (tabOrder.includes(documentId)) {
 				await storeCurrentDocumentId(documentId);
 			}
