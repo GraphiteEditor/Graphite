@@ -613,7 +613,7 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
 
 				// Update compass rose
 				tool_data.compass_rose.refresh_position(document);

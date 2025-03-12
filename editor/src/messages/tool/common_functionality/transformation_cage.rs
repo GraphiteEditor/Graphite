@@ -355,7 +355,7 @@ pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	/// The transform to viewport space for the bounds co-ordinates when the bounds were last updated.
 	pub transform: DAffine2,
-	/// Was the transform previously singular?
+	/// Whether the transform is actually singular but adjusted to not be so.
 	pub transform_tampered: bool,
 	/// The transform to viewport space for the bounds co-ordinates when the transformation was started.
 	pub original_bound_transform: DAffine2,

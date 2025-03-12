@@ -511,11 +511,7 @@ impl Fsm for TextToolFsmState {
 					}
 
 					bounding_box_manager.render_overlays(&mut overlay_context, false);
-
-					// The angle is choosen to be parallel to the X axis in the bounds transform.
-					let angle = bounding_box_manager.transform.transform_vector2(DVec2::X).to_angle();
-					// Update pivot
-					tool_data.pivot.update_pivot(&document, &mut overlay_context, angle);
+					tool_data.pivot.update_pivot(&document, &mut overlay_context, None);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
