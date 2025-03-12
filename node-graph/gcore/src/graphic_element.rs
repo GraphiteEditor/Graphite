@@ -62,8 +62,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 	#[serde(untagged)]
 	enum EitherFormat {
 		OldGraphicGroup(OldGraphicGroup),
-		OldGraphicGroupTable(OldGraphicGroupTable),
-		GraphicGroupTable(GraphicGroupTable),
+		InstanceTable(serde_json::Value),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
@@ -77,18 +76,25 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 			}
 			graphic_group_table
 		}
-		EitherFormat::OldGraphicGroupTable(old) => {
-			let mut graphic_group_table = GraphicGroupTable::empty();
-			for (graphic_element, source_node_id) in old.instances().next().map(|instance| instance.instance.elements.clone()).unwrap_or_else(|| {
-				warn!("OldGraphicGroupTable is empty, returning empty GraphicGroupTable");
-				vec![]
-			}) {
-				let pushed = graphic_group_table.push(graphic_element);
-				*pushed.source_node_id = source_node_id;
+		EitherFormat::InstanceTable(value) => {
+			// Try to deserialize as either table format
+			if let Ok(old_table) = serde_json::from_value::<OldGraphicGroupTable>(value.clone()) {
+				let mut graphic_group_table = GraphicGroupTable::empty();
+				for instance in old_table.instances() {
+					for (graphic_element, source_node_id) in &instance.instance.elements {
+						let new_row = graphic_group_table.push(graphic_element.clone());
+						*new_row.source_node_id = *source_node_id;
+						*new_row.transform = *instance.transform;
+						*new_row.alpha_blending = *instance.alpha_blending;
+					}
+				}
+				graphic_group_table
+			} else if let Ok(new_table) = serde_json::from_value::<GraphicGroupTable>(value) {
+				new_table
+			} else {
+				return Err(serde::de::Error::custom("Failed to deserialize GraphicGroupTable"));
 			}
-			graphic_group_table
 		}
-		EitherFormat::GraphicGroupTable(graphic_group_table) => graphic_group_table,
 	})
 }
 
