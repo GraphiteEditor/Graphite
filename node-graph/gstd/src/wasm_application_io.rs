@@ -5,10 +5,12 @@ pub use graph_craft::wasm_application_io::*;
 use graphene_core::application_io::SurfaceHandle;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
+use graphene_core::instances::Instances;
+#[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::transform::TransformMut;
@@ -149,19 +151,22 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	RenderOutputType::CanvasFrame(frame)
 }
 
-#[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
-async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
+#[node_macro::node(category(""))]
+async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
 		ImageFrameTable<Color>,
 		GraphicGroupTable,
 	)]
-	mut data: T,
+	mut data: Instances<T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> ImageFrameTable<Color> {
+) -> ImageFrameTable<Color>
+where
+	Instances<T>: GraphicElementRendered,
+{
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrameTable::empty();
@@ -176,7 +181,9 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 		..Default::default()
 	};
 
-	*data.transform_mut() = DAffine2::from_translation(-aabb.start) * data.transform();
+	for instance in data.instances_mut() {
+		*instance.transform = DAffine2::from_translation(-aabb.start) * *instance.transform;
+	}
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();
@@ -232,7 +239,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
-	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export);
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(ctx.clone()).await;
@@ -245,7 +252,8 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let use_vello = use_vello && surface_handle.is_some();
 
 	let mut metadata = RenderMetadata {
-		footprints: HashMap::new(),
+		upstream_footprints: HashMap::new(),
+		local_transforms: HashMap::new(),
 		click_targets: HashMap::new(),
 		clip_targets: HashSet::new(),
 	};

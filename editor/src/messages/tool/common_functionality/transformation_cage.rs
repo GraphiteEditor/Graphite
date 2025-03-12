@@ -351,9 +351,13 @@ pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, aligned_to_ax
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxManager {
+	/// The corners of the box. Transform with original_bound_transform to get viewport co-ordinates.
 	pub bounds: [DVec2; 2],
+	/// The transform to viewport space for the bounds co-ordinates when the bounds were last updated.
 	pub transform: DAffine2,
+	/// Was the transform previously singular?
 	pub transform_tampered: bool,
+	/// The transform to viewport space for the bounds co-ordinates when the transformation was started.
 	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
