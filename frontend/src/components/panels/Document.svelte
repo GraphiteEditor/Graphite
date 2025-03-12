@@ -321,12 +321,7 @@
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
 		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
-		let height;
-		if (displayEditableTextbox.maxHeight) {
-			height = `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
-		} else {
-			height = "auto";
-		}
+		let height = displayEditableTextbox.maxHeight === undefined ? "auto" : `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";

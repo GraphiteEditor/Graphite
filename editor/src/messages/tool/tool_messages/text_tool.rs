@@ -627,7 +627,7 @@ impl Fsm for TextToolFsmState {
 						});
 
 						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
-						// Normalise so the size is always positive
+						// Normalize so the size is always positive
 						let (position, size) = (position.min(position + size), size.abs());
 
 						// Compute the offset needed for the top left in bounds space
