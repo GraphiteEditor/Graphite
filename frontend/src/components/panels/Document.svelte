@@ -319,10 +319,14 @@
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
+		// Make it so `maxHeight` is a multiple of `lineHeight`
+		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
+		let height = displayEditableTextbox.maxHeight === undefined ? "auto" : `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
+
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
-		textInput.style.height = displayEditableTextbox.maxHeight ? `${displayEditableTextbox.maxHeight}px` : "auto";
+		textInput.style.height = height;
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
