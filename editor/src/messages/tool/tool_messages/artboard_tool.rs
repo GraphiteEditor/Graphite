@@ -231,7 +231,7 @@ impl Fsm for ArtboardToolFsmState {
 						bounding_box_manager.bounds = bounds;
 						bounding_box_manager.transform = document.metadata().document_to_viewport;
 
-						bounding_box_manager.render_overlays(&mut overlay_context);
+						bounding_box_manager.render_overlays(&mut overlay_context, true);
 					} else {
 						tool_data.bounding_box_manager.take();
 					}

@@ -551,7 +551,7 @@ impl Fsm for SelectToolFsmState {
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;
 
-					bounding_box_manager.render_overlays(&mut overlay_context);
+					bounding_box_manager.render_overlays(&mut overlay_context, true);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}

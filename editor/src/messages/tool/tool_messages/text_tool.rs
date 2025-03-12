@@ -500,8 +500,7 @@ impl Fsm for TextToolFsmState {
 					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
 					bounding_box_manager.transform = layer_transform;
 
-					bounding_box_manager.render_overlays(&mut overlay_context);
-
+					bounding_box_manager.render_quad(&mut overlay_context);
 					// Draw red overlay if text is clipped
 					let transformed_quad = layer_transform * bounds;
 					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
@@ -510,6 +509,8 @@ impl Fsm for TextToolFsmState {
 							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED));
 						}
 					}
+
+					bounding_box_manager.render_overlays(&mut overlay_context, false);
 
 					// The angle is choosen to be parallel to the X axis in the bounds transform.
 					let angle = bounding_box_manager.transform.transform_vector2(DVec2::X).to_angle();

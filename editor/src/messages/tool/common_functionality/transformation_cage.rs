@@ -547,16 +547,24 @@ impl BoundingBoxManager {
 		}
 	}
 
+	pub fn render_quad(&self, overlay_context: &mut OverlayContext) {
+		let quad = self.transform * Quad::from_box(self.bounds);
+
+		// Draw the bounding box rectangle
+		overlay_context.quad(quad, None);
+	}
+
 	/// Update the position of the bounding box and transform handles
-	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
+	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext, render_quad: bool) {
 		let quad = self.transform * Quad::from_box(self.bounds);
 		let category = self.overlay_display_category();
 
 		let horizontal_edges = [quad.top_right().midpoint(quad.bottom_right()), quad.bottom_left().midpoint(quad.top_left())];
 		let vertical_edges = [quad.top_left().midpoint(quad.top_right()), quad.bottom_right().midpoint(quad.bottom_left())];
 
-		// Draw the bounding box rectangle
-		overlay_context.quad(quad, None);
+		if render_quad {
+			self.render_quad(overlay_context);
+		}
 
 		let mut draw_handle = |point: DVec2, angle: f64| {
 			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
