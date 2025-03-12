@@ -1004,16 +1004,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-				let aligned_to_axis = tool_data.axis_align || axis.is_constraint();
-				let mouse_delta = snap_drag(
-					start,
-					current,
-					tool_data.axis_align,
-					aligned_to_axis,
-					snap_data,
-					&mut tool_data.snap_manager,
-					&tool_data.snap_candidates,
-				);
+				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 				let mouse_delta = match axis {
 					Axis::X => mouse_delta.project_onto(e0),
 					Axis::Y => mouse_delta.project_onto(e0.perp()),
