@@ -10,7 +10,7 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
-use graphene_core::renderer::{GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
+use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
@@ -323,7 +323,7 @@ impl NodeRuntime {
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
 
 		// Render the thumbnail from a `GraphicElement` into an SVG string
-		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, bounds, true, false, false);
+		let render_params = RenderParams::new(ViewMode::Normal, bounds, true, false, false);
 		let mut render = SvgRender::new();
 		graphic_element.render_svg(&mut render, &render_params);
 
@@ -655,7 +655,7 @@ impl NodeGraphExecutor {
 	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, None, false, false, false);
+		let render_params = RenderParams::new(ViewMode::Normal, None, false, false, false);
 
 		// Render SVG
 		render_object.render_svg(&mut render, &render_params);

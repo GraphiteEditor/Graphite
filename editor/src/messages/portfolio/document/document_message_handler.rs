@@ -1192,13 +1192,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(DocumentMessage::CommitTransaction);
 				responses.add_front(DocumentMessage::StartTransaction);
 			}
-			DocumentMessage::ToggleLayerExpansion { id } => {
+			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
-				if self.collapsed.0.contains(&layer) {
-					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
+				let metadata = self.metadata();
+
+				let is_collapsed = self.collapsed.0.contains(&layer);
+
+				if is_collapsed {
+					if recursive {
+						let children: HashSet<_> = layer.children(metadata).collect();
+						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
+					} else {
+						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
+					}
 				} else {
+					if recursive {
+						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						self.collapsed.0.extend(children_to_add);
+					}
 					self.collapsed.0.push(layer);
 				}
+
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
@@ -1219,8 +1233,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::UpdateUpstreamTransforms { upstream_transforms } => {
-				self.network_interface.update_transforms(upstream_transforms);
+			DocumentMessage::UpdateUpstreamTransforms {
+				upstream_footprints,
+				local_transforms,
+			} => {
+				self.network_interface.update_transforms(upstream_footprints, local_transforms);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1620,6 +1637,44 @@ impl DocumentMessageHandler {
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
 			.or_else(|_| {
+				// TODO: Eventually remove this document upgrade code
+				#[derive(Debug, serde::Serialize, serde::Deserialize)]
+				pub struct OldDocumentMessageHandler {
+					// ============================================
+					// Fields that are saved in the document format
+					// ============================================
+					//
+					/// The node graph that generates this document's artwork.
+					/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
+					pub network: OldNodeNetwork,
+					/// List of the [`NodeId`]s that are currently selected by the user.
+					pub selected_nodes: SelectedNodes,
+					/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
+					/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
+					pub collapsed: CollapsedLayers,
+					/// The name of the document, which is displayed in the tab and title bar of the editor.
+					pub name: String,
+					/// The full Git commit hash of the Graphite repository that was used to build the editor.
+					/// We save this to provide a hint about which version of the editor was used to create the document.
+					pub commit_hash: String,
+					/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
+					pub document_ptz: PTZ,
+					/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
+					pub document_mode: DocumentMode,
+					/// The current view mode that the user has set for rendering the document within the viewport.
+					/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
+					pub view_mode: ViewMode,
+					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
+					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
+					pub overlays_visible: bool,
+					/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
+					pub rulers_visible: bool,
+					/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
+					pub graph_view_overlay_open: bool,
+					/// The current user choices for snapping behavior, including whether snapping is enabled at all.
+					pub snapping_state: SnappingState,
+				}
+
 				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| DocumentMessageHandler {
 					network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
 					collapsed: old_message_handler.collapsed,
@@ -1655,7 +1710,7 @@ impl DocumentMessageHandler {
 				path.pop();
 			}
 		}
-		structure_section.push(space | 1 << 63);
+		structure_section.push(space | (1 << 63));
 	}
 
 	/// Serializes the layer structure into a condensed 1D structure.
@@ -2624,42 +2679,4 @@ impl Iterator for ClickXRayIter<'_> {
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
 	}
-}
-
-// TODO: Eventually remove this document upgrade code
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct OldDocumentMessageHandler {
-	// ============================================
-	// Fields that are saved in the document format
-	// ============================================
-	//
-	/// The node graph that generates this document's artwork.
-	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
-	pub network: OldNodeNetwork,
-	/// List of the [`NodeId`]s that are currently selected by the user.
-	pub selected_nodes: SelectedNodes,
-	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
-	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
-	pub collapsed: CollapsedLayers,
-	/// The name of the document, which is displayed in the tab and title bar of the editor.
-	pub name: String,
-	/// The full Git commit hash of the Graphite repository that was used to build the editor.
-	/// We save this to provide a hint about which version of the editor was used to create the document.
-	pub commit_hash: String,
-	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
-	pub document_ptz: PTZ,
-	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
-	pub document_mode: DocumentMode,
-	/// The current view mode that the user has set for rendering the document within the viewport.
-	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	pub view_mode: ViewMode,
-	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
-	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	pub overlays_visible: bool,
-	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
-	pub rulers_visible: bool,
-	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
-	pub graph_view_overlay_open: bool,
-	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
-	pub snapping_state: SnappingState,
 }
