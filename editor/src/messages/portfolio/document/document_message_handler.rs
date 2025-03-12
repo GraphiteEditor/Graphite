@@ -1192,13 +1192,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(DocumentMessage::CommitTransaction);
 				responses.add_front(DocumentMessage::StartTransaction);
 			}
-			DocumentMessage::ToggleLayerExpansion { id } => {
+			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
-				if self.collapsed.0.contains(&layer) {
-					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
+				let metadata = self.metadata();
+
+				let is_collapsed = self.collapsed.0.contains(&layer);
+
+				if is_collapsed {
+					if recursive {
+						let children: HashSet<_> = layer.children(metadata).collect();
+						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
+					} else {
+						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
+					}
 				} else {
+					if recursive {
+						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						self.collapsed.0.extend(children_to_add);
+					}
 					self.collapsed.0.push(layer);
 				}
+
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),

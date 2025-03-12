@@ -700,9 +700,9 @@ impl EditorHandle {
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, id: u64) {
+	pub fn toggle_layer_expansion(&self, id: u64, recursive: bool) {
 		let id = NodeId(id);
-		let message = DocumentMessage::ToggleLayerExpansion { id };
+		let message = DocumentMessage::ToggleLayerExpansion { id, recursive };
 		self.dispatch(message);
 	}
 
