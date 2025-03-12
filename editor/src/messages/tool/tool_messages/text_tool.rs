@@ -458,7 +458,7 @@ impl Fsm for TextToolFsmState {
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting);
+					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;

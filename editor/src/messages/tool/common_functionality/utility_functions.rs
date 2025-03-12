@@ -62,7 +62,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool");
 
 	let buzz_face = font_cache.get(font).map(|data| load_face(data));
-	let far = graphene_core::text::bounding_box(text, buzz_face.as_ref(), typesetting);
+	let far = graphene_core::text::bounding_box(text, buzz_face.as_ref(), typesetting, false);
 
 	Quad::from_box([DVec2::ZERO, far])
 }
