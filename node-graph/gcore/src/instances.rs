@@ -102,8 +102,7 @@ impl<T> Instances<T> {
 		}
 	}
 
-	pub fn instances(&self) -> impl Iterator<Item = Instance<T>> {
-		// assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances)", self.instance.len());
+	pub fn instances(&self) -> impl DoubleEndedIterator<Item = Instance<T>> {
 		self.id
 			.iter()
 			.zip(self.instance.iter())
@@ -119,8 +118,7 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn instances_mut(&mut self) -> impl Iterator<Item = InstanceMut<T>> {
-		// assert!(self.instance.len() == 1, "ONE INSTANCE EXPECTED, FOUND {} (instances_mut)", self.instance.len());
+	pub fn instances_mut(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<T>> {
 		self.id
 			.iter_mut()
 			.zip(self.instance.iter_mut())

@@ -217,13 +217,13 @@ where
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
-	for i in 0..instances {
-		let angle = i as f64 * angle / total;
-		let translation = i as f64 * direction / total;
+	for index in 0..instances {
+		let angle = index as f64 * angle / total;
+		let translation = index as f64 * direction / total;
 		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
 		let mut new_graphic_element = instance.to_graphic_element().clone();
-		new_graphic_element.new_ids_from_hash(None);
+		new_graphic_element.new_ids_from_hash(Some(crate::uuid::NodeId(index as u64)));
 
 		let new_instance = result_table.push(new_graphic_element);
 		*new_instance.transform = modification;
@@ -253,12 +253,12 @@ where
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 	let base_transform = DVec2::new(0., radius) - center;
 
-	for i in 0..instances {
-		let rotation = DAffine2::from_angle((std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians());
+	for index in 0..instances {
+		let rotation = DAffine2::from_angle((std::f64::consts::TAU / instances as f64) * index as f64 + angle_offset.to_radians());
 		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
 
 		let mut new_graphic_element = instance.to_graphic_element().clone();
-		new_graphic_element.new_ids_from_hash(None);
+		new_graphic_element.new_ids_from_hash(Some(crate::uuid::NodeId(index as u64)));
 
 		let new_instance = result_table.push(new_graphic_element);
 		*new_instance.transform = modification;
@@ -300,7 +300,7 @@ where
 
 	let mut result_table = GraphicGroupTable::default();
 
-	for &point in points_list {
+	for (index, &point) in points_list.into_iter().enumerate() {
 		let center_transform = DAffine2::from_translation(instance_center);
 
 		let translation = points_transform.transform_point2(point);
@@ -327,7 +327,7 @@ where
 		};
 
 		let mut new_graphic_element = instance.to_graphic_element().clone();
-		new_graphic_element.new_ids_from_hash(None);
+		new_graphic_element.new_ids_from_hash(Some(crate::uuid::NodeId(index as u64)));
 
 		let new_instance = result_table.push(new_graphic_element);
 		*new_instance.transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
@@ -1112,16 +1112,19 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn circle_repeat() {
+	async fn circular_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instances().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
+
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
+
 			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
 			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
-			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5);
+
+			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
 		}
 	}
 	#[tokio::test]
@@ -1152,15 +1155,19 @@ mod test {
 	async fn copy_to_points() {
 		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
 		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
+
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
+
 		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		let flattened_copy_to_points = super::flatten_vector_elements(Footprint::default(), copy_to_points).await;
-		let flattened_copy_to_points = flattened_copy_to_points.instances().next().unwrap().instance;
+		let flatten_vector_elements = super::flatten_vector_elements(Footprint::default(), copy_to_points).await;
+		let flattened_copy_to_points = flatten_vector_elements.instances().next().unwrap().instance;
+
 		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
+
 		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
 			assert_eq!(
-				&subpath.anchors()[..4],
+				&subpath.anchors(),
 				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
 			);
 		}
