@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
-use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork, value::TaggedValue};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::generic;
 use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_std::Context;
+use graph_craft::ProtoNodeIdentifier;
 use graphene_std::uuid::NodeId;
+use graphene_std::Context;
 
 // TODO: this is copy pasta from the editor (and does get out of sync)
 pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {

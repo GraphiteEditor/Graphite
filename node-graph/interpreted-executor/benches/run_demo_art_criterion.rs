@@ -1,9 +1,8 @@
-use criterion::{BenchmarkGroup, Criterion, black_box, criterion_group, criterion_main, measurement::Measurement};
-use graph_craft::{
-	graphene_compiler::Executor,
-	proto::ProtoNetwork,
-	util::{DEMO_ART, compile, load_from_name},
-};
+use criterion::measurement::Measurement;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkGroup, Criterion};
+use graph_craft::graphene_compiler::Executor;
+use graph_craft::proto::ProtoNetwork;
+use graph_craft::util::{compile, load_from_name, DEMO_ART};
 use graphene_std::transform::Footprint;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 

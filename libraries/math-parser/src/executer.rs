@@ -1,11 +1,9 @@
 use thiserror::Error;
 
-use crate::{
-	ast::{Literal, Node},
-	constants::DEFAULT_FUNCTIONS,
-	context::{EvalContext, FunctionProvider, ValueProvider},
-	value::{Number, Value},
-};
+use crate::ast::{Literal, Node};
+use crate::constants::DEFAULT_FUNCTIONS;
+use crate::context::{EvalContext, FunctionProvider, ValueProvider};
+use crate::value::{Number, Value};
 
 #[derive(Debug, Error)]
 pub enum EvalError {
@@ -49,11 +47,9 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		ast::{BinaryOp, Literal, Node, UnaryOp},
-		context::{EvalContext, ValueMap},
-		value::Value,
-	};
+	use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
+	use crate::context::{EvalContext, ValueMap};
+	use crate::value::Value;
 
 	macro_rules! eval_tests {
 		($($name:ident: $expected:expr_2021 => $expr:expr_2021),* $(,)?) => {

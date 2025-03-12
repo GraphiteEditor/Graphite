@@ -2,13 +2,13 @@ use std::sync::atomic::AtomicU64;
 
 use crate::parsing::*;
 use convert_case::{Case, Casing};
-use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
+use proc_macro_crate::FoundCrate;
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
+use syn::{parse_quote, Error, Ident, PatIdent, Token, WhereClause, WherePredicate};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
@@ -528,7 +528,8 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	})
 }
 
-use syn::{GenericArgument, Lifetime, Type, visit_mut::VisitMut};
+use syn::visit_mut::VisitMut;
+use syn::{GenericArgument, Lifetime, Type};
 
 struct LifetimeReplacer(&'static str);
 

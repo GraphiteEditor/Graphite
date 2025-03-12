@@ -1,4 +1,5 @@
-use graphene_core::raster::{Image, Pixel, SRGBA8, color::RGBA16F};
+use graphene_core::raster::color::RGBA16F;
+use graphene_core::raster::{Image, Pixel, SRGBA8};
 use graphene_core::*;
 
 use bytemuck::{Pod, Zeroable};

@@ -249,24 +249,24 @@ impl From<()> for Box<dyn DynAny<'static>> {
 }
 
 #[cfg(feature = "alloc")]
-use alloc::{
-	borrow::Cow,
-	boxed::Box,
-	collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque},
-	string::String,
-	vec::Vec,
-};
+use alloc::borrow::Cow;
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+#[cfg(feature = "alloc")]
+use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+use core::cell::{Cell, RefCell, UnsafeCell};
+use core::iter::Empty;
+use core::marker::{PhantomData, PhantomPinned};
+use core::mem::{ManuallyDrop, MaybeUninit};
+use core::num::Wrapping;
+use core::ops::Range;
+use core::pin::Pin;
 use core::sync::atomic::*;
-use core::{
-	cell::{Cell, RefCell, UnsafeCell},
-	iter::Empty,
-	marker::{PhantomData, PhantomPinned},
-	mem::{ManuallyDrop, MaybeUninit},
-	num::Wrapping,
-	ops::Range,
-	pin::Pin,
-	time::Duration,
-};
+use core::time::Duration;
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
@@ -286,10 +286,9 @@ impl_type!(
 );
 
 #[cfg(feature = "std")]
-use std::{
-	collections::{HashMap, HashSet},
-	sync::*,
-};
+use std::collections::{HashMap, HashSet};
+#[cfg(feature = "std")]
+use std::sync::*;
 
 #[cfg(feature = "std")]
 impl_type!(Once, Mutex<T>, RwLock<T>, HashSet<T>, HashMap<K, V>);

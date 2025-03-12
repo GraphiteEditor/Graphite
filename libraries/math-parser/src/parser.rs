@@ -2,19 +2,15 @@ use std::num::{ParseFloatError, ParseIntError};
 
 use lazy_static::lazy_static;
 use num_complex::ComplexFloat;
-use pest::{
-	Parser,
-	iterators::{Pair, Pairs},
-	pratt_parser::{Assoc, Op, PrattParser},
-};
+use pest::iterators::{Pair, Pairs};
+use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::Parser;
 use pest_derive::Parser;
 use thiserror::Error;
 
-use crate::{
-	ast::{BinaryOp, Literal, Node, UnaryOp, Unit},
-	context::EvalContext,
-	value::{Complex, Number, Value},
-};
+use crate::ast::{BinaryOp, Literal, Node, UnaryOp, Unit};
+use crate::context::EvalContext;
+use crate::value::{Complex, Number, Value};
 
 #[derive(Parser)]
 #[grammar = "./grammer.pest"] // Point to the grammar file

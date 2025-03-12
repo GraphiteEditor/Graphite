@@ -2,7 +2,8 @@ use crate::parsing::{Implementation, ParsedField, ParsedNodeFn};
 
 use proc_macro_error2::emit_error;
 use quote::quote;
-use syn::{GenericParam, Type, spanned::Spanned};
+use syn::spanned::Spanned;
+use syn::{GenericParam, Type};
 
 pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	let validators: &[fn(&ParsedNodeFn)] = &[

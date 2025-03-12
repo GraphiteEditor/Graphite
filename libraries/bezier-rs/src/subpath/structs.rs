@@ -1,10 +1,8 @@
 use super::Bezier;
 
 use glam::{DAffine2, DVec2};
-use std::{
-	fmt::{Debug, Formatter, Result},
-	hash::Hash,
-};
+use std::fmt::{Debug, Formatter, Result};
+use std::hash::Hash;
 
 /// An id type used for each [ManipulatorGroup].
 pub trait Identifier: Sized + Clone + PartialEq + Hash + 'static {

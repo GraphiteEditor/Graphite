@@ -3,21 +3,23 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 
 use bezier_rs::Subpath;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork, value::TaggedValue};
-use graph_craft::{Type, concrete};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::{concrete, Type};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
-use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
+use interpreted_executor::node_registry::NODE_REGISTRY;
 
 use glam::{DAffine2, DVec2, IVec2};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -656,7 +658,11 @@ impl NodeNetworkInterface {
 							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
 							node_io.inputs[iterator_index].clone().nested_type() == input_type || node_io.inputs[iterator_index] == input_type
 						});
-						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
+						if valid_implementation {
+							node_io.inputs.get(*input_index).cloned()
+						} else {
+							None
+						}
 					})
 					.collect::<Vec<_>>()
 			}
@@ -2677,7 +2683,11 @@ impl NodeNetworkInterface {
 							let Some(downstream_node_id) = downstream_node_connectors.iter().find_map(|input_connector| {
 								if let InputConnector::Node { node_id, input_index } = input_connector {
 									let downstream_input_index = if self.is_layer(node_id, network_path) { 1 } else { 0 };
-									if *input_index == downstream_input_index { Some(node_id) } else { None }
+									if *input_index == downstream_input_index {
+										Some(node_id)
+									} else {
+										None
+									}
 								} else {
 									None
 								}
@@ -2924,7 +2934,11 @@ impl NodeNetworkInterface {
 					log::error!("Could not get node_metadata for node {node_id}");
 					return None;
 				};
-				if !node_metadata.persistent_metadata.is_layer() { Some(*node_id) } else { None }
+				if !node_metadata.persistent_metadata.is_layer() {
+					Some(*node_id)
+				} else {
+					None
+				}
 			})
 			.or_else(|| clicked_nodes.into_iter().next())
 	}
@@ -3155,10 +3169,13 @@ impl NodeNetworkInterface {
 		// Only load structure if there is a root node
 		let Some(root_node) = self.root_node(&[]) else { return };
 
-		let Some(first_root_layer) = self
-			.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow)
-			.find_map(|node_id| if self.is_layer(&node_id, &[]) { Some(LayerNodeIdentifier::new(node_id, self, &[])) } else { None })
-		else {
+		let Some(first_root_layer) = self.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow).find_map(|node_id| {
+			if self.is_layer(&node_id, &[]) {
+				Some(LayerNodeIdentifier::new(node_id, self, &[]))
+			} else {
+				None
+			}
+		}) else {
 			return;
 		};
 		// Should refer to output node
@@ -4725,7 +4742,9 @@ impl NodeNetworkInterface {
 			}
 			*position = NodePosition::Chain;
 			self.transaction_modified();
-		} else {
+		}
+		// If there is an upstream layer then stop breaking the chain
+		else {
 			log::error!("Could not set chain position for layer node {node_id}");
 		}
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
@@ -5112,7 +5131,11 @@ impl NodeNetworkInterface {
 		stack_dependents_with_position.sort_unstable_by(|a, b| {
 			a.1.signum().cmp(&b.1.signum()).then_with(|| {
 				// If the node has a positive offset, then it is shifted up, so shift the top nodes first
-				if a.1.signum() == 1 { a.2.cmp(&b.2) } else { b.2.cmp(&a.2) }
+				if a.1.signum() == 1 {
+					a.2.cmp(&b.2)
+				} else {
+					b.2.cmp(&a.2)
+				}
 			})
 		});
 

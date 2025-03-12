@@ -1,7 +1,8 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 
-use graphene_core::{Color, raster::curve::Curve};
+use graphene_core::raster::curve::Curve;
+use graphene_core::Color;
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;

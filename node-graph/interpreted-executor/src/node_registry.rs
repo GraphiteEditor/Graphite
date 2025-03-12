@@ -7,15 +7,15 @@ use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;
 use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::vector::VectorDataTable;
-use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
+use graphene_core::{concrete, generic, Artboard, GraphicGroupTable};
+use graphene_core::{fn_type_fut, future};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
-use graphene_core::{fn_type_fut, future};
-use graphene_std::Context;
-use graphene_std::GraphicElement;
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::ImageTexture;
 use graphene_std::wasm_application_io::*;
+use graphene_std::Context;
+use graphene_std::GraphicElement;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
 use wgpu_executor::{WgpuSurface, WindowHandle};
@@ -193,7 +193,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// (
 		// 	ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
 		// 	|args| {
-		// 		use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		// 		use graphene_core::raster::curve::Curve;
+		// 		use graphene_core::raster::GenerateCurvesNode;
 		// 		let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
 		// 		Box::pin(async move {
 		// 			let curve = ClonedNode::new(curve.eval(()).await);
@@ -211,7 +212,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// (
 		// 	ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
 		// 	|args| {
-		// 		use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		// 		use graphene_core::raster::curve::Curve;
+		// 		use graphene_core::raster::GenerateCurvesNode;
 		// 		let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
 		// 		Box::pin(async move {
 		// 			let curve = ValueNode::new(ClonedNode::new(curve.eval(()).await));

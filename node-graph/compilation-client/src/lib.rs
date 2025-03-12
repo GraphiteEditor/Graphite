@@ -1,5 +1,6 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
-use graph_craft::{Type, proto::ProtoNetwork};
+use graph_craft::proto::ProtoNetwork;
+use graph_craft::Type;
 use wgpu_executor::ShaderIO;
 
 pub async fn compile(networks: Vec<ProtoNetwork>, inputs: Vec<Type>, outputs: Vec<Type>, io: ShaderIO) -> Result<Shader, reqwest::Error> {

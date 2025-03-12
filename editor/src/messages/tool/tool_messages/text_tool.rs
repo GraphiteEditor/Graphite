@@ -6,18 +6,21 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::pivot::Pivot;
+use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, pivot::Pivot, resize::Resize, utility_functions::text_bounding_box};
+use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
 use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_core::text::{lines_clipping, load_face, Font, FontCache, TypesettingConfig};
 use graphene_core::vector::style::Fill;
+use graphene_core::Color;
 
 #[derive(Default)]
 pub struct TextTool {

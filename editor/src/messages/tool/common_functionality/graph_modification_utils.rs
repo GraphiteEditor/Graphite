@@ -6,12 +6,13 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::concrete;
-use graph_craft::document::{NodeId, NodeInput, value::TaggedValue};
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::BlendMode;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
+use graphene_core::Color;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 
 use glam::DVec2;

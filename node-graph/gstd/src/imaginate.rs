@@ -1,7 +1,8 @@
 use crate::wasm_application_io::WasmEditorApi;
 use core::any::TypeId;
 use core::future::Future;
-use futures::{TryFutureExt, future::Either};
+use futures::future::Either;
+use futures::TryFutureExt;
 use glam::{DVec2, U64Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
 use graph_craft::wasm_application_io::EditorPreferences;
