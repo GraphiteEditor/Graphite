@@ -266,7 +266,7 @@ pub mod test_prelude {
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_core::raster::{Color, Image};
 	pub use graphene_core::{InputAccessor, InputAccessorSource};
-	pub use graphene_std::{transform::Footprint, GraphicGroup};
+	pub use graphene_std::transform::Footprint;
 
 	#[macro_export]
 	macro_rules! float_eq {

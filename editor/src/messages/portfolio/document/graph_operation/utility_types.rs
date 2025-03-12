@@ -237,45 +237,52 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		})
 	}
+
 	/// Gets the node id of a node with a specific reference that is upstream from the layer node, and optionally creates it if it does not exist.
 	/// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer.
 	/// Each dot after that represents an existing path node. If there is an existing upstream node, then it will always be returned first.
-	pub fn existing_node_id(&mut self, reference: &'static str, create_if_nonexistent: bool) -> Option<NodeId> {
+	pub fn existing_node_id(&mut self, reference_name: &'static str, create_if_nonexistent: bool) -> Option<NodeId> {
 		// Start from the layer node or export
 		let output_layer = self.get_output_layer()?;
 
-		let upstream = self
-			.network_interface
-			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
-
-		// Take until another layer node is found (but not the first layer node)
-		let mut existing_node_id = None;
-		for upstream_node in upstream.collect::<Vec<_>>() {
-			// Check if this is the node we have been searching for.
-			if self
-				.network_interface
-				.reference(&upstream_node, &[])
-				.is_some_and(|node_reference| *node_reference == Some(reference.to_string()))
-			{
-				existing_node_id = Some(upstream_node);
-				break;
-			}
-
-			let is_traversal_start = |node_id: NodeId| {
-				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id))
-			};
-
-			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[])) {
-				break;
-			}
-		}
+		let existing_node_id = Self::locate_node_in_layer_chain(reference_name, output_layer, self.network_interface);
 
 		// Create a new node if the node does not exist and update its inputs
 		if create_if_nonexistent {
-			return existing_node_id.or_else(|| self.create_node(reference));
+			return existing_node_id.or_else(|| self.create_node(reference_name));
 		}
 
 		existing_node_id
+	}
+
+	/// Gets the node id of a node with a specific reference (name) that is upstream (leftward) from the layer node, but before reaching another upstream layer stack.
+	/// For example, if given a group layer, this would find a requested "Transform" or "Boolean Operation" node in its chain, between the group layer and its layer stack child contents.
+	/// It would also travel up an entire layer that's not fed by a stack until reaching the generator node, such as a "Rectangle" or "Path" layer.
+	pub fn locate_node_in_layer_chain(reference_name: &str, left_of_layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+		let upstream = network_interface.upstream_flow_back_from_nodes(vec![left_of_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
+
+		// Look at all of the upstream nodes
+		for upstream_node in upstream {
+			// Check if this is the node we have been searching for.
+			if network_interface
+				.reference(&upstream_node, &[])
+				.is_some_and(|node_reference| *node_reference == Some(reference_name.to_string()))
+			{
+				if !network_interface.is_visible(&upstream_node, &[]) {
+					continue;
+				}
+
+				return Some(upstream_node);
+			}
+
+			// Take until another layer node is found (but not the first layer node)
+			let is_traversal_start = |node_id: NodeId| left_of_layer.to_node() == node_id || network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id));
+			if !is_traversal_start(upstream_node) && (network_interface.is_layer(&upstream_node, &[])) {
+				return None;
+			}
+		}
+
+		None
 	}
 
 	/// Create a new node inside the layer

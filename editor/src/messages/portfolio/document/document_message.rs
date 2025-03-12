@@ -171,6 +171,7 @@ pub enum DocumentMessage {
 	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
+		recursive: bool,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
@@ -178,7 +179,8 @@ pub enum DocumentMessage {
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
 	UpdateUpstreamTransforms {
-		upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+		upstream_footprints: HashMap<NodeId, Footprint>,
+		local_transforms: HashMap<NodeId, DAffine2>,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
