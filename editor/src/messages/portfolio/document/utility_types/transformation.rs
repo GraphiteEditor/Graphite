@@ -1,6 +1,7 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::transform_utils;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -54,9 +55,15 @@ impl OriginalTransforms {
 		}
 	}
 
-	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
-		let document_metadata = network_interface.document_metadata();
+	/// Gets the transform from the most downstream transform node
+	fn get_layer_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DAffine2> {
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
 
+		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
+		Some(transform_utils::get_current_transform(&document_node.inputs))
+	}
+
+	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
@@ -64,7 +71,8 @@ impl OriginalTransforms {
 					if layer == LayerNodeIdentifier::ROOT_PARENT {
 						continue;
 					}
-					layer_map.entry(layer).or_insert_with(|| document_metadata.upstream_transform(layer.to_node()));
+
+					layer_map.entry(layer).or_insert_with(|| Self::get_layer_transform(layer, network_interface).unwrap_or_default());
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -550,7 +558,7 @@ impl<'a> Selected<'a> {
 			.unwrap_or(DAffine2::IDENTITY);
 
 		if transform.matrix2.determinant().abs() <= f64::EPSILON {
-			transform.matrix2 += DMat2::IDENTITY * 1e-4;
+			transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 		}
 
 		let bounds = self
