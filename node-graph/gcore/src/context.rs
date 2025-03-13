@@ -1,5 +1,4 @@
 use crate::transform::Footprint;
-
 use core::any::Any;
 use core::borrow::Borrow;
 use core::panic::Location;

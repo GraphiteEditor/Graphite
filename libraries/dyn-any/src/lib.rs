@@ -187,7 +187,6 @@ macro_rules! impl_slice {
 
 mod slice {
 	use super::*;
-
 	use core::slice::*;
 
 	impl_slice!(Iter, IterMut, Chunks, ChunksMut, RChunks, RChunksMut, Windows);

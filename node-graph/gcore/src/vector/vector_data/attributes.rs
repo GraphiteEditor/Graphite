@@ -1,7 +1,5 @@
 use crate::vector::vector_data::{HandleId, VectorData};
-
 use dyn_any::DynAny;
-
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};

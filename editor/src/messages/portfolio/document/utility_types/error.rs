@@ -1,5 +1,4 @@
 use graphene_core::raster::color::Color;
-
 use thiserror::Error;
 
 /// The error type used by the Graphite editor.

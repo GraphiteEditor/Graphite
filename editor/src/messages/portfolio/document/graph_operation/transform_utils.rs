@@ -1,11 +1,9 @@
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::vector::PointId;
-
-use glam::{DAffine2, DVec2};
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {
@@ -90,11 +88,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
-	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() {
-		pivot
-	} else {
-		DVec2::splat(0.5)
-	}
+	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() { pivot } else { DVec2::splat(0.5) }
 }
 
 /// ![](https://files.keavon.com/-/OptimisticSpotlessTinamou/capture.png)

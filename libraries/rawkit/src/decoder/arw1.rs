@@ -2,7 +2,6 @@ use crate::tiff::Ifd;
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::SonyDataOffset;
 use crate::{RawImage, SubtractBlack, Transform};
-
 use bitstream_io::{BE, BitRead, BitReader, Endianness};
 use std::io::{Read, Seek};
 

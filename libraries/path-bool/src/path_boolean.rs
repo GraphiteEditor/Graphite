@@ -72,7 +72,6 @@ use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
-
 use glam::DVec2;
 use slotmap::{SlotMap, new_key_type};
 use std::cmp::Ordering;

@@ -1,5 +1,4 @@
 use crate::vector::{VectorData, VectorDataTable};
-
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_core::Ctx;
 use graphene_core::text::TypesettingConfig;

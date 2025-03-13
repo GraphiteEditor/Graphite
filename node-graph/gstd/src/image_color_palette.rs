@@ -64,7 +64,6 @@ async fn image_color_palette(
 #[cfg(test)]
 mod test {
 	use super::*;
-
 	use graphene_core::raster::image::{Image, ImageFrameTable};
 
 	#[test]

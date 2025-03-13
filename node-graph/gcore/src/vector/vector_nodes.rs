@@ -8,7 +8,6 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::style::LineJoin;
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-
 use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
@@ -1067,9 +1066,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 mod test {
 	use super::*;
 	use crate::Node;
-
 	use bezier_rs::Bezier;
-
 	use std::pin::Pin;
 
 	#[derive(Clone)]

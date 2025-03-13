@@ -4,14 +4,12 @@ use crate::consts::{
 	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
-
 use bezier_rs::{Bezier, Subpath};
-use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
-
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 

@@ -7,14 +7,12 @@ pub mod processing;
 pub mod tiff;
 
 use crate::metadata::identify::CameraModel;
-
 use processing::{Pixel, PixelTransform, RawPixel, RawPixelTransform};
 use rawkit_proc_macros::Tag;
 use tiff::file::TiffRead;
 use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
 use tiff::values::Transform;
 use tiff::{Ifd, TiffError};
-
 use std::io::{Read, Seek};
 use thiserror::Error;
 

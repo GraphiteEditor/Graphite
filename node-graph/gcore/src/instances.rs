@@ -5,9 +5,7 @@ use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
 use crate::vector::{InstanceId, VectorDataTable};
 use crate::{AlphaBlending, GraphicElement, RasterFrame};
-
 use dyn_any::StaticType;
-
 use glam::DAffine2;
 use std::hash::Hash;
 

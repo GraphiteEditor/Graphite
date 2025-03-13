@@ -3,8 +3,8 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -17,8 +17,6 @@ use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
 use graphene_std::GraphicGroupTable;
 use graphene_std::vector::{VectorData, VectorDataTable};
-
-use glam::{DAffine2, DVec2, IVec2};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {

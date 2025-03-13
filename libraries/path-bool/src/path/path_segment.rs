@@ -9,12 +9,11 @@
 //! The implementations in this module closely follow the SVG path specification,
 //! making it suitable for use in vector graphics applications.
 
-use glam::{DMat2, DMat3, DVec2};
-use std::f64::consts::{PI, TAU};
-
 use crate::EPS;
 use crate::aabb::{Aabb, bounding_box_around_point, expand_bounding_box, extend_bounding_box, merge_bounding_boxes};
 use crate::math::{lerp, vector_angle};
+use glam::{DMat2, DMat3, DVec2};
+use std::f64::consts::{PI, TAU};
 
 /// Represents a segment of a path in a 2D space, based on the SVG path specification.
 ///

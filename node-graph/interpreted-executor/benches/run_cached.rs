@@ -1,9 +1,9 @@
+mod benchmark_util;
+
+use benchmark_util::{bench_for_each_demo, setup_network};
 use criterion::{Criterion, criterion_group, criterion_main};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::transform::Footprint;
-
-mod benchmark_util;
-use benchmark_util::{bench_for_each_demo, setup_network};
 
 fn subsequent_evaluations(c: &mut Criterion) {
 	let mut group = c.benchmark_group("Subsequent Evaluations");

@@ -24,8 +24,8 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
@@ -33,8 +33,6 @@ use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
-
-use glam::{DAffine2, DVec2, IVec2};
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,

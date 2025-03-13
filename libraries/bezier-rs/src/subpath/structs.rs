@@ -1,5 +1,4 @@
 use super::Bezier;
-
 use glam::{DAffine2, DVec2};
 use std::fmt::{Debug, Formatter, Result};
 use std::hash::Hash;

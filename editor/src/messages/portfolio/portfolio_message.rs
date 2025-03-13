@@ -3,7 +3,6 @@ use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-
 use graphene_core::Color;
 use graphene_core::raster::Image;
 use graphene_core::text::Font;

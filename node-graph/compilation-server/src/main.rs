@@ -1,14 +1,12 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::RwLock;
-
-use gpu_compiler_bin_wrapper::CompileRequest;
-use tower_http::cors::CorsLayer;
-
+use axum::Router;
 use axum::extract::{Json, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::Router;
+use gpu_compiler_bin_wrapper::CompileRequest;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::RwLock;
+use tower_http::cors::CorsLayer;
 
 struct AppState {
 	compile_dir: tempfile::TempDir,

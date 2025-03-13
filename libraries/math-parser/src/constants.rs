@@ -1,10 +1,9 @@
+use crate::value::{Number, Value};
+use lazy_static::lazy_static;
+use num_complex::{Complex, ComplexFloat};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use lazy_static::lazy_static;
-use num_complex::{Complex, ComplexFloat};
-
-use crate::value::{Number, Value};
 type FunctionImplementation = Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>;
 lazy_static! {
 	pub static ref DEFAULT_FUNCTIONS: HashMap<&'static str, FunctionImplementation> = {

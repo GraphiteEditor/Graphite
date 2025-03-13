@@ -1,5 +1,4 @@
 use crate::Node;
-
 use core::cell::{Cell, RefCell, RefMut};
 use core::marker::PhantomData;
 

@@ -1,6 +1,5 @@
 use crate::Ctx;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
-
 use bezier_rs::Subpath;
 use glam::DVec2;
 

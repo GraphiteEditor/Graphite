@@ -4,7 +4,6 @@ use crate::GraphicGroupTable;
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
-
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::DVec2;
@@ -22,6 +21,7 @@ pub mod color;
 #[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
+
 pub use adjustments::*;
 
 pub trait Linear {

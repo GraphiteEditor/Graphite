@@ -1,14 +1,13 @@
+pub mod value;
+
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-
 use dyn_any::DynAny;
+use glam::IVec2;
 use graphene_core::memo::MemoHashGuard;
 pub use graphene_core::uuid::NodeId;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
-pub mod value;
-
-use glam::IVec2;
 use log::Metadata;
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -1356,9 +1355,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-
 	use graphene_core::ProtoNodeIdentifier;
-
 	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {

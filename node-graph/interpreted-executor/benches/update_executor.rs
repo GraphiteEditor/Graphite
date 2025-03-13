@@ -1,9 +1,9 @@
+mod benchmark_util;
+
+use benchmark_util::{bench_for_each_demo, setup_network};
 use criterion::{Criterion, criterion_group, criterion_main};
 use graph_craft::proto::ProtoNetwork;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
-
-mod benchmark_util;
-use benchmark_util::{bench_for_each_demo, setup_network};
 
 fn update_executor(c: &mut Criterion) {
 	let mut group = c.benchmark_group("Update Executor");

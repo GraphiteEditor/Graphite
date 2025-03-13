@@ -4,7 +4,6 @@ use crate::line_segment::{line_segment_intersection, line_segments_intersect};
 use crate::line_segment_aabb::line_segment_aabb_intersect;
 use crate::math::lerp;
 use crate::path_segment::PathSegment;
-
 use glam::DVec2;
 
 #[derive(Clone)]

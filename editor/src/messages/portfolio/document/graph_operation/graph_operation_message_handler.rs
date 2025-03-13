@@ -5,15 +5,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
-
+use glam::{DAffine2, DVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
 use graphene_std::vector::convert_usvg_path;
-
-use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone)]
 struct ArtboardInfo {

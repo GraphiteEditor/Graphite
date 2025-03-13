@@ -15,7 +15,6 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
-
 use bezier_rs::Subpath;
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
@@ -24,7 +23,6 @@ use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use interpreted_executor::dynamic_executor::IntrospectError;
-
 use std::sync::Arc;
 use std::vec;
 

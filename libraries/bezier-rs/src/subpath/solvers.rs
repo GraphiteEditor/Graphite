@@ -2,7 +2,6 @@ use super::*;
 use crate::TValue;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{SubpathTValue, compute_circular_subpath_details, is_rectangle_inside_other, line_intersection};
-
 use glam::{DAffine2, DMat2, DVec2};
 use std::f64::consts::PI;
 
@@ -542,7 +541,6 @@ mod tests {
 	use crate::Bezier;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils;
-
 	use glam::DVec2;
 
 	fn normalize_t(n: i64, t: f64) -> f64 {

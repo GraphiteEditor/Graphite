@@ -5,8 +5,8 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
-
 use dyn_any::DynAny;
+use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
@@ -26,8 +26,6 @@ use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::{GraphicGroupTable, RasterFrame};
-
-use glam::{DAffine2, DVec2, IVec2, UVec2};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();

@@ -2,7 +2,6 @@ use super::*;
 use crate::polynomial::Polynomial;
 use crate::utils::{TValue, solve_cubic, solve_quadratic};
 use crate::{SymmetricalBasis, to_symmetrical_basis_pair};
-
 use glam::DMat2;
 use std::ops::Range;
 

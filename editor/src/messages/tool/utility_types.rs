@@ -12,10 +12,8 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
-
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 

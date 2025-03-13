@@ -8,12 +8,10 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
-
+use glam::DVec2;
 use graph_craft::document::DocumentNode;
 use graphene_core::InputAccessor;
 use graphene_core::raster::color::Color;
-
-use glam::DVec2;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {

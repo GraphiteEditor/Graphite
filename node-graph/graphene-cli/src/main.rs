@@ -1,3 +1,6 @@
+use clap::{Args, Parser, Subcommand};
+use fern::colors::{Color, ColoredLevelConfig};
+use futures::executor::block_on;
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::proto::ProtoNetwork;
@@ -7,10 +10,6 @@ use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateSender};
 use graphene_core::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
-
-use clap::{Args, Parser, Subcommand};
-use fern::colors::{Color, ColoredLevelConfig};
-use futures::executor::block_on;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
 use std::path::PathBuf;
@@ -109,9 +108,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			}
 		}
 		Command::Run { run_loop, .. } => {
-			std::thread::spawn(move || loop {
-				std::thread::sleep(std::time::Duration::from_nanos(10));
-				device.poll(wgpu::Maintain::Poll);
+			std::thread::spawn(move || {
+				loop {
+					std::thread::sleep(std::time::Duration::from_nanos(10));
+					device.poll(wgpu::Maintain::Poll);
+				}
 			});
 			let executor = create_executor(proto_graph)?;
 			let render_config = graphene_core::application_io::RenderConfig::default();

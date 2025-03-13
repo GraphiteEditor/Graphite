@@ -15,13 +15,11 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use renderer::Quad;
-
-use glam::{DAffine2, DVec2, IVec2};
 use std::cmp::Ordering;
 
 #[derive(Debug)]

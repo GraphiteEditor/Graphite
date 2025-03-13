@@ -2,7 +2,6 @@
 #![cfg(feature = "rawkit-tests")]
 
 use rawkit::RawImage;
-
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ColorType, ImageEncoder};
 use libraw::Processor;

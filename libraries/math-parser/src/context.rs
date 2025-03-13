@@ -1,7 +1,6 @@
+use crate::value::Value;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-
-use crate::value::Value;
 
 //TODO: editor integration, implement these traits for whatever is needed, maybe merge them if needed
 pub trait ValueProvider {

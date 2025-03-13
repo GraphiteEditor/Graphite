@@ -1,5 +1,4 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-
 use math_parser::ast;
 use math_parser::context::EvalContext;
 

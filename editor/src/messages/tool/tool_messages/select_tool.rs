@@ -23,14 +23,12 @@ use crate::messages::tool::common_functionality::shape_editor::SelectionShapeTyp
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
-
 use bezier_rs::Subpath;
+use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
-
-use glam::DMat2;
 use std::fmt;
 
 #[derive(Default)]
@@ -1632,12 +1630,14 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(
-		LayerNodeIdentifier::ROOT_PARENT
-			.children(document.metadata())
-			.next()
-			.expect("ROOT_PARENT should have a layer child when clicking"),
-	)]);
+	tool_data.layers_dragging.append(&mut vec![
+		document.find_deepest(&selected).unwrap_or(
+			LayerNodeIdentifier::ROOT_PARENT
+				.children(document.metadata())
+				.next()
+				.expect("ROOT_PARENT should have a layer child when clicking"),
+		),
+	]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging

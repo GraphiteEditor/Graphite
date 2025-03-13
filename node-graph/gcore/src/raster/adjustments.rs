@@ -10,11 +10,9 @@ use crate::vector::VectorDataTable;
 use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
-
-use dyn_any::DynAny;
-
 use core::cmp::Ordering;
 use core::fmt::Debug;
+use dyn_any::DynAny;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;

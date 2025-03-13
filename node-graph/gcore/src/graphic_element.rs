@@ -6,9 +6,7 @@ use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
-
 use dyn_any::DynAny;
-
 use glam::{DAffine2, IVec2};
 use std::hash::Hash;
 

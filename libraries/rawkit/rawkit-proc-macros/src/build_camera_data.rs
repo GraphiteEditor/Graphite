@@ -1,7 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{ToTokens, quote};
 use toml::{Table, Value};
-
 use std::fs;
 use std::path::Path;
 

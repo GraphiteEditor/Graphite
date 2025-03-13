@@ -1,4 +1,5 @@
 use dyn_any::StaticType;
+use glam::{DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
@@ -7,23 +8,21 @@ use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;
 use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::vector::VectorDataTable;
-use graphene_core::{concrete, generic, Artboard, GraphicGroupTable};
-use graphene_core::{fn_type_fut, future};
+use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
+use graphene_core::{fn_type_fut, future};
+use graphene_std::Context;
+use graphene_std::GraphicElement;
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::ImageTexture;
 use graphene_std::wasm_application_io::*;
-use graphene_std::Context;
-use graphene_std::GraphicElement;
-#[cfg(feature = "gpu")]
-use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
-use wgpu_executor::{WgpuSurface, WindowHandle};
-
-use glam::{DVec2, UVec2};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
+#[cfg(feature = "gpu")]
+use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
+use wgpu_executor::{WgpuSurface, WindowHandle};
 
 macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)

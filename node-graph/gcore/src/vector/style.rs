@@ -3,9 +3,7 @@
 use crate::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::renderer::format_transform_matrix;
-
 use dyn_any::DynAny;
-
 use glam::{DAffine2, DVec2};
 use std::fmt::{self, Display, Write};
 

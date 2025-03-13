@@ -3,7 +3,6 @@ use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;
 use crate::messages::prelude::*;
-
 use core::time::Duration;
 
 #[derive(Debug, Clone)]

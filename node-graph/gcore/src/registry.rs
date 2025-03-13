@@ -1,8 +1,6 @@
 use crate::transform::Footprint;
 use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
-
 use dyn_any::{DynAny, StaticType};
-
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;

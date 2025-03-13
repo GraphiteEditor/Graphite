@@ -14,13 +14,12 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
-
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{lines_clipping, load_face, Font, FontCache, TypesettingConfig};
-use graphene_core::vector::style::Fill;
 use graphene_core::Color;
+use graphene_core::renderer::Quad;
+use graphene_core::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
 pub struct TextTool {

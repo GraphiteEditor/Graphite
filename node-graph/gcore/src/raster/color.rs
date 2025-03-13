@@ -1,16 +1,14 @@
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
-
+use bytemuck::{Pod, Zeroable};
+use core::hash::Hash;
 use dyn_any::DynAny;
+use half::f16;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Euclid;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
-
-use bytemuck::{Pod, Zeroable};
-use core::hash::Hash;
-use half::f16;
 use std::fmt::Write;
 
 #[repr(C)]

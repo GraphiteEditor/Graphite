@@ -1,10 +1,8 @@
-use std::vec;
-
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{Cap, Join, SubpathTValue, TValue};
-
 use glam::{DAffine2, DVec2};
+use std::vec;
 
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.

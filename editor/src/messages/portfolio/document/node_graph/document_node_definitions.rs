@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
-
+use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
@@ -22,12 +22,10 @@ use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
-#[cfg(feature = "gpu")]
-use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
-
-use glam::DVec2;
 use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet, VecDeque};
+#[cfg(feature = "gpu")]
+use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,

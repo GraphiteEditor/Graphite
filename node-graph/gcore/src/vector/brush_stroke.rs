@@ -1,9 +1,7 @@
 use crate::Color;
 use crate::raster::BlendMode;
 use crate::raster::bbox::AxisAlignedBbox;
-
 use dyn_any::DynAny;
-
 use glam::DVec2;
 use std::hash::{Hash, Hasher};
 

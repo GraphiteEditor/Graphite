@@ -1,14 +1,13 @@
-use std::sync::atomic::AtomicU64;
-
 use crate::parsing::*;
 use convert_case::{Case, Casing};
-use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_crate::FoundCrate;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
+use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{parse_quote, Error, Ident, PatIdent, Token, WhereClause, WherePredicate};
+use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {

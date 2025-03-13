@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};

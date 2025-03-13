@@ -1,9 +1,7 @@
 use super::*;
-
 use crate::compare::compare_points;
 use crate::utils::{Cap, TValue, f64_compare};
 use crate::{AppendType, ManipulatorGroup, Subpath};
-
 use glam::DMat2;
 use std::f64::consts::PI;
 

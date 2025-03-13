@@ -3,10 +3,8 @@ use crate::graphene_core::raster::image::ImageFrameTable;
 use crate::raster::Image;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
-
-use dyn_any::DynAny;
-
 use core::hash::Hash;
+use dyn_any::DynAny;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;

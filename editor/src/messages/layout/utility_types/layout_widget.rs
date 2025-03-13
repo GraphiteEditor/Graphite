@@ -6,7 +6,6 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::prelude::*;
-
 use std::sync::Arc;
 
 #[repr(transparent)]

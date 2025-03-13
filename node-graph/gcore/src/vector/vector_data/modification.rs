@@ -2,11 +2,9 @@ use super::*;
 use crate::Ctx;
 use crate::transform::TransformMut;
 use crate::uuid::generate_uuid;
-
 use bezier_rs::BezierHandles;
-use dyn_any::DynAny;
-
 use core::hash::BuildHasher;
+use dyn_any::DynAny;
 use std::collections::{HashMap, HashSet};
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].

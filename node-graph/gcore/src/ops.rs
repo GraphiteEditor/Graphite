@@ -4,14 +4,12 @@ use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
-
-use math_parser::ast;
-use math_parser::context::{EvalContext, NothingMap, ValueProvider};
-use math_parser::value::{Number, Value};
-
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
 use glam::DVec2;
+use math_parser::ast;
+use math_parser::context::{EvalContext, NothingMap, ValueProvider};
+use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 

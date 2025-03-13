@@ -8,7 +8,6 @@ pub mod editor_api;
 pub mod helpers;
 
 use editor::messages::prelude::*;
-
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};

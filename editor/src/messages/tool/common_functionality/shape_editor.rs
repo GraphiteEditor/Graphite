@@ -6,12 +6,10 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use crate::messages::tool::tool_messages::path_tool::PointSelectState;
-
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
+use glam::{DAffine2, DVec2};
 use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
-
-use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleId, SegmentId};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

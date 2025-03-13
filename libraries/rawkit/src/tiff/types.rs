@@ -1,5 +1,4 @@
 use std::io::{Read, Seek};
-
 use super::file::TiffRead;
 use super::values::{CurveLookupTable, Rational, Transform};
 use super::{Ifd, IfdTagType, TiffError};

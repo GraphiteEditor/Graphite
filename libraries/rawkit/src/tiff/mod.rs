@@ -5,7 +5,6 @@ pub mod values;
 
 use file::TiffRead;
 use tags::Tag;
-
 use num_enum::{FromPrimitive, IntoPrimitive};
 use std::fmt::Display;
 use std::io::{Read, Seek};

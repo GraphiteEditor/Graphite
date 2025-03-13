@@ -1,7 +1,6 @@
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::{Make, Model, Tag};
 use crate::tiff::{Ifd, TiffError};
-
 use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 

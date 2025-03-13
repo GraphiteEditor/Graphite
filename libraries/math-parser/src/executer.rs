@@ -1,9 +1,8 @@
-use thiserror::Error;
-
 use crate::ast::{Literal, Node};
 use crate::constants::DEFAULT_FUNCTIONS;
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum EvalError {

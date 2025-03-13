@@ -1,7 +1,6 @@
 use gpu_executor::{GPUConstant, ShaderIO, ShaderInput, SpirVCompiler};
 use graph_craft::proto::*;
 use graphene_core::Cow;
-
 use std::path::{Path, PathBuf};
 use tera::Context;
 

@@ -1,6 +1,5 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 use crate::{ManipulatorGroup, Subpath};
-
 use glam::{BVec2, DMat2, DVec2};
 use std::fmt::Write;
 
@@ -94,11 +93,7 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 /// Find the roots of the linear equation `ax + b`.
 pub fn solve_linear(a: f64, b: f64) -> [Option<f64>; 3] {
 	// There exist roots when `a` is not 0
-	if a.abs() > MAX_ABSOLUTE_DIFFERENCE {
-		[Some(-b / a), None, None]
-	} else {
-		[None; 3]
-	}
+	if a.abs() > MAX_ABSOLUTE_DIFFERENCE { [Some(-b / a), None, None] } else { [None; 3] }
 }
 
 /// Find the roots of the linear equation `ax^2 + bx + c`.
