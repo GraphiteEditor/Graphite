@@ -512,7 +512,6 @@ impl Fsm for TextToolFsmState {
 						}
 					}
 
-
 					bounding_box_manager.render_overlays(&mut overlay_context, false);
 					tool_data.pivot.update_pivot(&document, &mut overlay_context, None);
 				} else {
@@ -551,7 +550,7 @@ impl Fsm for TextToolFsmState {
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
 				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
 
-				if let Some(_selected_edges) = dragging_bounds {
+				if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// Set the original transform
@@ -590,7 +589,7 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Ready
 			}
-			(Self::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+			(TextToolFsmState::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				let document_points = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
 				let document_to_viewport = document.metadata().document_to_viewport;
 				tool_data.cached_resize_bounds = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
@@ -609,8 +608,8 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
-						let center_position = center_bool.then_some(bounds.center_of_transformation);
+						let (centered, constrain) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
+						let center_position = centered.then_some(bounds.center_of_transformation);
 
 						let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
 						let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {
@@ -626,7 +625,7 @@ impl Fsm for TextToolFsmState {
 							snap_data: SnapData::ignore(document, input, &selected),
 						});
 
-						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, lock_ratio_bool, snap);
+						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, constrain, snap);
 						// Normalize so the size is always positive
 						let (position, size) = (position.min(position + size), size.abs());
 
@@ -783,16 +782,11 @@ impl Fsm for TextToolFsmState {
 				}
 
 				responses.add(FrontendMessage::TriggerTextCommit);
-
 				TextToolFsmState::Editing
 			}
 			(state, TextToolMessage::Abort) => {
 				input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				tool_data.resize.cleanup(responses);
-
-				if state == TextToolFsmState::Editing {
-					tool_data.set_editing(false, font_cache, responses);
-				}
 
 				TextToolFsmState::Ready
 			}
