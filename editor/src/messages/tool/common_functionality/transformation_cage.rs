@@ -293,15 +293,16 @@ pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVe
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 		let angle = -mouse_position.angle_to(DVec2::X);
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+		let axis_vector = DVec2::from_angle(snapped_angle);
 		if snapped_angle.is_finite() {
-			start + DVec2::from_angle(snapped_angle) * mouse_position.length()
+			start + axis_vector * mouse_position.dot(axis_vector).abs()
 		} else {
 			start
 		}
 	} else if axis.is_constraint() {
 		let mouse_position = position - start;
 		let axis_vector: DVec2 = axis.into();
-		start + axis_vector * mouse_position.length() * mouse_position.dot(axis_vector).signum()
+		start + axis_vector * mouse_position.dot(axis_vector)
 	} else {
 		position
 	}
