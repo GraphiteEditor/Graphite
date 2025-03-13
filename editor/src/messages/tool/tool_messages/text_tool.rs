@@ -658,7 +658,7 @@ impl Fsm for TextToolFsmState {
 						let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
 						let Some(node_id) = graph_modification_utils::get_text_id(dragging_layer.id, &document.network_interface) else {
 							warn!("Cannot get text node id");
-							tool_data.layer_dragging = None;
+							tool_data.layer_dragging.take();
 							return TextToolFsmState::Ready;
 						};
 
@@ -803,7 +803,7 @@ impl Fsm for TextToolFsmState {
 						return TextToolFsmState::Editing;
 					}
 				}
-				tool_data.layer_dragging = None;
+				tool_data.layer_dragging.take();
 
 				TextToolFsmState::Ready
 			}
@@ -856,7 +856,7 @@ impl Fsm for TextToolFsmState {
 						bounds.original_transforms.clear();
 					}
 					if matches!(state, TextToolFsmState::Dragging) {
-						tool_data.layer_dragging = None;
+						tool_data.layer_dragging.take();
 					}
 				} else {
 					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
