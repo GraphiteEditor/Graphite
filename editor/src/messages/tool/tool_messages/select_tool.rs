@@ -1725,11 +1725,15 @@ pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashS
 	// Then process parents with all children selected
 	for &layer in new_selected {
 		if layer.has_children(metadata) {
+			// if any ancestor is already present in the filtered selection don't put its child
+			if layer.ancestors(metadata).any(|ancestor| filtered_selection.contains(&ancestor)) {
+				continue;
+			}
 			let all_children_selected = layer.children(metadata).all(|child| new_selected.contains(&child));
 
 			if all_children_selected {
-				// Remove all children of the parent
-				layer.children(metadata).for_each(|child| {
+				// Remove all descendants of the parent
+				layer.descendants(metadata).for_each(|child| {
 					filtered_selection.remove(&child);
 				});
 				// Add the parent
