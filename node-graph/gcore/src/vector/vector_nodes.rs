@@ -886,8 +886,8 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
 	}
 
-	/// Produces a list that corresponds with the point id. The value is how many segments are connected.
-	fn segments_connected_count(vector_data: &VectorData) -> Vec<u8> {
+	/// Produces a list that corresponds with the point ID. The value is how many segments are connected.
+	fn segments_connected_count(vector_data: &VectorData) -> Vec<usize> {
 		// Count the number of segments connecting to each point.
 		let mut segments_connected_count = vec![0; vector_data.point_domain.ids().len()];
 		for &point_index in vector_data.segment_domain.start_point().iter().chain(vector_data.segment_domain.end_point()) {
@@ -904,7 +904,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 	}
 
 	/// Updates the index so that it points at a point with the position. If nobody else will look at the index, the original point is updated. Otherwise a new point is created.
-	fn create_or_modify_point(point_domain: &mut PointDomain, segments_connected_count: &mut [u8], pos: DVec2, index: &mut usize, next_id: &mut PointId, new_segments: &mut Vec<[usize; 2]>) {
+	fn create_or_modify_point(point_domain: &mut PointDomain, segments_connected_count: &mut [usize], pos: DVec2, index: &mut usize, next_id: &mut PointId, new_segments: &mut Vec<[usize; 2]>) {
 		segments_connected_count[*index] -= 1;
 		if segments_connected_count[*index] == 0 {
 			// If nobody else is going to look at this point, we're alright to modify it
@@ -922,7 +922,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		}
 	}
 
-	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [u8]) -> Vec<[usize; 2]> {
+	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [usize]) -> Vec<[usize; 2]> {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
 
@@ -995,14 +995,17 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 	result
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
 fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
-	let source = source.one_instance().instance;
+	let source_transform = source.transform();
+	let mut source = source.one_instance().instance.clone();
 
-	let mut result = source.clone();
-	result.merge_by_distance(distance);
+	source.merge_by_distance(distance);
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(source);
+	*result.transform_mut() = source_transform;
+
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]

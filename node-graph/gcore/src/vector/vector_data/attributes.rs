@@ -114,7 +114,7 @@ impl PointDomain {
 				id_map.push(new_index);
 				new_index += 1;
 			} else {
-				// A placeholder for invalid ids. This is checked after the segment domain is modified.
+				// A placeholder for invalid IDs. This is checked after the segment domain is modified.
 				id_map.push(usize::MAX);
 			}
 		}
@@ -351,7 +351,7 @@ impl SegmentDomain {
 		})
 	}
 
-	/// Get index from ID, `O(n)`
+	/// Get index from ID by linear search. Takes `O(n)` time.
 	fn id_to_index(&self, id: SegmentId) -> Option<usize> {
 		debug_assert_eq!(self.id.len(), self.handles.len());
 		debug_assert_eq!(self.id.len(), self.start_point.len());
@@ -407,9 +407,9 @@ impl SegmentDomain {
 		self.all_connected(point).count()
 	}
 
-	/// Iterate over segments in the domain.
+	/// Iterates over segments in the domain.
 	///
-	/// tuple is: (id, start point, end point, handles)
+	/// Tuple is: (id, start point, end point, handles)
 	pub(crate) fn iter(&self) -> impl Iterator<Item = (SegmentId, usize, usize, BezierHandles)> + '_ {
 		let ids = self.id.iter().copied();
 		let start_point = self.start_point.iter().copied();
@@ -418,9 +418,9 @@ impl SegmentDomain {
 		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
 	}
 
-	/// Iterate over segments in the domain.
+	/// Iterates over segments in the domain, mutably.
 	///
-	/// tuple is: (id, start point, end point, handles)
+	/// Tuple is: (id, start point, end point, handles)
 	pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&mut SegmentId, &mut usize, &mut usize, &mut BezierHandles)> + '_ {
 		let ids = self.id.iter_mut();
 		let start_point = self.start_point.iter_mut();
@@ -432,9 +432,8 @@ impl SegmentDomain {
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per-region. A region is an enclosed area composed of a range
-/// of segments from the [`SegmentDomain`] that can be given a fill. In future this will
-/// be extendable at runtime with custom attributes.
+/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
+/// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
 	#[serde(alias = "ids")]
 	id: Vec<RegionId>,
@@ -465,7 +464,7 @@ impl RegionDomain {
 		self.id.retain(&f);
 	}
 
-	/// Like `retain` but also gives the function access to the segment range.
+	/// Like [`Self::retain`] but also gives the function access to the segment range.
 	///
 	/// Note that this function requires an allocation that `retain` avoids.
 	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &core::ops::RangeInclusive<SegmentId>) -> bool) {

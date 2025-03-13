@@ -50,6 +50,11 @@ glam = { workspace = true, default-features = false, features = [
 	"scalar-math",
 ] }
 serde_json = { workspace = true }
+petgraph = { workspace = true, default-features = false, features = [
+	"graphmap",
+] }
+rustc-hash = { workspace = true }
+math-parser = { path = "../../libraries/math-parser" }
 
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
@@ -76,11 +81,6 @@ web-sys = { workspace = true, optional = true, features = [
 ] }
 image = { workspace = true, optional = true, default-features = false, features = [
 	"png",
-] }
-math-parser = { path = "../../libraries/math-parser" }
-rustc-hash = { workspace = true }
-petgraph = { version = "0.7.1", default-features = false, features = [
-	"graphmap",
 ] }
 
 [dev-dependencies]

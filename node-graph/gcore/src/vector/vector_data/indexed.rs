@@ -1,22 +1,7 @@
+use super::{PointId, SegmentId, VectorData};
 use glam::DVec2;
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use rustc_hash::FxHashMap;
-
-use super::{PointId, SegmentId, VectorData};
-
-/// Useful indexes to speed up various operations on `VectorData`.
-///
-/// Important: It is the user's responsibility to ensure the indexes remain valid after uutations to the data.
-pub struct VectorDataIndex {
-	/// Points and segments form a graph. Store it here in a form amenable to graph algorithms.
-	///
-	/// Currently, segment data is not stored as it is not used, but it could easily be added.
-	pub(crate) point_graph: UnGraph<Point, ()>,
-	pub(crate) segment_to_edge: FxHashMap<SegmentId, EdgeIndex>,
-	/// Get offset from point id
-	pub(crate) point_to_offset: FxHashMap<PointId, usize>,
-	// TODO: faces
-}
 
 /// All the fixed fields of a point from the point domain.
 pub struct Point {
@@ -24,10 +9,25 @@ pub struct Point {
 	pub position: DVec2,
 }
 
+/// Useful indexes to speed up various operations on `VectorData`.
+///
+/// Important: It is the user's responsibility to ensure the indexes remain valid after mutations to the data.
+pub struct VectorDataIndex {
+	/// Points and segments form a graph. Store it here in a form amenable to graph algorithms.
+	///
+	/// Currently, segment data is not stored as it is not used, but it could easily be added.
+	pub(crate) point_graph: UnGraph<Point, ()>,
+	pub(crate) segment_to_edge: FxHashMap<SegmentId, EdgeIndex>,
+	/// Get the offset from the point ID.
+	pub(crate) point_to_offset: FxHashMap<PointId, usize>,
+	// TODO: faces
+}
+
 impl VectorDataIndex {
-	/// Build indexes (`O(n)` operation).
+	/// Construct a [`VectorDataIndex`] by building indexes from the given [`VectorData`]. Takes `O(n)` time.
 	pub fn build_from(data: &VectorData) -> Self {
-		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(flip).collect::<FxHashMap<_, _>>();
+		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
+
 		let mut point_to_node = FxHashMap::default();
 		let mut segment_to_edge = FxHashMap::default();
 
@@ -37,6 +37,7 @@ impl VectorDataIndex {
 			let idx = graph.add_node(Point { id: point_id, position });
 			point_to_node.insert(point_id, idx);
 		}
+
 		for (segment_id, start_offset, end_offset, ..) in data.segment_domain.iter() {
 			let start_id = data.point_domain.ids()[start_offset];
 			let end_id = data.point_domain.ids()[end_offset];
@@ -52,13 +53,11 @@ impl VectorDataIndex {
 		}
 	}
 
-	/// Fetch the length of given segment's chord.
-	///
-	/// `O(1)`
+	/// Fetch the length of given segment's chord. Takes `O(1)` time.
 	///
 	/// # Panics
 	///
-	/// Will panic if not segment with the given ID is found.
+	/// Will panic if no segment with the given ID is found.
 	pub fn segment_chord_length(&self, id: SegmentId) -> f64 {
 		let edge_idx = self.segment_to_edge[&id];
 		let (start, end) = self.point_graph.edge_endpoints(edge_idx).unwrap();
@@ -67,12 +66,9 @@ impl VectorDataIndex {
 		(start_position - end_position).length()
 	}
 
-	/// Get the ends of a segment
+	/// Get the ends of a segment. Takes `O(1)` time.
 	///
-	/// The IDs will be ordered [smallest, largest] so they can be used to find other segments with
-	/// the same endpoints, regardless of direction.
-	///
-	/// O(1)
+	/// The IDs will be ordered [smallest, largest] so they can be used to find other segments with the same endpoints, regardless of direction.
 	///
 	/// # Panics
 	///
@@ -82,9 +78,7 @@ impl VectorDataIndex {
 		if start < end { [start, end] } else { [end, start] }
 	}
 
-	/// Get the physical location of a point
-	///
-	/// O(1)
+	/// Get the physical location of a point. Takes `O(1)` time.
 	///
 	/// # Panics
 	///
@@ -93,9 +87,4 @@ impl VectorDataIndex {
 		let offset = self.point_to_offset[&id];
 		data.point_domain.positions()[offset]
 	}
-}
-
-/// flip fields in 2-tuple
-fn flip<T, U>((t, u): (T, U)) -> (U, T) {
-	(u, t)
 }
