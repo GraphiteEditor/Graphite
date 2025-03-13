@@ -28,7 +28,7 @@ impl VectorData {
 		}
 
 		// Now group connected segments - all will be collapsed to a single point.
-		// Note: there are a few algos for this - perhaps test empirically to find fastest
+		// Note: there are a few algorithms for this - perhaps test empirically to find fastest
 		let collapse: Vec<FxHashSet<PointId>> = petgraph::algo::tarjan_scc(&short_edges).into_iter().map(|connected| connected.into_iter().collect()).collect();
 		let average_position = collapse
 			.iter()
@@ -46,11 +46,7 @@ impl VectorData {
 			segments_to_delete.extend(self.segment_domain.iter().filter_map(|(id, start_offset, end_offset, _)| {
 				let start = self.point_domain.ids()[start_offset];
 				let end = self.point_domain.ids()[end_offset];
-				if collapse_set.contains(&start) && collapse_set.contains(&end) {
-					Some(id)
-				} else {
-					None
-				}
+				if collapse_set.contains(&start) && collapse_set.contains(&end) { Some(id) } else { None }
 			}));
 
 			// Delete all points but the first (arbitrary). Set that point's position to the

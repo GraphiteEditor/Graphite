@@ -8,9 +8,9 @@ use super::{PointId, SegmentId, VectorData};
 ///
 /// Important: It is the user's responsibility to ensure the indexes remain valid after uutations to the data.
 pub struct VectorDataIndex {
-	/// Points and segments form a graph. Store it here in a form amenable to graph algos
+	/// Points and segments form a graph. Store it here in a form amenable to graph algorithms.
 	///
-	/// Currently segment data is not stored as it is not used, but it could easily be added.
+	/// Currently, segment data is not stored as it is not used, but it could easily be added.
 	pub(crate) point_graph: UnGraph<Point, ()>,
 	pub(crate) segment_to_edge: FxHashMap<SegmentId, EdgeIndex>,
 	/// Get offset from point id
@@ -79,11 +79,7 @@ impl VectorDataIndex {
 	/// This function will panic if the ID is not present.
 	pub fn segment_ends(&self, id: SegmentId) -> [NodeIndex; 2] {
 		let (start, end) = self.point_graph.edge_endpoints(self.segment_to_edge[&id]).unwrap();
-		if start < end {
-			[start, end]
-		} else {
-			[end, start]
-		}
+		if start < end { [start, end] } else { [end, start] }
 	}
 
 	/// Get the physical location of a point
