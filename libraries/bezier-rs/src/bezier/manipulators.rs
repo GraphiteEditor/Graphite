@@ -69,7 +69,7 @@ impl Bezier {
 	/// - For a linear segment, the order of the points will be: `start`, `end`.
 	/// - For a quadratic segment, the order of the points will be: `start`, `handle`, `end`.
 	/// - For a cubic segment, the order of the points will be: `start`, `handle_start`, `handle_end`, `end`.
-	pub fn get_points(&self) -> impl Iterator<Item = DVec2> {
+	pub fn get_points(&self) -> impl Iterator<Item = DVec2> + use<> {
 		match self.handles {
 			BezierHandles::Linear => [self.start, self.end, DVec2::ZERO, DVec2::ZERO].into_iter().take(2),
 			BezierHandles::Quadratic { handle } => [self.start, handle, self.end, DVec2::ZERO].into_iter().take(3),

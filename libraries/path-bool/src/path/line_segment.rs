@@ -21,11 +21,7 @@ pub fn line_segment_intersection([p1, p2]: LineSegment, [p3, p4]: LineSegment, e
 	let s = (c.x * b.y - c.y * b.x) / denom;
 	let t = (a.x * c.y - a.y * c.x) / denom;
 
-	if (-eps..=1. + eps).contains(&s) && (-eps..=1. + eps).contains(&t) {
-		Some((s, t))
-	} else {
-		None
-	}
+	if (-eps..=1. + eps).contains(&s) && (-eps..=1. + eps).contains(&t) { Some((s, t)) } else { None }
 }
 
 pub fn line_segments_intersect(seg1: LineSegment, seg2: LineSegment, eps: f64) -> bool {

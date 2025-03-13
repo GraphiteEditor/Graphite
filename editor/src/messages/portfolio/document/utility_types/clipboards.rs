@@ -1,5 +1,4 @@
 use super::network_interface::NodeTemplate;
-
 use graph_craft::document::NodeId;
 
 #[repr(u8)]

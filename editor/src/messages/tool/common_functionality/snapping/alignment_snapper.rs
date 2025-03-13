@@ -1,9 +1,7 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::*;
-
-use graphene_core::renderer::Quad;
-
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {

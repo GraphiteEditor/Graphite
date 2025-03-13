@@ -24,7 +24,7 @@ pub fn tag_derive(input: TokenStream) -> TokenStream {
 
 	let new_name = format_ident!("_{}", name);
 
-	let gen = quote! {
+	let r#gen = quote! {
 		struct #new_name {
 			#( #struct_idents: <#struct_types as Tag>::Output ),*
 		}
@@ -39,5 +39,5 @@ pub fn tag_derive(input: TokenStream) -> TokenStream {
 		}
 	};
 
-	gen.into()
+	r#gen.into()
 }

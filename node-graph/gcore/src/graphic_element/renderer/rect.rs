@@ -1,6 +1,5 @@
-use glam::{DAffine2, DVec2};
-
 use super::Quad;
+use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq)]
 /// An axis aligned rect defined by two vertices.

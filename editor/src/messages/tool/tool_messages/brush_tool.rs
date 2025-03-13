@@ -5,12 +5,11 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
-use graphene_core::Color;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 

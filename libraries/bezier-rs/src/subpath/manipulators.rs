@@ -124,7 +124,6 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 mod tests {
 	use super::*;
 	use crate::utils::SubpathTValue;
-
 	use glam::DVec2;
 
 	fn set_up_open_subpath() -> Subpath<EmptyId> {

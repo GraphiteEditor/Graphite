@@ -4,7 +4,6 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
 use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
-
 use glam::{DAffine2, DVec2};
 
 pub trait Transform {

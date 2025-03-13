@@ -1,6 +1,5 @@
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::prelude::*;
-
 use bitflags::bitflags;
 use glam::DVec2;
 use std::collections::VecDeque;

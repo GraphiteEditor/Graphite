@@ -1,6 +1,5 @@
-use core::marker::PhantomData;
-
 use crate::Node;
+use core::marker::PhantomData;
 
 /// This is how we can generically define composition of two nodes.
 /// This is done generically as shown: <https://files.keavon.com/-/SurprisedGaseousAnhinga/capture.png>
