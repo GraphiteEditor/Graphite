@@ -1,5 +1,4 @@
 use crate::messages::prelude::*;
-
 use graphite_proc_macros::*;
 
 #[impl_message]

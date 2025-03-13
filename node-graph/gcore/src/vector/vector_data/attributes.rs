@@ -1,9 +1,5 @@
-use crate::transform::Transform;
-use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
-use crate::vector::ConcatElement;
-
+use crate::vector::vector_data::{HandleId, VectorData};
 use dyn_any::DynAny;
-
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -166,16 +162,16 @@ impl PointDomain {
 		self.id.iter().position(|&check_id| check_id == id)
 	}
 
-	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.position.extend(other.position.iter().map(|&pos| transform.transform_point2(pos)));
 	}
 
-	fn map_ids(&mut self, id_map: &IdMap) {
+	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.point_map.get(id).unwrap_or(id));
 	}
 
-	fn transform(&mut self, transform: DAffine2) {
+	pub fn transform(&mut self, transform: DAffine2) {
 		for pos in &mut self.position {
 			*pos = transform.transform_point2(*pos);
 		}
@@ -220,7 +216,7 @@ impl SegmentDomain {
 			.zip(&self.start_point)
 			.zip(&self.end_point)
 			.filter(|((_, start), end)| **start >= points_length || **end >= points_length)
-			.map(|x| *x.0 .0)
+			.map(|x| *x.0.0)
 			.collect::<Vec<_>>();
 
 		let can_delete = || {
@@ -364,7 +360,7 @@ impl SegmentDomain {
 		}
 	}
 
-	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.segment_map.get(id).unwrap_or(id)));
 		self.start_point.extend(other.start_point.iter().map(|&index| id_map.point_offset + index));
 		self.end_point.extend(other.end_point.iter().map(|&index| id_map.point_offset + index));
@@ -372,11 +368,11 @@ impl SegmentDomain {
 		self.stroke.extend(&other.stroke);
 	}
 
-	fn map_ids(&mut self, id_map: &IdMap) {
+	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.segment_map.get(id).unwrap_or(id));
 	}
 
-	fn transform(&mut self, transform: DAffine2) {
+	pub fn transform(&mut self, transform: DAffine2) {
 		for handles in &mut self.handles {
 			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
 		}
@@ -474,7 +470,7 @@ impl RegionDomain {
 		&self.fill
 	}
 
-	fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
+	pub fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.region_map.get(id).unwrap_or(id)));
 		self.segment_range.extend(
 			other
@@ -485,7 +481,7 @@ impl RegionDomain {
 		self.fill.extend(&other.fill);
 	}
 
-	fn map_ids(&mut self, id_map: &IdMap) {
+	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.region_map.get(id).unwrap_or(id));
 		self.segment_range
 			.iter_mut()
@@ -764,57 +760,10 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-impl ConcatElement for VectorData {
-	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
-		let new_ids = other
-			.point_domain
-			.id
-			.iter()
-			.filter(|id| self.point_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let point_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other
-			.segment_domain
-			.id
-			.iter()
-			.filter(|id| self.segment_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let segment_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other
-			.region_domain
-			.id
-			.iter()
-			.filter(|id| self.region_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let region_map = new_ids.collect::<HashMap<_, _>>();
-		let id_map = IdMap {
-			point_offset: self.point_domain.ids().len(),
-			point_map,
-			segment_map,
-			region_map,
-		};
-		self.point_domain.concat(&other.point_domain, transform, &id_map);
-		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
-		self.region_domain.concat(&other.region_domain, transform, &id_map);
-		// TODO: properly deal with fills such as gradients
-		self.style = other.style.clone();
-		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
-	}
-}
-
-impl ConcatElement for VectorDataTable {
-	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
-		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
-			*instance.alpha_blending = *other_instance.alpha_blending;
-			instance.instance.concat(other_instance.instance, transform * other_instance.transform(), node_id);
-		}
-	}
-}
-
 /// Represents the conversion of ids used when concatenating vector data with conflicting ids.
-struct IdMap {
-	point_offset: usize,
-	point_map: HashMap<PointId, PointId>,
-	segment_map: HashMap<SegmentId, SegmentId>,
-	region_map: HashMap<RegionId, RegionId>,
+pub struct IdMap {
+	pub point_offset: usize,
+	pub point_map: HashMap<PointId, PointId>,
+	pub segment_map: HashMap<SegmentId, SegmentId>,
+	pub region_map: HashMap<RegionId, RegionId>,
 }

@@ -1,9 +1,9 @@
 [package]
 name = "path-bool"
 version = "0.1.0"
-rust-version = "1.81"
+rust-version = "1.85"
 authors = ["Graphite Authors <contact@graphite.rs>", "Adam Platkevič"]
-edition = "2021"
+edition = "2024"
 keywords = [
 	"bezier",
 	"curve",

@@ -8,10 +8,9 @@ pub mod editor_api;
 pub mod helpers;
 
 use editor::messages::prelude::*;
-
 use std::panic;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
@@ -72,7 +71,7 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 
 	EDITOR_HANDLE.with(|editor_handle| {
 		let mut guard = editor_handle.lock();
-		if let Ok(Some(ref mut handle)) = guard.as_deref_mut() {
+		if let Ok(Some(handle)) = guard.as_deref_mut() {
 			handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() });
 		}
 	});

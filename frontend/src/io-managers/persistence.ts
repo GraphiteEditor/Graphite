@@ -53,17 +53,27 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			graphiteStore,
 		);
 
+		await update<string[]>(
+			"documents_tab_order",
+			(old) => {
+				const order = old || [];
+				return order.filter((docId) => docId !== id);
+			},
+			graphiteStore,
+		);
+
 		const documentCount = getFromStore(portfolio).documents.length;
 		if (documentCount > 0) {
 			const documentIndex = getFromStore(portfolio).activeDocumentIndex;
-			const documentId = getFromStore(portfolio).documents[documentIndex].id;
+			const documentId = String(getFromStore(portfolio).documents[documentIndex].id);
 
-			await storeCurrentDocumentId(String(documentId));
+			const tabOrder = (await get<string[]>("documents_tab_order", graphiteStore)) || [];
+			if (tabOrder.includes(documentId)) {
+				await storeCurrentDocumentId(documentId);
+			}
 		} else {
 			await del("current_document_id", graphiteStore);
 		}
-
-		await storeDocumentOrder();
 	}
 
 	async function loadFirstDocument() {
@@ -74,7 +84,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-		if (currentDocumentId) {
+		if (currentDocumentId && currentDocumentId in previouslySavedDocuments) {
 			const doc = previouslySavedDocuments[currentDocumentId];
 			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document, false);
 			editor.handle.selectDocument(BigInt(currentDocumentId));
