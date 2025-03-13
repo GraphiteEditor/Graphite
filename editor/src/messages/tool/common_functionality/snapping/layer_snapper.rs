@@ -3,12 +3,10 @@ use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
-
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
-
-use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Debug, Default)]
 pub struct LayerSnapper {

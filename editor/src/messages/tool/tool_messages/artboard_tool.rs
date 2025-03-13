@@ -3,13 +3,13 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 
@@ -277,14 +277,14 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
 					let snap_data = SnapData::ignore(document, input, &ignore);
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
-					let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+					let mouse_delta = snap_drag(start, current, axis_align, Axis::None, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 					let size = bounds.bounds[1] - bounds.bounds[0];
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);

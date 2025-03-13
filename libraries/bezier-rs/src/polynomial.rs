@@ -102,7 +102,7 @@ impl<const N: usize> Default for Polynomial<N> {
 impl<const N: usize> Display for Polynomial<N> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let mut first = true;
-		for (index, coefficient) in self.coefficients.iter().enumerate().rev().filter(|(_, &coefficient)| coefficient != 0.) {
+		for (index, coefficient) in self.coefficients.iter().enumerate().rev().filter(|&(_, &coefficient)| coefficient != 0.) {
 			if first {
 				first = false;
 			} else {

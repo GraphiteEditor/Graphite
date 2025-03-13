@@ -1,9 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-
-use graph_craft::document::NodeId;
-
 use glam::{IVec2, UVec2};
+use graph_craft::document::NodeId;
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]

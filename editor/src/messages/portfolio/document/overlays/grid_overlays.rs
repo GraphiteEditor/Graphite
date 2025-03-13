@@ -2,11 +2,9 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
-
+use glam::DVec2;
 use graphene_core::raster::color::Color;
 use graphene_core::renderer::Quad;
-
-use glam::DVec2;
 use graphene_std::vector::style::FillChoice;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
@@ -211,7 +209,7 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 
 pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	let mut widgets = Vec::new();
-	fn update_val<I>(grid: &GridSnapping, update: impl Fn(&mut GridSnapping, &I)) -> impl Fn(&I) -> Message {
+	fn update_val<I, F: Fn(&mut GridSnapping, &I)>(grid: &GridSnapping, update: F) -> impl Fn(&I) -> Message + use<I, F> {
 		let grid = grid.clone();
 		move |input: &I| {
 			let mut grid = grid.clone();
@@ -220,7 +218,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		}
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
-		update_val::<NumberInput>(grid, move |grid, val| {
+		update_val::<NumberInput, _>(grid, move |grid, val| {
 			if let Some(val) = val.value {
 				if let Some(update) = update(grid) {
 					*update = val;
@@ -229,7 +227,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
-		update_val::<ColorInput>(grid, move |grid, color| {
+		update_val::<ColorInput, _>(grid, move |grid, color| {
 			if let FillChoice::Solid(color) = color.value {
 				if let Some(update_color) = update(grid) {
 					*update_color = color;
@@ -238,7 +236,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_display = |grid, update: fn(&mut GridSnapping) -> Option<&mut bool>| {
-		update_val::<CheckboxInput>(grid, move |grid, checkbox| {
+		update_val::<CheckboxInput, _>(grid, move |grid, checkbox| {
 			if let Some(update) = update(grid) {
 				*update = checkbox.checked;
 			}

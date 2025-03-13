@@ -1,6 +1,5 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
-
 pub use graphene_core::uuid::*;
 
 // TODO: serialize with serde to save the current editor state

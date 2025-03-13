@@ -7,13 +7,11 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
-
-use graph_craft::document::NodeId;
-use graphene_core::vector::VectorModificationType;
-use graphene_core::Color;
-use graphene_std::vector::{PointId, SegmentId};
-
 use glam::DVec2;
+use graph_craft::document::NodeId;
+use graphene_core::Color;
+use graphene_core::vector::VectorModificationType;
+use graphene_std::vector::{PointId, SegmentId};
 
 #[derive(Default)]
 pub struct FreehandTool {
@@ -311,7 +309,7 @@ impl Fsm for FreehandToolFsmState {
 }
 
 fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVec2, extend: bool, responses: &mut VecDeque<Message>) {
-	if !tool_data.end_point.map_or(true, |(last_pos, _)| position != last_pos) || !position.is_finite() {
+	if !tool_data.end_point.is_none_or(|(last_pos, _)| position != last_pos) || !position.is_finite() {
 		return;
 	}
 

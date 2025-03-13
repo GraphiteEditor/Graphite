@@ -5,8 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{Error, EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED};
-
+use crate::{EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error};
 use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -18,7 +17,6 @@ use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
-
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -700,9 +698,9 @@ impl EditorHandle {
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, id: u64) {
+	pub fn toggle_layer_expansion(&self, id: u64, recursive: bool) {
 		let id = NodeId(id);
-		let message = DocumentMessage::ToggleLayerExpansion { id };
+		let message = DocumentMessage::ToggleLayerExpansion { id, recursive };
 		self.dispatch(message);
 	}
 
@@ -757,10 +755,11 @@ impl EditorHandle {
 		use editor::messages::portfolio::document::graph_operation::transform_utils::*;
 		use editor::messages::portfolio::document::graph_operation::utility_types::*;
 		use editor::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-		use editor::node_graph_executor::replace_node_runtime;
 		use editor::node_graph_executor::NodeRuntime;
+		use editor::node_graph_executor::replace_node_runtime;
+		use graph_craft::document::DocumentNodeImplementation;
 		use graph_craft::document::NodeInput;
-		use graph_craft::document::{value::TaggedValue, DocumentNodeImplementation};
+		use graph_craft::document::value::TaggedValue;
 		use graphene_core::vector::*;
 
 		let (_, request_receiver) = std::sync::mpsc::channel();
@@ -989,7 +988,7 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
-		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else { return T::default() };
+		let Ok(Some(editor)) = guard.as_deref_mut() else { return T::default() };
 
 		callback(editor)
 	})
@@ -1000,7 +999,7 @@ pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut Edito
 	EDITOR_HANDLE.with(|editor_handle| {
 		editor(|editor| {
 			let mut guard = editor_handle.try_lock();
-			let Ok(Some(ref mut editor_handle)) = guard.as_deref_mut() else {
+			let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
 				log::error!("Failed to borrow editor handle");
 				return;
 			};

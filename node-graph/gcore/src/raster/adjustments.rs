@@ -6,15 +6,13 @@ use crate::raster::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
-use crate::vector::style::GradientStops;
 use crate::vector::VectorDataTable;
+use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
-
-use dyn_any::DynAny;
-
 use core::cmp::Ordering;
 use core::fmt::Debug;
+use dyn_any::DynAny;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -574,11 +572,7 @@ async fn threshold<T: Adjust<Color>>(
 			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 		};
 
-		if luminance >= min_luminance && luminance <= max_luminance {
-			Color::WHITE
-		} else {
-			Color::BLACK
-		}
+		if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK }
 	});
 	image
 }
@@ -720,7 +714,7 @@ impl Adjust<Color> for Color {
 }
 impl Adjust<Color> for Option<Color> {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		if let Some(ref mut v) = self {
+		if let Some(v) = self {
 			*v = map_fn(v)
 		}
 	}
@@ -1583,7 +1577,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.one_instance().instance;
+		let result = result.instances().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

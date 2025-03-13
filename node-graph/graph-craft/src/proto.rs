@@ -1,9 +1,7 @@
-use crate::document::{value, InlineRust};
+use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-
 pub use graphene_core::registry::*;
 use graphene_core::*;
-
 use rustc_hash::FxHashMap;
 #[cfg(feature = "serde")]
 use std::borrow::Cow;
@@ -923,12 +921,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(10795919842314709924),
-				NodeId(5986931472261716476),
-				NodeId(1689970140162147057),
-				NodeId(17084072420335757359),
-				NodeId(17163508657634907814),
-				NodeId(3540151743833532788)
+				NodeId(8409339180888025381),
+				NodeId(210279231591542793),
+				NodeId(11043024792989571946),
+				NodeId(16261870568621497283),
+				NodeId(6520148642810552409),
+				NodeId(8779776256867305756)
 			]
 		);
 	}

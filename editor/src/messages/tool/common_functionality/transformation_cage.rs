@@ -1,3 +1,4 @@
+use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
 	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
@@ -7,14 +8,11 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
-
-use glam::{DAffine2, DMat2, DVec2};
-
-use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
 /// (top, bottom, left, right)
 pub type EdgeBool = (bool, bool, bool, bool);
@@ -289,25 +287,30 @@ impl SelectedEdges {
 }
 
 /// Aligns the mouse position to the closest axis
-pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2 {
+pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVec2) -> DVec2 {
 	if axis_align {
 		let mouse_position = position - start;
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 		let angle = -mouse_position.angle_to(DVec2::X);
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+		let axis_vector = DVec2::from_angle(snapped_angle);
 		if snapped_angle.is_finite() {
-			start + DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length()
+			start + axis_vector * mouse_position.dot(axis_vector).abs()
 		} else {
 			start
 		}
+	} else if axis.is_constraint() {
+		let mouse_position = position - start;
+		let axis_vector: DVec2 = axis.into();
+		start + axis_vector * mouse_position.dot(axis_vector)
 	} else {
 		position
 	}
 }
 
 /// Snaps a dragging event from the artboard or select tool
-pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
-	let mouse_position = axis_align_drag(axis_align, snap_data.input.mouse.position, start);
+pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, axis: Axis, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
+	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.mouse.position, start);
 	let document = snap_data.document;
 	let total_mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - start);
 	let mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - current);
@@ -327,7 +330,8 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 		let mut point = point.clone();
 		point.document_point += total_mouse_delta_document;
 
-		let snapped = if axis_align {
+		let constrained_along_axis = snap_to_axis || axis.is_constraint();
+		let snapped = if constrained_along_axis {
 			let constraint = SnapConstraint::Line {
 				origin: point.document_point,
 				direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
@@ -351,9 +355,13 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxManager {
+	/// The corners of the box. Transform with original_bound_transform to get viewport co-ordinates.
 	pub bounds: [DVec2; 2],
+	/// The transform to viewport space for the bounds co-ordinates when the bounds were last updated.
 	pub transform: DAffine2,
+	/// Was the transform previously singular?
 	pub transform_tampered: bool,
+	/// The transform to viewport space for the bounds co-ordinates when the transformation was started.
 	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,

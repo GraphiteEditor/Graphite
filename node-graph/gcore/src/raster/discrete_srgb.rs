@@ -85,11 +85,7 @@ pub fn float_to_srgb_u8(mut f: f32) -> u8 {
 	let lerp = bias.wrapping_add(mult * lerp_idx) >> 24;
 
 	// Adjust linear interpolation to the correct value.
-	if f > CRITICAL_POINTS[lerp as usize] {
-		lerp as u8 + 1
-	} else {
-		lerp as u8
-	}
+	if f > CRITICAL_POINTS[lerp as usize] { lerp as u8 + 1 } else { lerp as u8 }
 }
 
 #[rustfmt::skip]
@@ -156,11 +152,7 @@ mod tests {
 
 	// https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm#SRGBtoFLOAT
 	fn srgb_to_float_ref(f: f32) -> f32 {
-		if f <= 0.04045f32 {
-			f / 12.92f32
-		} else {
-			((f + 0.055f32) / 1.055f32).powf(2.4_f32)
-		}
+		if f <= 0.04045f32 { f / 12.92f32 } else { ((f + 0.055f32) / 1.055f32).powf(2.4_f32) }
 	}
 
 	fn srgb_u8_to_float_ref(c: u8) -> f32 {
