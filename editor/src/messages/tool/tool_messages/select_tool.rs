@@ -1729,7 +1729,7 @@ pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashS
 			if layer.ancestors(metadata).any(|ancestor| filtered_selection.contains(&ancestor)) {
 				continue;
 			}
-			let all_children_selected = layer.children(metadata).all(|child| new_selected.contains(&child));
+			let all_children_selected = layer.descendants(metadata).all(|descendant| new_selected.contains(&descendant));
 
 			if all_children_selected {
 				// Remove all descendants of the parent
