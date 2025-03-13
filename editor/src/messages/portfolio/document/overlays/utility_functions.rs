@@ -2,12 +2,10 @@ use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
-
-use graphene_core::vector::ManipulatorPointId;
-use graphene_std::vector::{PointId, SegmentId};
-
 use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
+use graphene_core::vector::ManipulatorPointId;
+use graphene_std::vector::{PointId, SegmentId};
 use wasm_bindgen::JsCast;
 
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {

@@ -1,11 +1,10 @@
-use graphene_std::vector::misc::BooleanOperation;
-
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
+use graphene_std::vector::misc::BooleanOperation;
 
 pub struct MenuBarMessageData {
 	pub has_active_document: bool,

@@ -1,4 +1,6 @@
+use crate::wasm_application_io::WasmApplicationIo;
 use dyn_any::StaticTypeSized;
+use glam::{DAffine2, DVec2, Mat2, Vec2};
 use gpu_executor::{ComputePassDimensions, StorageBufferOptions};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
@@ -9,14 +11,9 @@ use graphene_core::raster::{BlendMode, Pixel};
 use graphene_core::transform::Transform;
 use graphene_core::transform::TransformMut;
 use graphene_core::*;
-use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
-
-use glam::{DAffine2, DVec2, Mat2, Vec2};
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-use crate::wasm_application_io::WasmApplicationIo;
+use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
 
 // TODO: Move to graph-craft
 #[node_macro::node(category("Debug: GPU"))]

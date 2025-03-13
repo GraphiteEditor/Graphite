@@ -1,9 +1,6 @@
 use crate::Node;
-
-use core::{
-	cell::{Cell, RefCell, RefMut},
-	marker::PhantomData,
-};
+use core::cell::{Cell, RefCell, RefMut};
+use core::marker::PhantomData;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct IntNode<const N: u32>;

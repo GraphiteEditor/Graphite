@@ -9,11 +9,10 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
-use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Color;
+use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
 
 #[derive(Default)]
@@ -461,6 +460,7 @@ impl PenToolData {
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	/// Calculates snap position delta while moving anchor and its handles.
 	fn space_anchor_handle_snap(
 		&mut self,
@@ -493,7 +493,7 @@ impl PenToolData {
 			// Otherwise use either primary or end handle based on is_start flag
 			if is_start {
 				let primary_handle_id = ManipulatorPointId::PrimaryHandle(self.end_point_segment.unwrap());
-				match primary_handle_id.get_position(&vector_data) {
+				match primary_handle_id.get_position(vector_data) {
 					Some(primary_handle) => {
 						let handle_offset = transform.transform_point2(primary_handle - self.next_handle_start);
 						let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
@@ -502,7 +502,7 @@ impl PenToolData {
 					None => None,
 				}
 			} else {
-				let end_handle = self.end_point_segment.map(|handle| ManipulatorPointId::EndHandle(handle).get_position(&vector_data)).flatten();
+				let end_handle = self.end_point_segment.and_then(|handle| ManipulatorPointId::EndHandle(handle).get_position(vector_data));
 				match end_handle {
 					Some(end_handle) => {
 						let handle_offset = transform.transform_point2(end_handle - self.next_handle_start);
@@ -690,10 +690,10 @@ impl PenToolData {
 			return Some((handle - self.next_point).length());
 		}
 
-		return self.handle_end.map(|handle| (handle - self.next_point).length()).or_else(|| {
+		self.handle_end.map(|handle| (handle - self.next_point).length()).or_else(|| {
 			self.end_point_segment
 				.and_then(|segment| Some((ManipulatorPointId::EndHandle(segment).get_position(vector_data)? - self.next_point).length()))
-		});
+		})
 	}
 
 	fn adjust_equidistant_handle(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, is_start: bool) {
@@ -755,12 +755,10 @@ impl PenToolData {
 
 		if let Some(handle) = self.handle_end.as_mut() {
 			*handle = new_position;
-			return;
 		} else {
 			let Some(segment) = self.end_point_segment else { return };
 			let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-			return;
 		}
 	}
 
@@ -1455,7 +1453,7 @@ impl Fsm for PenToolFsmState {
 				}
 
 				let state = tool_data
-					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, &input)
+					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input)
 					.unwrap_or(PenToolFsmState::Ready);
 
 				// Auto-panning
