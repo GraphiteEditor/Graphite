@@ -8,6 +8,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
@@ -286,25 +287,30 @@ impl SelectedEdges {
 }
 
 /// Aligns the mouse position to the closest axis
-pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2 {
+pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVec2) -> DVec2 {
 	if axis_align {
 		let mouse_position = position - start;
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 		let angle = -mouse_position.angle_to(DVec2::X);
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+		let axis_vector = DVec2::from_angle(snapped_angle);
 		if snapped_angle.is_finite() {
-			start + DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length()
+			start + axis_vector * mouse_position.dot(axis_vector).abs()
 		} else {
 			start
 		}
+	} else if axis.is_constraint() {
+		let mouse_position = position - start;
+		let axis_vector: DVec2 = axis.into();
+		start + axis_vector * mouse_position.dot(axis_vector)
 	} else {
 		position
 	}
 }
 
 /// Snaps a dragging event from the artboard or select tool
-pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
-	let mouse_position = axis_align_drag(axis_align, snap_data.input.mouse.position, start);
+pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, axis: Axis, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
+	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.mouse.position, start);
 	let document = snap_data.document;
 	let total_mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - start);
 	let mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - current);
@@ -324,7 +330,8 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 		let mut point = point.clone();
 		point.document_point += total_mouse_delta_document;
 
-		let snapped = if axis_align {
+		let constrained_along_axis = snap_to_axis || axis.is_constraint();
+		let snapped = if constrained_along_axis {
 			let constraint = SnapConstraint::Line {
 				origin: point.document_point,
 				direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
