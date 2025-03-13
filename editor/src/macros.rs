@@ -25,7 +25,7 @@
 /// ```
 ///
 macro_rules! actions {
-	($($v:expr),* $(,)?) => {{
+	($($v:expr_2021),* $(,)?) => {{
 		vec![$(vec![$v.into()]),*]
 	}};
 
@@ -42,7 +42,7 @@ macro_rules! actions {
 /// }
 /// ```
 macro_rules! advertise_actions {
-	($($v:expr),* $(,)?) => {
+	($($v:expr_2021),* $(,)?) => {
 		fn actions(&self) -> $crate::utility_traits::ActionList {
 			actions!($($v),*)
 		}

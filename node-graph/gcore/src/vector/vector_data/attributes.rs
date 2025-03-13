@@ -1,9 +1,7 @@
 use crate::vector::vector_data::{HandleId, VectorData};
-
 use bezier_rs::BezierHandles;
-use dyn_any::DynAny;
-
 use core::iter::zip;
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -226,7 +224,7 @@ impl SegmentDomain {
 			.zip(&self.start_point)
 			.zip(&self.end_point)
 			.filter(|((_, start), end)| **start >= points_length || **end >= points_length)
-			.map(|x| *x.0 .0)
+			.map(|x| *x.0.0)
 			.collect::<Vec<_>>();
 
 		let can_delete = || {

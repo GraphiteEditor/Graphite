@@ -2,15 +2,13 @@ use crate::instances::Instances;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
-
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
-
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use core::ptr::addr_of;
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

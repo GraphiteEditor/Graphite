@@ -1,7 +1,6 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ViewportBounds};
 use crate::messages::prelude::*;
-
 use core::time::Duration;
 
 #[impl_message(Message, InputPreprocessor)]

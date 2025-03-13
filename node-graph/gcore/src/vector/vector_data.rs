@@ -2,19 +2,18 @@ mod attributes;
 mod indexed;
 mod modification;
 
-pub use attributes::*;
-pub use indexed::VectorDataIndex;
-pub use modification::*;
-
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
-
+pub use attributes::*;
+pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
-use dyn_any::DynAny;
-
 use core::borrow::Borrow;
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+pub use indexed::VectorDataIndex;
+pub use modification::*;
+pub use modification::*;
 use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code

@@ -1,7 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-
 use graphene_core::Color;
 use graphene_std::vector::style::FillChoice;
 
