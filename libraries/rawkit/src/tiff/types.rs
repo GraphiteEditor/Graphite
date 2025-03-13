@@ -1,7 +1,7 @@
-use std::io::{Read, Seek};
 use super::file::TiffRead;
 use super::values::{CurveLookupTable, Rational, Transform};
 use super::{Ifd, IfdTagType, TiffError};
+use std::io::{Read, Seek};
 
 pub struct TypeAscii;
 pub struct TypeByte;

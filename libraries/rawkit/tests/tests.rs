@@ -1,10 +1,10 @@
 // Only compile this file if the feature "rawkit-tests" is enabled
 #![cfg(feature = "rawkit-tests")]
 
-use rawkit::RawImage;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ColorType, ImageEncoder};
 use libraw::Processor;
+use rawkit::RawImage;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fmt::Write;
