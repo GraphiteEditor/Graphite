@@ -2,7 +2,6 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
-use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
@@ -30,7 +29,7 @@ macro_rules! concrete {
 
 #[macro_export]
 macro_rules! concrete_with_name {
-	($type:ty, $name:expr) => {
+	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
@@ -43,16 +42,15 @@ macro_rules! concrete_with_name {
 
 #[macro_export]
 macro_rules! generic {
-	($type:ty) => {{
-		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
 #[macro_export]
 macro_rules! future {
-	($type:ty) => {{
-		$crate::Type::Future(Box::new(concrete!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
+	($type:ty, $name:ty) => {
+		$crate::Type::Future(Box::new(concrete!($type, $name)))
+	};
 }
 
 #[macro_export]
@@ -65,6 +63,18 @@ macro_rules! fn_type {
 	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
+	};
+}
+#[macro_export]
+macro_rules! fn_type_fut {
+	($type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
+	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
+	};
+	($in_type:ty, $type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
 	};
 }
 
@@ -134,9 +144,15 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
-		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::graphic_element::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
-		"graphene_core::vector::vector_data::VectorData" => "graphene_core::graphic_element::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
-		"graphene_core::raster::image::ImageFrame<Color>" => "graphene_core::graphic_element::Instances<graphene_core::raster::image::ImageFrame<Color>>".to_string(),
+		"graphene_core::transform::Footprint" => "core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::instances::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
+		"graphene_core::vector::vector_data::VectorData" => "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
+		"graphene_core::raster::image::ImageFrame<Color>"
+		| "graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<Color>>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>>" => {
+			"graphene_core::instances::Instances<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>".to_string()
+		}
 		_ => name,
 	};
 
@@ -189,7 +205,7 @@ pub enum Type {
 	/// Runtime type information for a function. Given some input, gives some output.
 	/// See the example and explanation in the `ComposeNode` implementation within the node registry for more info.
 	Fn(Box<Type>, Box<Type>),
-	/// Not used at the moment.
+	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
 }
 
@@ -199,7 +215,8 @@ impl Default for Type {
 	}
 }
 
-unsafe impl StaticType for Type {
+#[cfg(feature = "dyn-any")]
+unsafe impl dyn_any::StaticType for Type {
 	type Static = Self;
 }
 
@@ -248,7 +265,7 @@ impl Type {
 }
 
 impl Type {
-	pub fn new<T: StaticType + Sized>() -> Self {
+	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
@@ -257,6 +274,7 @@ impl Type {
 			align: core::mem::align_of::<T>(),
 		})
 	}
+
 	pub fn size(&self) -> Option<usize> {
 		match self {
 			Self::Generic(_) => None,
@@ -280,7 +298,7 @@ impl Type {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
-			Self::Future(_) => self,
+			Self::Future(output) => output.nested_type(),
 		}
 	}
 }

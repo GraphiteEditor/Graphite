@@ -1,7 +1,7 @@
 [package]
 name = "graphene-cli"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "CLI interface for the graphene language"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
@@ -44,6 +44,9 @@ image = { workspace = true, default-features = false, features = [
 	"bmp",
 	"png",
 ] }
+
+# Required dependencies
+clap = { version = "4.5.31", features = ["cargo", "derive"] }
 
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }

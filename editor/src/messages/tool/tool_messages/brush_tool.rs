@@ -5,12 +5,11 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
-use graphene_core::Color;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
@@ -264,14 +263,14 @@ impl BrushToolData {
 	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.transform = DAffine2::IDENTITY;
 
-		if document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).count() != 1 {
+		if document.network_interface.selected_nodes().selected_layers(document.metadata()).count() != 1 {
 			return None;
 		}
-		let layer = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).next()?;
+		let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next()?;
 
 		self.layer = Some(layer);
 		for node_id in document.network_interface.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow) {
-			let Some(node) = document.network_interface.network(&[]).unwrap().nodes.get(&node_id) else {
+			let Some(node) = document.network_interface.document_network().nodes.get(&node_id) else {
 				continue;
 			};
 			let Some(reference) = document.network_interface.reference(&node_id, &[]) else {
@@ -425,7 +424,7 @@ impl Fsm for BrushToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			BrushToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),

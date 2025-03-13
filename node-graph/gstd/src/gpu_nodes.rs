@@ -1,25 +1,23 @@
+use crate::wasm_application_io::WasmApplicationIo;
 use dyn_any::StaticTypeSized;
+use glam::{DAffine2, DVec2, Mat2, Vec2};
 use gpu_executor::{ComputePassDimensions, StorageBufferOptions};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::application_io::ApplicationIo;
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::{BlendMode, Image, Pixel};
+use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::{BlendMode, Pixel};
+use graphene_core::transform::Transform;
+use graphene_core::transform::TransformMut;
 use graphene_core::*;
-use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
-
-use glam::{DAffine2, DVec2, Mat2, Vec2};
-
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
-
-use crate::wasm_application_io::WasmApplicationIo;
+use std::sync::{Arc, Mutex};
+use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor, WgpuShaderInput};
 
 // TODO: Move to graph-craft
 #[node_macro::node(category("Debug: GPU"))]
-async fn compile_gpu<'a: 'n>(_: (), node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
+async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context: TypingContext, io: ShaderIO) -> Result<compilation_client::Shader, String> {
 	let mut typing_context = typing_context;
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let DocumentNodeImplementation::Network(ref network) = node.implementation else { panic!() };
@@ -64,15 +62,13 @@ impl Clone for ComputePass {
 #[node_macro::old_node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
 	let image_frame_table = &image;
-	let image = image.one_item();
+	let image = image.one_instance().instance;
 
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
 
 	#[cfg(feature = "image-compare")]
-	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(image.image.data.clone()))
-		.unwrap()
-		.into();
+	let img: image::DynamicImage = image::Rgba32FImage::from_raw(image.width, image.height, bytemuck::cast_vec(image.data.clone())).unwrap().into();
 
 	// TODO: The cache should be based on the network topology not the node name
 	let compute_pass_descriptor = if self.cache.lock().as_ref().unwrap().contains_key("placeholder") {
@@ -81,7 +77,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 		let name = "placeholder".to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, image_frame_table, executor).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
-			return ImageFrameTable::default();
+			return ImageFrameTable::one_empty_image();
 		};
 		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 		log::error!("created compute pass");
@@ -92,7 +88,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 		.create_compute_pass(
 			&compute_pass_descriptor.pipeline_layout,
 			compute_pass_descriptor.readback_buffer.clone(),
-			ComputePassDimensions::XY(image.image.width / 12 + 1, image.image.height / 8 + 1),
+			ComputePassDimensions::XY(image.width / 12 + 1, image.height / 8 + 1),
 		)
 		.unwrap();
 	executor.execute_compute_pipeline(compute_pass).unwrap();
@@ -103,24 +99,23 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 	log::debug!("first color: {:?}", colors[0]);
 
 	#[cfg(feature = "image-compare")]
-	let img2: image::DynamicImage = image::Rgba32FImage::from_raw(image.image.width, image.image.height, bytemuck::cast_vec(colors.clone())).unwrap().into();
+	let img2: image::DynamicImage = image::Rgba32FImage::from_raw(image.width, image.height, bytemuck::cast_vec(colors.clone())).unwrap().into();
 	#[cfg(feature = "image-compare")]
 	let score = image_compare::rgb_hybrid_compare(&img.into_rgb8(), &img2.into_rgb8()).unwrap();
 	#[cfg(feature = "image-compare")]
 	log::debug!("score: {:?}", score.score);
 
-	let result = ImageFrame {
-		image: Image {
-			data: colors,
-			width: image.image.width,
-			height: image.image.height,
-			..Default::default()
-		},
-		transform: image.transform,
-		alpha_blending: image.alpha_blending,
+	let new_image = Image {
+		data: colors,
+		width: image.width,
+		height: image.height,
+		..Default::default()
 	};
+	let mut result = ImageFrameTable::new(new_image);
+	*result.transform_mut() = image_frame_table.transform();
+	*result.one_instance_mut().alpha_blending = *image_frame_table.one_instance().alpha_blending;
 
-	ImageFrameTable::new(result)
+	result
 }
 
 impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
@@ -135,10 +130,10 @@ impl<Node, EditorApi> MapGpuNode<Node, EditorApi> {
 
 async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrameTable<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String>
 where
-	GraphicElement: From<ImageFrame<T>>,
+	GraphicElement: From<Image<T>>,
 	T::Static: Pixel,
 {
-	let image = image.one_item();
+	let image = image.one_instance().instance;
 
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -214,11 +209,11 @@ where
 	.await
 	.unwrap();
 
-	let len: usize = image.image.data.len();
+	let len: usize = image.data.len();
 
 	let storage_buffer = executor
 		.create_storage_buffer(
-			image.image.data.clone(),
+			image.data.clone(),
 			StorageBufferOptions {
 				cpu_writable: false,
 				gpu_writable: true,
@@ -233,7 +228,7 @@ where
 	// let surface = unsafe { executor.create_surface(canvas) }.unwrap();
 	// let surface_id = surface.surface_id;
 
-	// let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
+	// let texture = executor.create_texture_buffer(image.clone(), TextureBufferOptions::Texture).unwrap();
 
 	// // executor.create_render_pass(texture, surface).unwrap();
 
@@ -244,7 +239,7 @@ where
 	// return frame;
 
 	log::debug!("creating buffer");
-	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
+	let width_uniform = executor.create_uniform_buffer(image.width).unwrap();
 
 	let storage_buffer = Arc::new(storage_buffer);
 	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
@@ -279,15 +274,20 @@ where
 }
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
-	let foreground = foreground.one_item();
-	let background = background.one_item();
+async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
+	let foreground_transform = foreground.transform();
+	let background_transform = background.transform();
 
-	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
-	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
+	let background_alpha_blending = background.one_instance().alpha_blending;
+
+	let foreground = foreground.one_instance().instance;
+	let background = background.one_instance().instance;
+
+	let foreground_size = DVec2::new(foreground.width as f64, foreground.height as f64);
+	let background_size = DVec2::new(background.width as f64, background.height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
+	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground_transform.inverse() * background_transform * DAffine2::from_scale(1. / background_size);
 
 	let transform_matrix: Mat2 = bg_to_fg.matrix2.as_mat2();
 	let translation: Vec2 = bg_to_fg.translation.as_vec2();
@@ -334,7 +334,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: 
 	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
 	let Ok(proto_networks_result) = proto_networks else {
 		log::error!("Error compiling network in 'blend_gpu_image()");
-		return ImageFrameTable::default();
+		return ImageFrameTable::one_empty_image();
 	};
 	let proto_networks = proto_networks_result;
 	log::debug!("compiling shader");
@@ -365,16 +365,16 @@ async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: 
 	)
 	.await
 	.unwrap();
-	let len = background.image.data.len();
+	let len = background.data.len();
 
 	let executor = WgpuExecutor::new()
 		.await
 		.expect("Failed to create wgpu executor. Please make sure that webgpu is enabled for your browser.");
 	log::debug!("creating buffer");
-	let width_uniform = executor.create_uniform_buffer(background.image.width).unwrap();
+	let width_uniform = executor.create_uniform_buffer(background.width).unwrap();
 	let bg_storage_buffer = executor
 		.create_storage_buffer(
-			background.image.data.clone(),
+			background.data.clone(),
 			StorageBufferOptions {
 				cpu_writable: false,
 				gpu_writable: true,
@@ -385,7 +385,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: 
 		.unwrap();
 	let fg_storage_buffer = executor
 		.create_storage_buffer(
-			foreground.image.data.clone(),
+			foreground.data.clone(),
 			StorageBufferOptions {
 				cpu_writable: false,
 				gpu_writable: true,
@@ -394,7 +394,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: 
 			},
 		)
 		.unwrap();
-	let fg_width_uniform = executor.create_uniform_buffer(foreground.image.width).unwrap();
+	let fg_width_uniform = executor.create_uniform_buffer(foreground.width).unwrap();
 	let transform_uniform = executor.create_uniform_buffer(transform_matrix).unwrap();
 	let translation_uniform = executor.create_uniform_buffer(translation).unwrap();
 	let width_uniform = Arc::new(width_uniform);
@@ -436,7 +436,7 @@ async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: 
 	};
 	log::debug!("created pipeline");
 	let compute_pass = executor
-		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(background.image.width, background.image.height))
+		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(background.width, background.height))
 		.unwrap();
 	executor.execute_compute_pipeline(compute_pass).unwrap();
 	log::debug!("executed pipeline");
@@ -444,16 +444,16 @@ async fn blend_gpu_image(_: (), foreground: ImageFrameTable<Color>, background: 
 	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
 	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 
-	let result = ImageFrame {
-		image: Image {
-			data: colors,
-			width: background.image.width,
-			height: background.image.height,
-			..Default::default()
-		},
-		transform: background.transform,
-		alpha_blending: background.alpha_blending,
+	let created_image = Image {
+		data: colors,
+		width: background.width,
+		height: background.height,
+		..Default::default()
 	};
 
-	ImageFrameTable::new(result)
+	let mut result = ImageFrameTable::new(created_image);
+	*result.transform_mut() = background_transform;
+	*result.one_instance_mut().alpha_blending = *background_alpha_blending;
+
+	result
 }

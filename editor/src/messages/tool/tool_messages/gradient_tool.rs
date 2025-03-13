@@ -5,7 +5,6 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default)]
@@ -246,7 +245,7 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
@@ -323,7 +322,7 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(mut gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
 					let transform = gradient_space_transform(layer, document);
@@ -362,7 +361,7 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					// Check for dragging step
@@ -401,7 +400,7 @@ impl Fsm for GradientToolFsmState {
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
-						if !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, document.metadata()) {
+						if !document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata()) {
 							let nodes = vec![layer.to_node()];
 
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
@@ -492,7 +491,7 @@ impl Fsm for GradientToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"),

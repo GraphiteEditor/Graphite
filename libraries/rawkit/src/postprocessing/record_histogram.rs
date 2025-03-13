@@ -1,4 +1,4 @@
-use crate::{Histogram, Pixel, PixelTransform, RawImage, CHANNELS_IN_RGB};
+use crate::{CHANNELS_IN_RGB, Histogram, Pixel, PixelTransform, RawImage};
 
 impl RawImage {
 	pub fn record_histogram_fn(&self) -> RecordHistogram {

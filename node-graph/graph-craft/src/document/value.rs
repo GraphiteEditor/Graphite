@@ -2,22 +2,22 @@ use super::DocumentNode;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
-
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
-
-pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+
+pub struct TaggedValueTypeError;
 
 /// Macro to generate the tagged value enum.
 macro_rules! tagged_value {
@@ -102,8 +102,8 @@ macro_rules! tagged_value {
 						})
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
-					Type::Future(_) => {
-						None
+					Type::Future(output) => {
+						TaggedValue::from_type(output)
 					}
 				}
 			}
@@ -111,14 +111,49 @@ macro_rules! tagged_value {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
 			}
 		}
+
+		$(
+			impl From<$ty> for TaggedValue {
+				fn from(value: $ty) -> Self {
+					Self::$identifier(value)
+				}
+			}
+		)*
+
+		$(
+			impl<'a> TryFrom<&'a TaggedValue> for &'a $ty {
+				type Error = TaggedValueTypeError;
+				fn try_from(value: &'a TaggedValue) -> Result<Self, Self::Error> {
+					match value{
+						TaggedValue::$identifier(value) => Ok(value),
+						_ => Err(TaggedValueTypeError),
+					}
+				}
+			}
+		)*
 	};
 }
 
 tagged_value! {
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
+	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
+	VectorData(graphene_core::vector::VectorDataTable),
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
+	GraphicGroup(graphene_core::GraphicGroupTable),
+	// TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
+	ArtboardGroup(graphene_core::ArtboardGroupTable),
+	GraphicElement(graphene_core::GraphicElement),
+	Artboard(graphene_core::Artboard),
 	String(String),
 	U32(u32),
 	U64(u64),
-	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias document upgrade code
+	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(feature = "serde", serde(alias = "F32"))]
 	F64(f64),
 	OptionalF64(Option<f64>),
 	Bool(bool),
@@ -129,21 +164,19 @@ tagged_value! {
 	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image<Color>),
 	ImaginateCache(ImaginateCache),
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
 	Color(graphene_core::raster::color::Color),
+	OptionalColor(Option<graphene_core::raster::color::Color>),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
 	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	ImaginateController(ImaginateController),
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
-	VectorData(graphene_core::vector::VectorDataTable),
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),
-	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))] // TODO: Eventually remove this alias document upgrade code
+	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))]
 	VecF64(Vec<f64>),
 	VecU64(Vec<u64>),
 	NodePath(Vec<NodeId>),
@@ -163,19 +196,16 @@ tagged_value! {
 	FillChoice(graphene_core::vector::style::FillChoice),
 	Gradient(graphene_core::vector::style::Gradient),
 	GradientType(graphene_core::vector::style::GradientType),
-	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))] // TODO: Eventually remove this alias document upgrade code
+	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))]
 	GradientStops(graphene_core::vector::style::GradientStops),
-	OptionalColor(Option<graphene_core::raster::color::Color>),
-	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))] // TODO: Eventually remove this alias document upgrade code
+	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))]
 	PointIds(Vec<graphene_core::vector::PointId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
-	GraphicGroup(graphene_core::GraphicGroupTable),
-	GraphicElement(graphene_core::GraphicElement),
-	ArtboardGroup(graphene_core::ArtboardGroup),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	Palette(Vec<Color>),
@@ -270,7 +300,7 @@ impl TaggedValue {
 				Some(ty)
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
-			Type::Future(_) => None,
+			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
 		}
 	}
 

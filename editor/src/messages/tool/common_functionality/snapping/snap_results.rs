@@ -1,5 +1,4 @@
-use std::collections::VecDeque;
-
+use super::DistributionMatch;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{DistributionSnapTarget, SnapSource, SnapTarget};
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
@@ -8,8 +7,7 @@ use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
-
-use super::DistributionMatch;
+use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
 pub struct SnapResults {

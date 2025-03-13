@@ -5,15 +5,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
-
+use glam::{DAffine2, DVec2};
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
-use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
-
-use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone)]
 struct ArtboardInfo {
@@ -116,7 +114,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
 				// If there is a non artboard feeding into the primary input of the artboard, move it to the secondary input
-				let Some(artboard) = network_interface.network(&[]).and_then(|network| network.nodes.get(&id)) else {
+				let Some(artboard) = network_interface.document_network().nodes.get(&id) else {
 					log::error!("Artboard not created");
 					return;
 				};
@@ -218,7 +216,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				// Go through all artboards and create merge nodes
 				for artboard in network_interface.all_artboards() {
 					let node_id = NodeId::new();
-					let Some(document_node) = network_interface.network(&[]).and_then(|network| network.nodes.get(&artboard.to_node())) else {
+					let Some(document_node) = network_interface.document_network().nodes.get(&artboard.to_node()) else {
 						log::error!("Artboard not created");
 						responses.add(DocumentMessage::AbortTransaction);
 						return;
@@ -262,10 +260,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					// Modify upstream connections
 					for outward_wire in &artboard.1.output_nodes {
 						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
-						let input_connector = if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
-							InputConnector::node(artboard_info.merge_node, outward_wire.input_index())
-						} else {
-							*outward_wire
+						let input_connector = match artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
+							Some(artboard_info) => InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
+							_ => *outward_wire,
 						};
 						responses.add(NodeGraphMessage::SetInput { input_connector, input });
 					}

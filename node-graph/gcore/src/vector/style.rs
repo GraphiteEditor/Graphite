@@ -1,9 +1,8 @@
 //! Contains stylistic options for SVG elements.
 
+use crate::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::renderer::format_transform_matrix;
-use crate::Color;
-
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::fmt::{self, Display, Write};
@@ -146,6 +145,8 @@ impl Gradient {
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
+
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		let transformed_bound_transform = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 

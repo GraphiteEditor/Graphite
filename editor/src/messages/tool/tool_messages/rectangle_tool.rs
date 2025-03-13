@@ -1,14 +1,16 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -299,7 +301,7 @@ impl Fsm for RectangleToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			RectangleToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),

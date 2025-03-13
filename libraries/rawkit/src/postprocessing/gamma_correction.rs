@@ -1,8 +1,8 @@
-use crate::{Histogram, Image, Pixel, CHANNELS_IN_RGB};
+use crate::{CHANNELS_IN_RGB, Histogram, Image, Pixel};
 use std::f64::consts::E;
 
 impl Image<u16> {
-	pub fn gamma_correction_fn(&self, histogram: &Histogram) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] {
+	pub fn gamma_correction_fn(&self, histogram: &Histogram) -> impl Fn(Pixel) -> [u16; CHANNELS_IN_RGB] + use<> {
 		let percentage = self.width * self.height;
 
 		let mut white = 0;

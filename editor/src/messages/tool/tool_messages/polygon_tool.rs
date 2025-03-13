@@ -10,8 +10,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -385,7 +385,7 @@ impl Fsm for PolygonToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PolygonToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),

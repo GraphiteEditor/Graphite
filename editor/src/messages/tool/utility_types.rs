@@ -2,8 +2,8 @@
 
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
-use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::broadcast::BroadcastMessage;
+use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -12,10 +12,8 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
-
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
@@ -56,16 +54,16 @@ pub trait Fsm {
 	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
-	fn update_hints(&self, responses: &mut VecDeque<Message>, tool_data: &Self::ToolData);
+	fn update_hints(&self, responses: &mut VecDeque<Message>);
 	/// Implementing this trait function lets a specific tool set the current mouse cursor icon.
 	fn update_cursor(&self, responses: &mut VecDeque<Message>);
 
 	/// If this message is a standard tool message, process it and return true. Standard tool messages are those which are common across every tool.
-	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut Self::ToolData) -> bool {
+	fn standard_tool_messages(&self, message: &ToolMessage, responses: &mut VecDeque<Message>) -> bool {
 		// Check for standard hits or cursor events
 		match message {
 			ToolMessage::UpdateHints => {
-				self.update_hints(responses, tool_data);
+				self.update_hints(responses);
 				true
 			}
 			ToolMessage::UpdateCursor => {
@@ -90,7 +88,7 @@ pub trait Fsm {
 		Self: PartialEq + Sized + Copy,
 	{
 		// If this message is one of the standard tool messages, process it and exit early
-		if self.standard_tool_messages(&message, responses, tool_data) {
+		if self.standard_tool_messages(&message, responses) {
 			return;
 		}
 
@@ -100,7 +98,7 @@ pub trait Fsm {
 		// Update state
 		if *self != new_state {
 			*self = new_state;
-			self.update_hints(responses, tool_data);
+			self.update_hints(responses);
 			if update_cursor_on_transition {
 				self.update_cursor(responses);
 			}

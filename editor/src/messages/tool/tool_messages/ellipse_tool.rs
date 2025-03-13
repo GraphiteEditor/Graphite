@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -295,7 +295,7 @@ impl Fsm for EllipseToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			EllipseToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
@@ -313,5 +313,136 @@ impl Fsm for EllipseToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+	}
+}
+
+#[cfg(test)]
+mod test_ellipse {
+	pub use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graphene_core::vector::generator_nodes::ellipse;
+
+	#[derive(Debug, PartialEq)]
+	struct ResolvedEllipse {
+		radius_x: f64,
+		radius_y: f64,
+		transform: DAffine2,
+	}
+
+	async fn get_ellipse(editor: &mut EditorTestUtils) -> Vec<ResolvedEllipse> {
+		let instrumented = editor.eval_graph().await;
+
+		let document = editor.active_document();
+		let layers = document.metadata().all_layers();
+		layers
+			.filter_map(|layer| {
+				let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::protonode_identifier())?;
+				Some(ResolvedEllipse {
+					radius_x: instrumented.grab_protonode_input::<ellipse::RadiusXInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					radius_y: instrumented.grab_protonode_input::<ellipse::RadiusYInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					transform: document.metadata().transform_to_document(layer),
+				})
+			})
+			.collect()
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 10., 10., 19., 0., ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		assert_eq!(
+			ellipse[0],
+			ResolvedEllipse {
+				radius_x: 4.5,
+				radius_y: 5.,
+				transform: DAffine2::from_translation(DVec2::new(14.5, 5.)) // Uses center
+			}
+		);
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_circle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		assert_eq!(
+			ellipse[0],
+			ResolvedEllipse {
+				radius_x: 10.,
+				radius_y: 10.,
+				transform: DAffine2::from_translation(DVec2::new(0., 20.)) // Uses center
+			}
+		);
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_square_rotated() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await;
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT).await; // Viewport coordinates
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		println!("{ellipse:?}");
+		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
+		// assert_eq!(ellipse[0].radius_x, 5.);
+		// assert_eq!(ellipse[0].radius_y, 5.);
+
+		// assert!(ellipse[0]
+		// 	.transform
+		// 	.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001));
+
+		float_eq!(ellipse[0].radius_x, 11. / core::f64::consts::SQRT_2 / 2.);
+		float_eq!(ellipse[0].radius_y, 11. / core::f64::consts::SQRT_2 / 2.);
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_translation(DVec2::splat(11. / core::f64::consts::SQRT_2 / 2.)), 0.001));
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_center_square_rotated() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await;
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await; // Viewport coordinates
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
+		// assert_eq!(ellipse[0].radius_x, 10.);
+		// assert_eq!(ellipse[0].radius_y, 10.);
+		// assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
+		float_eq!(ellipse[0].radius_x, 11. / core::f64::consts::SQRT_2);
+		float_eq!(ellipse[0].radius_y, 11. / core::f64::consts::SQRT_2);
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::IDENTITY, 0.001));
+	}
+
+	#[tokio::test]
+	async fn ellipse_cancel() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool_cancel_rmb(ToolType::Ellipse).await;
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 0);
 	}
 }

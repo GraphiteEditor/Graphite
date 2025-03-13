@@ -3,17 +3,14 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
-
-use glam::{IVec2, Vec2Swizzles};
 
 #[derive(Default)]
 pub struct ArtboardTool {
@@ -112,7 +109,8 @@ struct ArtboardToolData {
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	dragging_current_artboard_location: IVec2,
+	dragging_current_artboard_location: glam::IVec2,
+	draw: Resize,
 }
 
 impl ArtboardToolData {
@@ -256,14 +254,7 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::Dragging
 				} else {
-					tool_data.get_snap_candidates(document, input);
-
-					let point = SnapCandidatePoint::handle(to_document.transform_point2(input.mouse.position));
-
-					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
-
-					tool_data.drag_start = snapped.snapped_point_document;
-					tool_data.drag_current = snapped.snapped_point_document;
+					tool_data.draw.start(document, input);
 
 					ArtboardToolFsmState::Drawing
 				};
@@ -285,7 +276,7 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
@@ -324,46 +315,15 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				let to_viewport = document.metadata().document_to_viewport;
-				let ignore = if let Some(layer) = tool_data.selected_artboard { vec![layer] } else { vec![] };
-				let snap_data = SnapData::ignore(document, input, &ignore);
-
-				let document_mouse = to_viewport.inverse().transform_point2(input.mouse.position);
-
-				let config = SnapTypeConfiguration::default();
-				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
-				let snapped_mouse_position = to_viewport.transform_point2(snapped.snapped_point_document);
-
-				tool_data.snap_manager.update_indicator(snapped);
-
-				let mut start = to_viewport.transform_point2(tool_data.drag_start);
-				let mut size = snapped_mouse_position - start;
-
-				// Constrain axis
-				if input.keyboard.get(constrain_axis_or_aspect as usize) {
-					size = size.abs().max(size.abs().yx()) * size.signum();
-				}
-
-				// From center
-				if input.keyboard.get(center as usize) {
-					start -= size;
-					size *= 2.;
-				}
-
-				let start = to_viewport.inverse().transform_point2(start);
-				let size = to_viewport.inverse().transform_vector2(size);
-				let end = start + size;
-
+				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, center, constrain_axis_or_aspect);
 				if let Some(artboard) = tool_data.selected_artboard {
-					if artboard == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("Selected artboard cannot be ROOT_PARENT");
-					} else {
-						responses.add(GraphOperationMessage::ResizeArtboard {
-							layer: artboard,
-							location: start.min(end).round().as_ivec2(),
-							dimensions: (start.round() - end.round()).abs().as_ivec2(),
-						});
-					}
+					assert_ne!(artboard, LayerNodeIdentifier::ROOT_PARENT, "Selected artboard cannot be ROOT_PARENT");
+
+					responses.add(GraphOperationMessage::ResizeArtboard {
+						layer: artboard,
+						location: start.min(end).round().as_ivec2(),
+						dimensions: (start.round() - end.round()).abs().as_ivec2(),
+					});
 				} else {
 					let id = NodeId::new();
 
@@ -374,8 +334,8 @@ impl Fsm for ArtboardToolFsmState {
 						artboard: graphene_core::Artboard {
 							graphic_group: graphene_core::GraphicGroupTable::default(),
 							label: String::from("Artboard"),
-							location: start.round().as_ivec2(),
-							dimensions: IVec2::splat(1),
+							location: start.min(end).round().as_ivec2(),
+							dimensions: (start.round() - end.round()).abs().as_ivec2(),
 							background: graphene_core::Color::WHITE,
 							clip: false,
 						},
@@ -393,7 +353,10 @@ impl Fsm for ArtboardToolFsmState {
 			}
 
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerMove { .. }) => {
-				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
+				let mut cursor = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false, false, None));
 
 				if cursor == MouseCursorIcon::Default && !hovered {
 					tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
@@ -454,8 +417,7 @@ impl Fsm for ArtboardToolFsmState {
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
 				tool_data.selected_artboard = document
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_layers(document.metadata())
 					.find(|layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
 				self
@@ -559,7 +521,7 @@ impl Fsm for ArtboardToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			ArtboardToolFsmState::Ready { .. } => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
@@ -589,5 +551,104 @@ impl Fsm for ArtboardToolFsmState {
 		} else {
 			responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 		}
+	}
+}
+
+#[cfg(test)]
+mod test_artboard {
+	pub use crate::test_utils::test_prelude::*;
+
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_core::Artboard> {
+		let instrumented = editor.eval_graph().await;
+		instrumented.grab_all_input::<graphene_core::append_artboard::ArtboardInput>(&editor.runtime).collect()
+	}
+
+	#[tokio::test]
+	async fn artboard_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty()).await;
+
+		let artboards = get_artboards(&mut editor).await;
+
+		assert_eq!(artboards.len(), 1);
+		assert_eq!(artboards[0].location, IVec2::new(10, 0));
+		assert_eq!(artboards[0].dimensions, IVec2::new(10, 11));
+	}
+
+	#[tokio::test]
+	async fn artboard_draw_square() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
+
+		let artboards = get_artboards(&mut editor).await;
+		assert_eq!(artboards.len(), 1);
+		assert_eq!(artboards[0].location, IVec2::new(-10, 10));
+		assert_eq!(artboards[0].dimensions, IVec2::new(20, 20));
+	}
+
+	#[tokio::test]
+	async fn artboard_draw_square_rotated() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await;
+		// Viewport coordinates
+		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await;
+
+		let artboards = get_artboards(&mut editor).await;
+		assert_eq!(artboards.len(), 1);
+		assert_eq!(artboards[0].location, IVec2::new(0, 0));
+		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
+		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+	}
+
+	#[tokio::test]
+	async fn artboard_draw_center_square_rotated() {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await;
+		// Viewport coordinates
+		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await;
+
+		let artboards = get_artboards(&mut editor).await;
+		assert_eq!(artboards.len(), 1);
+		assert_eq!(artboards[0].location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
+		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
+		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+	}
+
+	#[tokio::test]
+	async fn artboard_delete() {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::default()).await;
+		editor.press(Key::Delete, ModifierKeys::default()).await;
+
+		let artboards = get_artboards(&mut editor).await;
+		assert_eq!(artboards.len(), 0);
+	}
+
+	#[tokio::test]
+	async fn artboard_cancel() {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+
+		editor.drag_tool_cancel_rmb(ToolType::Artboard).await;
+		let artboards = get_artboards(&mut editor).await;
+		assert_eq!(artboards.len(), 0);
 	}
 }
