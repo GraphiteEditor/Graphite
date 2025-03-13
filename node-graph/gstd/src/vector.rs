@@ -1,4 +1,5 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
+use glam::{DAffine2, DVec2};
 use graphene_core::transform::Transform;
 use graphene_core::transform::TransformMut;
 use graphene_core::vector::misc::BooleanOperation;
@@ -7,8 +8,6 @@ pub use graphene_core::vector::*;
 use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
-
-use glam::{DAffine2, DVec2};
 use std::ops::Mul;
 
 #[node_macro::node(category(""))]

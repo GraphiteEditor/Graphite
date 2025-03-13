@@ -1,9 +1,7 @@
-use crate::document::{value, InlineRust};
+use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-
 pub use graphene_core::registry::*;
 use graphene_core::*;
-
 use rustc_hash::FxHashMap;
 #[cfg(feature = "serde")]
 use std::borrow::Cow;

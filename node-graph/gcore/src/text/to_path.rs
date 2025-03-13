@@ -1,7 +1,5 @@
 use crate::vector::PointId;
-
 use bezier_rs::{ManipulatorGroup, Subpath};
-
 use glam::DVec2;
 use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};

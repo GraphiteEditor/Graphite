@@ -1,6 +1,5 @@
-use crate::utils::{TValue, TValueType};
-
 use super::*;
+use crate::utils::{TValue, TValueType};
 
 /// Functionality relating to looking up properties of the `Bezier` or points along the `Bezier`.
 impl Bezier {

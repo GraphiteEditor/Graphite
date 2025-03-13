@@ -1,12 +1,10 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
-
-use graphene_core::renderer::Quad;
-use graphene_core::text::{load_face, FontCache};
-use graphene_std::vector::PointId;
-
 use glam::DVec2;
+use graphene_core::renderer::Quad;
+use graphene_core::text::{FontCache, load_face};
+use graphene_std::vector::PointId;
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
