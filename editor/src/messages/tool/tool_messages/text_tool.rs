@@ -785,7 +785,14 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(state, TextToolMessage::Abort) => {
-				input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
+				if matches!(state, TextToolFsmState::ResizingBounds) {
+					responses.add(DocumentMessage::AbortTransaction);
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.original_transforms.clear();
+					}
+				} else {
+					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
+				}
 				tool_data.resize.cleanup(responses);
 
 				TextToolFsmState::Ready
@@ -814,7 +821,7 @@ impl Fsm for TextToolFsmState {
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
 			TextToolFsmState::ResizingBounds => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Resize Text Box")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Lock Aspect Ratio"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
 		};
