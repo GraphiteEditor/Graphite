@@ -572,7 +572,7 @@ impl Fsm for TextToolFsmState {
 					}
 					tool_data.get_snap_candidates(document, font_cache);
 
-					TextToolFsmState::ResizingBounds
+					return TextToolFsmState::ResizingBounds;
 				} else if let Some(clicked_layer) = TextToolData::check_click(document, input, font_cache) {
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -587,9 +587,8 @@ impl Fsm for TextToolFsmState {
 					});
 					tool_data.get_snap_candidates(document, font_cache);
 					return TextToolFsmState::Dragging;
-				} else {
-					TextToolFsmState::Placing
 				}
+				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
 				// This ensures the cursor only changes if a layer is selected
@@ -889,9 +888,7 @@ impl Fsm for TextToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
-			TextToolFsmState::Dragging => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-			]),
+			TextToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 			TextToolFsmState::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Lock Aspect Ratio"), HintInfo::keys([Key::Alt], "From Center")]),
