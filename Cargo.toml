@@ -95,6 +95,9 @@ syn = { version = "2.0", default-features = false, features = [
 	"derive",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
+petgraph = { version = "0.7.1", default-features = false, features = [
+	"graphmap",
+] }
 
 [profile.dev]
 opt-level = 1

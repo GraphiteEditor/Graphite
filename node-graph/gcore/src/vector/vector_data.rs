@@ -1,4 +1,5 @@
 mod attributes;
+mod indexed;
 mod modification;
 
 use super::style::{PathStyle, Stroke};
@@ -9,6 +10,7 @@ use bezier_rs::ManipulatorGroup;
 use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+pub use indexed::VectorDataIndex;
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -68,6 +70,8 @@ pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
+///
+/// Segments are connected if they share endpoints.
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
@@ -263,6 +267,11 @@ impl VectorData {
 	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
 		let index = [self.point_domain.resolve_id(current)].into_iter().flatten();
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
+	}
+
+	/// Get an array slice of all segment IDs.
+	pub fn segment_ids(&self) -> &[SegmentId] {
+		self.segment_domain.ids()
 	}
 
 	/// Enumerate all segments that start at the point.
