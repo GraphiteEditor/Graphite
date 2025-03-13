@@ -1,3 +1,4 @@
+use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
 	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
@@ -8,13 +9,9 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
-
-use glam::{DAffine2, DMat2, DVec2};
-
-use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
 /// (top, bottom, left, right)
 pub type EdgeBool = (bool, bool, bool, bool);
@@ -351,9 +348,13 @@ pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: Snap
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxManager {
+	/// The corners of the box. Transform with original_bound_transform to get viewport co-ordinates.
 	pub bounds: [DVec2; 2],
+	/// The transform to viewport space for the bounds co-ordinates when the bounds were last updated.
 	pub transform: DAffine2,
+	/// Was the transform previously singular?
 	pub transform_tampered: bool,
+	/// The transform to viewport space for the bounds co-ordinates when the transformation was started.
 	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,

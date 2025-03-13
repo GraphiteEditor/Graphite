@@ -3,21 +3,21 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DocumentNodeDefinition};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
-
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::{concrete, Type};
+use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::{Type, concrete};
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
-use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
-
-use glam::{DAffine2, DVec2, IVec2};
-use serde_json::{json, Value};
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
+use interpreted_executor::node_registry::NODE_REGISTRY;
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -656,11 +656,7 @@ impl NodeNetworkInterface {
 							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
 							node_io.inputs[iterator_index].clone().nested_type() == input_type || node_io.inputs[iterator_index] == input_type
 						});
-						if valid_implementation {
-							node_io.inputs.get(*input_index).cloned()
-						} else {
-							None
-						}
+						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
 					})
 					.collect::<Vec<_>>()
 			}
@@ -1339,7 +1335,7 @@ impl NodeNetworkInterface {
 
 	/// Layers excluding ones that are children of other layers in the list.
 	// TODO: Cache this
-	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> {
+	pub fn shallowest_unique_layers(&self, network_path: &[NodeId]) -> impl Iterator<Item = LayerNodeIdentifier> + use<> {
 		let mut sorted_layers = if let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) {
 			selected_nodes
 				.selected_layers(self.document_metadata())
@@ -2528,10 +2524,9 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &document_node.implementation {
-				network.exports.len()
-			} else {
-				1
+			let number_of_outputs = match &document_node.implementation {
+				DocumentNodeImplementation::Network(network) => network.exports.len(),
+				_ => 1,
 			};
 			// If the node does not have a primary output, shift all ports down a row
 			let mut output_row_count = if !node_metadata.persistent_metadata.has_primary_output { 1 } else { 0 };
@@ -2682,11 +2677,7 @@ impl NodeNetworkInterface {
 							let Some(downstream_node_id) = downstream_node_connectors.iter().find_map(|input_connector| {
 								if let InputConnector::Node { node_id, input_index } = input_connector {
 									let downstream_input_index = if self.is_layer(node_id, network_path) { 1 } else { 0 };
-									if *input_index == downstream_input_index {
-										Some(node_id)
-									} else {
-										None
-									}
+									if *input_index == downstream_input_index { Some(node_id) } else { None }
 								} else {
 									None
 								}
@@ -2933,11 +2924,7 @@ impl NodeNetworkInterface {
 					log::error!("Could not get node_metadata for node {node_id}");
 					return None;
 				};
-				if !node_metadata.persistent_metadata.is_layer() {
-					Some(*node_id)
-				} else {
-					None
-				}
+				if !node_metadata.persistent_metadata.is_layer() { Some(*node_id) } else { None }
 			})
 			.or_else(|| clicked_nodes.into_iter().next())
 	}
@@ -3168,13 +3155,10 @@ impl NodeNetworkInterface {
 		// Only load structure if there is a root node
 		let Some(root_node) = self.root_node(&[]) else { return };
 
-		let Some(first_root_layer) = self.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow).find_map(|node_id| {
-			if self.is_layer(&node_id, &[]) {
-				Some(LayerNodeIdentifier::new(node_id, self, &[]))
-			} else {
-				None
-			}
-		}) else {
+		let Some(first_root_layer) = self
+			.upstream_flow_back_from_nodes(vec![root_node.node_id], &[], FlowType::PrimaryFlow)
+			.find_map(|node_id| if self.is_layer(&node_id, &[]) { Some(LayerNodeIdentifier::new(node_id, self, &[])) } else { None })
+		else {
 			return;
 		};
 		// Should refer to output node
@@ -3244,14 +3228,16 @@ impl NodeNetworkInterface {
 
 		let nodes: HashSet<NodeId> = self.document_network().nodes.keys().cloned().collect::<HashSet<_>>();
 
-		self.document_metadata.upstream_transforms.retain(|node, _| nodes.contains(node));
+		self.document_metadata.upstream_footprints.retain(|node, _| nodes.contains(node));
+		self.document_metadata.local_transforms.retain(|node, _| nodes.contains(node));
 		self.document_metadata.vector_modify.retain(|node, _| nodes.contains(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
 
 	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
-		self.document_metadata.upstream_transforms = new_upstream_transforms;
+	pub fn update_transforms(&mut self, upstream_footprints: HashMap<NodeId, Footprint>, local_transforms: HashMap<NodeId, DAffine2>) {
+		self.document_metadata.upstream_footprints = upstream_footprints;
+		self.document_metadata.local_transforms = local_transforms;
 	}
 
 	/// Update the cached click targets of the layers
@@ -3327,7 +3313,7 @@ impl NodeNetworkInterface {
 		};
 		{
 			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
-			let Some(TaggedValue::VectorModification(ref mut modification)) = value.as_deref_mut() else {
+			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
 				panic!("Path node does not have modification input");
 			};
 
@@ -3819,7 +3805,6 @@ impl NodeNetworkInterface {
 			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
 			return;
 		}
-
 		let Some(previous_input) = self.input_from_connector(input_connector, network_path).cloned() else {
 			log::error!("Could not get previous input in set_input");
 			return;
@@ -3845,10 +3830,9 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let previous_metadata = if let NodeInput::Node { node_id, .. } = &previous_input {
-			self.position(node_id, network_path).map(|position| (*node_id, position))
-		} else {
-			None
+		let previous_metadata = match &previous_input {
+			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
+			_ => None,
 		};
 
 		let Some(network) = self.network_mut(network_path) else {
@@ -4700,14 +4684,17 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			if layer_metadata.position == LayerPosition::Stack(y_offset) {
-				return;
+		match &mut node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer_metadata) => {
+				if layer_metadata.position == LayerPosition::Stack(y_offset) {
+					return;
+				}
+				layer_metadata.position = LayerPosition::Stack(y_offset);
+				self.transaction_modified();
 			}
-			layer_metadata.position = LayerPosition::Stack(y_offset);
-			self.transaction_modified();
-		} else {
-			log::error!("Could not set stack position for non layer node {node_id}");
+			_ => {
+				log::error!("Could not set stack position for non layer node {node_id}");
+			}
 		}
 	}
 
@@ -5127,16 +5114,12 @@ impl NodeNetworkInterface {
 		stack_dependents_with_position.sort_unstable_by(|a, b| {
 			a.1.signum().cmp(&b.1.signum()).then_with(|| {
 				// If the node has a positive offset, then it is shifted up, so shift the top nodes first
-				if a.1.signum() == 1 {
-					a.2.cmp(&b.2)
-				} else {
-					b.2.cmp(&a.2)
-				}
+				if a.1.signum() == 1 { a.2.cmp(&b.2) } else { b.2.cmp(&a.2) }
 			})
 		});
 
 		// Try shift every node that is offset from its original position
-		for (node_id, mut offset, _) in stack_dependents_with_position.iter() {
+		for &(ref node_id, mut offset, _) in stack_dependents_with_position.iter() {
 			while offset != 0 {
 				if self.check_collision_with_stack_dependents(node_id, -offset.signum(), network_path).is_empty() {
 					self.vertical_shift_with_push(node_id, -offset.signum(), &mut HashSet::new(), network_path);
@@ -5301,6 +5284,7 @@ impl NodeNetworkInterface {
 				self.transaction_modified();
 			} else if let LayerPosition::Stack(y_offset) = &mut layer_metadata.position {
 				let shifted_y_offset = *y_offset as i32 + shift.y;
+
 				// A layer can only be shifted to a positive y_offset
 				if shifted_y_offset < 0 {
 					log::error!(
@@ -5311,6 +5295,7 @@ impl NodeNetworkInterface {
 				if shift.x != 0 {
 					log::error!("Stack layer {node_id} cannot be shifted horizontally.");
 				}
+
 				let new_y_offset = shifted_y_offset.max(0) as u32;
 				if *y_offset == new_y_offset {
 					return;
