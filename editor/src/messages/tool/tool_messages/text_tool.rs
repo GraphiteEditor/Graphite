@@ -203,21 +203,24 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
 				DragStart,
+				PointerOutsideViewport,
 				PointerMove,
 			),
 			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
 				DragStart,
 				Abort,
 			),
-			TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
+			TextToolFsmState::Placing | TextToolFsmState::Dragging => actions!(TextToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,
+				PointerOutsideViewport,
 			),
 			TextToolFsmState::ResizingBounds => actions!(TextToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,
+				PointerOutsideViewport,
 			),
 		}
 	}
@@ -243,6 +246,8 @@ enum TextToolFsmState {
 	/// The user is typing in the interactive viewport text area.
 	Editing,
 	/// The user is dragging to create a new text area.
+	Placing,
+	/// The user is dragging an existing text layer to move it.
 	Dragging,
 	/// The user is dragging to resize the text area.
 	ResizingBounds,
@@ -269,6 +274,8 @@ struct TextToolData {
 	layer: LayerNodeIdentifier,
 	editing_text: Option<EditingText>,
 	new_text: String,
+	drag_start: DVec2,
+	drag_current: DVec2,
 	resize: Resize,
 	auto_panning: AutoPanning,
 	// Since the overlays must be drawn without knowledge of the inputs
@@ -469,7 +476,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				if matches!(self, Self::Dragging) {
+				if matches!(self, Self::Placing) {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box(tool_data.cached_resize_bounds);
 
@@ -531,6 +538,8 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
 				tool_data.resize.start(document, input);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
+				tool_data.drag_start = input.mouse.position;
+				tool_data.drag_current = input.mouse.position;
 
 				let dragging_bounds = tool_data.bounding_box_manager.as_mut().and_then(|bounding_box| {
 					let edges = bounding_box.check_selected_edges(input.mouse.position);
@@ -559,14 +568,28 @@ impl Fsm for TextToolFsmState {
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
-
 						bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
 					}
 					tool_data.get_snap_candidates(document, font_cache);
 
-					return TextToolFsmState::ResizingBounds;
+					TextToolFsmState::ResizingBounds
+				} else if let Some(clicked_layer) = TextToolData::check_click(document, input, font_cache) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					if selected != Some(clicked_layer) {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![clicked_layer.to_node()] });
+					}
+
+					let original_transform = document.metadata().transform_to_document(clicked_layer);
+					tool_data.layer_dragging = Some(ResizingLayer {
+						id: clicked_layer,
+						original_transform,
+					});
+					tool_data.get_snap_candidates(document, font_cache);
+					return TextToolFsmState::Dragging;
+				} else {
+					TextToolFsmState::Placing
 				}
-				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
 				// This ensures the cursor only changes if a layer is selected
@@ -587,7 +610,7 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Ready
 			}
-			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+			(TextToolFsmState::Placing, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				let document_points = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
 				let document_to_viewport = document.metadata().document_to_viewport;
 				tool_data.cached_resize_bounds = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
@@ -600,6 +623,30 @@ impl Fsm for TextToolFsmState {
 					TextToolMessage::PointerMove { center, lock_ratio }.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				TextToolFsmState::Placing
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
+				if let Some(dragging_layer) = &tool_data.layer_dragging {
+					let delta = input.mouse.position - tool_data.drag_current;
+					tool_data.drag_current = input.mouse.position;
+
+					responses.add(GraphOperationMessage::TransformChange {
+						layer: dragging_layer.id,
+						transform: DAffine2::from_translation(delta),
+						transform_in: TransformIn::Viewport,
+						skip_rerender: false,
+					});
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+
+					// Auto-panning
+					let messages = [
+						TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+						TextToolMessage::PointerMove { center, lock_ratio }.into(),
+					];
+					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				}
 
 				TextToolFsmState::Dragging
 			}
@@ -670,13 +717,13 @@ impl Fsm for TextToolFsmState {
 
 				self
 			}
-			(TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
+			(TextToolFsmState::Placing, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning setup
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
-				TextToolFsmState::Dragging
+				TextToolFsmState::Placing
 			}
-			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerOutsideViewport { .. }) => {
+			(TextToolFsmState::ResizingBounds | TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -710,7 +757,7 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Ready
 			}
-			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
+			(TextToolFsmState::Placing, TextToolMessage::DragStop) => {
 				let [start, end] = tool_data.cached_resize_bounds;
 				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
@@ -739,6 +786,27 @@ impl Fsm for TextToolFsmState {
 				};
 				tool_data.new_text(document, editing_text, font_cache, responses);
 				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Dragging, TextToolMessage::DragStop) => {
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+				responses.add(response);
+
+				tool_data.resize.snap_manager.cleanup(responses);
+
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					bounds.original_transforms.clear();
+				}
+
+				if drag_too_small {
+					if let Some(layer_info) = &tool_data.layer_dragging {
+						tool_data.start_editing_layer(layer_info.id, self, document, font_cache, responses);
+						return TextToolFsmState::Editing;
+					}
+				}
+				tool_data.layer_dragging = None;
+
+				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
 				tool_data.new_text = new_text;
@@ -783,10 +851,13 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(state, TextToolMessage::Abort) => {
-				if matches!(state, TextToolFsmState::ResizingBounds) {
+				if matches!(state, TextToolFsmState::ResizingBounds | TextToolFsmState::Dragging) {
 					responses.add(DocumentMessage::AbortTransaction);
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_transforms.clear();
+					}
+					if matches!(state, TextToolFsmState::Dragging) {
+						tool_data.layer_dragging = None;
 					}
 				} else {
 					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
@@ -814,9 +885,12 @@ impl Fsm for TextToolFsmState {
 				HintInfo::keys([Key::Control, Key::Enter], "").add_mac_keys([Key::Command, Key::Enter]),
 				HintInfo::keys([Key::Escape], "Commit Changes").prepend_slash(),
 			])]),
-			TextToolFsmState::Dragging => HintData(vec![
+			TextToolFsmState::Placing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
+			TextToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 			]),
 			TextToolFsmState::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
@@ -829,7 +903,7 @@ impl Fsm for TextToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		let cursor = match self {
-			TextToolFsmState::Dragging => MouseCursorIcon::Crosshair,
+			TextToolFsmState::Placing => MouseCursorIcon::Crosshair,
 			_ => MouseCursorIcon::Text,
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
