@@ -319,6 +319,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	compass_rose: CompassRose,
+	line_center: DVec2,
 	skew_edge: EdgeBool,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
@@ -660,6 +661,9 @@ impl Fsm for SelectToolFsmState {
 				// Update compass rose
 				tool_data.compass_rose.refresh_position(document);
 				let compass_center = tool_data.compass_rose.compass_rose_position();
+				if !matches!(self, Self::Dragging { .. }) {
+					tool_data.line_center = compass_center;
+				}
 				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
@@ -691,7 +695,8 @@ impl Fsm for SelectToolFsmState {
 								let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
 								&format!("#{}", color_string)
 							};
-							overlay_context.line(compass_center - direction * viewport_diagonal, compass_center + direction * viewport_diagonal, Some(color));
+							let line_center = tool_data.line_center;
+							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color));
 						}
 					}
 				}
@@ -984,7 +989,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.stop_duplicates(document, responses);
 				}
 
-				tool_data.axis_align = input.keyboard.key(modifier_keys.axis_align) && !axis.is_constraint();
+				tool_data.axis_align = input.keyboard.key(modifier_keys.axis_align);
 
 				// Ignore the non duplicated layers if the current layers have not spawned yet.
 				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
@@ -992,12 +997,13 @@ impl Fsm for SelectToolFsmState {
 
 				let snap_data = SnapData::ignore(document, input, ignore);
 				let (start, current) = (tool_data.drag_start, tool_data.drag_current);
-				let mouse_delta = snap_drag(start, current, tool_data.axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
 					.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 					.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
+
+				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 				let mouse_delta = match axis {
 					Axis::X => mouse_delta.project_onto(e0),
 					Axis::Y => mouse_delta.project_onto(e0.perp()),
