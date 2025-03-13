@@ -695,7 +695,7 @@ impl PenToolData {
 					self.update_target_handle_pos(responses, new_position, layer);
 				}
 			}
-			HandleMode::Free => {} // No adjustments needed in free mode
+			HandleMode::Free => {}
 		}
 	}
 
