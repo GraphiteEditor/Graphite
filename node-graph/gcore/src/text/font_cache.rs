@@ -1,5 +1,4 @@
 use dyn_any::DynAny;
-
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)

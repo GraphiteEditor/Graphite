@@ -1,16 +1,12 @@
+use dyn_any::StaticType;
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
-use wgpu_executor::WgpuExecutor;
-
-use dyn_any::StaticType;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
-// #[cfg(not(target_arch = "wasm32"))]
-// use std::sync::Mutex;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_arch = "wasm32")]
@@ -18,9 +14,10 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
-use web_sys::window;
-#[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
+#[cfg(target_arch = "wasm32")]
+use web_sys::window;
+use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug)]
 struct WindowWrapper {

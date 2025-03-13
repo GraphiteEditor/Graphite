@@ -3,21 +3,23 @@ mod distribution_snapper;
 mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
-pub use {alignment_snapper::*, distribution_snapper::*, grid_snapper::*, layer_snapper::*, snap_results::*};
 
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
-
+pub use alignment_snapper::*;
 use bezier_rs::TValue;
+pub use distribution_snapper::*;
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
-
-use glam::{DAffine2, DVec2};
 use graphene_std::vector::NoHashBuilder;
+pub use grid_snapper::*;
+pub use layer_snapper::*;
+pub use snap_results::*;
 use std::cmp::Ordering;
 
 /// Configuration for the relevant snap type
@@ -187,7 +189,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 	best
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct SnapCache {
 	pub manipulators: HashMap<LayerNodeIdentifier, HashSet<PointId, NoHashBuilder>, NoHashBuilder>,
 	pub unselected: Vec<SnapCandidatePoint>,

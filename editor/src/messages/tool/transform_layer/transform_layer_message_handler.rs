@@ -8,12 +8,10 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
-
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
 use graphene_std::vector::{VectorData, VectorModificationType};
-
-use glam::{DAffine2, DVec2};
 use std::f64::consts::TAU;
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();

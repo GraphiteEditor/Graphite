@@ -2,7 +2,6 @@ use graph_craft::proto::types::Percentage;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{Color, Ctx};
-
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};

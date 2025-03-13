@@ -303,11 +303,7 @@ impl Dispatcher {
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
 			if index == queues.len() - 1 {
-				if queue.is_empty() {
-					"└── "
-				} else {
-					"├── "
-				}
+				if queue.is_empty() { "└── " } else { "├── " }
 			} else if queue.is_empty() {
 				"   "
 			} else {
