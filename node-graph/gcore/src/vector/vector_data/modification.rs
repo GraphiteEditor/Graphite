@@ -1,12 +1,10 @@
 use super::*;
+use crate::Ctx;
 use crate::transform::TransformMut;
 use crate::uuid::generate_uuid;
-use crate::Ctx;
-
 use bezier_rs::BezierHandles;
-use dyn_any::DynAny;
-
 use core::hash::BuildHasher;
+use dyn_any::DynAny;
 use std::collections::{HashMap, HashSet};
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
@@ -132,7 +130,7 @@ impl SegmentModification {
 			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
 			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
 
-			if !start.unwrap_or_default().map_or(true, |start| start.is_finite()) || !end.unwrap_or_default().map_or(true, |end| end.is_finite()) {
+			if !start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
 				warn!("Invalid handles when applying a segment modification");
 				continue;
 			}

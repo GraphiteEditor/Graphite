@@ -1,11 +1,9 @@
 use crate::{Node, WasmNotSend};
-
-use dyn_any::DynFuture;
-
 #[cfg(feature = "alloc")]
 use alloc::sync::Arc;
 use core::future::Future;
 use core::ops::Deref;
+use dyn_any::DynFuture;
 use std::hash::DefaultHasher;
 use std::sync::Mutex;
 

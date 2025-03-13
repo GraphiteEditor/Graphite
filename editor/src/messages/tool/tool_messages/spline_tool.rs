@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
@@ -364,7 +363,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
-				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
+				if tool_data.points.last().is_none_or(|last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					let preview_point = tool_data.preview_point;
 					extend_spline(tool_data, false, responses);
 					tool_data.preview_point = preview_point;

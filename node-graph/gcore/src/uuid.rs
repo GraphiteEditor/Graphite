@@ -1,6 +1,5 @@
-pub use uuid_generation::*;
-
 use dyn_any::DynAny;
+pub use uuid_generation::*;
 
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Uuid(
@@ -45,8 +44,8 @@ mod u64_string {
 
 mod uuid_generation {
 	use core::cell::Cell;
-	use rand_chacha::rand_core::{RngCore, SeedableRng};
 	use rand_chacha::ChaCha20Rng;
+	use rand_chacha::rand_core::{RngCore, SeedableRng};
 	use std::sync::Mutex;
 
 	static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);

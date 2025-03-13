@@ -2,17 +2,15 @@ use super::DocumentNode;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
-
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
-
-pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;

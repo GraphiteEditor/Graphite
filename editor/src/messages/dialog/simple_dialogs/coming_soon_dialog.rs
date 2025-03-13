@@ -26,16 +26,18 @@ impl LayoutHolder for ComingSoonDialog {
 
 		if let Some(issue) = self.issue {
 			let row2 = vec![TextLabel::new("But you can help build it! Visit its issue:").widget_holder()];
-			let row3 = vec![TextButton::new(format!("GitHub Issue #{issue}"))
-				.icon(Some("Website".into()))
-				.flush(true)
-				.on_update(move |_| {
-					FrontendMessage::TriggerVisitLink {
-						url: format!("https://github.com/GraphiteEditor/Graphite/issues/{issue}"),
-					}
-					.into()
-				})
-				.widget_holder()];
+			let row3 = vec![
+				TextButton::new(format!("GitHub Issue #{issue}"))
+					.icon(Some("Website".into()))
+					.flush(true)
+					.on_update(move |_| {
+						FrontendMessage::TriggerVisitLink {
+							url: format!("https://github.com/GraphiteEditor/Graphite/issues/{issue}"),
+						}
+						.into()
+					})
+					.widget_holder(),
+			];
 
 			rows.push(LayoutGroup::Row { widgets: row2 });
 			rows.push(LayoutGroup::Row { widgets: row3 });

@@ -1,6 +1,5 @@
 use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 use crate::{ManipulatorGroup, Subpath};
-
 use glam::{BVec2, DMat2, DVec2};
 use std::fmt::Write;
 
@@ -94,11 +93,7 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 /// Find the roots of the linear equation `ax + b`.
 pub fn solve_linear(a: f64, b: f64) -> [Option<f64>; 3] {
 	// There exist roots when `a` is not 0
-	if a.abs() > MAX_ABSOLUTE_DIFFERENCE {
-		[Some(-b / a), None, None]
-	} else {
-		[None; 3]
-	}
+	if a.abs() > MAX_ABSOLUTE_DIFFERENCE { [Some(-b / a), None, None] } else { [None; 3] }
 }
 
 /// Find the roots of the linear equation `ax^2 + bx + c`.
@@ -310,7 +305,8 @@ pub fn format_point(svg: &mut String, prefix: &str, x: f64, y: f64) -> std::fmt:
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{consts::MAX_ABSOLUTE_DIFFERENCE, Bezier, EmptyId};
+	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
+	use crate::{Bezier, EmptyId};
 
 	/// Compare vectors of `f64`s with a provided max absolute value difference.
 	fn f64_compare_vector(a: Vec<f64>, b: Vec<f64>, max_abs_diff: f64) -> bool {

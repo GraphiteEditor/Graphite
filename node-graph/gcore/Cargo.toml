@@ -1,7 +1,7 @@
 [package]
 name = "graphene-core"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "API definitions for Graphene"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
@@ -49,6 +49,12 @@ rand = { workspace = true, default-features = false, features = ["std_rng"] }
 glam = { workspace = true, default-features = false, features = [
 	"scalar-math",
 ] }
+serde_json = { workspace = true }
+petgraph = { workspace = true, default-features = false, features = [
+	"graphmap",
+] }
+rustc-hash = { workspace = true }
+math-parser = { path = "../../libraries/math-parser" }
 
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
@@ -76,7 +82,6 @@ web-sys = { workspace = true, optional = true, features = [
 image = { workspace = true, optional = true, default-features = false, features = [
 	"png",
 ] }
-math-parser = { path = "../../libraries/math-parser" }
 
 [dev-dependencies]
 # Workspace dependencies
