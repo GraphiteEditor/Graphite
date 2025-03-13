@@ -1,8 +1,6 @@
-use std::f64::consts::PI;
-
-use num_complex::ComplexFloat;
-
 use crate::ast::{BinaryOp, UnaryOp};
+use num_complex::ComplexFloat;
+use std::f64::consts::PI;
 
 pub type Complex = num_complex::Complex<f64>;
 

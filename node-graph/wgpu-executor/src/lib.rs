@@ -1,20 +1,18 @@
 mod context;
 mod executor;
 
+use anyhow::{Result, bail};
 pub use context::Context;
-pub use executor::GpuExecutor;
-
 use dyn_any::{DynAny, StaticType};
+pub use executor::GpuExecutor;
+use futures::Future;
+use glam::{DAffine2, UVec2};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graphene_core::application_io::{ApplicationIo, EditorApi, ImageTexture, SurfaceHandle};
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{Image, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::{Color, Cow, Ctx, ExtractFootprint, Node, SurfaceFrame, Type};
-
-use anyhow::{bail, Result};
-use futures::Future;
-use glam::{DAffine2, UVec2};
 use std::pin::Pin;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
@@ -473,39 +471,38 @@ impl WgpuExecutor {
 
 	pub fn read_output_buffer(&self, buffer: Arc<WgpuShaderInput>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>>> + Send>> {
 		Box::pin(async move {
-			if let ShaderInput::ReadBackBuffer(buffer, _) = buffer.as_ref() {
-				let buffer_slice = buffer.slice(..);
-
-				// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
-				let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
-				buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
-
-				// Wait for the mapping to finish.
-				#[cfg(feature = "profiling")]
-				nvtx::range_push!("compute");
-				let result = receiver.receive().await;
-				#[cfg(feature = "profiling")]
-				nvtx::range_pop!();
-
-				if result == Some(Ok(())) {
-					// Gets contents of buffer
-					let data = buffer_slice.get_mapped_range();
-					// Since contents are got in bytes, this converts these bytes back to u32
-					let result = bytemuck::cast_slice(&data).to_vec();
-
-					// With the current interface, we have to make sure all mapped views are
-					// dropped before we unmap the buffer.
-					drop(data);
-					buffer.unmap(); // Unmaps buffer from memory
-
-					// Returns data from buffer
-					Ok(result)
-				} else {
-					bail!("failed to run compute on gpu!")
-				}
-			} else {
+			let ShaderInput::ReadBackBuffer(buffer, _) = buffer.as_ref() else {
 				bail!("Tried to read a non readback buffer")
+			};
+
+			let buffer_slice = buffer.slice(..);
+
+			// Sets the buffer up for mapping, sending over the result of the mapping back to us when it is finished.
+			let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+			buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+
+			// Wait for the mapping to finish.
+			#[cfg(feature = "profiling")]
+			nvtx::range_push!("compute");
+			let result = receiver.receive().await;
+			#[cfg(feature = "profiling")]
+			nvtx::range_pop!();
+
+			if result.is_none_or(|x| x.is_err()) {
+				bail!("failed to run compute on gpu!")
 			}
+			// Gets contents of buffer
+			let data = buffer_slice.get_mapped_range();
+			// Since contents are got in bytes, this converts these bytes back to u32
+			let result = bytemuck::cast_slice(&data).to_vec();
+
+			// With the current interface, we have to make sure all mapped views are
+			// dropped before we unmap the buffer.
+			drop(data);
+			buffer.unmap(); // Unmaps buffer from memory
+
+			// Returns data from buffer
+			Ok(result)
 		})
 	}
 

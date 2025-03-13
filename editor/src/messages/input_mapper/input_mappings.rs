@@ -11,7 +11,6 @@ use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
-
 use glam::DVec2;
 
 impl From<MappingVariant> for Mapping {

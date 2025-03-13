@@ -29,7 +29,7 @@ async fn image_color_palette(
 		colors[bin].push(pixel.to_gamma_srgb());
 	}
 
-	let shorted = histogram.iter().enumerate().filter(|(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
+	let shorted = histogram.iter().enumerate().filter(|&(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
 
 	let mut palette = vec![];
 
@@ -64,7 +64,6 @@ async fn image_color_palette(
 #[cfg(test)]
 mod test {
 	use super::*;
-
 	use graphene_core::raster::image::{Image, ImageFrameTable};
 
 	#[test]

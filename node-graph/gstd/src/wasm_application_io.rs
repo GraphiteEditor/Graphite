@@ -10,7 +10,7 @@ use graphene_core::instances::Instances;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::transform::TransformMut;

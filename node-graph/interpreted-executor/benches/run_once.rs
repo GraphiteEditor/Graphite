@@ -1,9 +1,9 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+mod benchmark_util;
+
+use benchmark_util::{bench_for_each_demo, setup_network};
+use criterion::{Criterion, criterion_group, criterion_main};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::transform::Footprint;
-
-mod benchmark_util;
-use benchmark_util::{bench_for_each_demo, setup_network};
 
 fn run_once(c: &mut Criterion) {
 	let mut group = c.benchmark_group("Run Once");

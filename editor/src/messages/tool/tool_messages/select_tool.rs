@@ -14,22 +14,21 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::preferences::SelectionMode;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
+use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
-use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, measure};
-
 use bezier_rs::Subpath;
+use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
-
-use glam::DMat2;
 use std::fmt;
 
 #[derive(Default)]
@@ -137,7 +136,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
+	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
@@ -158,7 +157,7 @@ impl SelectTool {
 			})
 	}
 
-	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
+	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
 		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(move |(flip_axis, name)| {
 			IconButton::new("Flip".to_string() + name, 24)
 				.tooltip("Flip ".to_string() + name)
@@ -168,7 +167,7 @@ impl SelectTool {
 		})
 	}
 
-	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
+	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
 		[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
 			.into_iter()
 			.map(move |(degrees, icon, name)| {
@@ -180,7 +179,7 @@ impl SelectTool {
 			})
 	}
 
-	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> {
+	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
 		operations.into_iter().zip(icons).map(move |(operation, icon)| {
@@ -1036,7 +1035,7 @@ impl Fsm for SelectToolFsmState {
 				}
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center, constrain) = (input.keyboard.key(modifier_keys.center), input.keyboard.key(modifier_keys.axis_align));
 
@@ -1085,7 +1084,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::ResizingBounds
 			}
 			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove(_)) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let free_movement = input.keyboard.key(skew);
 						let transformation = movement.skew_transform(input.mouse.position, bounds.original_bound_transform, free_movement);
@@ -1233,7 +1232,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
 					}
@@ -1637,12 +1636,14 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected).unwrap_or(
-		LayerNodeIdentifier::ROOT_PARENT
-			.children(document.metadata())
-			.next()
-			.expect("ROOT_PARENT should have a layer child when clicking"),
-	)]);
+	tool_data.layers_dragging.append(&mut vec![
+		document.find_deepest(&selected).unwrap_or(
+			LayerNodeIdentifier::ROOT_PARENT
+				.children(document.metadata())
+				.next()
+				.expect("ROOT_PARENT should have a layer child when clicking"),
+		),
+	]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging

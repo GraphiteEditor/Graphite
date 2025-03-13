@@ -1,7 +1,6 @@
-use std::error::Error;
-
 use crate::document::NodeNetwork;
 use crate::proto::{LocalFuture, ProtoNetwork};
+use std::error::Error;
 
 pub struct Compiler {}
 

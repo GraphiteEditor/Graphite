@@ -1,3 +1,4 @@
+use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
 	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
@@ -9,13 +10,9 @@ use crate::messages::portfolio::document::utility_types::transformation::Origina
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
-
-use glam::{DAffine2, DMat2, DVec2};
-
-use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
 /// (top, bottom, left, right)
 pub type EdgeBool = (bool, bool, bool, bool);

@@ -1,14 +1,12 @@
 use parking_lot::RawRwLock;
-use std::{
-	any::Any,
-	borrow::Borrow,
-	cell::RefCell,
-	collections::{hash_map::DefaultHasher, HashMap},
-	hash::{Hash, Hasher},
-	iter,
-	iter::Sum,
-	marker::PhantomData,
-};
+use std::any::Any;
+use std::borrow::Borrow;
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::iter::{self, Sum};
+use std::marker::PhantomData;
 use storage_map::{StorageMap, StorageMapGuard};
 
 /// Caches the output of a given Node and acts as a proxy
@@ -21,8 +19,16 @@ impl<'n: 'c, 'c, NODE: Node + 'c> Node for SmartCacheNode<'n, 'c, NODE>
 where
 	for<'a> NODE::Input<'a>: Hash,
 {
-	type Input<'a> = NODE::Input<'a> where Self: 'a, 'c : 'a;
-	type Output<'a> = StorageMapGuard<'a, RawRwLock, CacheNode<'n, 'c, NODE>> where Self: 'a, 'c: 'a;
+	type Input<'a>
+		= NODE::Input<'a>
+	where
+		Self: 'a,
+		'c: 'a;
+	type Output<'a>
+		= StorageMapGuard<'a, RawRwLock, CacheNode<'n, 'c, NODE>>
+	where
+		Self: 'a,
+		'c: 'a;
 	fn eval<'a, I: Borrow<Self::Input<'a>>>(&'a self, input: I) -> Self::Output<'a> {
 		let mut hasher = DefaultHasher::new();
 		input.borrow().hash(&mut hasher);

@@ -7,13 +7,11 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
-
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
-
-use glam::{DAffine2, DMat2, DVec2};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
@@ -136,11 +134,7 @@ impl Axis {
 			return (target, false);
 		}
 
-		if local {
-			(Axis::Both, false)
-		} else {
-			(self, true)
-		}
+		if local { (Axis::Both, false) } else { (self, true) }
 	}
 }
 
@@ -167,11 +161,7 @@ impl Translation {
 			}
 		};
 		let displacement = transform.inverse().transform_vector2(displacement);
-		if increment_mode {
-			displacement.round()
-		} else {
-			displacement
-		}
+		if increment_mode { displacement.round() } else { displacement }
 	}
 
 	#[must_use]
@@ -259,11 +249,7 @@ impl Default for Scale {
 impl Scale {
 	pub fn to_f64(self, increment: bool) -> f64 {
 		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
-		if increment {
-			(factor / SCALE_INCREMENT).round() * SCALE_INCREMENT
-		} else {
-			factor
-		}
+		if increment { (factor / SCALE_INCREMENT).round() * SCALE_INCREMENT } else { factor }
 	}
 
 	pub fn to_dvec(self, increment_mode: bool) -> DVec2 {
