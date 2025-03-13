@@ -15,13 +15,11 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use renderer::Quad;
-
-use glam::{DAffine2, DVec2, IVec2};
 use std::cmp::Ordering;
 
 #[derive(Debug)]
@@ -1141,11 +1139,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let mut node_wires = Vec::new();
 								let mut stack_wires = Vec::new();
 								for wire in overlapping_wires {
-									if is_stack_wire(&wire) {
-										stack_wires.push(wire)
-									} else {
-										node_wires.push(wire)
-									}
+									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
 								}
 
 								// Auto convert node to layer when inserting on a single stack wire
@@ -2068,26 +2062,23 @@ impl NodeGraphMessageHandler {
 			.iter()
 			.flat_map(|(wire_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, wire_end, index)))
 			.filter_map(|(input, &wire_end, wire_end_input_index)| {
-				if let NodeInput::Node {
-					node_id: wire_start,
-					output_index: wire_start_output_index,
-					// TODO: add ui for lambdas
-					lambda: _,
-				} = *input
-				{
-					Some(FrontendNodeWire {
+				match *input {
+					NodeInput::Node {
+						node_id: wire_start,
+						output_index: wire_start_output_index,
+						// TODO: add ui for lambdas
+						lambda: _,
+					} => Some(FrontendNodeWire {
 						wire_start: OutputConnector::node(wire_start, wire_start_output_index),
 						wire_end: InputConnector::node(wire_end, wire_end_input_index),
 						dashed: false,
-					})
-				} else if let NodeInput::Network { import_index, .. } = *input {
-					Some(FrontendNodeWire {
+					}),
+					NodeInput::Network { import_index, .. } => Some(FrontendNodeWire {
 						wire_start: OutputConnector::Import(import_index),
 						wire_end: InputConnector::node(wire_end, wire_end_input_index),
 						dashed: false,
-					})
-				} else {
-					None
+					}),
+					_ => None,
 				}
 			})
 			.collect::<Vec<_>>();
@@ -2281,16 +2272,12 @@ impl NodeGraphMessageHandler {
 		let mut current_network = network_interface.nested_network(&current_network_path).unwrap();
 		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in breadcrumb_network_path {
-			if let Some(node) = current_network.nodes.get(node_id) {
-				if let Some(network) = node.implementation.get_network() {
-					current_network = network;
-				};
-				subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
-				current_network_path.push(*node_id)
-			} else {
-				// Could not get node in network in breadcrumb_network_path
-				return None;
+			let node = current_network.nodes.get(node_id)?;
+			if let Some(network) = node.implementation.get_network() {
+				current_network = network;
 			};
+			subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
+			current_network_path.push(*node_id)
 		}
 		Some(subgraph_names)
 	}

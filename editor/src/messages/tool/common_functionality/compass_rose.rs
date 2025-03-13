@@ -1,7 +1,6 @@
 use crate::consts::{COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::DocumentMessageHandler;
-
 use glam::{DAffine2, DVec2};
 use std::f64::consts::FRAC_PI_2;
 

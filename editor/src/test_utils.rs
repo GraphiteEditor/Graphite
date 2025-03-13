@@ -1,5 +1,5 @@
-use crate::application::set_uuid_seed;
 use crate::application::Editor;
+use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
 use crate::messages::portfolio::utility_types::Platform;
@@ -8,12 +8,10 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
-
-use graph_craft::document::DocumentNode;
-use graphene_core::raster::color::Color;
-use graphene_core::InputAccessor;
-
 use glam::DVec2;
+use graph_craft::document::DocumentNode;
+use graphene_core::InputAccessor;
+use graphene_core::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -256,7 +254,7 @@ pub mod test_prelude {
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
-	pub use crate::messages::tool::common_functionality::graph_modification_utils::{is_layer_fed_by_node_of_name, NodeGraphLayer};
+	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;
 	pub use crate::node_graph_executor::NodeRuntime;
 	pub use crate::test_utils::EditorTestUtils;
@@ -266,7 +264,7 @@ pub mod test_prelude {
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_core::raster::{Color, Image};
 	pub use graphene_core::{InputAccessor, InputAccessorSource};
-	pub use graphene_std::{transform::Footprint, GraphicGroup};
+	pub use graphene_std::transform::Footprint;
 
 	#[macro_export]
 	macro_rules! float_eq {
