@@ -169,9 +169,6 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	#[default(4.)]
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	miter_limit: f64,
-	#[default(false)]
-	/// Whether to make the stroke non-scaling.
-	non_scaling: bool,
 ) -> Instances<V>
 where
 	Instances<V>: VectorDataTableIterMut + 'n + Send,
@@ -185,7 +182,7 @@ where
 		line_join,
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
-		non_scaling,
+		non_scaling: false,
 	};
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();

@@ -2395,6 +2395,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 			return Vec::new();
 		}
 	};
+	info!("document_node.inputs.len(): {}", document_node.inputs.len());
 	let color_index = 1;
 	let weight_index = 2;
 	let dash_lengths_index = 3;
@@ -2402,7 +2403,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_cap_index = 5;
 	let line_join_index = 6;
 	let miter_limit_index = 7;
-	let non_scaling_index = 8;
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorInput::default(), true);
 	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit(" px").min(0.), true);
@@ -2422,8 +2422,8 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	};
 	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
 	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
-	let non_scaling = bool_widget(document_node, node_id, non_scaling_index, "Non-Scaling", CheckboxInput::default(), true);
-	vec![
+	// let non_scaling = bool_widget(document_node, node_id, non_scaling_index, "Non-scaling Stroke", CheckboxInput::default(), true);
+	let mut layout_groups = vec![
 		color,
 		LayoutGroup::Row { widgets: weight },
 		LayoutGroup::Row { widgets: dash_lengths },
@@ -2431,8 +2431,9 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		line_cap,
 		line_join,
 		LayoutGroup::Row { widgets: miter_limit },
-		LayoutGroup::Row { widgets: non_scaling },
-	]
+	];
+
+	layout_groups
 }
 
 pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
