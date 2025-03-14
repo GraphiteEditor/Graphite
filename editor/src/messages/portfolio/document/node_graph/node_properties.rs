@@ -2395,7 +2395,6 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 			return Vec::new();
 		}
 	};
-	info!("document_node.inputs.len(): {}", document_node.inputs.len());
 	let color_index = 1;
 	let weight_index = 2;
 	let dash_lengths_index = 3;
