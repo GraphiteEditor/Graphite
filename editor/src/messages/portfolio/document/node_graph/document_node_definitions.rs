@@ -3370,6 +3370,8 @@ fn static_input_properties() -> InputProperties {
 					NumberInput::new(Some(val.x.atan().to_degrees()))
 						.label("X")
 						.unit("°")
+						.min(-89.9)
+						.max(89.9)
 						.on_update(node_properties::update_value(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(to_skew(input), val.y)),
 							node_id,
@@ -3381,6 +3383,8 @@ fn static_input_properties() -> InputProperties {
 					NumberInput::new(Some(val.y.atan().to_degrees()))
 						.label("Y")
 						.unit("°")
+						.min(-89.9)
+						.max(89.9)
 						.on_update(node_properties::update_value(
 							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, to_skew(input))),
 							node_id,
