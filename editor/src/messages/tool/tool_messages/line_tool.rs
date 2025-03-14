@@ -205,6 +205,8 @@ impl Fsm for LineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
 
+				responses.add(DocumentMessage::StartTransaction);
+
 				for (layer, [document_start, document_end]) in tool_data.selected_layers_with_position.iter() {
 					let transform = document.metadata().transform_to_viewport(*layer);
 					let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
@@ -225,8 +227,6 @@ impl Fsm for LineToolFsmState {
 						return LineToolFsmState::Drawing;
 					}
 				}
-
-				responses.add(DocumentMessage::StartTransaction);
 
 				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 				let node = node_type.node_template_input_override([
@@ -320,9 +320,7 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.editing_layer.take();
-				if tool_data.dragging_endpoint.is_none() {
-					responses.add(DocumentMessage::AbortTransaction);
-				}
+				responses.add(DocumentMessage::AbortTransaction);
 				LineToolFsmState::Ready
 			}
 			(_, LineToolMessage::WorkingColorChanged) => {
@@ -377,12 +375,12 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 	tool_data.angle = angle;
 
+	let angle_vec = DVec2::from_angle(angle);
 	if lock_angle {
-		let angle_vec = DVec2::new(angle.cos(), angle.sin());
 		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
 	}
 
-	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
+	document_points[1] = document_points[0] + line_length * angle_vec;
 
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.snap_manager;
