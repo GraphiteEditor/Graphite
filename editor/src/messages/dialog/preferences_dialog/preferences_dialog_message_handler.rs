@@ -272,41 +272,51 @@ impl PreferencesDialogMessageHandler {
 		});
 	}
 }
-// Map the actual rate value to display value (1-100)
-fn map_zoom_rate_to_display(rate: f64) -> f64 {
-	let value = if rate <= 0.0001 {
-		1.0
-	} else if rate >= 0.05 {
-		100.0
+// Function to map a value from one range to another using logarithmic scaling
+pub fn map_log_range(value: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
+	if value <= from_min {
+		to_min
+	} else if value >= from_max {
+		to_max
 	} else {
-		// Calculate the logarithmic position between 0.0001 and 0.05
-		let log_min = 0.0001_f64.ln();
-		let log_max = 0.05_f64.ln();
-		let log_val = rate.ln();
+		// Calculate the logarithmic position between from_min and from_max
+		let log_min = from_min.ln();
+		let log_max = from_max.ln();
+		let log_val = value.ln();
 
-		// Map to 1-100 range
+		// Map to to_min-to_max range
 		let normalized = (log_val - log_min) / (log_max - log_min);
-		1.0 + 99.0 * normalized
-	};
-
-	value.round()
+		to_min + (to_max - to_min) * normalized
+	}
 }
 
-// Map the display value (1-100) back to the actual rate value
-fn map_display_to_zoom_rate(display: f64) -> f64 {
-	if display <= 1.0 {
-		0.0001
-	} else if display >= 100.0 {
-		0.05
+// Function to map a value from one range to another using linear scaling
+pub fn map_linear_range(value: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
+	if value <= from_min {
+		to_min
+	} else if value >= from_max {
+		to_max
 	} else {
 		// Normalize to 0-1 range
-		let normalized = (display - 1.0) / 99.0;
+		let normalized = (value - from_min) / (from_max - from_min);
 
-		let log_min = 0.0001_f64.ln();
-		let log_max = 0.05_f64.ln();
-		let log_val = log_min + normalized * (log_max - log_min);
-
-		// Convert back to actual value
-		log_val.exp()
+		// Map to to_min-to_max range
+		to_min + normalized * (to_max - to_min)
 	}
+}
+
+// Map the actual zoom rate value to display value (1-100)
+fn map_zoom_rate_to_display(rate: f64) -> f64 {
+	map_log_range(rate, 0.0001, 0.05, 1.0, 100.0).round()
+}
+
+// Map the display value (1-100) back to the actual zoom rate value
+fn map_display_to_zoom_rate(display: f64) -> f64 {
+	let normalized = map_linear_range(display, 1.0, 100.0, 0.0, 1.0);
+
+	let log_min = 0.0001_f64.ln();
+	let log_max = 0.05_f64.ln();
+	let log_val = log_min + normalized * (log_max - log_min);
+
+	log_val.exp()
 }
