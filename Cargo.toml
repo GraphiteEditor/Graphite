@@ -85,11 +85,11 @@ fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["i128"] }
-specta = { version = "2.0.0-rc.22", features = [
-	"glam",
+specta = { version = "=2.0.0-rc.22", features = [
 	"derive",
-	# "typescript",
+	"glam",
 ] }
+specta-typescript = { version = "=0.0.9" }
 syn = { version = "2.0", default-features = false, features = [
 	"full",
 	"derive",
