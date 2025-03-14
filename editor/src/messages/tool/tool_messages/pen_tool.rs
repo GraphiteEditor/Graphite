@@ -266,14 +266,6 @@ struct LastPoint {
 	in_segment: Option<SegmentId>,
 	handle_start: DVec2,
 }
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-enum DrawMode {
-	#[default]
-	/// Modifies the clicked endpoint segment, once you go to the ready mode you need to modify the handles of the next clicked endpoint segment
-	BreakPath,
-	/// Modifies the handle_end
-	ContinuePath,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum HandleMode {
@@ -321,7 +313,6 @@ struct PenToolData {
 	/// The point that is being dragged
 	end_point: Option<PointId>,
 	end_point_segment: Option<SegmentId>,
-	draw_mode: DrawMode,
 	handle_type: TargetHandle,
 
 	snap_cache: SnapCache,
@@ -871,7 +862,6 @@ impl PenToolData {
 		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 		self.end_point_segment = None;
-		self.draw_mode = DrawMode::ContinuePath;
 		self.handle_type = TargetHandle::HandleEnd;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
@@ -1370,7 +1360,6 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.end_point = None;
-				tool_data.draw_mode = DrawMode::ContinuePath;
 				tool_data
 					.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
 					.unwrap_or(PenToolFsmState::PlacingAnchor)
@@ -1547,7 +1536,6 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.handle_end = None;
-				tool_data.draw_mode = DrawMode::BreakPath;
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
 				tool_data.snap_manager.cleanup(responses);
@@ -1559,7 +1547,6 @@ impl Fsm for PenToolFsmState {
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
-				tool_data.draw_mode = DrawMode::BreakPath;
 				tool_data.snap_manager.cleanup(responses);
 
 				responses.add(OverlaysMessage::Draw);
