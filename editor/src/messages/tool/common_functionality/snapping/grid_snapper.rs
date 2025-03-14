@@ -1,7 +1,5 @@
 use super::*;
-
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
-
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 

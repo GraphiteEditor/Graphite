@@ -38,7 +38,8 @@ meta_description = "Open source free software. A vector graphics creativity suit
 		<span class="arrow">Star</span>
 		<div data-github-stars></div>
 	</a>
-	<a href="#newsletter" class="button arrow">Subscribe to newsletter</a>
+	<a href="/volunteer/guide/student-projects/" class="button arrow">Apply now: summer 2025 internships</a>
+	<!-- <a href="#newsletter" class="button arrow">Subscribe to newsletter</a> -->
 </div>
 <div class="social-media-buttons">
 	<a href="https://discord.graphite.rs" target="_blank">

@@ -1,4 +1,6 @@
 use dyn_any::DynAny;
+use fastnoise_lite;
+use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{
@@ -6,9 +8,6 @@ use graphene_core::raster::{
 };
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
-
-use fastnoise_lite;
-use glam::{DAffine2, DVec2, Vec2};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;

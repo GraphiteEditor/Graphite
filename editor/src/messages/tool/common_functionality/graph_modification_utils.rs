@@ -3,17 +3,17 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-
 use bezier_rs::Subpath;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrameTable;
+use glam::DVec2;
+use graph_craft::concrete;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
-use graphene_core::Color;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
-
-use glam::DVec2;
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -384,7 +384,7 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Return an iterator up the horizontal flow of the layer
-	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + 'a {
+	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + use<'a> {
 		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], &[], FlowType::HorizontalFlow)
 	}
 
@@ -394,18 +394,39 @@ impl<'a> NodeGraphLayer<'a> {
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 	}
 
+	/// Node id of a protonode if it exists in the layer's primary flow
+	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: &'static str) -> Option<NodeId> {
+		self.horizontal_layer_flow().find(move |node_id| {
+			self.network_interface
+				.implementation(node_id, &[])
+				.is_some_and(move |implementation| *implementation == graph_craft::document::DocumentNodeImplementation::proto(protonode_identifier))
+		})
+	}
+
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
 		self.horizontal_layer_flow()
 			.skip(1)// Skip self
 			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
 			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
-			.and_then(|node_id| self.network_interface.network(&[]).unwrap().nodes.get(&node_id).map(|node| &node.inputs))
+			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
 	/// Find a specific input of a node within the layer's primary flow
 	pub fn find_input(&self, node_name: &str, index: usize) -> Option<&'a TaggedValue> {
 		// TODO: Find a better way to accept a node input rather than using its index (which is quite unclear and fragile)
 		self.find_node_inputs(node_name)?.get(index)?.as_value()
+	}
+
+	/// Check if a layer is a raster layer
+	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type();
+		if layer_input_type == concrete!(graphene_core::raster::image::ImageFrameTable<graphene_core::Color>)
+			|| layer_input_type == concrete!(graphene_core::application_io::TextureFrameTable)
+			|| layer_input_type == concrete!(graphene_std::RasterFrame)
+		{
+			return true;
+		}
+		false
 	}
 }

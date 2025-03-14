@@ -4,13 +4,12 @@ mod manipulators;
 mod solvers;
 mod structs;
 mod transform;
-pub use core::*;
-pub use structs::*;
 
 use crate::Bezier;
-
+pub use core::*;
 use std::fmt::{Debug, Formatter, Result};
 use std::ops::{Index, IndexMut};
+pub use structs::*;
 
 /// Structure used to represent a path composed of [Bezier] curves.
 #[derive(Clone, PartialEq, Hash)]

@@ -22,6 +22,5 @@ pub mod tool_prelude {
 	pub use crate::messages::prelude::*;
 	pub use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionHandlerData, ToolMetadata, ToolTransition, ToolType};
 	pub use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
 	pub use glam::{DAffine2, DVec2};
 }

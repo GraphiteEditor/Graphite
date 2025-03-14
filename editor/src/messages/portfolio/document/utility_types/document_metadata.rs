@@ -1,11 +1,12 @@
 use super::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::graph_operation::transform_utils;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData};
-
-use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -17,7 +18,8 @@ use std::num::NonZeroU64;
 // TODO: it might be better to have a system that can query the state of the node network on demand.
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
-	pub upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	pub upstream_footprints: HashMap<NodeId, Footprint>,
+	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
@@ -29,7 +31,8 @@ pub struct DocumentMetadata {
 impl Default for DocumentMetadata {
 	fn default() -> Self {
 		Self {
-			upstream_transforms: HashMap::new(),
+			upstream_footprints: HashMap::new(),
+			local_transforms: HashMap::new(),
 			structure: HashMap::new(),
 			vector_modify: HashMap::new(),
 			click_targets: HashMap::new(),
@@ -77,14 +80,27 @@ impl DocumentMetadata {
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.upstream_transforms
-			.get(&layer.to_node())
-			.map(|(footprint, transform)| footprint.transform * *transform)
-			.unwrap_or(self.document_to_viewport)
+		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
+
+		footprint * local_transform
+	}
+
+	pub fn transform_to_viewport_with_first_transform_node_if_group(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
+		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		let local_transform = self.local_transforms.get(&layer.to_node()).copied();
+
+		let transform = local_transform.unwrap_or_else(|| {
+			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface);
+			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
+			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
+		});
+
+		footprint * transform
 	}
 
 	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {
-		self.upstream_transforms.get(&node_id).copied().map(|(_, transform)| transform).unwrap_or(DAffine2::IDENTITY)
+		self.local_transforms.get(&node_id).copied().unwrap_or(DAffine2::IDENTITY)
 	}
 
 	pub fn downstream_transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
@@ -96,10 +112,10 @@ impl DocumentMetadata {
 			return self.transform_to_viewport(layer);
 		}
 
-		self.upstream_transforms
+		self.upstream_footprints
 			.get(&layer.to_node())
 			.copied()
-			.map(|(footprint, _)| footprint.transform)
+			.map(|footprint| footprint.transform)
 			.unwrap_or_else(|| self.transform_to_viewport(layer))
 	}
 }
@@ -198,7 +214,7 @@ impl LayerNodeIdentifier {
 		debug_assert!(
 			network_interface.is_layer(&node_id, network_path),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
-			network_interface.network(network_path).unwrap().nodes.get(&node_id)
+			network_interface.nested_network(network_path).unwrap().nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
 	}

@@ -2,10 +2,10 @@ use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{GroupFolderType, SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
+use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
-use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
+use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -24,17 +24,15 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
-use graphene_std::vector::{path_bool_lib, PointId};
-
-use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::vector::{PointId, path_bool_lib};
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -253,7 +251,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 
 				let mut added_transaction = false;
-				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&self.network_interface) {
+				for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
@@ -290,7 +288,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::CreateEmptyFolder => {
-				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = self.network_interface.selected_nodes();
 				let id = NodeId::new();
 
 				let parent = self
@@ -298,7 +296,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, true)
 					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &self.network_interface.selected_nodes(&[]).unwrap(), parent);
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &self.network_interface.selected_nodes(), parent);
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
@@ -440,7 +438,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					let mut added_transaction = false;
-					for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&self.network_interface) {
+					for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -463,7 +461,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					let bbox_trans = DAffine2::from_translation(-center);
 
 					let mut added_transaction = false;
-					for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(&self.network_interface) {
+					for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -528,14 +526,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.children(self.metadata())
 					.filter(|x| self.network_interface.is_artboard(&x.to_node(), &self.selection_network_path))
 					.collect::<Vec<_>>();
-				let Some(selected_nodes) = self.network_interface.selected_nodes(&[]) else { return };
+				let selected_nodes = self.network_interface.selected_nodes();
 
 				// Non-artboard (infinite canvas) workflow
 				if artboards.is_empty() {
 					let Some(parent) = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false) else {
 						return;
 					};
-					let Some(selected_nodes) = &self.network_interface.selected_nodes(&self.selection_network_path) else {
+					let Some(selected_nodes) = &self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
 						return;
 					};
 					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
@@ -608,8 +606,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Disallow trying to insert into self.
 				if self
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_layers(self.metadata())
 					.any(|layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer))
 				{
@@ -618,8 +615,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Artboards can only have `ROOT_PARENT` as the parent.
 				let any_artboards = self
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_layers(self.metadata())
 					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
 				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
@@ -629,8 +625,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Non-artboards cannot be put at the top level if artboards also exist there
 				let selected_any_non_artboards = self
 					.network_interface
-					.selected_nodes(&[])
-					.unwrap()
+					.selected_nodes()
 					.selected_layers(self.metadata())
 					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
 
@@ -719,9 +714,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 
 				let can_move = |layer| {
-					self.network_interface
-						.selected_nodes(&[])
-						.is_some_and(|selected| selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface))
+					let selected = self.network_interface.selected_nodes();
+					selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
 				};
 
 				// Nudge translation without resizing
@@ -982,7 +976,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				})
 			}
 			DocumentMessage::SelectParentLayer => {
-				let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = self.network_interface.selected_nodes();
 				let selected_layers = selected_nodes.selected_layers(self.metadata());
 
 				let mut parent_layers = HashSet::new();
@@ -1009,8 +1003,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata.all_layers().filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[])).filter(|&layer| {
-					self.network_interface.selected_nodes(&[]).unwrap().layer_visible(layer, &self.network_interface)
-						&& !self.network_interface.selected_nodes(&[]).unwrap().layer_locked(layer, &self.network_interface)
+					self.network_interface.selected_nodes().layer_visible(layer, &self.network_interface) && !self.network_interface.selected_nodes().layer_locked(layer, &self.network_interface)
 				});
 				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
@@ -1064,7 +1057,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				} else {
 					if ctrl {
 						// Toggle selection when holding ctrl
-						if self.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, self.metadata()) {
+						if self.network_interface.selected_nodes().selected_layers_contains(layer, self.metadata()) {
 							responses.add_front(NodeGraphMessage::SelectedNodesRemove { nodes: vec![id] });
 						} else {
 							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
@@ -1106,7 +1099,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
-				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
+				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
@@ -1123,7 +1116,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SetOpacityForSelectedLayers { opacity } => {
 				let opacity = opacity.clamp(0., 1.);
-				for layer in self.network_interface.selected_nodes(&[]).unwrap().selected_layers_except_artboards(&self.network_interface) {
+				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
@@ -1197,13 +1190,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(DocumentMessage::CommitTransaction);
 				responses.add_front(DocumentMessage::StartTransaction);
 			}
-			DocumentMessage::ToggleLayerExpansion { id } => {
+			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
-				if self.collapsed.0.contains(&layer) {
-					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
+				let metadata = self.metadata();
+
+				let is_collapsed = self.collapsed.0.contains(&layer);
+
+				if is_collapsed {
+					if recursive {
+						let children: HashSet<_> = layer.children(metadata).collect();
+						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
+					} else {
+						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
+					}
 				} else {
+					if recursive {
+						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						self.collapsed.0.extend(children_to_add);
+					}
 					self.collapsed.0.push(layer);
 				}
+
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
@@ -1224,8 +1231,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::UpdateUpstreamTransforms { upstream_transforms } => {
-				self.network_interface.update_transforms(upstream_transforms);
+			DocumentMessage::UpdateUpstreamTransforms {
+				upstream_footprints,
+				local_transforms,
+			} => {
+				self.network_interface.update_transforms(upstream_footprints, local_transforms);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1233,7 +1243,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.into_iter()
 					.filter(|(node_id, _)|
 						// Ensure that the layer is in the document network to prevent logging an error
-						self.network_interface.network(&[]).unwrap().nodes.contains_key(node_id))
+						self.network_interface.document_network().nodes.contains_key(node_id))
 					.filter_map(|(node_id, click_targets)| {
 						self.network_interface.is_layer(&node_id, &[]).then(|| {
 							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface, &[]);
@@ -1448,7 +1458,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		);
 
 		// Additional actions if there are any selected layers
-		if self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).next().is_some() {
+		if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some() {
 			let mut select = actions!(DocumentMessageDiscriminant;
 				DeleteSelectedLayers,
 				DuplicateSelectedLayers,
@@ -1485,7 +1495,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let document_quad = document_to_viewport.inverse() * viewport_quad;
 
@@ -1493,12 +1503,12 @@ impl DocumentMessageHandler {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
-	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
 	/// Runs an intersection test with all layers and a viewport space subpath
-	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		viewport_polygon.apply_transform(document_to_viewport.inverse());
 
@@ -1506,7 +1516,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
-	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
@@ -1550,7 +1560,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
-	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'_> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		ClickXRayIter::new(&self.network_interface, XRayTarget::Point(point))
@@ -1572,7 +1582,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.click_xray(ipp)
 			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
@@ -1594,8 +1604,7 @@ impl DocumentMessageHandler {
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_visible_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
@@ -1603,15 +1612,14 @@ impl DocumentMessageHandler {
 
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
-		self.network_interface.network(&[]).unwrap()
+		self.network_interface.document_network()
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
@@ -1627,6 +1635,44 @@ impl DocumentMessageHandler {
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
 			.or_else(|_| {
+				// TODO: Eventually remove this document upgrade code
+				#[derive(Debug, serde::Serialize, serde::Deserialize)]
+				pub struct OldDocumentMessageHandler {
+					// ============================================
+					// Fields that are saved in the document format
+					// ============================================
+					//
+					/// The node graph that generates this document's artwork.
+					/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
+					pub network: OldNodeNetwork,
+					/// List of the [`NodeId`]s that are currently selected by the user.
+					pub selected_nodes: SelectedNodes,
+					/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
+					/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
+					pub collapsed: CollapsedLayers,
+					/// The name of the document, which is displayed in the tab and title bar of the editor.
+					pub name: String,
+					/// The full Git commit hash of the Graphite repository that was used to build the editor.
+					/// We save this to provide a hint about which version of the editor was used to create the document.
+					pub commit_hash: String,
+					/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
+					pub document_ptz: PTZ,
+					/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
+					pub document_mode: DocumentMode,
+					/// The current view mode that the user has set for rendering the document within the viewport.
+					/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
+					pub view_mode: ViewMode,
+					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
+					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
+					pub overlays_visible: bool,
+					/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
+					pub rulers_visible: bool,
+					/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
+					pub graph_view_overlay_open: bool,
+					/// The current user choices for snapping behavior, including whether snapping is enabled at all.
+					pub snapping_state: SnappingState,
+				}
+
 				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| DocumentMessageHandler {
 					network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
 					collapsed: old_message_handler.collapsed,
@@ -1662,7 +1708,7 @@ impl DocumentMessageHandler {
 				path.pop();
 			}
 		}
-		structure_section.push(space | 1 << 63);
+		structure_section.push(space | (1 << 63));
 	}
 
 	/// Serializes the layer structure into a condensed 1D structure.
@@ -1778,7 +1824,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.network(&[]).unwrap().current_hash())
+		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
@@ -1827,7 +1873,7 @@ impl DocumentMessageHandler {
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
-		let Some(selected_nodes) = self.network_interface.selected_nodes(&self.selection_network_path) else {
+		let Some(selected_nodes) = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
 			warn!("No selected nodes found in new_layer_parent. Defaulting to ROOT_PARENT.");
 			return LayerNodeIdentifier::ROOT_PARENT;
 		};
@@ -1875,13 +1921,15 @@ impl DocumentMessageHandler {
 			}),
 			GroupFolderType::BooleanOperation(operation) => {
 				// Get the ID of the one selected layer, if exactly one is selected
-				let only_selected_layer = network_interface.selected_nodes(&[]).and_then(|selected_nodes| {
+				let only_selected_layer = {
+					let selected_nodes = network_interface.selected_nodes();
 					let mut layers = selected_nodes.selected_layers(network_interface.document_metadata());
+
 					match (layers.next(), layers.next()) {
 						(Some(id), None) => Some(id),
 						_ => None,
 					}
-				});
+				};
 
 				// If there is a single selected layer, check if there is a boolean operation upstream from it
 				let upstream_boolean_op = only_selected_layer.and_then(|selected_id| {
@@ -2141,7 +2189,7 @@ impl DocumentMessageHandler {
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
 		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
-		let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
@@ -2193,17 +2241,15 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
-		let has_selection = self.network_interface.selected_nodes(&[]).unwrap().selected_layers(self.metadata()).next().is_some();
+		let has_selection = self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some();
 		let selection_all_visible = self
 			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_layers(self.metadata())
 			.all(|layer| self.network_interface.is_visible(&layer.to_node(), &[]));
 		let selection_all_locked = self
 			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_layers(self.metadata())
 			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
 
@@ -2284,7 +2330,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_reverse(&mut self, responses: &mut VecDeque<Message>) {
-		let selected_layers = self.network_interface.selected_nodes(&[]).unwrap();
+		let selected_layers = self.network_interface.selected_nodes();
 		let metadata = self.metadata();
 		let selected_layer_set = selected_layers.selected_layers(metadata).collect::<HashSet<_>>();
 
@@ -2376,7 +2422,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn selected_layers_reorder(&mut self, relative_index_offset: isize, responses: &mut VecDeque<Message>) {
-		let selected_nodes = self.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = self.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(self.metadata());
 
 		let first_or_last_selected_layer = match relative_index_offset.signum() {
@@ -2506,7 +2552,7 @@ impl<'a> ClickXRayIter<'a> {
 
 	/// Handles the checking of the layer to find if it has been clicked
 	fn check_layer(&mut self, layer: LayerNodeIdentifier) -> XRayResult {
-		let selected_layers = self.network_interface.selected_nodes(&[]).unwrap();
+		let selected_layers = self.network_interface.selected_nodes();
 		// Discard invisible and locked layers
 		if !selected_layers.layer_visible(layer, self.network_interface) || selected_layers.layer_locked(layer, self.network_interface) {
 			return XRayResult { clicked: false, use_children: false };
@@ -2631,42 +2677,4 @@ impl Iterator for ClickXRayIter<'_> {
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
 	}
-}
-
-// TODO: Eventually remove this document upgrade code
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct OldDocumentMessageHandler {
-	// ============================================
-	// Fields that are saved in the document format
-	// ============================================
-	//
-	/// The node graph that generates this document's artwork.
-	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
-	pub network: OldNodeNetwork,
-	/// List of the [`NodeId`]s that are currently selected by the user.
-	pub selected_nodes: SelectedNodes,
-	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
-	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
-	pub collapsed: CollapsedLayers,
-	/// The name of the document, which is displayed in the tab and title bar of the editor.
-	pub name: String,
-	/// The full Git commit hash of the Graphite repository that was used to build the editor.
-	/// We save this to provide a hint about which version of the editor was used to create the document.
-	pub commit_hash: String,
-	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
-	pub document_ptz: PTZ,
-	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
-	pub document_mode: DocumentMode,
-	/// The current view mode that the user has set for rendering the document within the viewport.
-	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	pub view_mode: ViewMode,
-	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
-	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	pub overlays_visible: bool,
-	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
-	pub rulers_visible: bool,
-	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
-	pub graph_view_overlay_open: bool,
-	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
-	pub snapping_state: SnappingState,
 }

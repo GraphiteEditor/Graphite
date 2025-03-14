@@ -1,4 +1,5 @@
 use dyn_any::StaticType;
+use glam::{DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
@@ -7,23 +8,21 @@ use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;
 use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::vector::VectorDataTable;
-use graphene_core::{concrete, generic, Artboard, GraphicGroupTable};
-use graphene_core::{fn_type_fut, future};
+use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
+use graphene_core::{fn_type_fut, future};
+use graphene_std::Context;
+use graphene_std::GraphicElement;
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::application_io::ImageTexture;
 use graphene_std::wasm_application_io::*;
-use graphene_std::Context;
-use graphene_std::GraphicElement;
-#[cfg(feature = "gpu")]
-use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
-use wgpu_executor::{WgpuSurface, WindowHandle};
-
-use glam::{DVec2, UVec2};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
+#[cfg(feature = "gpu")]
+use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
+use wgpu_executor::{WgpuSurface, WindowHandle};
 
 macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
@@ -103,6 +102,28 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				node_io
 			},
 		),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::RasterFrame]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::instances::Instances<Artboard>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => String]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => glam::IVec2]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => glam::DVec2]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => bool]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => f64]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => u32]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ()]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Vec<f64>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => BlendMode]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::BooleanOperation]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Option<graphene_core::Color>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::Fill]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::LineCap]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::LineJoin]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::Stroke]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::Gradient]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::GradientStops]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Vec<graphene_core::uuid::NodeId>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::Color]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Box<graphene_core::vector::VectorModification>]),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode"),
@@ -171,7 +192,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// (
 		// 	ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
 		// 	|args| {
-		// 		use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		// 		use graphene_core::raster::curve::Curve;
+		// 		use graphene_core::raster::GenerateCurvesNode;
 		// 		let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
 		// 		Box::pin(async move {
 		// 			let curve = ClonedNode::new(curve.eval(()).await);
@@ -189,7 +211,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// (
 		// 	ProtoNodeIdentifier::new("graphene_core::raster::CurvesNode"),
 		// 	|args| {
-		// 		use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
+		// 		use graphene_core::raster::curve::Curve;
+		// 		use graphene_core::raster::GenerateCurvesNode;
 		// 		let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
 		// 		Box::pin(async move {
 		// 			let curve = ValueNode::new(ClonedNode::new(curve.eval(()).await));

@@ -1,7 +1,6 @@
 use super::*;
 use crate::consts::*;
 use crate::utils::format_point;
-
 use glam::DVec2;
 use std::fmt::Write;
 

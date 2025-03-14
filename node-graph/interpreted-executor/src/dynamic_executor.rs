@@ -1,13 +1,11 @@
 use crate::node_registry;
-
 use dyn_any::StaticType;
-use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
+use graph_craft::Type;
 use graph_craft::document::NodeId;
+use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
-use graph_craft::Type;
-
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::panic::UnwindSafe;
@@ -95,7 +93,7 @@ impl DynamicExecutor {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		self.tree.introspect(node_path)
 	}
 
@@ -217,7 +215,7 @@ impl BorrowTree {
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
-	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any>, IntrospectError> {
+	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
 		node.serialize().ok_or(IntrospectError::NoData)
@@ -266,8 +264,10 @@ impl BorrowTree {
 	///
 	/// ```rust
 	/// use std::collections::HashMap;
-	/// use graph_craft::{proto::*, document::*};
-	/// use interpreted_executor::{node_registry, dynamic_executor::BorrowTree};
+	/// use graph_craft::document::*;
+	/// use graph_craft::proto::*;
+	/// use interpreted_executor::dynamic_executor::BorrowTree;
+	/// use interpreted_executor::node_registry;
 	///
 	///
 	/// async fn example() -> Result<(), GraphErrors> {
@@ -409,7 +409,6 @@ impl BorrowTree {
 #[cfg(test)]
 mod test {
 	use super::*;
-
 	use graph_craft::document::value::TaggedValue;
 
 	#[test]

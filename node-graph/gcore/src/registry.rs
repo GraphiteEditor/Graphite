@@ -1,8 +1,6 @@
 use crate::transform::Footprint;
 use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
-
 use dyn_any::{DynAny, StaticType};
-
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -150,7 +148,9 @@ impl NodeContainer {
 
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		unsafe {
+			std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		}
 	}
 }
 
@@ -184,7 +184,7 @@ where
 		self.node.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
@@ -217,7 +217,7 @@ where
 	}
 
 	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
@@ -273,7 +273,7 @@ where
 		self.node.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }

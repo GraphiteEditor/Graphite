@@ -2,22 +2,22 @@ use super::DocumentNode;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
-
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
-
-pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+
+pub struct TaggedValueTypeError;
 
 /// Macro to generate the tagged value enum.
 macro_rules! tagged_value {
@@ -111,6 +111,26 @@ macro_rules! tagged_value {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
 			}
 		}
+
+		$(
+			impl From<$ty> for TaggedValue {
+				fn from(value: $ty) -> Self {
+					Self::$identifier(value)
+				}
+			}
+		)*
+
+		$(
+			impl<'a> TryFrom<&'a TaggedValue> for &'a $ty {
+				type Error = TaggedValueTypeError;
+				fn try_from(value: &'a TaggedValue) -> Result<Self, Self::Error> {
+					match value{
+						TaggedValue::$identifier(value) => Ok(value),
+						_ => Err(TaggedValueTypeError),
+					}
+				}
+			}
+		)*
 	};
 }
 
@@ -128,6 +148,7 @@ tagged_value! {
 	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
+	Artboard(graphene_core::Artboard),
 	String(String),
 	U32(u32),
 	U64(u64),

@@ -2,8 +2,8 @@
 
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
-use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::broadcast::BroadcastMessage;
+use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -12,10 +12,8 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
-
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
