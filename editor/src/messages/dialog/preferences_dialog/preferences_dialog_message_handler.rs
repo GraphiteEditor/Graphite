@@ -307,15 +307,15 @@ pub fn map_linear_range(value: f64, from_min: f64, from_max: f64, to_min: f64, t
 
 // Map the actual zoom rate value to display value (1-100)
 fn map_zoom_rate_to_display(rate: f64) -> f64 {
-	map_log_range(rate, 0.0001, 0.05, 1.0, 100.0).round()
+	map_log_range(rate, 0.000273, 0.0972, 1.0, 100.0).round()
 }
 
 // Map the display value (1-100) back to the actual zoom rate value
 fn map_display_to_zoom_rate(display: f64) -> f64 {
 	let normalized = map_linear_range(display, 1.0, 100.0, 0.0, 1.0);
 
-	let log_min = 0.0001_f64.ln();
-	let log_max = 0.05_f64.ln();
+	let log_min = 0.000273_f64.ln();
+	let log_max = 0.0972_f64.ln();
 	let log_val = log_min + normalized * (log_max - log_min);
 
 	log_val.exp()
