@@ -340,13 +340,26 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
+					let [min, max] = [bounds[0].min(bounds[1]), bounds[0].max(bounds[1])];
 
 					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
 
+					// Calculate position of the text
+					let corner_pos = if !self.document_ptz.canvas_flipped {
+						min // Use the top left corner
+					} else {
+						DVec2::new(max.x, min.y) // Use the top right corner (appears to be the top left due to flipping)
+					};
+
+					// When canvas is flipped, reverse the flip so the text reads in the same direction
+					let scale = if !self.document_ptz.canvas_flipped { DVec2::ONE } else { DVec2::new(-1., 1.) };
+
+					// Create a transform that puts the text at the true top-left regardless of flip
 					let transform = self.metadata().document_to_viewport
-						* DAffine2::from_translation(bounds[0].min(bounds[1]))
+						* DAffine2::from_translation(corner_pos)
 						* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
-						* DAffine2::from_translation(-DVec2::Y * 4.);
+						* DAffine2::from_translation(-DVec2::Y * 4.)
+						* DAffine2::from_scale(scale); // Counter the flip for the text itself
 
 					overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
 				}
@@ -2582,7 +2595,7 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 5] {
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 7] {
 	[
 		IconButton::new("ZoomIn", 24)
 			.tooltip("Zoom In")
@@ -2600,6 +2613,11 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
+		CheckboxInput::new(ptz.canvas_flipped)
+			.on_update(|_| NavigationMessage::FlipCanvas.into())
+			.tooltip("Flip Canvas Horizontally")
+			.widget_holder(),
+		TextLabel::new("Flip Canvas").widget_holder(),
 		// PopoverButton::new()
 		// 	.popover_layout(vec![
 		// 		LayoutGroup::Row {
