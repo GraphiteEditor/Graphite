@@ -468,6 +468,8 @@ pub struct Stroke {
 	pub line_join_miter_limit: f64,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
+	#[serde(default)]
+	pub non_scaling: bool,
 }
 
 impl core::hash::Hash for Stroke {
@@ -480,6 +482,7 @@ impl core::hash::Hash for Stroke {
 		self.line_cap.hash(state);
 		self.line_join.hash(state);
 		self.line_join_miter_limit.to_bits().hash(state);
+		self.non_scaling.hash(state);
 	}
 }
 
@@ -505,6 +508,7 @@ impl Stroke {
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 		}
 	}
 
@@ -521,6 +525,7 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
+			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 		}
 	}
 
@@ -597,7 +602,10 @@ impl Stroke {
 		if let Some(line_join_miter_limit) = line_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);
 		}
-
+		// Add vector-effect attribute to make strokes non-scaling
+		if self.non_scaling {
+			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
+		}
 		attributes
 	}
 
@@ -644,6 +652,11 @@ impl Stroke {
 		self.line_join_miter_limit = limit;
 		self
 	}
+
+	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
+		self.non_scaling = non_scaling;
+		self
+	}
 }
 
 // Having an alpha of 1 to start with leads to a better experience with the properties panel
@@ -658,6 +671,7 @@ impl Default for Stroke {
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 		}
 	}
 }
@@ -820,7 +834,10 @@ impl PathStyle {
 		match view_mode {
 			ViewMode::Outline => {
 				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
-				let stroke_attribute = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render();
+				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
+				// Outline strokes should be non-scaling by default
+				outline_stroke.non_scaling = true;
+				let stroke_attribute = outline_stroke.render();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {

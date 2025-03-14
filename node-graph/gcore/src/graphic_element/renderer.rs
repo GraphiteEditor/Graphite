@@ -274,8 +274,7 @@ pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _render_context: &mut RenderContext) {}
-
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
 
 	// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection
@@ -325,7 +324,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for instance in self.instances() {
 			let transform = transform * *instance.transform;
 			let alpha_blending = *instance.alpha_blending;
@@ -345,7 +344,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			}
 
-			instance.instance.render_to_vello(scene, transform, context);
+			instance.instance.render_to_vello(scene, transform, context, render_params);
 
 			if layer {
 				scene.pop_layer();
@@ -461,7 +460,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
 		use crate::vector::style::GradientType;
 		use vello::peniko;
 
@@ -469,12 +468,8 @@ impl GraphicElementRendered for VectorDataTable {
 			let mut layer = false;
 
 			let multiplied_transform = parent_transform * *instance.transform;
-			let set_stroke_transform = instance
-				.instance
-				.style
-				.stroke()
-				.map(|stroke| stroke.transform)
-				.filter(|transform| transform.matrix2.determinant() != 0.);
+			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
@@ -495,86 +490,90 @@ impl GraphicElementRendered for VectorDataTable {
 			for subpath in instance.instance.stroke_bezier_paths() {
 				subpath.to_vello_path(applied_stroke_transform, &mut path);
 			}
-
-			match instance.instance.style.fill() {
-				Fill::Solid(color) => {
-					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
-				}
-				Fill::Gradient(gradient) => {
-					let mut stops = peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops.0 {
-						stops.push(peniko::ColorStop {
-							offset: offset as f32,
-							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
-						});
-					}
-					// Compute bounding box of the shape to determine the gradient start and end points
-					let bounds = instance.instance.nonzero_bounding_box();
-					let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-					let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
-					let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
-
-					let start = mod_points.transform_point2(gradient.start);
-					let end = mod_points.transform_point2(gradient.end);
-
-					let fill = peniko::Brush::Gradient(peniko::Gradient {
-						kind: match gradient.gradient_type {
-							GradientType::Linear => peniko::GradientKind::Linear {
-								start: to_point(start),
-								end: to_point(end),
-							},
-							GradientType::Radial => {
-								let radius = start.distance(end);
-								peniko::GradientKind::Radial {
-									start_center: to_point(start),
-									start_radius: 0.,
-									end_center: to_point(start),
-									end_radius: radius as f32,
-								}
+			match render_params.view_mode {
+				ViewMode::Outline => {}
+				_ => {
+					match instance.instance.style.fill() {
+						Fill::Solid(color) => {
+							let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
+							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
+						}
+						Fill::Gradient(gradient) => {
+							let mut stops = peniko::ColorStops::new();
+							for &(offset, color) in &gradient.stops.0 {
+								stops.push(peniko::ColorStop {
+									offset: offset as f32,
+									color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+								});
 							}
-						},
-						stops,
-						..Default::default()
-					});
-					// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
-					// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
-					let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
-					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
-				}
-				Fill::None => (),
-			};
+							// Compute bounding box of the shape to determine the gradient start and end points
+							let bounds = instance.instance.nonzero_bounding_box();
+							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-			if let Some(stroke) = instance.instance.style.stroke() {
-				let color = match stroke.color {
-					Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-					None => peniko::Color::TRANSPARENT,
-				};
-				use crate::vector::style::{LineCap, LineJoin};
-				use vello::kurbo::{Cap, Join};
-				let cap = match stroke.line_cap {
-					LineCap::Butt => Cap::Butt,
-					LineCap::Round => Cap::Round,
-					LineCap::Square => Cap::Square,
-				};
-				let join = match stroke.line_join {
-					LineJoin::Miter => Join::Miter,
-					LineJoin::Bevel => Join::Bevel,
-					LineJoin::Round => Join::Round,
-				};
-				let stroke = kurbo::Stroke {
-					width: stroke.weight,
-					miter_limit: stroke.line_join_miter_limit,
-					join,
-					start_cap: cap,
-					end_cap: cap,
-					dash_pattern: stroke.dash_lengths.into(),
-					dash_offset: stroke.dash_offset,
-				};
-				if stroke.width > 0. {
-					scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+							let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
+							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
+
+							let start = mod_points.transform_point2(gradient.start);
+							let end = mod_points.transform_point2(gradient.end);
+
+							let fill = peniko::Brush::Gradient(peniko::Gradient {
+								kind: match gradient.gradient_type {
+									GradientType::Linear => peniko::GradientKind::Linear {
+										start: to_point(start),
+										end: to_point(end),
+									},
+									GradientType::Radial => {
+										let radius = start.distance(end);
+										peniko::GradientKind::Radial {
+											start_center: to_point(start),
+											start_radius: 0.,
+											end_center: to_point(start),
+											end_radius: radius as f32,
+										}
+									}
+								},
+								stops,
+								..Default::default()
+							});
+							// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
+							// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
+							let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
+							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+						}
+						Fill::None => (),
+					};
+
+					if let Some(stroke) = instance.instance.style.stroke() {
+						let color = match stroke.color {
+							Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
+							None => peniko::Color::TRANSPARENT,
+						};
+						use crate::vector::style::{LineCap, LineJoin};
+						use vello::kurbo::{Cap, Join};
+						let cap = match stroke.line_cap {
+							LineCap::Butt => Cap::Butt,
+							LineCap::Round => Cap::Round,
+							LineCap::Square => Cap::Square,
+						};
+						let join = match stroke.line_join {
+							LineJoin::Miter => Join::Miter,
+							LineJoin::Bevel => Join::Bevel,
+							LineJoin::Round => Join::Round,
+						};
+						let stroke = kurbo::Stroke {
+							width: stroke.weight,
+							miter_limit: stroke.line_join_miter_limit,
+							join,
+							start_cap: cap,
+							end_cap: cap,
+							dash_pattern: stroke.dash_lengths.into(),
+							dash_offset: stroke.dash_offset,
+						};
+						if stroke.width > 0. {
+							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+						}
+					}
 				}
 			}
 			if layer {
@@ -707,7 +706,7 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		// Render background
@@ -725,7 +724,7 @@ impl GraphicElementRendered for Artboard {
 		}
 		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		self.graphic_group.render_to_vello(scene, child_transform, context);
+		self.graphic_group.render_to_vello(scene, child_transform, context, render_params);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -772,9 +771,9 @@ impl GraphicElementRendered for ArtboardGroupTable {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for instance in self.instances() {
-			instance.instance.render_to_vello(scene, transform, context)
+			instance.instance.render_to_vello(scene, transform, context, render_params);
 		}
 	}
 
@@ -837,7 +836,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
 		for instance in self.instances() {
@@ -887,7 +886,7 @@ impl GraphicElementRendered for RasterFrame {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
 		let mut render_stuff = |image: vello::peniko::Image, blend_mode: crate::AlphaBlending| {
@@ -964,11 +963,11 @@ impl GraphicElementRendered for GraphicElement {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context),
-			GraphicElement::RasterFrame(raster) => raster.render_to_vello(scene, transform, context),
+			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
+			GraphicElement::RasterFrame(raster) => raster.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
@@ -1051,6 +1050,9 @@ impl<P: Primitive> GraphicElementRendered for P {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
 impl GraphicElementRendered for Option<Color> {
@@ -1076,6 +1078,9 @@ impl GraphicElementRendered for Option<Color> {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
 impl GraphicElementRendered for Vec<Color> {
@@ -1097,6 +1102,9 @@ impl GraphicElementRendered for Vec<Color> {
 	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
 		None
 	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

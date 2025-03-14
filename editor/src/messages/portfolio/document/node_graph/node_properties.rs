@@ -2402,6 +2402,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_cap_index = 5;
 	let line_join_index = 6;
 	let miter_limit_index = 7;
+	let non_scaling_index = 8;
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorInput::default(), true);
 	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit(" px").min(0.), true);
@@ -2421,7 +2422,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	};
 	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
 	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
-
+	let non_scaling = bool_widget(document_node, node_id, non_scaling_index, "Non-Scaling", CheckboxInput::default(), true);
 	vec![
 		color,
 		LayoutGroup::Row { widgets: weight },
@@ -2430,6 +2431,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		line_cap,
 		line_join,
 		LayoutGroup::Row { widgets: miter_limit },
+		LayoutGroup::Row { widgets: non_scaling },
 	]
 }
 
