@@ -2631,6 +2631,8 @@ dependencies = [
  "ron",
  "serde",
  "serde-wasm-bindgen",
+ "specta",
+ "specta-typescript",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

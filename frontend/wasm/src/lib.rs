@@ -34,6 +34,18 @@ pub fn init_graphite() {
 	log::set_max_level(log::LevelFilter::Debug);
 }
 
+#[cfg(debug_assertions)]
+#[wasm_bindgen]
+pub fn get_specta_types() -> String {
+	use specta::TypeCollection;
+	use specta_typescript::{BigIntExportBehavior, Typescript};
+
+	Typescript::default()
+		.bigint(BigIntExportBehavior::Number)
+		.export(&TypeCollection::default()) // TODO: .register::<FrontendMessage>()
+		.unwrap() // TODO: Error handling with Node script
+}
+
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
 pub fn panic_hook(info: &panic::PanicHookInfo) {
 	let info = info.to_string();
