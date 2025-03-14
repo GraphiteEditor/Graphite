@@ -1,3 +1,4 @@
+use crate::consts::VIEWPORT_ZOOM_WHEEL_RATE;
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -49,7 +50,7 @@ impl Default for PreferencesMessageHandler {
 			use_vello,
 			vector_meshes: false,
 			graph_wire_style: GraphWireStyle::default(),
-			viewport_zoom_wheel_rate: (1. / 600.) * 3.,
+			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 		}
 	}
 }
@@ -106,7 +107,6 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {
-				log::info!("pref_mess_handler zRate: {}", rate);
 				self.viewport_zoom_wheel_rate = rate;
 			}
 		}
