@@ -42,7 +42,7 @@ Graphite is 100% built and funded by the community. Your contributions directly 
 
 Click a membership level below to pay directly by card, no account needed.
 
-A small fee of 2.9% + 30¢ reduces what we receive each month. If convenient, consider instead using <a href="https://github.com/sponsors/GraphiteEditor" target="_blank">GitHub Sponsors</a> for **no fees**.
+A small fee of 3.6% + 30¢ reduces what we receive each month. If convenient, consider instead using <a href="https://github.com/sponsors/GraphiteEditor" target="_blank">GitHub Sponsors</a> for **no fees**.
 
 </div>
 
