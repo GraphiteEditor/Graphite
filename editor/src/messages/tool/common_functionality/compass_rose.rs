@@ -101,3 +101,13 @@ impl Axis {
 		matches!(self, Self::X | Self::Y)
 	}
 }
+
+impl From<Axis> for DVec2 {
+	fn from(value: Axis) -> Self {
+		match value {
+			Axis::X => DVec2::X,
+			Axis::Y => DVec2::Y,
+			Axis::None => DVec2::ZERO,
+		}
+	}
+}
