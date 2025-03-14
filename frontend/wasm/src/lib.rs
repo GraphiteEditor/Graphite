@@ -36,14 +36,14 @@ pub fn init_graphite() {
 
 #[cfg(debug_assertions)]
 #[wasm_bindgen]
-pub fn get_specta_types() -> String {
+pub fn get_specta_types() -> Result<String, String> {
 	use specta::TypeCollection;
 	use specta_typescript::{BigIntExportBehavior, Typescript};
 
 	Typescript::default()
 		.bigint(BigIntExportBehavior::Number)
-		.export(&TypeCollection::default()) // TODO: .register::<FrontendMessage>()
-		.unwrap() // TODO: Error handling with Node script
+		.export(&TypeCollection::default().register::<FrontendMessage>())
+		.map_err(|err| err.to_string())
 }
 
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
