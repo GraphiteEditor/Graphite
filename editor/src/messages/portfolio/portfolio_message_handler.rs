@@ -33,7 +33,7 @@ pub struct PortfolioMessageData<'a> {
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
@@ -44,6 +44,25 @@ pub struct PortfolioMessageHandler {
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
+	/// Sets whether or not the spreadsheet is drawn.
+	pub spreadsheet_view_open: bool,
+}
+
+impl Default for PortfolioMessageHandler {
+	fn default() -> Self {
+		Self {
+			menu_bar_message_handler: Default::default(),
+			documents: Default::default(),
+			document_ids: Default::default(),
+			active_panel: Default::default(),
+			active_document_id: Default::default(),
+			copy_buffer: Default::default(),
+			persistent_data: Default::default(),
+			executor: Default::default(),
+			selection_mode: Default::default(),
+			spreadsheet_view_open: true,
+		}
+	}
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -305,9 +324,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.persistent_data.font_cache.insert(font, preview_url, data);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 				for document_id in self.document_ids.iter() {
+					let inspect_node = self.inspect_node_id();
 					let _ = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						ipp.viewport_bounds.size().as_uvec2(),
+						inspect_node,
 						true,
 					);
 				}
@@ -1074,9 +1095,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				}
 			}
 			PortfolioMessage::SubmitGraphRender { document_id, ignore_hash } => {
+				let inspect_node = self.inspect_node_id();
 				let result = self.executor.submit_node_graph_evaluation(
 					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
 					ipp.viewport_bounds.size().as_uvec2(),
+					inspect_node,
 					ignore_hash,
 				);
 
@@ -1260,5 +1283,20 @@ impl PortfolioMessageHandler {
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
 		result
+	}
+
+	/// Get the id of the node that should be used as the target for the spreadsheet
+	pub fn inspect_node_id(&self) -> Option<NodeId> {
+		if !self.spreadsheet_view_open {
+			warn!("Spreadsheet not open, skipping…");
+			return None;
+		}
+		let document = self.documents.get(&self.active_document_id?)?;
+		let selected_nodes = document.network_interface.selected_nodes().0;
+		if selected_nodes.len() != 1 {
+			warn!("selected nodes != 1, skipping…");
+			return None;
+		}
+		selected_nodes.first().copied()
 	}
 }

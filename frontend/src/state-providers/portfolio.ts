@@ -3,6 +3,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { InspectResult } from "@graphite/messages";
 import {
 	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
@@ -13,6 +14,7 @@ import {
 	TriggerUpgradeDocumentToVectorManipulationFormat,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
+	UpdateSpreadsheetData,
 } from "@graphite/messages";
 import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
@@ -23,6 +25,7 @@ export function createPortfolioState(editor: Editor) {
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
+		spreadsheetData: undefined as InspectResult | undefined,
 	});
 
 	// Set up message subscriptions on creation
@@ -101,6 +104,13 @@ export function createPortfolioState(editor: Editor) {
 		// TODO: Eventually remove this document upgrade code
 		const { documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent } = triggerUpgradeDocumentToVectorManipulationFormat;
 		editor.handle.triggerUpgradeDocumentToVectorManipulationFormat(documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent);
+	});
+
+	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetData, async (updateSpreadsheetData) => {
+		update((state) => {
+			state.spreadsheetData = updateSpreadsheetData.data;
+			return state;
+		});
 	});
 
 	return {

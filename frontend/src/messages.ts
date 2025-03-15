@@ -771,6 +771,16 @@ export class UpdateGraphFadeArtwork extends JsMessage {
 	readonly percentage!: number;
 }
 
+export class InspectResult {
+	inspectNode!: bigint;
+
+	data!: string;
+}
+
+export class UpdateSpreadsheetData extends JsMessage {
+	readonly data!: InspectResult | undefined;
+}
+
 export class UpdateMouseCursor extends JsMessage {
 	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
 	readonly cursor!: MouseCursorIcon;
@@ -1649,6 +1659,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
+	UpdateSpreadsheetData,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,

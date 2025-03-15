@@ -150,6 +150,9 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
+	UpdateSpreadsheetData {
+		data: Option<crate::node_graph_executor::InspectResult>,
+	},
 	UpdateImportReorderIndex {
 		#[serde(rename = "importIndex")]
 		index: Option<usize>,
