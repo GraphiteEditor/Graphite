@@ -212,5 +212,6 @@ pub enum NodeGraphMessage {
 	UpdateActionButtons,
 	UpdateGraphBarRight,
 	UpdateInSelectedNetwork,
+	UpdateHints,
 	SendSelectedNodes,
 }

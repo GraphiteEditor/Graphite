@@ -496,6 +496,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}

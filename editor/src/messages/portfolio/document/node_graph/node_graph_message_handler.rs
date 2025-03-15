@@ -15,6 +15,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
+use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -721,6 +723,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = false;
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
+					self.update_node_graph_hints(responses);
 					return;
 				}
 
@@ -767,6 +770,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						self.drag_start = Some(drag_start);
 						self.begin_dragging = true;
 						self.drag_occurred = false;
+						self.update_node_graph_hints(responses);
 					}
 
 					// Update the selection if it was modified
@@ -784,6 +788,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
 				}
 				self.box_selection_start = Some(node_graph_point);
+				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerMove { shift } => {
 				if selection_network_path != breadcrumb_network_path {
@@ -1218,6 +1223,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });
 				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
 				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
+				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				if self.drag_start.is_some() || self.box_selection_start.is_some() {
@@ -1306,6 +1312,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						has_left_input_wire,
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
+					self.update_node_graph_hints(responses);
 				}
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
@@ -1666,6 +1673,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::UpdateInSelectedNetwork => responses.add(FrontendMessage::UpdateInSelectedNetwork {
 				in_selected_network: selection_network_path == breadcrumb_network_path,
 			}),
+			NodeGraphMessage::UpdateHints => {
+				self.update_node_graph_hints(responses);
+			}
 			NodeGraphMessage::SendSelectedNodes => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(breadcrumb_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::SendSelectedNodes");
@@ -2420,6 +2430,56 @@ impl NodeGraphMessageHandler {
 			),
 			DVec2::new(input_position.x, input_position.y),
 		]
+	}
+	pub fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
+		let default_hints = vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]),
+			HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Node"), HintInfo::keys([Key::Control], "Keep Children").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Node"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Definition")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate")]),
+			HintGroup(vec![HintInfo::keys([Key::Control, Key::KeyD], "Duplicate")]),
+		];
+
+		let hint_data = match (
+			self.drag_start.as_ref(),
+			self.box_selection_start.as_ref(),
+			self.wire_in_progress_from_connector.as_ref(),
+			self.wire_in_progress_to_connector.as_ref(),
+			self.has_selection,
+		) {
+			// When dragging nodes
+			(Some(_), None, None, None, _) => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected Nodes")]),
+			]),
+
+			// When creating a wire connection
+			(None, None, Some(_), _, _) | (None, None, _, Some(_), _) => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Connect Wire")]),
+			]),
+
+			// When one or more nodes are selected (but not being dragged or wired)
+			(None, None, None, None, true) => HintData(vec![
+				HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Selected")]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Selected")]),
+				HintGroup(vec![HintInfo::keys([Key::Control, Key::KeyD], "Duplicate Selected")]),
+				HintGroup(vec![HintInfo::keys([Key::Control, Key::KeyC], "Copy")]),
+				HintGroup(vec![HintInfo::keys([Key::Control, Key::KeyV], "Paste")]),
+				HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Selected")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Click Canvas to Deselect")]),
+			]),
+
+			// Default hints for all other states
+			_ => HintData(default_hints),
+		};
+
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
 
