@@ -1075,6 +1075,87 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 	DVec2::ZERO
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn convex_hull(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
+	// This is an implementation of convex hulls using gift wrapping, but a more efficient
+	// solution might use Graham scan, which has a lower time complexity.
+
+	let original_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance_mut().instance;
+
+	let mut points_on_hull = VectorData::empty();
+
+	let positions = vector_data
+		.point_domain
+		.ids()
+		.iter()
+		.filter_map(|&id| Some((id, vector_data.point_domain.position_from_id(id)?)))
+		.collect::<Vec<_>>();
+	if positions.is_empty() {
+		return VectorDataTable::new(points_on_hull);
+	}
+
+	// the leftmost point is guaranteed to be on the hull
+	// TODO: remove expect
+	let leftmost_point = positions
+		.iter()
+		.min_by(|(_, a), (_, b)| a.x.partial_cmp(&b.x).expect("comparison between a and b in convex hull failed"));
+	if let Some((leftmost_index, _)) = leftmost_point {
+		let mut point_on_hull = vector_data.point_domain.position_from_id(*leftmost_index).unwrap();
+		let mut previous_id = *leftmost_index;
+		points_on_hull.point_domain.push(previous_id, point_on_hull);
+
+		let mut current_id;
+
+		loop {
+			let (mut endpoint_id, mut endpoint) = positions[0];
+			for &(position_id, position) in positions.iter() {
+				// if (endpoint == pointOnHull) or (S[j] is on left of line from P[i] to endpoint)
+				// TODO: maybe epsilon this comparison? additional testing is needed
+				// TODO: do this comparison using bezier handles? I'm not sure bezier-rs supports that
+				if endpoint == point_on_hull || 0. < ((endpoint.x - point_on_hull.x) * (position.y - point_on_hull.y) - (endpoint.y - point_on_hull.y) * (position.x - point_on_hull.x)) {
+					endpoint = position;
+					endpoint_id = position_id;
+				}
+			}
+
+			point_on_hull = endpoint;
+			current_id = endpoint_id;
+
+			// get the handles of the original stroke (if one exists)
+			let handles_data = vector_data
+				.handles_mut()
+				.find(|(_, _, point1, point2)| previous_id == *point1 && current_id == *point2 || current_id == *point1 && previous_id == *point2);
+			// data about existing segments is set to failsafe values
+			let (segment_id, handles, start, end) =
+				handles_data
+					.map(|(segment_id, handles, p1, p2)| (segment_id, *handles, p1, p2))
+					.unwrap_or((SegmentId::generate(), bezier_rs::BezierHandles::Linear, previous_id, current_id));
+
+			// if we've gone full circle, push the last segment and break
+			if endpoint == points_on_hull.point_domain.positions()[0] {
+				points_on_hull.push(segment_id, start, end, handles, StrokeId::ZERO);
+				break;
+			}
+
+			points_on_hull.point_domain.push(current_id, point_on_hull);
+			points_on_hull.push(segment_id, start, end, handles, StrokeId::ZERO);
+
+			previous_id = current_id;
+		}
+	} else {
+		warn!("Failed to find the leftmost point in convex hull.");
+		return VectorDataTable::new(points_on_hull);
+	}
+
+	points_on_hull.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	let mut result = VectorDataTable::new(points_on_hull);
+	*result.transform_mut() = original_transform;
+
+	result
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
