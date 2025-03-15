@@ -1091,7 +1091,7 @@ async fn morph<F: 'n + Send + Copy>(
 	VectorDataTable::new(result)
 }
 
-fn bevel_algorithm(mut vector_data: VectorData, distance: f64, roundness: f64) -> VectorData {
+fn bevel_algorithm(mut vector_data: VectorData, distance: f64) -> VectorData {
 	// Splits a bézier curve based on a distance measurement
 	fn split_distance(bezier: bezier_rs::Bezier, distance: f64, length: f64) -> bezier_rs::Bezier {
 		const EUCLIDEAN_ERROR: f64 = 0.001;
@@ -1150,23 +1150,19 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64, roundness: f64) -
 			let length2 = bezier2.length(None);
 
 			let max_split = length1.min(length2);
-			const EUCLIDEAN_ERROR: f64 = 0.001;
 
-			// Adaptive sampling approach
 			let mut split_distance = 0.0;
 			let mut best_diff = f64::MAX;
 			let mut current_best_distance = 0.0;
 
-			// Start with coarse sampling to find promising regions
+			let clamp_and_round = |value: f64| ((value * 1000.0).round() / 1000.0).clamp(0.0, 1.0);
+
 			const INITIAL_SAMPLES: usize = 50;
 			for i in 0..=INITIAL_SAMPLES {
 				let distance_sample = max_split * (i as f64 / INITIAL_SAMPLES as f64);
 
-				let parametric1 = bezier1.euclidean_to_parametric_with_total_length((distance_sample / length1).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length1);
-				let parametric2 = bezier2.euclidean_to_parametric_with_total_length((distance_sample / length2).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length2);
-
-				let x_point = bezier1.evaluate(TValue::Parametric(1.0 - parametric1));
-				let y_point = bezier2.evaluate(TValue::Parametric(parametric2));
+				let x_point = bezier1.evaluate(TValue::Euclidean(1.0 - clamp_and_round(distance_sample / length1)));
+				let y_point = bezier2.evaluate(TValue::Euclidean(clamp_and_round(distance_sample / length2)));
 
 				let distance = x_point.distance(y_point);
 				let diff = (bevel_length - distance).abs();
@@ -1186,11 +1182,8 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64, roundness: f64) -
 						for j in 1..=REFINE_STEPS {
 							let refined_sample = prev_sample + (distance_sample - prev_sample) * (j as f64 / REFINE_STEPS as f64);
 
-							let parametric1 = bezier1.euclidean_to_parametric_with_total_length((refined_sample / length1).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length1);
-							let parametric2 = bezier2.euclidean_to_parametric_with_total_length((refined_sample / length2).clamp(0.0, 1.0), EUCLIDEAN_ERROR, length2);
-
-							let x_point = bezier1.evaluate(TValue::Parametric(1.0 - parametric1));
-							let y_point = bezier2.evaluate(TValue::Parametric(parametric2));
+							let x_point = bezier1.evaluate(TValue::Euclidean(1.0 - (refined_sample / length1).clamp(0.0, 1.0)));
+							let y_point = bezier2.evaluate(TValue::Euclidean((refined_sample / length2).clamp(0.0, 1.0)));
 
 							let distance = x_point.distance(y_point);
 
@@ -1365,22 +1358,11 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64, roundness: f64) -
 		new_segments
 	}
 
-	fn insert_new_segments(vector_data: &mut VectorData, new_segments: &[[usize; 2]], roundness: f64) {
+	fn insert_new_segments(vector_data: &mut VectorData, new_segments: &[[usize; 2]]) {
 		let mut next_id = vector_data.segment_domain.next_id();
 
 		for &[start, end] in new_segments {
-			let start_pos = vector_data.point_domain.positions()[start];
-			let end_pos = vector_data.point_domain.positions()[end];
-
-			let direction = start_pos - end_pos;
-			let perpendicular = DVec2::new(-direction.y, direction.x).normalize();
-
-			let curve_amount = direction.length() * roundness; // 50% of line length
-			let midpoint = (start_pos + end_pos) / 2.0;
-			let control_point = midpoint + perpendicular * curve_amount;
-
-			let handles = bezier_rs::BezierHandles::Quadratic { handle: control_point };
-
+			let handles = bezier_rs::BezierHandles::Linear;
 			vector_data.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
 		}
 	}
@@ -1388,7 +1370,7 @@ fn bevel_algorithm(mut vector_data: VectorData, distance: f64, roundness: f64) -
 	if distance > 1.0 {
 		let mut segments_connected = segments_connected_count(&vector_data);
 		let new_segments = update_existing_segments(&mut vector_data, distance, &mut segments_connected);
-		insert_new_segments(&mut vector_data, &new_segments, roundness);
+		insert_new_segments(&mut vector_data, &new_segments);
 	}
 
 	vector_data
@@ -1407,14 +1389,11 @@ async fn bevel<F: 'n + Send + Copy>(
 	)]
 	source: impl Node<F, Output = VectorDataTable>,
 	#[default(10.)] distance: Length,
-	#[default(0.)]
-	#[range((-1.0, 1.0))]
-	roundness: f64,
 ) -> VectorDataTable {
 	let source = source.eval(footprint).await;
 	let source = source.one_item();
 
-	let result = bevel_algorithm(source.clone(), distance, roundness);
+	let result = bevel_algorithm(source.clone(), distance);
 
 	VectorDataTable::new(result)
 }
@@ -1657,7 +1636,7 @@ mod test {
 	#[tokio::test]
 	async fn bevel_rect() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
-		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5., 0.).await;
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5.).await;
 		let beveled = beveled.one_item();
 
 		assert_eq!(beveled.point_domain.positions().len(), 8);
@@ -1680,7 +1659,7 @@ mod test {
 	async fn bevel_open_curve() {
 		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
 		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), curve], false);
-		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5., 0.).await;
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5.).await;
 		let beveled = beveled.one_item();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -1702,7 +1681,7 @@ mod test {
 		let mut vector_data = VectorData::from_subpath(source);
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 		vector_data.transform = transform;
-		let beveled = super::bevel(Footprint::default(), &FutureWrapperNode(VectorDataTable::new(vector_data)), 5., 0.).await;
+		let beveled = super::bevel(Footprint::default(), &FutureWrapperNode(VectorDataTable::new(vector_data)), 5.).await;
 		let beveled = beveled.one_item();
 
 		assert_eq!(beveled.point_domain.positions().len(), 4);
@@ -1721,7 +1700,7 @@ mod test {
 	#[tokio::test]
 	async fn bevel_too_high() {
 		let source = Subpath::from_anchors([DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)], false);
-		let beveled = super::bevel(Footprint::default(), &vector_node(source), 999., 0.).await;
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 999.).await;
 		let beveled = beveled.one_item();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
@@ -1742,7 +1721,7 @@ mod test {
 		let curve = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 100.), DVec2::X * 100.);
 		let point = Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO, DVec2::ZERO);
 		let source = Subpath::from_beziers(&[Bezier::from_linear_dvec2(DVec2::X * -100., DVec2::ZERO), point, curve], false);
-		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5., 0.).await;
+		let beveled = super::bevel(Footprint::default(), &vector_node(source), 5.).await;
 		let beveled = beveled.one_item();
 
 		assert_eq!(beveled.point_domain.positions().len(), 6);
