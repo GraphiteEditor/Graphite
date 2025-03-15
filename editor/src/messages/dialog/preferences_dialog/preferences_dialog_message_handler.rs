@@ -1,3 +1,4 @@
+use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -62,15 +63,15 @@ impl PreferencesDialogMessageHandler {
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(map_zoom_rate_to_display(preferences.viewport_zoom_wheel_rate)))
         .tooltip(zoom_rate_tooltip)
-        .min(1.0)
-        .max(100.0)
+        .min(1.)
+        .max(100.)
         .display_decimal_places(0)  // Display as whole numbers
         .on_update(|number_input: &NumberInput| {
             if let Some(display_value) = number_input.value {
                 let actual_rate = map_display_to_zoom_rate(display_value);
                 PreferencesMessage::ViewportZoomWheelRate { rate: actual_rate }.into()
             } else {
-                PreferencesMessage::ViewportZoomWheelRate { rate: (1. / 600.) * 3. }.into()
+                PreferencesMessage::ViewportZoomWheelRate { rate: VIEWPORT_ZOOM_WHEEL_RATE}.into()
             }
         })
         .widget_holder(),
@@ -272,51 +273,23 @@ impl PreferencesDialogMessageHandler {
 		});
 	}
 }
-// Function to map a value from one range to another using logarithmic scaling
-pub fn map_log_range(value: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
-	if value <= from_min {
-		to_min
-	} else if value >= from_max {
-		to_max
-	} else {
-		// Calculate the logarithmic position between from_min and from_max
-		let log_min = from_min.ln();
-		let log_max = from_max.ln();
-		let log_val = value.ln();
-
-		// Map to to_min-to_max range
-		let normalized = (log_val - log_min) / (log_max - log_min);
-		to_min + (to_max - to_min) * normalized
-	}
-}
-
-// Function to map a value from one range to another using linear scaling
-pub fn map_linear_range(value: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
-	if value <= from_min {
-		to_min
-	} else if value >= from_max {
-		to_max
-	} else {
-		// Normalize to 0-1 range
-		let normalized = (value - from_min) / (from_max - from_min);
-
-		// Map to to_min-to_max range
-		to_min + normalized * (to_max - to_min)
-	}
-}
-
-// Map the actual zoom rate value to display value (1-100)
-fn map_zoom_rate_to_display(rate: f64) -> f64 {
-	map_log_range(rate, 0.000273, 0.0972, 1., 100.).round()
-}
-
-// Map the display value (1-100) back to the actual zoom rate value
+// maps display values (1-100) to actual zoom rates
 fn map_display_to_zoom_rate(display: f64) -> f64 {
-	let normalized = map_linear_range(display, 1., 100., 0., 1.);
+	// Calculate the relative distance from the reference point (50)
+	let distance_from_reference = display - 50.;
 
-	let log_min = 0.000273_f64.ln();
-	let log_max = 0.0972_f64.ln();
-	let log_val = log_min + normalized * (log_max - log_min);
+	let scaling_factor = (VIEWPORT_ZOOM_WHEEL_RATE_CHANGE * distance_from_reference / 50.).exp();
 
-	log_val.exp()
+	VIEWPORT_ZOOM_WHEEL_RATE * scaling_factor
+}
+// This function maps actual zoom rates back to display values (1-100)
+fn map_zoom_rate_to_display(rate: f64) -> f64 {
+	// Calculate the scaling factor from the reference rate
+	let scaling_factor = rate / VIEWPORT_ZOOM_WHEEL_RATE;
+
+	let distance_from_reference = 50. * scaling_factor.ln() / VIEWPORT_ZOOM_WHEEL_RATE_CHANGE;
+
+	let display = 50. + distance_from_reference;
+
+	display.max(1.).min(100.).round()
 }
