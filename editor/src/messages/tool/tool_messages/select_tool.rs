@@ -727,33 +727,31 @@ impl Fsm for SelectToolFsmState {
 					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
-					let selection_mode = match tool_action_data.preferences.get_selection_mode() {
+					let current_selection_mode = match tool_action_data.preferences.get_selection_mode() {
 						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
-						selection_mode => selection_mode,
+						SelectionMode::Touched => SelectionMode::Touched,
+						SelectionMode::Enclosed => SelectionMode::Enclosed,
 					};
 
 					// Draw outline visualizations on the layers to be selected
-					let mut draw_layer_outline = |layer| overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-					let intersection: Vec<LayerNodeIdentifier> = match selection_shape {
+					let intersected_layers = match selection_shape {
 						SelectionShapeType::Box => document.intersect_quad_no_artboards(quad, input).collect(),
 						SelectionShapeType::Lasso => tool_data.intersect_lasso_no_artboards(document, input),
 					};
-					if selection_mode == SelectionMode::Enclosed {
-						let is_inside = |layer: &LayerNodeIdentifier| match selection_shape {
+					let layers_to_outline = intersected_layers.into_iter().filter(|layer| match current_selection_mode {
+						SelectionMode::Enclosed => match selection_shape {
 							SelectionShapeType::Box => document.is_layer_fully_inside(layer, quad),
 							SelectionShapeType::Lasso => tool_data.is_layer_inside_lasso_polygon(layer, document, input),
-						};
-						for layer in intersection.into_iter().filter(is_inside) {
-							draw_layer_outline(layer);
-						}
-					} else if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-						for layer in intersection.iter().filter(|layer| !layer.has_children(document.metadata())) {
-							draw_layer_outline(*layer);
-						}
-					} else {
-						for layer in intersection {
-							draw_layer_outline(layer);
-						}
+						},
+						SelectionMode::Touched => match tool_data.nested_selection_behavior {
+							NestedSelectionBehavior::Deepest => !layer.has_children(document.metadata()),
+							NestedSelectionBehavior::Shallowest => true,
+						},
+						SelectionMode::Directional => unreachable!(),
+					});
+
+					for layer in layers_to_outline {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 					}
 
 					// Update the selection box
@@ -766,7 +764,7 @@ impl Fsm for SelectToolFsmState {
 
 					let polygon = &tool_data.lasso_polygon;
 
-					match (selection_shape, selection_mode) {
+					match (selection_shape, current_selection_mode) {
 						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
 						(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
@@ -1403,6 +1401,7 @@ impl Fsm for SelectToolFsmState {
 				let current_selected: HashSet<_> = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				let negative_selection = input.keyboard.key(remove_from_selection);
 				let selection_modified = new_selected != current_selected;
+
 				// Negative selection when both Shift and Ctrl are pressed
 				if negative_selection {
 					let updated_selection = current_selected
@@ -1411,18 +1410,19 @@ impl Fsm for SelectToolFsmState {
 						.collect();
 					tool_data.layers_dragging = updated_selection;
 				} else if selection_modified {
-					let filtered_selections = filter_nested_selection(document.metadata(), &new_selected);
-					let parent_selected: HashSet<_> = new_selected
-						.into_iter()
-						.map(|layer| {
-							// Find the parent node
-							layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer)
-						})
-						.collect();
-					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
-						tool_data.layers_dragging.extend(filtered_selections);
-					} else {
-						tool_data.layers_dragging.extend(parent_selected.iter().copied());
+					match tool_data.nested_selection_behavior {
+						NestedSelectionBehavior::Deepest => {
+							let filtered_selections = filter_nested_selection(document.metadata(), &new_selected);
+							tool_data.layers_dragging.extend(filtered_selections);
+						}
+						NestedSelectionBehavior::Shallowest => {
+							// Find each new_selected's parent node
+							let parent_selected: HashSet<_> = new_selected
+								.into_iter()
+								.map(|layer| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer))
+								.collect();
+							tool_data.layers_dragging.extend(parent_selected.iter().copied());
+						}
 					}
 				}
 
@@ -1713,33 +1713,33 @@ pub fn extend_lasso(lasso_polygon: &mut Vec<DVec2>, point: DVec2) {
 }
 
 pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashSet<LayerNodeIdentifier>) -> HashSet<LayerNodeIdentifier> {
-	let mut filtered_selection = HashSet::new();
-
 	// First collect childless layers
-	for &layer in new_selected {
-		if !layer.has_children(metadata) {
-			filtered_selection.insert(layer);
-		}
-	}
+	let mut filtered_selection: HashSet<_> = new_selected.iter().copied().filter(|layer| !layer.has_children(metadata)).collect();
 
 	// Then process parents with all children selected
 	for &layer in new_selected {
-		if layer.has_children(metadata) {
-			// if any ancestor is already present in the filtered selection don't put its child
-			if layer.ancestors(metadata).any(|ancestor| filtered_selection.contains(&ancestor)) {
-				continue;
-			}
-			let all_children_selected = layer.descendants(metadata).all(|descendant| new_selected.contains(&descendant));
-
-			if all_children_selected {
-				// Remove all descendants of the parent
-				layer.descendants(metadata).for_each(|child| {
-					filtered_selection.remove(&child);
-				});
-				// Add the parent
-				filtered_selection.insert(layer);
-			}
+		// Skip if the layer is not a parent
+		if !layer.has_children(metadata) {
+			continue;
 		}
+
+		// If any ancestor is already present in the filtered selection, don't include its child
+		if layer.ancestors(metadata).any(|ancestor| filtered_selection.contains(&ancestor)) {
+			continue;
+		}
+
+		// Skip if any of the children are not selected
+		if !layer.descendants(metadata).all(|descendant| new_selected.contains(&descendant)) {
+			continue;
+		}
+
+		// Remove all descendants of the parent
+		for child in layer.descendants(metadata) {
+			filtered_selection.remove(&child);
+		}
+		// Add the parent
+		filtered_selection.insert(layer);
 	}
+
 	filtered_selection
 }
