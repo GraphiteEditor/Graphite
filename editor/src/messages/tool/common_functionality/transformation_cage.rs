@@ -206,7 +206,22 @@ impl SelectedEdges {
 				}
 				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
 
-				let mut scale_factor = (snapped_bounds - pivot) / (updated - pivot);
+				let new_from_pivot = snapped_bounds - pivot; // The new vector from the snapped point to the pivot
+				let original_from_pivot = updated - pivot; // The original vector from the point to the pivot
+				let mut scale_factor = new_from_pivot / original_from_pivot;
+
+				// Constrain should always scale by the same factor in x and y
+				if constrain {
+					// When the point is on the pivot, we simply copy the other axis.
+					if original_from_pivot.x.abs() < 1e-5 {
+						scale_factor.x = scale_factor.y;
+					} else if original_from_pivot.y.abs() < 1e-5 {
+						scale_factor.y = scale_factor.x;
+					}
+
+					debug_assert!((scale_factor.x - scale_factor.y).abs() < 1e-5);
+				}
+
 				if !(self.left || self.right || constrain) {
 					scale_factor.x = 1.
 				}
