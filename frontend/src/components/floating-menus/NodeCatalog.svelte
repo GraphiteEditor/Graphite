@@ -12,9 +12,11 @@
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	export let disabled = false;
+	// Add prop for initial search term from compatible type
+	export let initialSearchTerm = "";
 
 	let nodeSearchInput: TextInput | undefined = undefined;
-	let searchTerm = "";
+	let searchTerm = initialSearchTerm;
 
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 
@@ -26,26 +28,41 @@
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
 		const categories = new Map<string, NodeCategoryDetails>();
 
-		nodeTypes.forEach((node) => {
-			let nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+		// Check if search term is prefixed with "type:"
+		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
+		const typeSearchTerm = isTypeSearch ? searchTerm.substring(5).trim().toLowerCase() : "";
 
-			// Quick and dirty hack to alias "Layer" to "Merge" in the search
-			if (node.name === "Merge") {
-				nameIncludesSearchTerm = nameIncludesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
+		nodeTypes.forEach((node) => {
+			let includesSearchTerm = false;
+
+			if (isTypeSearch) {
+				// Check if the type search term is present in any of the node's inputTypes
+				includesSearchTerm = node.inputTypes?.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm)) || false;
+			} else {
+				// Regular name search
+				includesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+
+				// Quick and dirty hack to alias "Layer" to "Merge" in the search
+				if (node.name === "Merge") {
+					includesSearchTerm = includesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
+				}
 			}
 
-			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
+			// Also check category if not a type search
+			const categoryIncludesSearchTerm = !isTypeSearch && searchTerm.length > 0 && node.category.toLowerCase().includes(searchTerm.toLowerCase());
+
+			if (searchTerm.length > 0 && !includesSearchTerm && !categoryIncludesSearchTerm) {
 				return;
 			}
 
 			const category = categories.get(node.category);
-			let open = nameIncludesSearchTerm;
+			let open = includesSearchTerm || categoryIncludesSearchTerm;
 			if (searchTerm.length === 0) {
 				open = false;
 			}
 
 			if (category) {
-				category.open = open;
+				category.open = category.open || open;
 				category.nodes.push(node);
 			} else
 				categories.set(node.category, {
@@ -82,7 +99,7 @@
 </script>
 
 <div class="node-catalog">
-	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+	<TextInput placeholder="Search Nodes... (or type:InputType)" value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
