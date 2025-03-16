@@ -7,12 +7,14 @@ use crate::messages::portfolio::document::overlays::utility_functions::{path_ove
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
+use js_sys::Math::abs;
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId};
@@ -375,6 +377,7 @@ struct PathToolData {
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
+	snapping_axis: Option<Axis>,
 }
 
 impl PathToolData {
@@ -738,6 +741,90 @@ impl PathToolData {
 		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
 	}
 
+	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		// enable when shift is pressed (need not be managed here only)
+
+		// first find the -ve delta to take the point to the drag start position
+		// let document_to_viewport = document.metadata().document_to_viewport;
+		let current_mouse = input.mouse.position;
+		let drag_start = self.drag_start_pos;
+		let opposite_delta = drag_start - current_mouse;
+
+		shape_editor.move_selected_points(None, document, opposite_delta, false, true, None, responses);
+
+		// second calculate the projected delta and shift the points along those delta
+
+		let delta = current_mouse - drag_start;
+		let axis = if abs(delta.x) >= abs(delta.y) { Axis::X } else { Axis::Y };
+		self.snapping_axis = Some(axis);
+		let projected_delta = match axis {
+			Axis::X => DVec2::new(delta.x, 0.0),
+			Axis::Y => DVec2::new(0.0, delta.y),
+			_ => DVec2::new(delta.x, 0.0),
+		};
+
+		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, responses);
+	}
+
+	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		// when shift is removed then this is called
+
+		// first calculate the -ve delta of the selection and move it back to the drag start
+		// let document_to_viewport = document.metadata().document_to_viewport;
+		let current_mouse = input.mouse.position;
+		let drag_start = self.drag_start_pos;
+
+		let opposite_delta = drag_start - current_mouse;
+		let axis = self.snapping_axis.unwrap();
+		let opposite_projected_delta = match axis {
+			Axis::X => DVec2::new(opposite_delta.x, 0.0),
+			Axis::Y => DVec2::new(0.0, opposite_delta.y),
+			_ => DVec2::new(opposite_delta.x, 0.0),
+		};
+
+		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
+
+		// then calculate what actually would have been original delta for the point and apply that
+		let delta = current_mouse - drag_start;
+
+		shape_editor.move_selected_points(None, document, delta, false, true, None, responses);
+
+		self.snapping_axis = None;
+	}
+
+	fn switch_snap_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		//when the axis needs to be switched then this is called
+
+		//calculate the -ve delta from one axis and then apply that
+
+		let opposite_delta = self.drag_start_pos - input.mouse.position;
+		let current_axis = self.snapping_axis.unwrap();
+		let other_axis = match current_axis {
+			Axis::X => Axis::Y,
+			Axis::Y => Axis::X,
+			_ => Axis::X,
+		};
+		let opposite_projected_delta = match current_axis {
+			Axis::X => DVec2::new(opposite_delta.x, 0.0),
+			Axis::Y => DVec2::new(0.0, opposite_delta.y),
+			_ => DVec2::new(opposite_delta.x, 0.0),
+		};
+
+		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
+
+		//calculate positive delta in other direction and apply that
+		let delta = input.mouse.position - self.drag_start_pos;
+		let projected_delta = match current_axis {
+			Axis::X => DVec2::new(0.0, delta.y),
+			Axis::Y => DVec2::new(delta.x, 0.0),
+			_ => DVec2::new(delta.x, 0.0),
+		};
+
+		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, responses);
+
+		self.snapping_axis = Some(other_axis);
+	}
+
 	#[allow(clippy::too_many_arguments)]
 	fn drag(
 		&mut self,
@@ -749,6 +836,21 @@ impl PathToolData {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
+		if snap_angle && self.snapping_axis.is_none() {
+			self.start_snap_along_axis(shape_editor, document, input, responses);
+		} else if !snap_angle && self.snapping_axis.is_some() {
+			self.stop_snap_along_axis(shape_editor, document, input, responses);
+		}
+
+		if snap_angle && self.snapping_axis.is_some() {
+			let current_axis = self.snapping_axis.unwrap();
+			let total_delta = self.drag_start_pos - input.mouse.position;
+
+			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
+				self.switch_snap_axis(shape_editor, document, input, responses);
+			}
+		}
+
 		let document_to_viewport = document.metadata().document_to_viewport;
 		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
 		let current_mouse = input.mouse.position;
@@ -771,8 +873,21 @@ impl PathToolData {
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		let opposite = if lock_angle { None } else { self.opposite_handle_position };
-		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
-		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
+		let unsnapped_delta = current_mouse - previous_mouse;
+
+		if self.snapping_axis.is_none() {
+			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
+			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
+		} else {
+			let axis = self.snapping_axis.unwrap();
+			let projected_delta = match axis {
+				Axis::X => DVec2::new(unsnapped_delta.x, 0.0),
+				Axis::Y => DVec2::new(0.0, unsnapped_delta.y),
+				_ => DVec2::new(unsnapped_delta.x, 0.0),
+			};
+			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
+			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
+		}
 	}
 }
 
@@ -874,6 +989,23 @@ impl Fsm for PathToolFsmState {
 					}
 					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+
+						//here adding context lines
+						if tool_data.snapping_axis.is_some() {
+							// let axis = tool_data.snapping_axis.unwrap();
+							let origin = tool_data.drag_start_pos;
+							let viewport_diagonal = input.viewport_bounds.size().length();
+							overlay_context.line(
+								origin - DVec2::new(0.0, 1.0) * viewport_diagonal,
+								origin + DVec2::new(0.0, 1.0) * viewport_diagonal,
+								Some(COLOR_OVERLAY_BLUE),
+							);
+							overlay_context.line(
+								origin - DVec2::new(1.0, 0.0) * viewport_diagonal,
+								origin + DVec2::new(1.0, 0.0) * viewport_diagonal,
+								Some(COLOR_OVERLAY_BLUE),
+							);
+						}
 					}
 					Self::InsertPoint => {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
@@ -1074,6 +1206,10 @@ impl Fsm for PathToolFsmState {
 				},
 			) => {
 				// Auto-panning
+				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, responses) {
+					tool_data.drag_start_pos += offset;
+				}
+
 				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
 					let equidistant = input.keyboard.get(equidistant as usize);
 					let snap_angle = input.keyboard.get(snap_angle as usize);
@@ -1223,6 +1359,10 @@ impl Fsm for PathToolFsmState {
 				// Deselect all points if the user clicks the filled region of the shape
 				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
+				}
+
+				if tool_data.snapping_axis.is_some() {
+					tool_data.snapping_axis = None;
 				}
 
 				responses.add(DocumentMessage::EndTransaction);
