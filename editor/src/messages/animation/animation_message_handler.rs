@@ -51,5 +51,6 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 	advertise_actions!(AnimationMessageDiscriminant;
 		ToggleLivePreview,
 		SetFrameTime,
+		SetFrameIndex,
 	);
 }
