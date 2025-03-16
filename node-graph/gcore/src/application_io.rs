@@ -8,6 +8,7 @@ use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use core::ptr::addr_of;
+use core::time::Duration;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
 
@@ -254,7 +255,7 @@ pub enum ExportFormat {
 pub struct TimingInformation {
 	pub time: f64,
 	pub frame_index: f64,
-	pub frame_time: f64,
+	pub frame_time: Duration,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]

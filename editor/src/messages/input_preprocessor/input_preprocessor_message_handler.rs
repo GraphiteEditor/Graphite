@@ -96,9 +96,10 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 			}
 			InputPreprocessorMessage::FrameTimeAdvance { timestamp } => {
 				self.frame_time.advance_timestamp(timestamp);
+				responses.add(AnimationMessage::SetFrameTime(timestamp));
 			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
-				responses.add(PortfolioMessage::Time(timestamp));
+				responses.add(AnimationMessage::SetTime(timestamp as f64));
 				self.time = timestamp;
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {

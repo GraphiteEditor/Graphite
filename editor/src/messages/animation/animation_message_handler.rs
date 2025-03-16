@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::messages::prelude::*;
 
 use super::TimingInformation;
@@ -7,7 +9,7 @@ pub struct AnimationMessageHandler {
 	live_preview: bool,
 	timestamp: f64,
 	frame_index: f64,
-	frame_time: f64,
+	frame_time: Duration,
 }
 impl AnimationMessageHandler {
 	pub(crate) fn timing_information(&self) -> TimingInformation {
@@ -27,21 +29,27 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			AnimationMessage::DisableLivePreview => self.live_preview = false,
 			AnimationMessage::SetFrameCounter(frame) => {
 				self.frame_index = frame;
-				if self.live_preview {
-					responses.add(PortfolioMessage::SubmitActiveGraphRender)
-				}
+				responses.add(AnimationMessage::UpdateTime);
 			}
 			AnimationMessage::SetTime(time) => {
 				self.timestamp = time;
+				responses.add(AnimationMessage::UpdateTime);
+			}
+			AnimationMessage::IncrementFrameCounter => self.frame_index += 1.,
+			AnimationMessage::SetFrameTime(duration) => {
+				self.frame_time = duration;
+				responses.add(AnimationMessage::UpdateTime);
+			}
+			AnimationMessage::UpdateTime => {
 				if self.live_preview {
 					responses.add(PortfolioMessage::SubmitActiveGraphRender)
 				}
 			}
-			AnimationMessage::IncrementFrameCounter => self.frame_index += 1.,
 		}
 	}
 
 	advertise_actions!(AnimationMessageDiscriminant;
 		ToggleLivePreview,
+		SetFrameTime,
 	);
 }

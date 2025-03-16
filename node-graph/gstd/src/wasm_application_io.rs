@@ -239,7 +239,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		.with_footprint(footprint)
 		.with_time(render_config.time.time)
 		.with_frame_index(render_config.time.frame_index)
-		.with_frame_time(render_config.time.frame_time)
+		.with_frame_time(render_config.time.frame_time.as_secs_f64())
 		.into_context();
 	ctx.footprint();
 
