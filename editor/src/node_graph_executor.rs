@@ -574,7 +574,9 @@ impl NodeGraphExecutor {
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
-		self.sender.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
+		self.sender
+			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
 
