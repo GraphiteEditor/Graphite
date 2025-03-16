@@ -1,7 +1,10 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::animation::TimingInformation;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, TaggedValue};
@@ -919,5 +922,14 @@ impl Instrumented {
 		let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
 		Self::downcast::<Input>(dynamic)
+	}
+
+	pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
+	where
+		Input::Result: Send + Sync + Clone + 'static,
+	{
+		let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+		let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
+		self.grab_protonode_input::<Input>(&vec![node], runtime)
 	}
 }
