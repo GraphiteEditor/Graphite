@@ -156,7 +156,7 @@ impl EditorHandle {
 							handle.send_frontend_message_to_js(message);
 						}
 
-						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
 					});

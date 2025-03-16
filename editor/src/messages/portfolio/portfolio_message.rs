@@ -46,9 +46,6 @@ pub enum PortfolioMessage {
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
-	DisableLivePreview,
-	ToggleLivePreview,
-	EnableLivePreview,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
@@ -122,7 +119,6 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	ToggleRulers,
-	Time(u64),
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 	UpdateVelloPreference,

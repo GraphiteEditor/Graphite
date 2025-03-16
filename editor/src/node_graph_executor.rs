@@ -372,7 +372,6 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
-	time: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -391,7 +390,6 @@ impl Default for NodeGraphExecutor {
 			sender: request_sender,
 			receiver: response_receiver,
 			node_graph_hash: 0,
-			time: 0,
 		}
 	}
 }
@@ -714,10 +712,6 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 		Ok(())
-	}
-
-	pub(crate) fn update_time(&mut self, timestamp: u64) {
-		self.time = timestamp;
 	}
 }
 

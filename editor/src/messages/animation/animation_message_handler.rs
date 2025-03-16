@@ -27,15 +27,21 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			AnimationMessage::ToggleLivePreview => self.live_preview = !self.live_preview,
 			AnimationMessage::EnableLivePreview => self.live_preview = true,
 			AnimationMessage::DisableLivePreview => self.live_preview = false,
-			AnimationMessage::SetFrameCounter(frame) => {
+			AnimationMessage::SetFrameIndex(frame) => {
 				self.frame_index = frame;
-				responses.add(AnimationMessage::UpdateTime);
+				log::debug!("set frame index to {}", frame);
+				responses.add(PortfolioMessage::SubmitActiveGraphRender)
 			}
 			AnimationMessage::SetTime(time) => {
 				self.timestamp = time;
 				responses.add(AnimationMessage::UpdateTime);
 			}
-			AnimationMessage::IncrementFrameCounter => self.frame_index += 1.,
+			AnimationMessage::IncrementFrameCounter => {
+				if self.live_preview {
+					self.frame_index += 1.;
+					responses.add(AnimationMessage::UpdateTime);
+				}
+			}
 			AnimationMessage::SetFrameTime(duration) => {
 				self.frame_time = duration;
 				responses.add(AnimationMessage::UpdateTime);

@@ -293,7 +293,7 @@ impl OwnedContextImpl {
 		let index = value.try_index();
 		let time = value.try_time();
 		let frame_time = value.try_frame_time();
-		let frame_index = value.try_frame_time();
+		let frame_index = value.try_frame_index();
 		let parent = value.arc_clone();
 		OwnedContextImpl {
 			footprint,

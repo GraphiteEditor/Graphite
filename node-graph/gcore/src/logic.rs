@@ -15,41 +15,6 @@ fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f
 	format!("{:?}", value)
 }
 
-const DAY: f64 = 1000. * 3600. * 24.;
-use crate::ExtractTime;
-#[node_macro::node(category("Animation"))]
-fn time_utc(ctx: impl Ctx + ExtractTime) -> f64 {
-	ctx.try_time().unwrap_or_default()
-}
-#[node_macro::node(category("Animation"))]
-fn year(ctx: impl Ctx + ExtractTime) -> f64 {
-	(ctx.try_time().unwrap_or_default() / DAY / 12.).floor() + 1970.
-}
-// #[node_macro::node(category("Animation"))]
-// fn month(ctx: impl Ctx + ExtractTime) -> f64 {
-// 	(ctx.try_time().unwrap_or_default() / DAY % 12.).floor()
-// }
-// #[node_macro::node(category("Animation"))]
-// fn day(ctx: impl Ctx + ExtractTime) -> f64 {
-// 	(ctx.try_time().unwrap_or_default() / DAY
-// }
-#[node_macro::node(category("Animation"))]
-fn hour(ctx: impl Ctx + ExtractTime) -> f64 {
-	(ctx.try_time().unwrap_or_default() / 1000. / 3600.).floor() % 24.
-}
-#[node_macro::node(category("Animation"))]
-fn minute(ctx: impl Ctx + ExtractTime) -> f64 {
-	(ctx.try_time().unwrap_or_default() / 1000. / 60.).floor() % 60.
-}
-#[node_macro::node(category("Animation"))]
-fn second(ctx: impl Ctx + ExtractTime) -> f64 {
-	(ctx.try_time().unwrap_or_default() / 1000.).floor() % 60.
-}
-#[node_macro::node(category("Animation"))]
-fn millisecond(ctx: impl Ctx + ExtractTime) -> f64 {
-	ctx.try_time().unwrap_or_default()
-}
-
 #[node_macro::node(category("Debug"))]
 async fn switch<T, C: Send + 'n + Clone>(
 	#[implementations(Context)] ctx: C,
