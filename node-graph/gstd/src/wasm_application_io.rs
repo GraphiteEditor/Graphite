@@ -235,7 +235,12 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
-	let ctx = OwnedContextImpl::default().with_footprint(footprint).with_time(render_config.time as f64).into_context();
+	let ctx = OwnedContextImpl::default()
+		.with_footprint(footprint)
+		.with_time(render_config.time.time)
+		.with_frame_index(render_config.time.frame_index)
+		.with_frame_time(render_config.time.frame_time)
+		.into_context();
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;

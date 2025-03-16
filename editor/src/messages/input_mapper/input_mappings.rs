@@ -417,7 +417,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
-		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=PortfolioMessage::ToggleLivePreview),
 		//
 		// FrontendMessage
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
@@ -431,6 +430,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Digit0); modifiers=[Alt], action_dispatch=DebugMessage::MessageOff),
 		entry!(KeyDown(Digit1); modifiers=[Alt], action_dispatch=DebugMessage::MessageNames),
 		entry!(KeyDown(Digit2); modifiers=[Alt], action_dispatch=DebugMessage::MessageContents),
+		// AnimationMessage
+		entry!(KeyDown(ArrowLeft); modifiers=[Control], action_dispatch=AnimationMessage::SetFrameCounter(0.)),
 	];
 	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 

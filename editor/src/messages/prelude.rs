@@ -2,6 +2,7 @@
 pub use crate::utility_traits::{ActionList, AsMessage, MessageHandler, ToDiscriminant, TransitiveChild};
 
 // Message, MessageData, MessageDiscriminant, MessageHandler
+pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscriminant, AnimationMessageHandler};
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
 pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageData, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};

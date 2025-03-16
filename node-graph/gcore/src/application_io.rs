@@ -250,11 +250,18 @@ pub enum ExportFormat {
 	Canvas,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct TimingInformation {
+	pub time: f64,
+	pub frame_index: f64,
+	pub frame_time: f64,
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
-	pub time: u64,
+	pub time: TimingInformation,
 	pub view_mode: ViewMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,

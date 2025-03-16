@@ -13,6 +13,7 @@ pub struct Dispatcher {
 
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
+	animation_message_handler: AnimationMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -177,6 +178,9 @@ impl Dispatcher {
 					// Finish loading persistent data from the browser database
 					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 				}
+				Message::Animation(message) => {
+					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
+				}
 				Message::Batched(messages) => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
 				}
@@ -232,6 +236,7 @@ impl Dispatcher {
 					let preferences = &self.message_handlers.preferences_message_handler;
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					let timing_information = self.message_handlers.animation_message_handler.timing_information();
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -241,6 +246,7 @@ impl Dispatcher {
 							preferences,
 							current_tool,
 							message_logging_verbosity,
+							timing_information,
 						},
 					);
 				}
