@@ -417,6 +417,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
+		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=PortfolioMessage::ToggleLivePreview),
 		//
 		// FrontendMessage
 		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),

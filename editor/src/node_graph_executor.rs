@@ -716,7 +716,6 @@ impl NodeGraphExecutor {
 	}
 
 	pub(crate) fn update_time(&mut self, timestamp: u64) {
-		log::debug!("time: {}", timestamp);
 		self.time = timestamp;
 	}
 }

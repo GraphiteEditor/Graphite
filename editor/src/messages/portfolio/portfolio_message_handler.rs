@@ -39,6 +39,7 @@ pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: VecDeque<DocumentId>,
 	active_panel: PanelType,
+	live_preview: bool,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
@@ -294,8 +295,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
 			}
+			PortfolioMessage::EnableLivePreview => {
+				self.live_preview = true;
+			}
+			PortfolioMessage::DisableLivePreview => {
+				self.live_preview = false;
+			}
+			PortfolioMessage::ToggleLivePreview => {
+				self.live_preview = !self.live_preview;
+			}
 			PortfolioMessage::Time(timestamp) => {
 				self.executor.update_time(timestamp);
+				if self.live_preview {
+					if let Some(document_id) = self.active_document_id {
+						responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+					}
+				}
 			}
 			PortfolioMessage::FontLoaded {
 				font_family,
@@ -1137,6 +1152,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PasteIntoFolder,
 			PrevDocument,
 			ToggleRulers,
+			ToggleLivePreview,
 		);
 
 		// Extend with actions that require an active document
