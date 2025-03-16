@@ -32,7 +32,7 @@ fn second(ctx: impl Ctx + ExtractTime) -> f64 {
 }
 #[node_macro::node(category("Animation"))]
 fn millisecond(ctx: impl Ctx + ExtractTime) -> f64 {
-	ctx.try_time().unwrap_or_default()
+	ctx.try_time().unwrap_or_default() % 1000.
 }
 
 #[node_macro::node(category("Animation"))]
