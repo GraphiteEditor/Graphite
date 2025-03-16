@@ -188,37 +188,8 @@ impl LayoutHolder for PenTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Pen(PenToolMessage::UpdateOptions(action)) = message else {
-			match message {
-				ToolMessage::Pen(PenToolMessage::SwapHandles) => {
-					let document = &tool_data.document;
-					let selected_nodes = document.network_interface.selected_nodes();
-					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-					let layer = selected_layers.next().filter(|_| selected_layers.next().is_none());
-					let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) else {
-						return;
-					};
-					match self.tool_data.handle_type {
-						TargetHandle::None => {}
-						TargetHandle::HandleStart => {
-							self.tool_data.update_handle_custom(&vector_data);
-							self.tool_data.cleanup_target_selections(tool_data.shape_editor, layer, tool_data.document);
-						}
-						_ => {
-							self.tool_data.add_target_selections(tool_data.shape_editor, layer);
-							self.tool_data.update_handle_type(TargetHandle::HandleStart);
-							let offset = self.tool_data.opposite_target_handle_position(&vector_data).map(|opposite| opposite - self.tool_data.next_handle_start);
-							self.tool_data.offset_position = offset;
-						}
-					}
-					responses.add(OverlaysMessage::Draw);
-					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
-					return;
-				}
-				_ => {
-					self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
-					return;
-				}
-			}
+			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+			return;
 		};
 
 		match action {
@@ -311,6 +282,7 @@ enum HandleMode {
 	ColinearEquidistant,
 }
 
+/// The handle which is opposite to the currently dragged handle under the cursor
 #[derive(Clone, Debug, Default, PartialEq, Copy)]
 enum TargetHandle {
 	HandleEnd,
@@ -367,6 +339,7 @@ impl PenToolData {
 		self.latest_points.push(point);
 	}
 
+	/// Check whether target handle is primary,end or 'self.handle_end'
 	fn check_end_handle_type(&self, vector_data: &VectorData) -> TargetHandle {
 		match (self.handle_end, self.end_point, self.end_point_segment) {
 			(Some(_), _, _) => TargetHandle::HandleEnd,
@@ -454,6 +427,7 @@ impl PenToolData {
 		}
 	}
 
+	/// Selects the handle which is currently dragged by the user  
 	fn add_target_selections(&self, shape_editor: &mut ShapeState, layer: Option<LayerNodeIdentifier>) {
 		let Some(shape_state) = layer.and_then(|layer| shape_editor.selected_shape_state.get_mut(&layer)) else {
 			return;
@@ -728,10 +702,14 @@ impl PenToolData {
 			return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
 		}
 		if self.handle_type == TargetHandle::HandleStart {
-			let mouse_offset = mouse + viewport.transform_point2(self.offset_position.unwrap());
+			let mouse_offset = mouse + self.offset_position.unwrap();
+			log::info!("{:?}", mouse_offset);
+			log::info!("{:?}", self.handle_end.map(|handle| viewport.transform_point2(handle)));
+
 			let mouse_pos = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_offset, Some(self.next_point), false);
 			let opposite_target = self.get_opposite_handle_type(&vector_data);
 			self.update_target_handle_pos(opposite_target, responses, mouse_pos, layer);
+			responses.add(OverlaysMessage::Draw);
 		} else {
 			self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse, Some(self.next_point), false);
 		}
@@ -1572,6 +1550,34 @@ impl Fsm for PenToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				state
+			}
+			(PenToolFsmState::DraggingHandle(_), PenToolMessage::SwapHandles) => {
+				let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) else {
+					return self;
+				};
+				match tool_data.handle_type {
+					TargetHandle::None => {}
+					TargetHandle::HandleStart => {
+						tool_data.offset_position = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start) - input.mouse.position);
+
+						tool_data.update_handle_custom(&vector_data);
+						tool_data.cleanup_target_selections(shape_editor, layer, document);
+					}
+					_ => {
+						tool_data.add_target_selections(shape_editor, layer);
+
+						let viewport = layer.map(|layer| document.metadata().transform_to_viewport(layer));
+						let offset = tool_data
+							.target_handle_position(tool_data.handle_type, &vector_data)
+							.zip(viewport)
+							.map(|(opposite, transform)| transform.transform_point2(opposite - tool_data.next_handle_start));
+						tool_data.offset_position = offset;
+						tool_data.update_handle_type(TargetHandle::HandleStart);
+					}
+				}
+				responses.add(OverlaysMessage::Draw);
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
+				self
 			}
 			(
 				PenToolFsmState::Ready,
