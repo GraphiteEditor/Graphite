@@ -739,18 +739,14 @@ impl PathToolData {
 	}
 
 	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// enable when shift is pressed (need not be managed here only)
-
-		// first find the -ve delta to take the point to the drag start position
-		// let document_to_viewport = document.metadata().document_to_viewport;
+		// find the negative delta to take the point to the drag start position
 		let current_mouse = input.mouse.position;
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
 		shape_editor.move_selected_points(None, document, opposite_delta, false, true, None, responses);
 
-		// second calculate the projected delta and shift the points along those delta
-
+		// calculate the projected delta and shift the points along those delta
 		let delta = current_mouse - drag_start;
 		let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
 		self.snapping_axis = Some(axis);
@@ -764,10 +760,7 @@ impl PathToolData {
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// when shift is removed then this is called
-
-		// first calculate the -ve delta of the selection and move it back to the drag start
-		// let document_to_viewport = document.metadata().document_to_viewport;
+		// calculate the negative delta of the selection and move it back to the drag start
 		let current_mouse = input.mouse.position;
 		let drag_start = self.drag_start_pos;
 
@@ -781,7 +774,7 @@ impl PathToolData {
 
 		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
 
-		// then calculate what actually would have been original delta for the point and apply that
+		// calculate what actually would have been original delta for the point and apply that
 		let delta = current_mouse - drag_start;
 
 		shape_editor.move_selected_points(None, document, delta, false, true, None, responses);
