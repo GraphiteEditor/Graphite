@@ -14,7 +14,6 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use js_sys::Math::abs;
 
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId};
@@ -755,7 +754,7 @@ impl PathToolData {
 		// second calculate the projected delta and shift the points along those delta
 
 		let delta = current_mouse - drag_start;
-		let axis = if abs(delta.x) >= abs(delta.y) { Axis::X } else { Axis::Y };
+		let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
 		self.snapping_axis = Some(axis);
 		let projected_delta = match axis {
 			Axis::X => DVec2::new(delta.x, 0.0),
