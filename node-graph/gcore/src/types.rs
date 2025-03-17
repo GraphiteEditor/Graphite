@@ -29,7 +29,7 @@ macro_rules! concrete {
 
 #[macro_export]
 macro_rules! concrete_with_name {
-	($type:ty, $name:expr) => {
+	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
@@ -42,16 +42,12 @@ macro_rules! concrete_with_name {
 
 #[macro_export]
 macro_rules! generic {
-	($type:ty) => {{
-		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
 #[macro_export]
 macro_rules! future {
-	($type:ty) => {{
-		$crate::Type::Future(Box::new(concrete!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
 	($type:ty, $name:ty) => {
 		$crate::Type::Future(Box::new(concrete!($type, $name)))
 	};

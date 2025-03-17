@@ -1,10 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
+use crate::Ctx;
+use crate::GraphicGroupTable;
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
-use crate::Ctx;
-use crate::GraphicGroupTable;
-
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::DVec2;
@@ -22,6 +21,7 @@ pub mod color;
 #[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
+
 pub use adjustments::*;
 
 pub trait Linear {
@@ -95,11 +95,7 @@ impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
 		let x = linear.to_f32();
-		if x <= 0.0031308 {
-			Self(x * 12.92)
-		} else {
-			Self(1.055 * x.powf(1. / 2.4) - 0.055)
-		}
+		if x <= 0.0031308 { Self(x * 12.92) } else { Self(1.055 * x.powf(1. / 2.4) - 0.055) }
 	}
 }
 pub trait RGBPrimaries {

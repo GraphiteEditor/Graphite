@@ -1,7 +1,6 @@
 use super::*;
-use utils::format_point;
-
 use std::fmt::Write;
+use utils::format_point;
 
 /// Functionality relating to core `Bezier` operations, such as constructors and `abs_diff_eq`.
 impl Bezier {

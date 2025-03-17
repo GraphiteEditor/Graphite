@@ -6,18 +6,20 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
+use crate::messages::tool::common_functionality::pivot::Pivot;
+use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::common_functionality::{auto_panning::AutoPanning, pivot::Pivot, resize::Resize, utility_functions::text_bounding_box};
-
+use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{lines_clipping, load_face, Font, FontCache, TypesettingConfig};
-use graphene_core::vector::style::Fill;
 use graphene_core::Color;
+use graphene_core::renderer::Quad;
+use graphene_core::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
 pub struct TextTool {
@@ -514,7 +516,7 @@ impl Fsm for TextToolFsmState {
 					// The angle is choosen to be parallel to the X axis in the bounds transform.
 					let angle = bounding_box_manager.transform.transform_vector2(DVec2::X).to_angle();
 					// Update pivot
-					tool_data.pivot.update_pivot(&document, &mut overlay_context, angle);
+					tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -591,9 +593,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(Self::Placing | TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				let document_points = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
-				let document_to_viewport = document.metadata().document_to_viewport;
-				tool_data.cached_resize_bounds = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
+				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -607,7 +607,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center_bool, lock_ratio_bool) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = center_bool.then_some(bounds.center_of_transformation);
@@ -682,7 +682,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
 					}

@@ -1,8 +1,6 @@
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
-
 use bitflags::bitflags;
-
 use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
 
