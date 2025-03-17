@@ -792,39 +792,6 @@ impl PathToolData {
 		self.snapping_axis = None;
 	}
 
-	fn switch_snap_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		//when the axis needs to be switched then this is called
-
-		//calculate the -ve delta from one axis and then apply that
-
-		let opposite_delta = self.drag_start_pos - input.mouse.position;
-		let current_axis = self.snapping_axis.unwrap();
-		let other_axis = match current_axis {
-			Axis::X => Axis::Y,
-			Axis::Y => Axis::X,
-			_ => Axis::X,
-		};
-		let opposite_projected_delta = match current_axis {
-			Axis::X => DVec2::new(opposite_delta.x, 0.0),
-			Axis::Y => DVec2::new(0.0, opposite_delta.y),
-			_ => DVec2::new(opposite_delta.x, 0.0),
-		};
-
-		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
-
-		//calculate positive delta in other direction and apply that
-		let delta = input.mouse.position - self.drag_start_pos;
-		let projected_delta = match current_axis {
-			Axis::X => DVec2::new(0.0, delta.y),
-			Axis::Y => DVec2::new(delta.x, 0.0),
-			_ => DVec2::new(delta.x, 0.0),
-		};
-
-		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, responses);
-
-		self.snapping_axis = Some(other_axis);
-	}
-
 	#[allow(clippy::too_many_arguments)]
 	fn drag(
 		&mut self,
@@ -836,19 +803,18 @@ impl PathToolData {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
-		if snap_angle && self.snapping_axis.is_none() {
+		//here first check if selection is not just a single handle point
+		let selected_points = shape_editor.selected_points();
+		let single_handle_selected = selected_points.count() == 1
+			&& shape_editor
+				.selected_points()
+				.into_iter()
+				.any(|point| matches!(point, ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_)));
+
+		if snap_angle && self.snapping_axis.is_none() && !single_handle_selected {
 			self.start_snap_along_axis(shape_editor, document, input, responses);
 		} else if !snap_angle && self.snapping_axis.is_some() {
 			self.stop_snap_along_axis(shape_editor, document, input, responses);
-		}
-
-		if snap_angle && self.snapping_axis.is_some() {
-			let current_axis = self.snapping_axis.unwrap();
-			let total_delta = self.drag_start_pos - input.mouse.position;
-
-			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
-				self.switch_snap_axis(shape_editor, document, input, responses);
-			}
 		}
 
 		let document_to_viewport = document.metadata().document_to_viewport;
@@ -887,6 +853,16 @@ impl PathToolData {
 			};
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
+		}
+
+		if snap_angle && self.snapping_axis.is_some() {
+			let current_axis = self.snapping_axis.unwrap();
+			let total_delta = self.drag_start_pos - input.mouse.position;
+
+			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
+				self.stop_snap_along_axis(shape_editor, document, input, responses);
+				self.start_snap_along_axis(shape_editor, document, input, responses);
+			}
 		}
 	}
 }
@@ -992,19 +968,24 @@ impl Fsm for PathToolFsmState {
 
 						//here adding context lines
 						if tool_data.snapping_axis.is_some() {
-							// let axis = tool_data.snapping_axis.unwrap();
+							let axis = tool_data.snapping_axis.unwrap();
 							let origin = tool_data.drag_start_pos;
 							let viewport_diagonal = input.viewport_bounds.size().length();
-							overlay_context.line(
-								origin - DVec2::new(0.0, 1.0) * viewport_diagonal,
-								origin + DVec2::new(0.0, 1.0) * viewport_diagonal,
-								Some(COLOR_OVERLAY_BLUE),
-							);
-							overlay_context.line(
-								origin - DVec2::new(1.0, 0.0) * viewport_diagonal,
-								origin + DVec2::new(1.0, 0.0) * viewport_diagonal,
-								Some(COLOR_OVERLAY_BLUE),
-							);
+							let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+							other.insert(0, '#');
+							let other = other.as_str();
+							let horizontal = DVec2::new(0.0, 1.0);
+							let vertical = horizontal.perp();
+							match axis {
+								Axis::Y => {
+									overlay_context.line(origin - horizontal * viewport_diagonal, origin + horizontal * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
+									overlay_context.line(origin - vertical * viewport_diagonal, origin + vertical * viewport_diagonal, Some(other));
+								}
+								_ => {
+									overlay_context.line(origin - vertical * viewport_diagonal, origin + vertical * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
+									overlay_context.line(origin - horizontal * viewport_diagonal, origin + horizontal * viewport_diagonal, Some(other));
+								}
+							}
 						}
 					}
 					Self::InsertPoint => {
