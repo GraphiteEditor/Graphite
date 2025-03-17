@@ -83,8 +83,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, rubber_band: false }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation{to_none: true}),
-		entry!(KeyDown(MouseLeft); action_dispatch=TransformLayerMessage::ApplyTransformOperation{to_none: true}),
+		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation{ to_none: true }),
+		entry!(KeyDown(MouseLeft); action_dispatch=TransformLayerMessage::ApplyTransformOperation{ to_none: true }),
 		entry!(KeyDown(MouseRight); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(KeyX); action_dispatch=TransformLayerMessage::ConstrainX),
@@ -374,9 +374,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0., resize: Alt, resize_opposite_corner: Control }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::SwitchOperation{op:TransformType::Grab }),
-		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::SwitchOperation{op:TransformType::Rotate }),
-		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::SwitchOperation{op:TransformType::Scale }),
+		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::SwitchOperation{ op:TransformType::Grab }),
+		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::SwitchOperation{ op:TransformType::Rotate }),
+		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::SwitchOperation{ op:TransformType::Scale }),
 		entry!(KeyDown(Digit0); action_dispatch=TransformLayerMessage::TypeDigit { digit: 0 }),
 		entry!(KeyDown(Digit1); action_dispatch=TransformLayerMessage::TypeDigit { digit: 1 }),
 		entry!(KeyDown(Digit2); action_dispatch=TransformLayerMessage::TypeDigit { digit: 2 }),

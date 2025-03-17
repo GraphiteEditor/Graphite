@@ -401,6 +401,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							}
 						}
 					} else {
+						// TODO: Fix handle snap to anchor issue, see <https://discord.com/channels/731730685944922173/1217752903209713715>
 						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
 
 						if handle_length == Some(0.) {
