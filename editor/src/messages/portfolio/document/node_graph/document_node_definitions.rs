@@ -3406,7 +3406,52 @@ pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefin
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES
+	// Create a mapping from registry ID to document node identifier
+	let id_to_identifier_map: HashMap<String, &'static str> = DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|definition| {
+			if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = &definition.node_template.document_node.implementation {
+				Some((name.to_string(), definition.identifier))
+			} else {
+				None
+			}
+		})
+		.collect();
+	let mut extracted_node_types = Vec::new();
+
+	{
+		let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
+		let node_metadata = graphene_core::registry::NODE_METADATA.lock().unwrap();
+
+		for (id, metadata) in node_metadata.iter() {
+			if let Some(implementations) = node_registry.get(id) {
+				let identifier = match id_to_identifier_map.get(id) {
+					Some(&id) => id.to_string(),
+					None => {
+						continue;
+					}
+				};
+
+				// Extract category from metadata (already creates an owned String)
+				let category = metadata.category.unwrap_or("").to_string();
+
+				// Extract input types (already creates owned Strings)
+				let input_types = implementations
+					.iter()
+					.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
+					.collect::<HashSet<String>>()
+					.into_iter()
+					.collect::<Vec<String>>();
+
+				// Create a FrontendNodeType
+				let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier, category, input_types);
+
+				// Store the created node_type
+				extracted_node_types.push(node_type);
+			}
+		}
+	}
+	let node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|definition| !definition.category.is_empty())
 		.map(|definition| {
@@ -3426,7 +3471,21 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 
 			FrontendNodeType::with_input_types(definition.identifier, definition.category, input_types)
 		})
-		.collect()
+		.collect();
+
+	// Update categories in extracted_node_types from node_types
+	for extracted_node in &mut extracted_node_types {
+		if extracted_node.category.is_empty() {
+			// Find matching node in node_types and update category if found
+			if let Some(matching_node) = node_types.iter().find(|nt| nt.name == extracted_node.name) {
+				extracted_node.category = matching_node.category.clone();
+			}
+		}
+	}
+	// Remove entries with empty categories
+	extracted_node_types.retain(|node| !node.category.is_empty());
+
+	extracted_node_types
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {

@@ -128,6 +128,13 @@ impl FrontendNodeType {
 			input_types: Some(input_types),
 		}
 	}
+	pub fn with_owned_strings_and_input_types(name: String, category: String, input_types: Vec<String>) -> Self {
+		Self {
+			name,
+			category,
+			input_types: Some(input_types),
+		}
+	}
 }
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DragStart {

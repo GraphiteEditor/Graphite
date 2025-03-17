@@ -27,36 +27,49 @@
 
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
 		const categories = new Map<string, NodeCategoryDetails>();
-
-		// Check if search term is prefixed with "type:"
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
-		const typeSearchTerm = isTypeSearch ? searchTerm.substring(5).trim().toLowerCase() : "";
+		let typeSearchTerm = "";
+		let remainingSearchTerms = [];
+
+		if (isTypeSearch) {
+			// Extract the first word after "type:" as the type search
+			const searchParts = searchTerm.substring(5).trim().split(/\s+/);
+			typeSearchTerm = searchParts[0].toLowerCase();
+
+			remainingSearchTerms = searchParts.slice(1).map((term) => term.toLowerCase());
+		} else {
+			remainingSearchTerms = [searchTerm.toLowerCase()];
+		}
 
 		nodeTypes.forEach((node) => {
-			let includesSearchTerm = false;
+			let matchesTypeSearch = true;
+			let matchesRemainingTerms = true;
 
-			if (isTypeSearch) {
-				// Check if the type search term is present in any of the node's inputTypes
-				includesSearchTerm = node.inputTypes?.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm)) || false;
-			} else {
-				// Regular name search
-				includesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
-
-				// Quick and dirty hack to alias "Layer" to "Merge" in the search
-				if (node.name === "Merge") {
-					includesSearchTerm = includesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
-				}
+			if (isTypeSearch && typeSearchTerm) {
+				matchesTypeSearch = node.inputTypes?.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm)) || false;
 			}
 
-			// Also check category if not a type search
-			const categoryIncludesSearchTerm = !isTypeSearch && searchTerm.length > 0 && node.category.toLowerCase().includes(searchTerm.toLowerCase());
+			if (remainingSearchTerms.length > 0) {
+				matchesRemainingTerms = remainingSearchTerms.every((term) => {
+					const nameMatch = node.name.toLowerCase().includes(term);
+					const categoryMatch = node.category.toLowerCase().includes(term);
 
-			if (searchTerm.length > 0 && !includesSearchTerm && !categoryIncludesSearchTerm) {
+					// Quick and dirty hack to alias "Layer" to "Merge" in the search
+					const layerAliasMatch = node.name === "Merge" && "layer".includes(term);
+
+					return nameMatch || categoryMatch || layerAliasMatch;
+				});
+			}
+
+			// Node matches if it passes both type search and remaining terms filters
+			const includesSearchTerm = matchesTypeSearch && matchesRemainingTerms;
+
+			if (searchTerm.length > 0 && !includesSearchTerm) {
 				return;
 			}
 
 			const category = categories.get(node.category);
-			let open = includesSearchTerm || categoryIncludesSearchTerm;
+			let open = includesSearchTerm;
 			if (searchTerm.length === 0) {
 				open = false;
 			}
@@ -64,11 +77,12 @@
 			if (category) {
 				category.open = category.open || open;
 				category.nodes.push(node);
-			} else
+			} else {
 				categories.set(node.category, {
 					open,
 					nodes: [node],
 				});
+			}
 		});
 
 		const START_CATEGORIES_ORDER = ["UNCATEGORIZED", "General", "Value", "Math", "Style"];
