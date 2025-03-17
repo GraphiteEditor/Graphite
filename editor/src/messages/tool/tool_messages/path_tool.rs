@@ -1188,14 +1188,6 @@ impl Fsm for PathToolFsmState {
 					tool_data.drag_start_pos += offset;
 				}
 
-				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
-					let equidistant = input.keyboard.get(equidistant as usize);
-					let snap_angle = input.keyboard.get(snap_angle as usize);
-					let lock_angle = input.keyboard.get(lock_angle as usize);
-
-					tool_data.drag(equidistant, lock_angle, snap_angle, shape_editor, document, input, responses);
-				}
-
 				PathToolFsmState::Dragging(dragging_state)
 			}
 			(
