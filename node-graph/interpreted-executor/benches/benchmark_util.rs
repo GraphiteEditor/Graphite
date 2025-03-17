@@ -1,9 +1,8 @@
-use criterion::{measurement::Measurement, BenchmarkGroup};
+use criterion::BenchmarkGroup;
+use criterion::measurement::Measurement;
 use futures::executor::block_on;
-use graph_craft::{
-	proto::ProtoNetwork,
-	util::{compile, load_from_name, DEMO_ART},
-};
+use graph_craft::proto::ProtoNetwork;
+use graph_craft::util::{DEMO_ART, compile, load_from_name};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
 pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {

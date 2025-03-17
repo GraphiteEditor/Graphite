@@ -14,11 +14,9 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId};
 use graphene_std::vector::{NoHashBuilder, SegmentId};
-
 use std::vec;
 
 #[derive(Default)]

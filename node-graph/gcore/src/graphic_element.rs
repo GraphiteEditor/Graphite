@@ -1,14 +1,12 @@
 use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::instances::Instances;
-use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::BlendMode;
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
-
 use dyn_any::DynAny;
-
 use glam::{DAffine2, IVec2};
 use std::hash::Hash;
 

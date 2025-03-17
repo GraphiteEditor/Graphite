@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -236,7 +236,7 @@ impl Fsm for EllipseToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_translation((start + end) / 2.),
-							transform_in: TransformIn::Local,
+							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
 					}
@@ -400,17 +400,14 @@ mod test_ellipse {
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		println!("{ellipse:?}");
-		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
-		// assert_eq!(ellipse[0].radius_x, 5.);
-		// assert_eq!(ellipse[0].radius_y, 5.);
+		assert_eq!(ellipse[0].radius_x, 5.);
+		assert_eq!(ellipse[0].radius_y, 5.);
 
-		// assert!(ellipse[0]
-		// 	.transform
-		// 	.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001));
-
-		float_eq!(ellipse[0].radius_x, 11. / core::f64::consts::SQRT_2 / 2.);
-		float_eq!(ellipse[0].radius_y, 11. / core::f64::consts::SQRT_2 / 2.);
-		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_translation(DVec2::splat(11. / core::f64::consts::SQRT_2 / 2.)), 0.001));
+		assert!(
+			ellipse[0]
+				.transform
+				.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001)
+		);
 	}
 
 	#[tokio::test]
@@ -427,13 +424,9 @@ mod test_ellipse {
 
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
-		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
-		// assert_eq!(ellipse[0].radius_x, 10.);
-		// assert_eq!(ellipse[0].radius_y, 10.);
-		// assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
-		float_eq!(ellipse[0].radius_x, 11. / core::f64::consts::SQRT_2);
-		float_eq!(ellipse[0].radius_y, 11. / core::f64::consts::SQRT_2);
-		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::IDENTITY, 0.001));
+		assert_eq!(ellipse[0].radius_x, 10.);
+		assert_eq!(ellipse[0].radius_y, 10.);
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
 	}
 
 	#[tokio::test]
