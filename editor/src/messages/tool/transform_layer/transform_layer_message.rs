@@ -11,11 +11,11 @@ pub enum TransformLayerMessage {
 	Overlays(OverlayContext),
 
 	// Messages
-	ApplyTransformOperation { to_none: bool },
+	ApplyTransformOperation { final_transform: bool },
 	BeginGrab,
 	BeginRotate,
 	BeginScale,
-	SwitchOperation { op: TransformType },
+	SwitchOperation { transform_type: TransformType },
 	BeginGrabPen { last_point: DVec2, handle: DVec2 },
 	BeginRotatePen { last_point: DVec2, handle: DVec2 },
 	BeginScalePen { last_point: DVec2, handle: DVec2 },

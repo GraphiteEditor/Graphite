@@ -315,7 +315,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			// Messages
-			TransformLayerMessage::ApplyTransformOperation { to_none } => {
+			TransformLayerMessage::ApplyTransformOperation { final_transform: to_none } => {
 				selected.original_transforms.clear();
 				self.typing.clear();
 				if to_none {
@@ -374,7 +374,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::SwitchOperation { op } => {
+			TransformLayerMessage::SwitchOperation { transform_type: op } => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				if (using_path_tool && selected_points.is_empty())
 					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
@@ -413,7 +413,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				let chain_operation = !matches!(self.transform_operation, TransformOperation::None);
 				if chain_operation {
-					responses.add(TransformLayerMessage::ApplyTransformOperation { to_none: false });
+					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
 				} else {
 					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
