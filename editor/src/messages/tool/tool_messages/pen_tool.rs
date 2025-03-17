@@ -320,8 +320,8 @@ struct PenToolData {
 	end_point: Option<PointId>,
 	end_point_segment: Option<SegmentId>,
 	handle_type: TargetHandle,
-	offset_position: Option<DVec2>,
-
+	handle_start_offset: Option<DVec2>,
+	handle_end_offset: Option<DVec2>,
 	snap_cache: SnapCache,
 }
 impl PenToolData {
@@ -502,7 +502,8 @@ impl PenToolData {
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
 		let mouse = snap_data.input.mouse.position;
-		self.offset_position = None;
+		self.handle_end_offset = None;
+		self.handle_start_offset = None;
 		let Some(handle_end) = self.handle_end else {
 			responses.add(DocumentMessage::EndTransaction);
 			self.handle_end = Some(next_handle_start);
@@ -582,25 +583,33 @@ impl PenToolData {
 		vector_data: &VectorData,
 		input: &InputPreprocessorMessageHandler,
 	) -> Option<DVec2> {
-		let handle_pos = self.target_handle_position(self.handle_type, vector_data);
+		let end_handle = self.check_end_handle_type(vector_data);
+		let end_handle_pos = self.target_handle_position(end_handle, vector_data);
 		let snap = &mut self.snap_manager;
 		let snap_data = SnapData::new_snap_cache(snap_data.document, input, &self.snap_cache);
 
 		let document_pos = viewport_to_document.transform_point2(*mouse);
 
-		let offset = transform.transform_point2(self.next_point - self.next_handle_start);
+		let offset = transform.transform_point2(self.next_point) - transform.transform_point2(self.next_handle_start);
 
-		let handle_start = SnapCandidatePoint::handle(document_pos);
-		let anchor = SnapCandidatePoint::handle(document_pos + offset);
+		let start_offset = self
+			.handle_start_offset
+			.map(|offset| viewport_to_document.transform_point2(offset))
+			.filter(|vec| !vec.abs().cmple(DVec2::splat(10.0)).all())
+			.unwrap_or(DVec2::ZERO);
+
+		let handle_start = SnapCandidatePoint::handle(document_pos + start_offset);
+		let anchor = SnapCandidatePoint::handle(document_pos + offset + start_offset);
 
 		let snapped_near_handle_start = snap.free_snap(&snap_data, &handle_start, SnapTypeConfiguration::default());
 		let snapped_anchor = snap.free_snap(&snap_data, &anchor, SnapTypeConfiguration::default());
 
-		let handle_snap_option = handle_pos.and_then(|handle| match self.handle_type {
+		let handle_snap_option = end_handle_pos.and_then(|handle| match end_handle {
 			TargetHandle::None => None,
+			TargetHandle::HandleStart => None,
 			_ => {
 				let handle_offset = transform.transform_point2(handle - self.next_handle_start);
-				let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
+				let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset + start_offset);
 				Some((handle, handle_snap))
 			}
 		});
@@ -679,7 +688,6 @@ impl PenToolData {
 		let Some(layer) = layer else { return Some(PenToolFsmState::DraggingHandle(self.handle_mode)) };
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let viewport_to_document = document.metadata().document_to_viewport.inverse();
-		let viewport = document.metadata().transform_to_viewport(layer);
 
 		if self.modifiers.move_anchor_with_handles {
 			let Some(delta) = self.space_anchor_handle_snap(&viewport_to_document, &transform, &snap_data, &mouse, &vector_data, input) else {
@@ -702,16 +710,14 @@ impl PenToolData {
 			return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
 		}
 		if self.handle_type == TargetHandle::HandleStart {
-			let mouse_offset = mouse + self.offset_position.unwrap();
-			log::info!("{:?}", mouse_offset);
-			log::info!("{:?}", self.handle_end.map(|handle| viewport.transform_point2(handle)));
+			let mouse_offset = mouse + self.handle_end_offset.unwrap_or(DVec2::ZERO);
 
 			let mouse_pos = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_offset, Some(self.next_point), false);
 			let opposite_target = self.get_opposite_handle_type(&vector_data);
 			self.update_target_handle_pos(opposite_target, responses, mouse_pos, layer);
-			responses.add(OverlaysMessage::Draw);
 		} else {
-			self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse, Some(self.next_point), false);
+			let offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
+			self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse + offset, Some(self.next_point), false);
 		}
 
 		match self.handle_mode {
@@ -1558,7 +1564,8 @@ impl Fsm for PenToolFsmState {
 				match tool_data.handle_type {
 					TargetHandle::None => {}
 					TargetHandle::HandleStart => {
-						tool_data.offset_position = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start) - input.mouse.position);
+						// will be moving the `next_handle_start` need to check the offset
+						tool_data.handle_start_offset = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start) - input.mouse.position);
 
 						tool_data.update_handle_custom(&vector_data);
 						tool_data.cleanup_target_selections(shape_editor, layer, document);
@@ -1566,12 +1573,14 @@ impl Fsm for PenToolFsmState {
 					_ => {
 						tool_data.add_target_selections(shape_editor, layer);
 
+						// The handle which will be dragged will be the handle end ,need to offset the mouse position
 						let viewport = layer.map(|layer| document.metadata().transform_to_viewport(layer));
 						let offset = tool_data
 							.target_handle_position(tool_data.handle_type, &vector_data)
 							.zip(viewport)
-							.map(|(opposite, transform)| transform.transform_point2(opposite - tool_data.next_handle_start));
-						tool_data.offset_position = offset;
+							.map(|(opposite, transform)| transform.transform_point2(opposite) - input.mouse.position);
+
+						tool_data.handle_end_offset = offset;
 						tool_data.update_handle_type(TargetHandle::HandleStart);
 					}
 				}
