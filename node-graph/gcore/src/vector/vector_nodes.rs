@@ -2,7 +2,7 @@ use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
-use crate::registry::types::{Angle, Fraction, IntegerCount, Length, PixelLength, SeedValue};
+use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
@@ -385,9 +385,7 @@ async fn round_corners(
 	#[range((0., 1.))]
 	#[default(0.5)]
 	roundness: f64,
-	#[range((0., 0.5))]
-	#[default(0.5)]
-	edge_length_limit: f64,
+	#[default(100.)] edge_length_limit: Percentage,
 	#[range((0., 180.))]
 	#[default(5.)]
 	min_angle_threshold: Angle,
@@ -395,7 +393,11 @@ async fn round_corners(
 	let source_transform = source.transform();
 	let source_transform_inverse = source_transform.inverse();
 	let source = source.one_instance().instance;
+
+	// Flip the roundness to help with user intuition
 	let roundness = 1. - roundness;
+	// Convert 0-100 to 0-0.5
+	let edge_length_limit = edge_length_limit * 0.005;
 
 	let mut result = VectorData::empty();
 	result.style = source.style.clone();
@@ -475,8 +477,8 @@ async fn round_corners(
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn polyline_merge_by_distance(
+#[node_macro::node(name("Spatial Merge by Distance"), category("Debug"), path(graphene_core::vector))]
+async fn spatial_merge_by_distance(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(0.1)]
@@ -600,6 +602,89 @@ async fn polyline_merge_by_distance(
 	let mut result_table = VectorDataTable::new(result);
 	*result_table.transform_mut() = vector_data_transform;
 	result_table
+}
+
+#[node_macro::node(category("Debug"), path(graphene_core::vector))]
+async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle: VectorDataTable) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance.clone();
+
+	let target_transform = rectangle.transform();
+	let target = rectangle.one_instance().instance;
+
+	// Get the bounding box of the source vector data
+	let source_bbox = vector_data.bounding_box_with_transform(vector_data_transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+
+	// Extract first 4 points from target shape to form the quadrilateral
+	// Apply the target's transform to get points in world space
+	let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
+
+	// If we have fewer than 4 points, use the corners of the source bounding box
+	// This handles the degenerative case
+	let dst_corners = if target_points.len() >= 4 {
+		[target_points[0], target_points[1], target_points[2], target_points[3]]
+	} else {
+		warn!("Target shape has fewer than 4 points. Using source bounding box instead.");
+		[
+			source_bbox[0],
+			DVec2::new(source_bbox[1].x, source_bbox[0].y),
+			source_bbox[1],
+			DVec2::new(source_bbox[0].x, source_bbox[1].y),
+		]
+	};
+
+	// Apply the warp
+	let mut result = vector_data.clone();
+
+	// Precompute source bounding box size for normalization
+	let source_size = source_bbox[1] - source_bbox[0];
+
+	// Transform points
+	for (_, position) in result.point_domain.positions_mut() {
+		// Get the point in world space
+		let world_pos = vector_data_transform.transform_point2(*position);
+
+		// Normalize coordinates within the source bounding box
+		let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+
+		// Apply bilinear interpolation
+		*position = bilinear_interpolate(t, &dst_corners);
+	}
+
+	// Transform handles in bezier curves
+	for (_, handles, _, _) in result.handles_mut() {
+		*handles = handles.apply_transformation(|pos| {
+			// Get the handle in world space
+			let world_pos = vector_data_transform.transform_point2(pos);
+
+			// Normalize coordinates within the source bounding box
+			let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+
+			// Apply bilinear interpolation
+			bilinear_interpolate(t, &dst_corners)
+		});
+	}
+
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	// Create a new VectorDataTable with the result
+	let mut result_table = VectorDataTable::new(result);
+
+	// Reset the transform since we've applied it directly to the points
+	*result_table.transform_mut() = DAffine2::IDENTITY;
+
+	result_table
+}
+
+// Interpolate within a quadrilateral using normalized coordinates (0-1)
+fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
+	let tl = quad[0]; // Top-left
+	let tr = quad[1]; // Top-right
+	let br = quad[2]; // Bottom-right
+	let bl = quad[3]; // Bottom-left
+
+	// Bilinear interpolation
+	tl * (1.0 - t.x) * (1.0 - t.y) + tr * t.x * (1.0 - t.y) + br * t.x * t.y + bl * (1.0 - t.x) * t.y
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
