@@ -1,4 +1,6 @@
 use crate::vector::vector_data::{HandleId, VectorData};
+use bezier_rs::BezierHandles;
+use core::iter::zip;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
@@ -80,7 +82,7 @@ impl core::hash::BuildHasher for NoHashBuilder {
 pub struct PointDomain {
 	id: Vec<PointId>,
 	#[serde(alias = "positions")]
-	position: Vec<DVec2>,
+	pub(crate) position: Vec<DVec2>,
 }
 
 impl core::hash::Hash for PointDomain {
@@ -112,7 +114,8 @@ impl PointDomain {
 				id_map.push(new_index);
 				new_index += 1;
 			} else {
-				id_map.push(usize::MAX); // A placeholder for invalid ids. This is checked after the segment domain is modified.
+				// A placeholder for invalid IDs. This is checked after the segment domain is modified.
+				id_map.push(usize::MAX);
 			}
 		}
 
@@ -175,6 +178,11 @@ impl PointDomain {
 		for pos in &mut self.position {
 			*pos = transform.transform_point2(*pos);
 		}
+	}
+
+	/// Iterate over point IDs and positions
+	pub fn iter(&self) -> impl Iterator<Item = (PointId, DVec2)> + '_ {
+		self.ids().iter().copied().zip(self.positions().iter().copied())
 	}
 }
 
@@ -343,6 +351,7 @@ impl SegmentDomain {
 		})
 	}
 
+	/// Get index from ID by linear search. Takes `O(n)` time.
 	fn id_to_index(&self, id: SegmentId) -> Option<usize> {
 		debug_assert_eq!(self.id.len(), self.handles.len());
 		debug_assert_eq!(self.id.len(), self.start_point.len());
@@ -397,11 +406,34 @@ impl SegmentDomain {
 	pub(crate) fn connected_count(&self, point: usize) -> usize {
 		self.all_connected(point).count()
 	}
+
+	/// Iterates over segments in the domain.
+	///
+	/// Tuple is: (id, start point, end point, handles)
+	pub(crate) fn iter(&self) -> impl Iterator<Item = (SegmentId, usize, usize, BezierHandles)> + '_ {
+		let ids = self.id.iter().copied();
+		let start_point = self.start_point.iter().copied();
+		let end_point = self.end_point.iter().copied();
+		let handles = self.handles.iter().copied();
+		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
+	}
+
+	/// Iterates over segments in the domain, mutably.
+	///
+	/// Tuple is: (id, start point, end point, handles)
+	pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&mut SegmentId, &mut usize, &mut usize, &mut BezierHandles)> + '_ {
+		let ids = self.id.iter_mut();
+		let start_point = self.start_point.iter_mut();
+		let end_point = self.end_point.iter_mut();
+		let handles = self.handles.iter_mut();
+		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
+/// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
 	#[serde(alias = "ids")]
 	id: Vec<RegionId>,
@@ -430,6 +462,19 @@ impl RegionDomain {
 		let mut keep = self.id.iter().map(&f);
 		self.fill.retain(|_| keep.next().unwrap_or_default());
 		self.id.retain(&f);
+	}
+
+	/// Like [`Self::retain`] but also gives the function access to the segment range.
+	///
+	/// Note that this function requires an allocation that `retain` avoids.
+	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &core::ops::RangeInclusive<SegmentId>) -> bool) {
+		let keep = self.id.iter().zip(self.segment_range.iter()).map(|(id, range)| f(id, range)).collect::<Vec<_>>();
+		let mut iter = keep.iter().copied();
+		self.segment_range.retain(|_| iter.next().unwrap());
+		let mut iter = keep.iter().copied();
+		self.fill.retain(|_| iter.next().unwrap());
+		let mut iter = keep.iter().copied();
+		self.id.retain(|_| iter.next().unwrap());
 	}
 
 	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
