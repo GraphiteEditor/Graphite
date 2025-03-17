@@ -1617,16 +1617,14 @@ fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifi
 }
 
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	for layer in selected {
-		let ancestor = layer
-			.ancestors(document.metadata())
-			.filter(not_artboard(document))
-			.find(|&ancestor| document.network_interface.selected_nodes().selected_layers_contains(ancestor, document.metadata()));
-
-		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).next().unwrap_or(layer));
-		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
-		tool_data.layers_dragging.push(new_selected);
-	}
+	tool_data.layers_dragging.append(&mut vec![
+		document.find_deepest(&selected).unwrap_or(
+			LayerNodeIdentifier::ROOT_PARENT
+				.children(document.metadata())
+				.next()
+				.expect("ROOT_PARENT should have a layer child when clicking"),
+		),
+	]);
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
