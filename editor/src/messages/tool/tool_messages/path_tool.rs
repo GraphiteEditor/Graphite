@@ -1177,12 +1177,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Drawing { selection_shape: selection_type }
 			}
-			(
-				PathToolFsmState::Dragging(dragging_state),
-				PathToolMessage::PointerOutsideViewport {
-					equidistant, snap_angle, lock_angle, ..
-				},
-			) => {
+			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start_pos += offset;
