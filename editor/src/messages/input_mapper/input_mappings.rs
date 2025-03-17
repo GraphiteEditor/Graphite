@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapp
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+use crate::messages::portfolio::document::utility_types::transformation::TransformType;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -82,8 +83,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, rubber_band: false }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
-		entry!(KeyDown(MouseLeft); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
+		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),
+		entry!(KeyDown(MouseLeft); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),
 		entry!(KeyDown(MouseRight); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(KeyX); action_dispatch=TransformLayerMessage::ConstrainX),
@@ -374,9 +375,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0., resize: Alt, resize_opposite_corner: Control }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
-		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),
-		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
+		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Grab }),
+		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Rotate }),
+		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Scale }),
 		entry!(KeyDown(Digit0); action_dispatch=TransformLayerMessage::TypeDigit { digit: 0 }),
 		entry!(KeyDown(Digit1); action_dispatch=TransformLayerMessage::TypeDigit { digit: 1 }),
 		entry!(KeyDown(Digit2); action_dispatch=TransformLayerMessage::TypeDigit { digit: 2 }),
