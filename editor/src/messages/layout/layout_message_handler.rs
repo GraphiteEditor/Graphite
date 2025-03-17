@@ -40,6 +40,29 @@ impl LayoutMessageHandler {
 				LayoutGroup::Section { layout, .. } => {
 					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
+
+				LayoutGroup::Table { rows } => {
+					for (row_index, cell) in rows.iter().enumerate() {
+						for (cell_index, entry) in cell.iter().enumerate() {
+							// Return if this is the correct ID
+							if entry.widget_id == widget_id {
+								widget_path.push(row_index);
+								widget_path.push(cell_index);
+								return Some((entry, widget_path));
+							}
+
+							if let Widget::PopoverButton(popover) = &entry.widget {
+								stack.extend(
+									popover
+										.popover_layout
+										.iter()
+										.enumerate()
+										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, child]].concat(), val)),
+								);
+							}
+						}
+					}
+				}
 			}
 		}
 		None
@@ -411,6 +434,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },
+			LayoutTarget::Spreadsheet => FrontendMessage::UpdateSpreadsheetLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },

@@ -147,7 +147,7 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
-			{#if $portfolio.spreadsheetData !== undefined}
+			{#if $portfolio.spreadsheetOpen}
 				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
 				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["spreadsheet"] }} data-subdivision-name="spreadsheet">
 					<Panel panelType="Spreadsheet" tabLabels={[{ name: "Spreadsheet" }]} tabActiveIndex={0} />

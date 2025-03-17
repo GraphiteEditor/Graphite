@@ -1,5 +1,6 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::layout::node_graph_layout;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::concrete;
@@ -16,7 +17,6 @@ use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::GraphicGroupTable;
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
@@ -407,12 +407,9 @@ struct InspectState {
 }
 
 /// The resulting value from the temporary inspected during execution
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct InspectResult {
-	// TODO: is string the best data type?
-	data: String,
-	#[serde(rename = "inspectNode")]
-	inspect_node: NodeId,
+	pub introspected_data: Arc<dyn std::any::Any + Send + Sync + 'static>,
+	pub inspect_node: NodeId,
 }
 
 impl InspectState {
@@ -457,29 +454,9 @@ impl InspectState {
 			}
 		};
 
-		// We simply try random types. TODO: better strategy.
-		let data = if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::GraphicElement>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::GraphicElement>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::Artboard>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), graphene_core::Artboard>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, GraphicGroupTable>>() {
-			format!("{:#?}", io.output)
-		} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), GraphicGroupTable>>() {
-			format!("{:#?}", io.output)
-		} else {
-			format!("Failed to downcast data {self:?}")
-		};
 		Some(InspectResult {
 			inspect_node: self.inspect_node,
-			data,
+			introspected_data,
 		})
 	}
 }
@@ -737,7 +714,7 @@ impl NodeGraphExecutor {
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {
 						if let Some(inspect_result) = inspect_result {
-							responses.add(FrontendMessage::UpdateSpreadsheetData { data: Some(inspect_result) })
+							node_graph_layout::update_layout(responses, inspect_result);
 						}
 					}
 				}
