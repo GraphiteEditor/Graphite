@@ -36,8 +36,6 @@ pub enum ToolMessage {
 	#[child]
 	Shape(ShapeToolMessage),
 	#[child]
-	Ellipse(EllipseToolMessage),
-	#[child]
 	Polygon(PolygonToolMessage),
 	#[child]
 	Text(TextToolMessage),
@@ -72,7 +70,6 @@ pub enum ToolMessage {
 	ActivateToolSpline,
 	ActivateToolLine,
 	ActivateToolShape,
-	ActivateToolEllipse,
 	ActivateToolPolygon,
 
 	ActivateToolBrush,

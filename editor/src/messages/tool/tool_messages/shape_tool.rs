@@ -1,11 +1,14 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::shapes::{Ellipse, Rectangle, Shape, ShapeType};
+use graph_craft::document::NodeId;
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -203,10 +206,19 @@ impl Fsm for ShapeToolFsmState {
 				shape_data.start(document, input);
 
 				responses.add(DocumentMessage::StartTransaction);
-				let layer = match tool_data.current_shape {
+				let nodes = match tool_data.current_shape {
 					ShapeType::Rectangle => Rectangle::create_node(&document, &input, responses),
 					ShapeType::Ellipse => Ellipse::create_node(&document, &input, responses),
 				};
+
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
+				responses.add(Message::StartBuffer);
+				responses.add(GraphOperationMessage::TransformSet {
+					layer,
+					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				});
 
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);

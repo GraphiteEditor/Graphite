@@ -187,13 +187,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
-		// EllipseToolMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=EllipseToolMessage::DragStart),
-		entry!(KeyUp(MouseLeft); action_dispatch=EllipseToolMessage::DragStop),
-		entry!(KeyDown(MouseRight); action_dispatch=EllipseToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=EllipseToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=EllipseToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
-		//
 		// PolygonToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=PolygonToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=PolygonToolMessage::DragStop),
@@ -310,7 +303,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyN); action_dispatch=ToolMessage::ActivateToolFreehand),
 		entry!(KeyDown(KeyL); action_dispatch=ToolMessage::ActivateToolLine),
 		entry!(KeyDown(KeyU); action_dispatch=ToolMessage::ActivateToolShape),
-		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolPolygon),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
 		entry!(KeyDown(KeyX); modifiers=[Accel, Shift], action_dispatch=ToolMessage::ResetColors),

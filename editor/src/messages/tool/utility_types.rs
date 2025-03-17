@@ -329,7 +329,6 @@ pub enum ToolType {
 	Spline,
 	Line,
 	Shape,
-	Ellipse,
 	Polygon,
 	Text,
 
@@ -369,7 +368,6 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
 			ToolAvailability::Available(Box::<line_tool::LineTool>::default()),
 			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
-			ToolAvailability::Available(Box::<ellipse_tool::EllipseTool>::default()),
 			ToolAvailability::Available(Box::<polygon_tool::PolygonTool>::default()),
 			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
@@ -404,7 +402,6 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Spline(_) => ToolType::Spline,
 		ToolMessage::Line(_) => ToolType::Line,
 		ToolMessage::Shape(_) => ToolType::Shape,
-		ToolMessage::Ellipse(_) => ToolType::Ellipse,
 		ToolMessage::Polygon(_) => ToolType::Polygon,
 		ToolMessage::Text(_) => ToolType::Text,
 
@@ -437,7 +434,6 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Spline => ToolMessageDiscriminant::ActivateToolSpline,
 		ToolType::Line => ToolMessageDiscriminant::ActivateToolLine,
 		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
-		ToolType::Ellipse => ToolMessageDiscriminant::ActivateToolEllipse,
 		ToolType::Polygon => ToolMessageDiscriminant::ActivateToolPolygon,
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
 
