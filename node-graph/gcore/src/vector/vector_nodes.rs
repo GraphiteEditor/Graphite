@@ -2,14 +2,15 @@ use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
-use crate::registry::types::{Angle, Fraction, IntegerCount, Length, SeedValue};
+use crate::registry::types::{Angle, Fraction, IntegerCount, Length, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use core::f64::consts::PI;
 
-use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -337,6 +338,288 @@ where
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn mirror<I: 'n + Send>(
+	_: impl Ctx,
+	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
+	#[default(0., 0.)] center: DVec2,
+	#[default(1., 0.)] direction: DVec2,
+) -> GraphicGroupTable
+where
+	Instances<I>: GraphicElementRendered,
+{
+	let mut result_table = GraphicGroupTable::default();
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
+	// The mirror center is based on the bounding box for now
+	let mirror_center = (bounding_box[0] + bounding_box[1]) / 2. + center;
+	// Normalize direction vector
+	let normal = direction.normalize_or(DVec2::X);
+	// Create reflection matrix
+	let reflection = DAffine2::from_mat2_translation(
+		glam::DMat2::from_cols(
+			DVec2::new(1.0 - 2.0 * normal.x * normal.x, -2.0 * normal.y * normal.x),
+			DVec2::new(-2.0 * normal.x * normal.y, 1.0 - 2.0 * normal.y * normal.y),
+		),
+		DVec2::ZERO,
+	);
+	// Apply reflection around the center point
+	let modification = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
+	// Add original instance to result
+	let original_element = instance.to_graphic_element().clone();
+	result_table.push(original_element);
+	// Create and add mirrored instance
+	let mut mirrored_element = instance.to_graphic_element().clone();
+	mirrored_element.new_ids_from_hash(None);
+	// Finally, apply the transformation to the mirrored instance
+	let mirrored_instance = result_table.push(mirrored_element);
+	*mirrored_instance.transform = modification;
+
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn round_corners(
+	_: impl Ctx,
+	source: VectorDataTable,
+	#[min(0.)]
+	#[default(10.)]
+	radius: PixelLength,
+	#[range((0., 1.))]
+	#[default(0.5)]
+	roundness: f64,
+	#[range((0., 0.5))]
+	#[default(0.5)]
+	edge_length_limit: f64,
+	#[range((0., 180.))]
+	#[default(5.)]
+	min_angle_threshold: Angle,
+) -> VectorDataTable {
+	let source_transform = source.transform();
+	let source_transform_inverse = source_transform.inverse();
+	let source = source.one_instance().instance;
+	let roundness = 1. - roundness;
+
+	let mut result = VectorData::empty();
+	result.style = source.style.clone();
+
+	for mut subpath in source.stroke_bezier_paths() {
+		subpath.apply_transform(source_transform);
+
+		if subpath.manipulator_groups().len() < 3 {
+			// Not enough points for corner rounding
+			result.append_subpath(subpath, false);
+			continue;
+		}
+
+		let groups = subpath.manipulator_groups();
+		let mut new_groups = Vec::new();
+		let is_closed = subpath.closed();
+
+		for i in 0..groups.len() {
+			// Skip first and last points for open paths
+			if !is_closed && (i == 0 || i == groups.len() - 1) {
+				new_groups.push(groups[i].clone());
+				continue;
+			}
+
+			// Not the prettiest, but it makes the rest of the logic more readable
+			let prev_idx = if i == 0 {
+				if is_closed {
+					groups.len() - 1
+				} else {
+					0
+				}
+			} else {
+				i - 1
+			};
+			let curr_idx = i;
+			let next_idx = if i == groups.len() - 1 {
+				if is_closed {
+					0
+				} else {
+					i
+				}
+			} else {
+				i + 1
+			};
+
+			let prev = groups[prev_idx].anchor;
+			let curr = groups[curr_idx].anchor;
+			let next = groups[next_idx].anchor;
+
+			let dir1 = (curr - prev).normalize_or(DVec2::X);
+			let dir2 = (next - curr).normalize_or(DVec2::X);
+
+			let theta = PI - dir1.angle_to(dir2).abs();
+
+			// Skip near-straight corners
+			if theta > PI - min_angle_threshold.to_radians() {
+				new_groups.push(groups[curr_idx].clone());
+				continue;
+			}
+
+			// Calculate L, with limits to avoid extreme values
+			let distance_along_edge = radius / (theta / 2.).sin();
+			let distance_along_edge = distance_along_edge.min(edge_length_limit * (curr - prev).length().min((next - curr).length())).max(0.01);
+
+			// Find points on each edge at distance L from corner
+			let p1 = curr - dir1 * distance_along_edge;
+			let p2 = curr + dir2 * distance_along_edge;
+
+			// Add first point with out handle
+			new_groups.push(ManipulatorGroup {
+				anchor: p1,
+				in_handle: None,
+				out_handle: Some(curr - dir1 * distance_along_edge * roundness),
+				id: PointId::generate(),
+			});
+
+			// Add second point with in handle
+			new_groups.push(ManipulatorGroup {
+				anchor: p2,
+				in_handle: Some(curr + dir2 * distance_along_edge * roundness),
+				out_handle: None,
+				id: PointId::generate(),
+			});
+		}
+
+		let mut rounded_subpath = Subpath::new(new_groups, is_closed);
+		rounded_subpath.apply_transform(source_transform_inverse);
+		result.append_subpath(rounded_subpath, false);
+	}
+
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = source_transform;
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn polyline_merge_by_distance(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[default(0.1)]
+	#[min(0.0001)]
+	distance: f64,
+) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+	let point_count = vector_data.point_domain.positions().len();
+
+	// Find min x and y for grid cell normalization
+	let mut min_x = f64::MAX;
+	let mut min_y = f64::MAX;
+
+	// Calculate mins without collecting all positions
+	for &pos in vector_data.point_domain.positions() {
+		let transformed_pos = vector_data_transform.transform_point2(pos);
+		min_x = min_x.min(transformed_pos.x);
+		min_y = min_y.min(transformed_pos.y);
+	}
+
+	// Create a spatial grid with cell size of 'distance'
+	use std::collections::HashMap;
+	let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+
+	// Add points to grid cells without collecting all positions first
+	for i in 0..point_count {
+		let pos = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
+		let grid_x = ((pos.x - min_x) / distance).floor() as i32;
+		let grid_y = ((pos.y - min_y) / distance).floor() as i32;
+
+		grid.entry((grid_x, grid_y)).or_default().push(i);
+	}
+
+	// Create point index mapping for merged points
+	let mut point_index_map = vec![None; point_count];
+	let mut merged_positions = Vec::new();
+	let mut merged_indices = Vec::new();
+
+	// Process each point
+	for i in 0..point_count {
+		// Skip points that have already been processed
+		if point_index_map[i].is_some() {
+			continue;
+		}
+
+		let pos_i = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
+		let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
+		let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
+
+		let mut group = vec![i];
+
+		// Check only neighboring cells (3x3 grid around current cell)
+		for dx in -1..=1 {
+			for dy in -1..=1 {
+				let neighbor_cell = (grid_x + dx, grid_y + dy);
+
+				if let Some(indices) = grid.get(&neighbor_cell) {
+					for &j in indices {
+						if j > i && point_index_map[j].is_none() {
+							let pos_j = vector_data_transform.transform_point2(vector_data.point_domain.positions()[j]);
+							if pos_i.distance(pos_j) <= distance {
+								group.push(j);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Create merged point - calculate positions as needed
+		let merged_position = group
+			.iter()
+			.map(|&idx| vector_data_transform.transform_point2(vector_data.point_domain.positions()[idx]))
+			.fold(DVec2::ZERO, |sum, pos| sum + pos)
+			/ group.len() as f64;
+
+		let merged_position = vector_data_transform.inverse().transform_point2(merged_position);
+		let merged_index = merged_positions.len();
+
+		merged_positions.push(merged_position);
+		merged_indices.push(vector_data.point_domain.ids()[group[0]]);
+
+		// Update mapping for all points in the group
+		for &idx in &group {
+			point_index_map[idx] = Some(merged_index);
+		}
+	}
+
+	// Create new point domain with merged points
+	let mut new_point_domain = PointDomain::new();
+	for (idx, pos) in merged_indices.into_iter().zip(merged_positions) {
+		new_point_domain.push(idx, pos);
+	}
+
+	// Update segment domain
+	let mut new_segment_domain = SegmentDomain::new();
+	for segment_idx in 0..vector_data.segment_domain.ids().len() {
+		let id = vector_data.segment_domain.ids()[segment_idx];
+		let start = vector_data.segment_domain.start_point()[segment_idx];
+		let end = vector_data.segment_domain.end_point()[segment_idx];
+		let handles = vector_data.segment_domain.handles()[segment_idx].clone();
+		let stroke = vector_data.segment_domain.stroke()[segment_idx];
+
+		// Get new indices for start and end points
+		let new_start = point_index_map[start].unwrap();
+		let new_end = point_index_map[end].unwrap();
+
+		// Skip segments where start and end points were merged
+		if new_start != new_end {
+			new_segment_domain.push(id, new_start, new_end, handles, stroke);
+		}
+	}
+
+	// Create new vector data
+	let mut result = vector_data.clone();
+	result.point_domain = new_point_domain;
+	result.segment_domain = new_segment_domain;
+
+	// Create and return the result
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
@@ -378,6 +661,89 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 	}
 
 	VectorDataTable::new(result)
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn perspective_warp(_: impl Ctx, vector_data: VectorDataTable, target_shape: VectorDataTable) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance.clone();
+
+	let target_transform = target_shape.transform();
+	let target = target_shape.one_instance().instance;
+
+	// Get the bounding box of the source vector data
+	let source_bbox = vector_data.bounding_box_with_transform(vector_data_transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+
+	// Extract first 4 points from target shape to form the quadrilateral
+	// Apply the target's transform to get points in world space
+	let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
+
+	// If we have fewer than 4 points, use the corners of the source bounding box
+	// This handles the degenerative case
+	let dst_corners = if target_points.len() >= 4 {
+		[target_points[0], target_points[1], target_points[2], target_points[3]]
+	} else {
+		warn!("Target shape has fewer than 4 points. Using source bounding box instead.");
+		[
+			source_bbox[0],
+			DVec2::new(source_bbox[1].x, source_bbox[0].y),
+			source_bbox[1],
+			DVec2::new(source_bbox[0].x, source_bbox[1].y),
+		]
+	};
+
+	// Apply the warp
+	let mut result = vector_data.clone();
+
+	// Precompute source bounding box size for normalization
+	let source_size = source_bbox[1] - source_bbox[0];
+
+	// Transform points
+	for (_, position) in result.point_domain.positions_mut() {
+		// Get the point in world space
+		let world_pos = vector_data_transform.transform_point2(*position);
+
+		// Normalize coordinates within the source bounding box
+		let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+
+		// Apply bilinear interpolation
+		*position = bilinear_interpolate(t, &dst_corners);
+	}
+
+	// Transform handles in bezier curves
+	for (_, handles, _, _) in result.handles_mut() {
+		*handles = handles.apply_transformation(|pos| {
+			// Get the handle in world space
+			let world_pos = vector_data_transform.transform_point2(pos);
+
+			// Normalize coordinates within the source bounding box
+			let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+
+			// Apply bilinear interpolation
+			bilinear_interpolate(t, &dst_corners)
+		});
+	}
+
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	// Create a new VectorDataTable with the result
+	let mut result_table = VectorDataTable::new(result);
+
+	// Reset the transform since we've applied it directly to the points
+	*result_table.transform_mut() = DAffine2::IDENTITY;
+
+	result_table
+}
+
+// Interpolate within a quadrilateral using normalized coordinates (0-1)
+fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
+	let tl = quad[0]; // Top-left
+	let tr = quad[1]; // Top-right
+	let br = quad[2]; // Bottom-right
+	let bl = quad[3]; // Bottom-left
+
+	// Bilinear interpolation
+	tl * (1.0 - t.x) * (1.0 - t.y) + tr * t.x * (1.0 - t.y) + br * t.x * t.y + bl * (1.0 - t.x) * t.y
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
