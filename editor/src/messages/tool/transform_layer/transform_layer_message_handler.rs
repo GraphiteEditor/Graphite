@@ -315,10 +315,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			// Messages
-			TransformLayerMessage::ApplyTransformOperation { final_transform: to_none } => {
+			TransformLayerMessage::ApplyTransformOperation { final_transform } => {
 				selected.original_transforms.clear();
 				self.typing.clear();
-				if to_none {
+				if final_transform {
 					self.transform_operation = TransformOperation::None;
 					self.operation_count = 0;
 				}
@@ -336,7 +336,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				if to_none {
+				if final_transform {
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 			}
@@ -374,12 +374,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::SwitchOperation { transform_type: op } => {
+			TransformLayerMessage::BeginGRS { transform_type } => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				if (using_path_tool && selected_points.is_empty())
 					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
 					|| selected_layers.is_empty()
-					|| op.equivalent_to(self.transform_operation)
+					|| transform_type.equivalent_to(self.transform_operation)
 				{
 					return;
 				}
@@ -401,7 +401,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							}
 						}
 					} else {
-						// TODO: Fix handle snap to anchor issue, see <https://discord.com/channels/731730685944922173/1217752903209713715>
+						// TODO: Fix handle snap to anchor issue, see <https://github.com/GraphiteEditor/Graphite/issues/2451>
 						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
 
 						if handle_length == Some(0.) {
@@ -411,14 +411,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					}
 				}
 
-				let chain_operation = !matches!(self.transform_operation, TransformOperation::None);
+				let chain_operation = self.transform_operation != TransformOperation::None;
 				if chain_operation {
 					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
 				} else {
 					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 
-				let response = match op {
+				let response = match transform_type {
 					TransformType::Grab => TransformLayerMessage::BeginGrab,
 					TransformType::Rotate => TransformLayerMessage::BeginRotate,
 					TransformType::Scale => TransformLayerMessage::BeginScale,
@@ -679,7 +679,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(TransformLayerMessageDiscriminant;
-			SwitchOperation,
+			BeginGRS,
 		);
 
 		if self.transform_operation != TransformOperation::None {
