@@ -6,7 +6,6 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
-
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;

@@ -5,12 +5,11 @@ use crate::instances::{InstanceMut, Instances};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
-use crate::vector::style::LineJoin;
 use crate::vector::PointDomain;
+use crate::vector::style::LineJoin;
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use core::f64::consts::PI;
-
 use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
+use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -422,25 +421,9 @@ async fn round_corners(
 			}
 
 			// Not the prettiest, but it makes the rest of the logic more readable
-			let prev_idx = if i == 0 {
-				if is_closed {
-					groups.len() - 1
-				} else {
-					0
-				}
-			} else {
-				i - 1
-			};
+			let prev_idx = if i == 0 { if is_closed { groups.len() - 1 } else { 0 } } else { i - 1 };
 			let curr_idx = i;
-			let next_idx = if i == groups.len() - 1 {
-				if is_closed {
-					0
-				} else {
-					i
-				}
-			} else {
-				i + 1
-			};
+			let next_idx = if i == groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
 
 			let prev = groups[prev_idx].anchor;
 			let curr = groups[curr_idx].anchor;
@@ -1253,9 +1236,9 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
 	}
 
-	/// Produces a list that correspons with the point id. The value is how many segments are connected.
-	fn segments_connected_count(vector_data: &VectorData) -> Vec<u8> {
-		// Count the number of segments connectign to each point.
+	/// Produces a list that corresponds with the point ID. The value is how many segments are connected.
+	fn segments_connected_count(vector_data: &VectorData) -> Vec<usize> {
+		// Count the number of segments connecting to each point.
 		let mut segments_connected_count = vec![0; vector_data.point_domain.ids().len()];
 		for &point_index in vector_data.segment_domain.start_point().iter().chain(vector_data.segment_domain.end_point()) {
 			segments_connected_count[point_index] += 1;
@@ -1271,7 +1254,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 	}
 
 	/// Updates the index so that it points at a point with the position. If nobody else will look at the index, the original point is updated. Otherwise a new point is created.
-	fn create_or_modify_point(point_domain: &mut PointDomain, segments_connected_count: &mut [u8], pos: DVec2, index: &mut usize, next_id: &mut PointId, new_segments: &mut Vec<[usize; 2]>) {
+	fn create_or_modify_point(point_domain: &mut PointDomain, segments_connected_count: &mut [usize], pos: DVec2, index: &mut usize, next_id: &mut PointId, new_segments: &mut Vec<[usize; 2]>) {
 		segments_connected_count[*index] -= 1;
 		if segments_connected_count[*index] == 0 {
 			// If nobody else is going to look at this point, we're alright to modify it
@@ -1289,7 +1272,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		}
 	}
 
-	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [u8]) -> Vec<[usize; 2]> {
+	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [usize]) -> Vec<[usize; 2]> {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
 
@@ -1359,6 +1342,19 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 
 	let mut result = VectorDataTable::new(bevel_algorithm(source.clone(), source_transform, distance));
 	*result.transform_mut() = source_transform;
+	result
+}
+
+#[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
+fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
+	let source_transform = source.transform();
+	let mut source = source.one_instance().instance.clone();
+
+	source.merge_by_distance(distance);
+
+	let mut result = VectorDataTable::new(source);
+	*result.transform_mut() = source_transform;
+
 	result
 }
 
@@ -1433,9 +1429,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 mod test {
 	use super::*;
 	use crate::Node;
-
 	use bezier_rs::Bezier;
-
 	use std::pin::Pin;
 
 	#[derive(Clone)]

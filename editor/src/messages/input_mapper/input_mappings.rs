@@ -11,7 +11,6 @@ use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
-
 use glam::DVec2;
 
 impl From<MappingVariant> for Mapping {
@@ -253,7 +252,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=ToolMessage::Path(PathToolMessage::ClosePath)),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
 		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Confirm),

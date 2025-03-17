@@ -1,20 +1,14 @@
-use std::vec;
-
 use super::*;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{Cap, Join, SubpathTValue, TValue};
-
 use glam::{DAffine2, DVec2};
+use std::vec;
 
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
 /// Allows for the point to be fetched without needing to handle an additional edge case.
 /// - Ex. Via `subpath.iter().nth(index).evaluate(t);`
 fn map_index_within_range(index: usize, t: f64, max_size: usize) -> (usize, f64) {
-	if max_size > 0 && index == max_size && t == 0. {
-		(index - 1, 1.)
-	} else {
-		(index, t)
-	}
+	if max_size > 0 && index == max_size && t == 0. { (index - 1, 1.) } else { (index, t) }
 }
 
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
@@ -549,10 +543,10 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 #[cfg(test)]
 mod tests {
 	use super::{Cap, Join, ManipulatorGroup, Subpath};
+	use crate::EmptyId;
 	use crate::compare::{compare_points, compare_subpaths, compare_vec_of_points};
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils::{SubpathTValue, TValue};
-	use crate::EmptyId;
 	use glam::DVec2;
 
 	fn set_up_open_subpath() -> Subpath<EmptyId> {

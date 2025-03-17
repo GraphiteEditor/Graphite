@@ -1,4 +1,4 @@
-use super::utility_types::{empty_provider, OverlayProvider};
+use super::utility_types::{OverlayProvider, empty_provider};
 use crate::messages::prelude::*;
 
 #[impl_message(Message, DocumentMessage, Overlays)]

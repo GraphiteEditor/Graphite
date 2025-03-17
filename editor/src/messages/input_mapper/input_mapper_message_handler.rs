@@ -3,7 +3,6 @@ use super::utility_types::misc::Mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
-
 use std::fmt::Write;
 
 pub struct InputMapperMessageData<'a> {
