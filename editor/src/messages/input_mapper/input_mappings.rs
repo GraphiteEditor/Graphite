@@ -9,6 +9,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;
+use crate::messages::tool::shapes::ShapeType;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use glam::DVec2;
@@ -170,12 +171,14 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseRight); action_dispatch=GradientToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=GradientToolMessage::Abort),
 		//
-		// RectangleToolMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=RectangleToolMessage::DragStart),
-		entry!(KeyUp(MouseLeft); action_dispatch=RectangleToolMessage::DragStop),
-		entry!(KeyDown(MouseRight); action_dispatch=RectangleToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=RectangleToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		// ShapeToolMessage
+		entry!(KeyDown(MouseLeft); action_dispatch=ShapeToolMessage::DragStart),
+		entry!(KeyUp(MouseLeft); action_dispatch=ShapeToolMessage::DragStop),
+		entry!(KeyDown(MouseRight); action_dispatch=ShapeToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
+		entry!(KeyDown(KeyM); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Rectangle)),
+		entry!(KeyDown(KeyE); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Ellipse)),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ShapeToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		//
 		// ImaginateToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
@@ -306,7 +309,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyP); action_dispatch=ToolMessage::ActivateToolPen),
 		entry!(KeyDown(KeyN); action_dispatch=ToolMessage::ActivateToolFreehand),
 		entry!(KeyDown(KeyL); action_dispatch=ToolMessage::ActivateToolLine),
-		entry!(KeyDown(KeyM); action_dispatch=ToolMessage::ActivateToolRectangle),
+		entry!(KeyDown(KeyU); action_dispatch=ToolMessage::ActivateToolShape),
 		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolPolygon),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),

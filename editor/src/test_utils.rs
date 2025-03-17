@@ -76,9 +76,9 @@ impl EditorTestUtils {
 			.await;
 	}
 
-	pub async fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-		self.drag_tool(ToolType::Rectangle, x1, y1, x2, y2, ModifierKeys::default()).await;
-	}
+	//pub async fn draw_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
+	//	self.drag_tool(ToolType::Rectangle, x1, y1, x2, y2, ModifierKeys::default()).await;
+	//}
 
 	pub async fn draw_polygon(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
 		self.drag_tool(ToolType::Polygon, x1, y1, x2, y2, ModifierKeys::default()).await;

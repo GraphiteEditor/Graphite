@@ -34,7 +34,7 @@ pub enum ToolMessage {
 	#[child]
 	Line(LineToolMessage),
 	#[child]
-	Rectangle(RectangleToolMessage),
+	Shape(ShapeToolMessage),
 	#[child]
 	Ellipse(EllipseToolMessage),
 	#[child]
@@ -71,7 +71,7 @@ pub enum ToolMessage {
 	ActivateToolFreehand,
 	ActivateToolSpline,
 	ActivateToolLine,
-	ActivateToolRectangle,
+	ActivateToolShape,
 	ActivateToolEllipse,
 	ActivateToolPolygon,
 

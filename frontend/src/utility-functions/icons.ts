@@ -373,6 +373,7 @@ import VectorPathTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-
 import VectorPenTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-pen-tool.svg";
 import VectorPolygonTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-polygon-tool.svg";
 import VectorRectangleTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-rectangle-tool.svg";
+import VectorShapeTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-rectangle-tool.svg";
 import VectorSplineTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-spline-tool.svg";
 import VectorTextTool from "@graphite-frontend/assets/icon-24px-two-tone/vector-text-tool.svg";
 
@@ -396,6 +397,7 @@ const TWO_TONE_24PX = {
 	VectorPathTool: { svg: VectorPathTool, size: 24 },
 	VectorPenTool: { svg: VectorPenTool, size: 24 },
 	VectorRectangleTool: { svg: VectorRectangleTool, size: 24 },
+	VectorShapeTool: { svg: VectorShapeTool, size: 24 },
 	VectorPolygonTool: { svg: VectorPolygonTool, size: 24 },
 	VectorSplineTool: { svg: VectorSplineTool, size: 24 },
 	VectorTextTool: { svg: VectorTextTool, size: 24 },
