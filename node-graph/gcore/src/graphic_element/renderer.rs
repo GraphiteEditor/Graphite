@@ -1,6 +1,7 @@
 mod quad;
 mod rect;
 
+use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
@@ -329,13 +330,17 @@ impl GraphicElementRendered for GraphicGroupTable {
 			let transform = transform * *instance.transform;
 			let alpha_blending = *instance.alpha_blending;
 
-			let blending = vello::peniko::BlendMode::new(alpha_blending.blend_mode.into(), vello::peniko::Compose::SrcOver);
 			let mut layer = false;
+			if let Some(bounds) = self.instances().filter_map(|element| element.instance.bounding_box(transform)).reduce(Quad::combine_bounds) {
+				// Always respect opacity, but use different blend modes based on view mode
+				let blend_mode = match render_params.view_mode {
+					ViewMode::Outline => peniko::Mix::Normal,
+					_ => alpha_blending.blend_mode.into(),
+				};
 
-			if alpha_blending.opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
-				if let Some(bounds) = self.instances().filter_map(|element| element.instance.bounding_box(transform)).reduce(Quad::combine_bounds) {
+				if alpha_blending.opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 					scene.push_layer(
-						blending,
+						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 						alpha_blending.opacity,
 						kurbo::Affine::IDENTITY,
 						&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
@@ -475,24 +480,51 @@ impl GraphicElementRendered for VectorDataTable {
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = instance.instance.bounding_box().unwrap_or_default();
 
-			if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
-				layer = true;
-				scene.push_layer(
-					peniko::BlendMode::new(instance.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
-					instance.alpha_blending.opacity,
-					kurbo::Affine::new(multiplied_transform.to_cols_array()),
-					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
-				);
-			}
-
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 			let mut path = kurbo::BezPath::new();
 			for subpath in instance.instance.stroke_bezier_paths() {
 				subpath.to_vello_path(applied_stroke_transform, &mut path);
 			}
 			match render_params.view_mode {
-				ViewMode::Outline => {}
+				ViewMode::Outline => {
+					if instance.alpha_blending.opacity < 1. {
+						layer = true;
+						scene.push_layer(
+							peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcOver),
+							instance.alpha_blending.opacity,
+							kurbo::Affine::new(multiplied_transform.to_cols_array()),
+							&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
+						);
+					}
+
+					let outline_stroke = kurbo::Stroke {
+						width: LAYER_OUTLINE_STROKE_WEIGHT,
+						miter_limit: 4.0,
+						join: kurbo::Join::Miter,
+						start_cap: kurbo::Cap::Butt,
+						end_cap: kurbo::Cap::Butt,
+						dash_pattern: vec![].into(),
+						dash_offset: 0.,
+					};
+					let outline_color = peniko::Color::new([
+						LAYER_OUTLINE_STROKE_COLOR.r(),
+						LAYER_OUTLINE_STROKE_COLOR.g(),
+						LAYER_OUTLINE_STROKE_COLOR.b(),
+						LAYER_OUTLINE_STROKE_COLOR.a(),
+					]);
+
+					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
+				}
 				_ => {
+					if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
+						layer = true;
+						scene.push_layer(
+							peniko::BlendMode::new(instance.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
+							instance.alpha_blending.opacity,
+							kurbo::Affine::new(multiplied_transform.to_cols_array()),
+							&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
+						);
+					}
 					match instance.instance.style.fill() {
 						Fill::Solid(color) => {
 							let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
