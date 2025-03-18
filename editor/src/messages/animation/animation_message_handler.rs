@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 
 use super::TimingInformation;
 
-#[derive(Debug, Default)]
+#[derive(PartialEq, Clone, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum AnimationTimeMode {
 	#[default]
 	TimeBased,
