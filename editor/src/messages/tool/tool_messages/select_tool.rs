@@ -696,7 +696,7 @@ impl Fsm for SelectToolFsmState {
 								&format!("#{}", color_string)
 							};
 							let line_center = tool_data.line_center;
-							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color));
+							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 						}
 					}
 				}
@@ -718,8 +718,8 @@ impl Fsm for SelectToolFsmState {
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
 					let perp = edge.perp();
 
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other));
+					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other), None);
 				}
 
 				// Check if the tool is in selection mode

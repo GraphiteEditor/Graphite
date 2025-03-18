@@ -40,6 +40,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
 				Some(&("#".to_string() + &grid_color.rgba_hex())),
+				None,
 			);
 		}
 	}
@@ -116,6 +117,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgba_hex())),
+			None,
 		);
 	}
 
@@ -134,6 +136,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
 				Some(&("#".to_string() + &grid_color.rgba_hex())),
+				None,
 			);
 		}
 	}
@@ -181,6 +184,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgba_hex())),
+			None,
 			Some(1.),
 			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
 			None,

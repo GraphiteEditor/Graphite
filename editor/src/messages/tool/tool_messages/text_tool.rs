@@ -513,7 +513,7 @@ impl Fsm for TextToolFsmState {
 					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
 						let buzz_face = font_cache.get(font).map(|data| load_face(data));
 						if lines_clipping(text.as_str(), buzz_face, typesetting) {
-							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED));
+							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
 						}
 					}
 
