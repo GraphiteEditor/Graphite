@@ -3517,6 +3517,16 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			}
 		}
 	}
+	let missing_nodes: Vec<FrontendNodeType> = node_types
+		.iter()
+		.filter(|node| !extracted_node_types.iter().any(|extracted| extracted.name == node.name))
+		.cloned()
+		.collect();
+
+	// Add the missing nodes to extracted_node_types
+	for node in missing_nodes {
+		extracted_node_types.push(node);
+	}
 	// Remove entries with empty categories
 	extracted_node_types.retain(|node| !node.category.is_empty());
 
