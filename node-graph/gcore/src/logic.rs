@@ -1,10 +1,9 @@
-use crate::Context;
-use crate::Ctx;
 use crate::vector::VectorDataTable;
+use crate::{Color, Context, Ctx};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> T {
+fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
 	#[cfg(not(target_arch = "spirv"))]
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 	debug!("{:#?}", value);

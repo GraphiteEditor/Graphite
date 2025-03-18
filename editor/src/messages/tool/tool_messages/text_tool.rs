@@ -162,7 +162,7 @@ impl LayoutHolder for TextTool {
 			true,
 			|_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -378,7 +378,11 @@ impl TextToolData {
 		responses.add(Message::StartBuffer);
 		responses.add(GraphOperationMessage::FillSet {
 			layer: self.layer,
-			fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
+			fill: if editing_text.color.is_some() {
+				Fill::Solid(editing_text.color.unwrap().to_gamma_srgb())
+			} else {
+				Fill::None
+			},
 		});
 		responses.add(GraphOperationMessage::TransformSet {
 			layer: self.layer,
@@ -450,7 +454,7 @@ impl Fsm for TextToolFsmState {
 		let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
-			.rgba_hex();
+			.to_rgba_hex_srgb();
 
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
