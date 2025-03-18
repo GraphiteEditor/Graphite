@@ -610,9 +610,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Placing, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				let document_points = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio);
-				let document_to_viewport = document.metadata().document_to_viewport;
-				tool_data.cached_resize_bounds = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
+				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
 
