@@ -739,42 +739,42 @@ impl PathToolData {
 	}
 
 	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// find the negative delta to take the point to the drag start position
+		// Find the negative delta to take the point to the drag start position
 		let current_mouse = input.mouse.position;
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
 		shape_editor.move_selected_points(None, document, opposite_delta, false, true, None, responses);
 
-		// calculate the projected delta and shift the points along those delta
+		// Calculate the projected delta and shift the points along that delta
 		let delta = current_mouse - drag_start;
 		let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
 		self.snapping_axis = Some(axis);
 		let projected_delta = match axis {
-			Axis::X => DVec2::new(delta.x, 0.0),
-			Axis::Y => DVec2::new(0.0, delta.y),
-			_ => DVec2::new(delta.x, 0.0),
+			Axis::X => DVec2::new(delta.x, 0.),
+			Axis::Y => DVec2::new(0., delta.y),
+			_ => DVec2::new(delta.x, 0.),
 		};
 
 		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, responses);
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// calculate the negative delta of the selection and move it back to the drag start
+		// Calculate the negative delta of the selection and move it back to the drag start
 		let current_mouse = input.mouse.position;
 		let drag_start = self.drag_start_pos;
 
 		let opposite_delta = drag_start - current_mouse;
-		let axis = self.snapping_axis.unwrap();
+		let Some(axis) = self.snapping_axis else { return };
 		let opposite_projected_delta = match axis {
-			Axis::X => DVec2::new(opposite_delta.x, 0.0),
-			Axis::Y => DVec2::new(0.0, opposite_delta.y),
-			_ => DVec2::new(opposite_delta.x, 0.0),
+			Axis::X => DVec2::new(opposite_delta.x, 0.),
+			Axis::Y => DVec2::new(0., opposite_delta.y),
+			_ => DVec2::new(opposite_delta.x, 0.),
 		};
 
 		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
 
-		// calculate what actually would have been original delta for the point and apply that
+		// Calculate what actually would have been the original delta for the point, and apply that
 		let delta = current_mouse - drag_start;
 
 		shape_editor.move_selected_points(None, document, delta, false, true, None, responses);
@@ -793,12 +793,11 @@ impl PathToolData {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
-		//here first check if selection is not just a single handle point
+		// First check if selection is not just a single handle point
 		let selected_points = shape_editor.selected_points();
 		let single_handle_selected = selected_points.count() == 1
 			&& shape_editor
 				.selected_points()
-				.into_iter()
 				.any(|point| matches!(point, ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_)));
 
 		if snap_angle && self.snapping_axis.is_none() && !single_handle_selected {
@@ -835,18 +834,18 @@ impl PathToolData {
 			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
-			let axis = self.snapping_axis.unwrap();
+			let Some(axis) = self.snapping_axis else { return };
 			let projected_delta = match axis {
-				Axis::X => DVec2::new(unsnapped_delta.x, 0.0),
-				Axis::Y => DVec2::new(0.0, unsnapped_delta.y),
-				_ => DVec2::new(unsnapped_delta.x, 0.0),
+				Axis::X => DVec2::new(unsnapped_delta.x, 0.),
+				Axis::Y => DVec2::new(0., unsnapped_delta.y),
+				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 
 		if snap_angle && self.snapping_axis.is_some() {
-			let current_axis = self.snapping_axis.unwrap();
+			let Some(current_axis) = self.snapping_axis else { return };
 			let total_delta = self.drag_start_pos - input.mouse.position;
 
 			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
@@ -956,24 +955,24 @@ impl Fsm for PathToolFsmState {
 					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-						//here adding context lines
+						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
-							let axis = tool_data.snapping_axis.unwrap();
+							let Some(axis) = tool_data.snapping_axis else { return self };
 							let origin = tool_data.drag_start_pos;
 							let viewport_diagonal = input.viewport_bounds.size().length();
-							let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
-							other.insert(0, '#');
-							let other = other.as_str();
-							let horizontal = DVec2::new(0.0, 1.0);
-							let vertical = horizontal.perp();
+
+							let mut faded_blue = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+							faded_blue.insert(0, '#');
+							let other = faded_blue.as_str();
+
 							match axis {
 								Axis::Y => {
-									overlay_context.line(origin - horizontal * viewport_diagonal, origin + horizontal * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-									overlay_context.line(origin - vertical * viewport_diagonal, origin + vertical * viewport_diagonal, Some(other));
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(other));
 								}
-								_ => {
-									overlay_context.line(origin - vertical * viewport_diagonal, origin + vertical * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-									overlay_context.line(origin - horizontal * viewport_diagonal, origin + horizontal * viewport_diagonal, Some(other));
+								Axis::X | Axis::Both => {
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(other));
 								}
 							}
 						}
