@@ -16,7 +16,7 @@ pub enum RealTimeMode {
 impl core::fmt::Display for RealTimeMode {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
-			RealTimeMode::Utc => write!(f, "Utc"),
+			RealTimeMode::Utc => write!(f, "UTC"),
 			RealTimeMode::Year => write!(f, "Year"),
 			RealTimeMode::Hour => write!(f, "Hour"),
 			RealTimeMode::Minute => write!(f, "Minute"),
