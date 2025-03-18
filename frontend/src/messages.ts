@@ -454,7 +454,7 @@ export class Gradient {
 	}
 }
 
-// All channels range from 0 to 1
+// All channels range are represented by 0-1, sRGB, gamma.
 export class Color {
 	readonly red!: number;
 

@@ -320,7 +320,7 @@ impl OverlayContext {
 		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
-			.rgba_hex();
+			.to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
@@ -357,7 +357,10 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
+			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+				.unwrap()
+				.with_alpha(0.5)
+				.to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);

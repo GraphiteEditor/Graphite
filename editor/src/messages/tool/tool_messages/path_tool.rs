@@ -933,7 +933,7 @@ impl Fsm for PathToolFsmState {
 						let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
-							.rgba_hex();
+							.to_rgba_hex_srgb();
 						fill_color.insert(0, '#');
 						let fill_color = Some(fill_color.as_str());
 
@@ -961,7 +961,10 @@ impl Fsm for PathToolFsmState {
 							let origin = tool_data.drag_start_pos;
 							let viewport_diagonal = input.viewport_bounds.size().length();
 
-							let mut faded_blue = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+							let mut faded_blue = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+								.unwrap()
+								.with_alpha(0.25)
+								.to_rgba_hex_srgb();
 							faded_blue.insert(0, '#');
 							let other = faded_blue.as_str();
 

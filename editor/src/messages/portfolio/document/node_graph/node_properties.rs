@@ -1087,7 +1087,10 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		return LayoutGroup::Row { widgets };
 	};
 
+	// Add a separator
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	// Add the color input
 	match &**tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_button
