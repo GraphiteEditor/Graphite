@@ -72,6 +72,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 				self.animation_start = None;
 				responses.add(PortfolioMessage::SubmitActiveGraphRender)
 			}
+			AnimationMessage::SetAnimationTimeMode(animation_time_mode) => self.animation_time_mode = animation_time_mode,
 		}
 	}
 
