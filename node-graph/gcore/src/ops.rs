@@ -299,19 +299,13 @@ fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn min<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value < other_value {
-		true => value,
-		false => other_value,
-	}
+	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn max<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value > other_value {
-		true => value,
-		false => other_value,
-	}
+	if value > other_value { value } else { other_value }
 }
 
 /// The clamp function (clamp) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
