@@ -2252,15 +2252,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
-							"Skew",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: "°".to_string(),
-								..Default::default()
-							}),
-						),
+						PropertiesRow::with_override("Skew", WidgetOverride::Custom("transform_skew".to_string())),
 						PropertiesRow::with_override("Pivot", WidgetOverride::Hidden),
 					],
 					output_names: vec!["Data".to_string()],
@@ -3349,6 +3341,52 @@ fn static_input_properties() -> InputProperties {
 						.range_max(Some(180.))
 						.on_update(node_properties::update_value(
 							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+				]);
+			}
+
+			Ok(vec![LayoutGroup::Row { widgets }])
+		}),
+	);
+	// Skew has a custom override that maps to degrees
+	map.insert(
+		"transform_skew".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+
+			let mut widgets = node_properties::start_widgets(document_node, node_id, index, input_name, super::utility_types::FrontendGraphDataType::Number, true);
+
+			let Some(input) = document_node.inputs.get(index) else {
+				return Err("Input not found in transform skew input override".to_string());
+			};
+			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
+				let to_skew = |input: &NumberInput| input.value.unwrap().to_radians().tan();
+				widgets.extend_from_slice(&[
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(val.x.atan().to_degrees()))
+						.label("X")
+						.unit("°")
+						.min(-89.9)
+						.max(89.9)
+						.on_update(node_properties::update_value(
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(to_skew(input), val.y)),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(val.y.atan().to_degrees()))
+						.label("Y")
+						.unit("°")
+						.min(-89.9)
+						.max(89.9)
+						.on_update(node_properties::update_value(
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, to_skew(input))),
 							node_id,
 							index,
 						))
