@@ -16,13 +16,13 @@ pub struct AnimationMessageHandler {
 	live_preview: bool,
 	timestamp: f64,
 	frame_index: f64,
-	animation_start: f64,
+	animation_start: Option<f64>,
 	fps: f64,
 	animation_time_mode: AnimationTimeMode,
 }
 impl AnimationMessageHandler {
 	pub(crate) fn timing_information(&self) -> TimingInformation {
-		let animation_time = self.timestamp - self.animation_start;
+		let animation_time = self.timestamp - self.animation_start.unwrap_or(self.timestamp);
 		let animation_time = match self.animation_time_mode {
 			AnimationTimeMode::TimeBased => Duration::from_millis(animation_time as u64),
 			AnimationTimeMode::FrameBased => Duration::from_secs((self.frame_index / self.fps) as u64),
@@ -35,14 +35,14 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 	fn process_message(&mut self, message: AnimationMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			AnimationMessage::ToggleLivePreview => {
-				if self.animation_start == 0. {
-					self.animation_start = self.timestamp;
+				if self.animation_start.is_none() {
+					self.animation_start = Some(self.timestamp);
 				}
 				self.live_preview = !self.live_preview
 			}
 			AnimationMessage::EnableLivePreview => {
-				if self.animation_start == 0. {
-					self.animation_start = self.timestamp;
+				if self.animation_start.is_none() {
+					self.animation_start = Some(self.timestamp);
 				}
 				self.live_preview = true
 			}
@@ -69,7 +69,7 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::ResetAnimation => {
 				self.frame_index = 0.;
-				self.animation_start = self.timestamp;
+				self.animation_start = None;
 				responses.add(PortfolioMessage::SubmitActiveGraphRender)
 			}
 		}

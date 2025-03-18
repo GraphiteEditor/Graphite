@@ -33,7 +33,7 @@ pub enum AnimationTimeMode {
 }
 
 #[node_macro::node(category("Animation"))]
-fn real_time(ctx: impl Ctx + ExtractTime, mode: RealTimeMode) -> f64 {
+fn real_time(ctx: impl Ctx + ExtractTime, _primary: (), mode: RealTimeMode) -> f64 {
 	let time = ctx.try_time().unwrap_or_default();
 	// TODO: Implement proper conversion using and existing time implementation
 	match mode {
