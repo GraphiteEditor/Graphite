@@ -22,12 +22,8 @@ pub trait ExtractTime {
 	fn try_time(&self) -> Option<f64>;
 }
 
-pub trait ExtractFrameIndex {
-	fn try_frame_index(&self) -> Option<f64>;
-}
-
-pub trait ExtractFrameTime {
-	fn try_frame_time(&self) -> Option<f64>;
+pub trait ExtractAnimationTime {
+	fn try_animation_time(&self) -> Option<f64>;
 }
 
 pub trait ExtractIndex {
@@ -46,9 +42,9 @@ pub trait CloneVarArgs: ExtractVarArgs {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
 
-pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractFrameIndex + ExtractFrameTime + ExtractVarArgs {}
+pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs {}
 
-impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractFrameIndex + ExtractFrameTime + ExtractVarArgs> ExtractAll for T {}
+impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
@@ -89,14 +85,9 @@ impl<T: ExtractTime + Sync> ExtractTime for Option<T> {
 		self.as_ref().and_then(|x| x.try_time())
 	}
 }
-impl<T: ExtractFrameIndex + Sync> ExtractFrameIndex for Option<T> {
-	fn try_frame_index(&self) -> Option<f64> {
-		self.as_ref().and_then(|x| x.try_frame_index())
-	}
-}
-impl<T: ExtractFrameTime + Sync> ExtractFrameTime for Option<T> {
-	fn try_frame_time(&self) -> Option<f64> {
-		self.as_ref().and_then(|x| x.try_frame_time())
+impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.as_ref().and_then(|x| x.try_animation_time())
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
@@ -125,14 +116,9 @@ impl<T: ExtractTime + Sync> ExtractTime for Arc<T> {
 		(**self).try_time()
 	}
 }
-impl<T: ExtractFrameIndex + Sync> ExtractFrameIndex for Arc<T> {
-	fn try_frame_index(&self) -> Option<f64> {
-		(**self).try_frame_index()
-	}
-}
-impl<T: ExtractFrameTime + Sync> ExtractFrameTime for Arc<T> {
-	fn try_frame_time(&self) -> Option<f64> {
-		(**self).try_frame_time()
+impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
+	fn try_animation_time(&self) -> Option<f64> {
+		(**self).try_animation_time()
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
@@ -210,14 +196,9 @@ impl ExtractTime for OwnedContextImpl {
 		self.time
 	}
 }
-impl ExtractFrameIndex for OwnedContextImpl {
-	fn try_frame_index(&self) -> Option<f64> {
-		self.frame_index
-	}
-}
-impl ExtractFrameTime for OwnedContextImpl {
-	fn try_frame_time(&self) -> Option<f64> {
-		self.frame_time
+impl ExtractAnimationTime for OwnedContextImpl {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.animation_time
 	}
 }
 impl ExtractIndex for OwnedContextImpl {
@@ -265,8 +246,7 @@ pub struct OwnedContextImpl {
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,
 	time: Option<f64>,
-	frame_index: Option<f64>,
-	frame_time: Option<f64>,
+	animation_time: Option<f64>,
 }
 
 impl Default for OwnedContextImpl {
@@ -292,8 +272,7 @@ impl OwnedContextImpl {
 		let footprint = value.try_footprint().copied();
 		let index = value.try_index();
 		let time = value.try_time();
-		let frame_time = value.try_frame_time();
-		let frame_index = value.try_frame_index();
+		let frame_time = value.try_animation_time();
 		let parent = value.arc_clone();
 		OwnedContextImpl {
 			footprint,
@@ -301,8 +280,7 @@ impl OwnedContextImpl {
 			parent,
 			index,
 			time,
-			frame_index,
-			frame_time,
+			animation_time: frame_time,
 		}
 	}
 	pub const fn empty() -> Self {
@@ -312,8 +290,7 @@ impl OwnedContextImpl {
 			parent: None,
 			index: None,
 			time: None,
-			frame_index: None,
-			frame_time: None,
+			animation_time: None,
 		}
 	}
 }
@@ -330,12 +307,8 @@ impl OwnedContextImpl {
 		self.time = Some(time);
 		self
 	}
-	pub fn with_frame_index(mut self, frame_index: f64) -> Self {
-		self.frame_index = Some(frame_index);
-		self
-	}
-	pub fn with_frame_time(mut self, frame_time: f64) -> Self {
-		self.frame_time = Some(frame_time);
+	pub fn with_animation_time(mut self, animation_time: f64) -> Self {
+		self.animation_time = Some(animation_time);
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {

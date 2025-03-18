@@ -138,18 +138,11 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
+			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
-						let micros: f64 = timestamp * 1000.;
-						let timestamp = Duration::from_micros(micros.round() as u64);
-
-						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
-							handle.send_frontend_message_to_js(message);
-						}
-
 						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
 							timestamp: js_sys::Date::now() as u64,
 						}) {

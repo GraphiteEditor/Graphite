@@ -254,8 +254,7 @@ pub enum ExportFormat {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct TimingInformation {
 	pub time: f64,
-	pub frame_index: f64,
-	pub frame_time: Duration,
+	pub animation_time: Duration,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]

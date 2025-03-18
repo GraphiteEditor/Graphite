@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::messages::prelude::*;
 
 #[impl_message(Message, Animation)]
@@ -8,8 +6,8 @@ pub enum AnimationMessage {
 	ToggleLivePreview,
 	EnableLivePreview,
 	DisableLivePreview,
+	ResetAnimation,
 	SetFrameIndex(f64),
-	SetFrameTime(Duration),
 	SetTime(f64),
 	UpdateTime,
 	IncrementFrameCounter,

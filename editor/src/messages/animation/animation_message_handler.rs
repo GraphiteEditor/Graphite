@@ -5,27 +5,47 @@ use crate::messages::prelude::*;
 use super::TimingInformation;
 
 #[derive(Debug, Default)]
+pub enum AnimationTimeMode {
+	#[default]
+	TimeBased,
+	FrameBased,
+}
+
+#[derive(Debug, Default)]
 pub struct AnimationMessageHandler {
 	live_preview: bool,
 	timestamp: f64,
 	frame_index: f64,
-	frame_time: Duration,
+	animation_start: f64,
+	fps: f64,
+	animation_time_mode: AnimationTimeMode,
 }
 impl AnimationMessageHandler {
 	pub(crate) fn timing_information(&self) -> TimingInformation {
-		TimingInformation {
-			time: self.timestamp,
-			frame_index: self.frame_index,
-			frame_time: self.frame_time,
-		}
+		let animation_time = self.timestamp - self.animation_start;
+		let animation_time = match self.animation_time_mode {
+			AnimationTimeMode::TimeBased => Duration::from_millis(animation_time as u64),
+			AnimationTimeMode::FrameBased => Duration::from_secs((self.frame_index / self.fps) as u64),
+		};
+		TimingInformation { time: self.timestamp, animation_time }
 	}
 }
 
 impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 	fn process_message(&mut self, message: AnimationMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
-			AnimationMessage::ToggleLivePreview => self.live_preview = !self.live_preview,
-			AnimationMessage::EnableLivePreview => self.live_preview = true,
+			AnimationMessage::ToggleLivePreview => {
+				if self.animation_start == 0. {
+					self.animation_start = self.timestamp;
+				}
+				self.live_preview = !self.live_preview
+			}
+			AnimationMessage::EnableLivePreview => {
+				if self.animation_start == 0. {
+					self.animation_start = self.timestamp;
+				}
+				self.live_preview = true
+			}
 			AnimationMessage::DisableLivePreview => self.live_preview = false,
 			AnimationMessage::SetFrameIndex(frame) => {
 				self.frame_index = frame;
@@ -42,21 +62,22 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 					responses.add(AnimationMessage::UpdateTime);
 				}
 			}
-			AnimationMessage::SetFrameTime(duration) => {
-				self.frame_time = duration;
-				responses.add(AnimationMessage::UpdateTime);
-			}
 			AnimationMessage::UpdateTime => {
 				if self.live_preview {
 					responses.add(PortfolioMessage::SubmitActiveGraphRender)
 				}
+			}
+			AnimationMessage::ResetAnimation => {
+				self.frame_index = 0.;
+				self.animation_start = self.timestamp;
+				responses.add(PortfolioMessage::SubmitActiveGraphRender)
 			}
 		}
 	}
 
 	advertise_actions!(AnimationMessageDiscriminant;
 		ToggleLivePreview,
-		SetFrameTime,
 		SetFrameIndex,
+		ResetAnimation,
 	);
 }
