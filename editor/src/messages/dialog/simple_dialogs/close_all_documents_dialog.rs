@@ -30,7 +30,7 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 
 impl LayoutHolder for CloseAllDocumentsDialog {
 	fn layout(&self) -> Layout {
-		let unsaved_list = "• ".to_string() + &self.unsaved_document_names.join("\n• ");
+		let unsaved_list = "• ".to_string() + self.unsaved_document_names.join("\n• ").as_str();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {

@@ -207,6 +207,7 @@ pub enum Type {
 	Fn(Box<Type>, Box<Type>),
 	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
+	Dynamic,
 }
 
 impl Default for Type {
@@ -258,6 +259,15 @@ impl Type {
 			_ => None,
 		}
 	}
+	pub fn fn_fut_output(&self) -> Option<&Type> {
+		match self {
+			Type::Fn(_, second) => match second.as_ref() {
+				Type::Future(fut) => Some(fut),
+				_ => None,
+			},
+			_ => None,
+		}
+	}
 
 	pub fn function(input: &Type, output: &Type) -> Type {
 		Type::Fn(Box::new(input.clone()), Box::new(output.clone()))
@@ -281,6 +291,7 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+			Self::Dynamic => None,
 		}
 	}
 
@@ -290,6 +301,7 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+			Self::Dynamic => None,
 		}
 	}
 
@@ -299,6 +311,7 @@ impl Type {
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+			Self::Dynamic => self,
 		}
 	}
 }
@@ -320,6 +333,7 @@ impl core::fmt::Debug for Type {
 			Self::Concrete(arg0) => write!(f, "Concrete<{}>", format_type(&arg0.name)),
 			Self::Fn(arg0, arg1) => write!(f, "{arg0:?} → {arg1:?}"),
 			Self::Future(arg0) => write!(f, "Future<{arg0:?}>"),
+			Self::Dynamic => write!(f, "Dynamic"),
 		}
 	}
 }
@@ -331,6 +345,7 @@ impl std::fmt::Display for Type {
 			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
 			Type::Fn(input, output) => write!(f, "{input} → {output}"),
 			Type::Future(ty) => write!(f, "Future<{ty}>"),
+			Self::Dynamic => write!(f, "Dynamic"),
 		}
 	}
 }
