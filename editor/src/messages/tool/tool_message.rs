@@ -32,8 +32,6 @@ pub enum ToolMessage {
 	#[child]
 	Spline(SplineToolMessage),
 	#[child]
-	Line(LineToolMessage),
-	#[child]
 	Shape(ShapeToolMessage),
 	#[child]
 	Polygon(PolygonToolMessage),
@@ -68,7 +66,6 @@ pub enum ToolMessage {
 	ActivateToolPen,
 	ActivateToolFreehand,
 	ActivateToolSpline,
-	ActivateToolLine,
 	ActivateToolShape,
 	ActivateToolPolygon,
 

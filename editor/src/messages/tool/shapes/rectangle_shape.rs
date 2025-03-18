@@ -5,9 +5,9 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::*;
-use glam::{DAffine2, DVec2};
+use glam::DAffine2;
+use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeId, NodeInput};
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -22,31 +22,43 @@ impl Shape for Rectangle {
 		"VectorRectangleTool"
 	}
 
-	fn create_node(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Vec<(NodeId, NodeTemplate)> {
+	fn create_node(_: &DocumentMessageHandler, _: ShapeInitData) -> NodeTemplate {
 		let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
-		let node = node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))]);
-		vec![(NodeId(0), node)]
+		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))])
 	}
 
-	fn update_shape(document: &DocumentMessageHandler, _: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier, start: DVec2, end: DVec2, responses: &mut VecDeque<Message>) -> bool {
-		let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
-			return true;
+	fn update_shape(
+		document: &DocumentMessageHandler,
+		ipp: &InputPreprocessorMessageHandler,
+		layer: LayerNodeIdentifier,
+		shape_tool_data: &mut ShapeToolData,
+		shape_data: ShapeUpdateData,
+		responses: &mut VecDeque<Message>,
+	) -> bool {
+		let (center, lock_ratio) = match shape_data {
+			ShapeUpdateData::Rectangle { center, lock_ratio } => (center, lock_ratio),
+			_ => unreachable!(),
 		};
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
+			let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
+				return true;
+			};
 
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
-			input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
-		});
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
-		});
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_translation((start + end) / 2.),
-			transform_in: TransformIn::Local,
-			skip_rerender: false,
-		});
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, 1),
+				input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
+			});
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, 2),
+				input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
+			});
+			responses.add(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_translation(start.midpoint(end)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			});
+		}
 		false
 	}
 }

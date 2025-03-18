@@ -2,12 +2,13 @@ use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::common_functionality::snapping::SnapData;
-use crate::messages::tool::shapes::{Ellipse, Rectangle, Shape, ShapeType};
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::shapes::{Ellipse, Line, LineEnd, Rectangle, Shape, ShapeInitData, ShapeType, ShapeUpdateData};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 
@@ -55,8 +56,8 @@ pub enum ShapeToolMessage {
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	PointerMove { center: Key, lock_ratio: Key },
-	PointerOutsideViewport { center: Key, lock_ratio: Key },
+	PointerMove { center: Key, lock_ratio: Key, lock_angle: Key, snap_angle: Key },
+	PointerOutsideViewport { center: Key, lock_ratio: Key, lock_angle: Key, snap_angle: Key },
 	UpdateOptions(ShapeOptionsUpdate),
 	SetShape(ShapeType),
 }
@@ -145,7 +146,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 
 impl ToolMetadata for ShapeTool {
 	fn icon_name(&self) -> String {
-		"VectorShapeTool".into()
+		match self.tool_data.current_shape {
+			ShapeType::Ellipse => Ellipse::icon_name(),
+			ShapeType::Rectangle => Rectangle::icon_name(),
+			ShapeType::Line => Line::icon_name(),
+		}
+		.into()
 	}
 	fn tooltip(&self) -> String {
 		"Shape Tool".into()
@@ -174,10 +180,15 @@ enum ShapeToolFsmState {
 }
 
 #[derive(Clone, Debug, Default)]
-struct ShapeToolData {
-	data: Resize,
-	current_shape: ShapeType,
+pub struct ShapeToolData {
+	pub data: Resize,
+	pub drag_current: DVec2,
+	pub angle: f64,
+	pub weight: f64,
+	pub selected_layers_with_position: HashMap<LayerNodeIdentifier, [DVec2; 2]>,
+	pub dragging_endpoint: Option<LineEnd>,
 	auto_panning: AutoPanning,
+	current_shape: ShapeType,
 }
 
 impl Fsm for ShapeToolFsmState {
@@ -203,45 +214,83 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Ready, ShapeToolMessage::DragStart) => {
-				shape_data.start(document, input);
+				match tool_data.current_shape {
+					ShapeType::Ellipse | ShapeType::Rectangle => shape_data.start(document, input),
+					ShapeType::Line => {
+						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+						let snapped = shape_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+						shape_data.drag_start = snapped.snapped_point_document;
+					}
+				}
 
 				responses.add(DocumentMessage::StartTransaction);
-				let nodes = match tool_data.current_shape {
-					ShapeType::Rectangle => Rectangle::create_node(&document, &input, responses),
-					ShapeType::Ellipse => Ellipse::create_node(&document, &input, responses),
+
+				let node = match tool_data.current_shape {
+					ShapeType::Rectangle => Rectangle::create_node(&document, ShapeInitData::Rectangle),
+					ShapeType::Ellipse => Ellipse::create_node(&document, ShapeInitData::Ellipse),
+					ShapeType::Line => Line::create_node(&document, ShapeInitData::Line { drag_start: shape_data.drag_start }),
 				};
-
+				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
-				responses.add(Message::StartBuffer);
-				responses.add(GraphOperationMessage::TransformSet {
-					layer,
-					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
-					transform_in: TransformIn::Viewport,
-					skip_rerender: false,
-				});
 
-				tool_options.fill.apply_fill(layer, responses);
+				responses.add(Message::StartBuffer);
+
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+				match tool_data.current_shape {
+					ShapeType::Ellipse | ShapeType::Rectangle => {
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+
+						tool_options.fill.apply_fill(layer, responses);
+					}
+					ShapeType::Line => {
+						tool_data.angle = 0.;
+						tool_data.weight = tool_options.line_weight;
+					}
+				}
+
 				shape_data.layer = Some(layer);
 
 				ShapeToolFsmState::Drawing
 			}
-			(ShapeToolFsmState::Drawing, ShapeToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
-					if let Some(layer) = shape_data.layer {
-						if match tool_data.current_shape {
-							ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, start, end, responses),
-							ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, start, end, responses),
-						} {
-							return self;
-						}
-					}
+			(
+				ShapeToolFsmState::Drawing,
+				ShapeToolMessage::PointerMove {
+					center,
+					lock_ratio,
+					snap_angle,
+					lock_angle,
+				},
+			) => {
+				let Some(layer) = shape_data.layer else { return ShapeToolFsmState::Ready };
+				if match tool_data.current_shape {
+					ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, tool_data, ShapeUpdateData::Rectangle { center, lock_ratio }, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, tool_data, ShapeUpdateData::Ellipse { center, lock_ratio }, responses),
+					ShapeType::Line => Line::update_shape(&document, &input, layer, tool_data, ShapeUpdateData::Line { center, snap_angle, lock_angle }, responses),
+				} {
+					return if tool_data.current_shape == ShapeType::Line { ShapeToolFsmState::Ready } else { self };
 				}
 
 				// Auto-panning
 				let messages = [
-					ShapeToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-					ShapeToolMessage::PointerMove { center, lock_ratio }.into(),
+					ShapeToolMessage::PointerOutsideViewport {
+						center,
+						lock_ratio,
+						snap_angle,
+						lock_angle,
+					}
+					.into(),
+					ShapeToolMessage::PointerMove {
+						center,
+						lock_ratio,
+						snap_angle,
+						lock_angle,
+					}
+					.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
@@ -258,11 +307,31 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::Drawing
 			}
-			(state, ShapeToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
+			(
+				state,
+				ShapeToolMessage::PointerOutsideViewport {
+					center,
+					lock_ratio,
+					snap_angle,
+					lock_angle,
+				},
+			) => {
 				// Auto-panning
 				let messages = [
-					ShapeToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-					ShapeToolMessage::PointerMove { center, lock_ratio }.into(),
+					ShapeToolMessage::PointerOutsideViewport {
+						center,
+						lock_ratio,
+						snap_angle,
+						lock_angle,
+					}
+					.into(),
+					ShapeToolMessage::PointerMove {
+						center,
+						lock_ratio,
+						lock_angle,
+						snap_angle,
+					}
+					.into(),
 				];
 				tool_data.auto_panning.stop(&messages, responses);
 
@@ -276,7 +345,6 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::Drawing, ShapeToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-
 				shape_data.cleanup(responses);
 
 				ShapeToolFsmState::Ready

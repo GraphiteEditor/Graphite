@@ -58,7 +58,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
 			ToolMessage::ActivateToolFreehand => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
 			ToolMessage::ActivateToolSpline => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }),
-			ToolMessage::ActivateToolLine => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Line }),
 			ToolMessage::ActivateToolShape => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape }),
 			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
@@ -302,7 +301,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolPen,
 			ActivateToolFreehand,
 			ActivateToolSpline,
-			ActivateToolLine,
 			ActivateToolShape,
 			ActivateToolPolygon,
 

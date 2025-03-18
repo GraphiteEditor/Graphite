@@ -178,7 +178,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
 		entry!(KeyDown(KeyM); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Rectangle)),
 		entry!(KeyDown(KeyE); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Ellipse)),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ShapeToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(KeyDown(KeyL); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Line)),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove { center: Alt, lock_ratio: Shift, lock_angle: Control, snap_angle: Shift }),
 		//
 		// ImaginateToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
@@ -193,13 +194,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseRight); action_dispatch=PolygonToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=PolygonToolMessage::Abort),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PolygonToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
-		//
-		// LineToolMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=LineToolMessage::DragStart),
-		entry!(KeyUp(MouseLeft); action_dispatch=LineToolMessage::DragStop),
-		entry!(KeyDown(MouseRight); action_dispatch=LineToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=LineToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=LineToolMessage::PointerMove { center: Alt, lock_angle: Control, snap_angle: Shift }),
 		//
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
@@ -301,7 +295,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyA); action_dispatch=ToolMessage::ActivateToolPath),
 		entry!(KeyDown(KeyP); action_dispatch=ToolMessage::ActivateToolPen),
 		entry!(KeyDown(KeyN); action_dispatch=ToolMessage::ActivateToolFreehand),
-		entry!(KeyDown(KeyL); action_dispatch=ToolMessage::ActivateToolLine),
 		entry!(KeyDown(KeyU); action_dispatch=ToolMessage::ActivateToolShape),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolPolygon),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
