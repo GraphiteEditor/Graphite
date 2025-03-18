@@ -777,7 +777,10 @@ impl EditorHandle {
 			to_front: false,
 		});
 
-		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+		let Some(document) = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut() else {
+			warn!("Document wasn't loaded");
+			return;
+		};
 		for node in document
 			.network_interface
 			.document_network_metadata()
