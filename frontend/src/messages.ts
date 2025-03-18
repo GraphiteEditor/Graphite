@@ -774,7 +774,7 @@ export class UpdateGraphFadeArtwork extends JsMessage {
 export class UpdateSpreadsheetState extends JsMessage {
 	readonly open!: boolean;
 
-	readonly node!: bigint;
+	readonly node!: bigint | undefined;
 }
 
 export class UpdateMouseCursor extends JsMessage {

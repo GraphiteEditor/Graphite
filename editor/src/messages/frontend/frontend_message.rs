@@ -152,7 +152,7 @@ pub enum FrontendMessage {
 	},
 	UpdateSpreadsheetState {
 		open: bool,
-		node: NodeId,
+		node: Option<NodeId>,
 	},
 	UpdateSpreadsheetLayout {
 		#[serde(rename = "layoutTarget")]

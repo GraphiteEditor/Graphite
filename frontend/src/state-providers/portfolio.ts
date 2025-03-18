@@ -29,7 +29,7 @@ export function createPortfolioState(editor: Editor) {
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
 		spreadsheetOpen: false,
-		spreadsheetNode: BigInt(0),
+		spreadsheetNode: BigInt(0) as bigint | undefined,
 		spreadsheetWidgets: defaultWidgetLayout(),
 	});
 

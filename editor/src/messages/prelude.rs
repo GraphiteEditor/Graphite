@@ -21,6 +21,7 @@ pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, Overla
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageData, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageData, MenuBarMessageDiscriminant, MenuBarMessageHandler};
+pub use crate::messages::portfolio::spreadsheet::{SpreadsheetMessage, SpreadsheetMessageDiscriminant};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageData, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};

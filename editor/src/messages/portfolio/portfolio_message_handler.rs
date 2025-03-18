@@ -1,5 +1,6 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface::{self, InputConnector, OutputConnector};
+use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -33,7 +34,7 @@ pub struct PortfolioMessageData<'a> {
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
@@ -44,25 +45,8 @@ pub struct PortfolioMessageHandler {
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
-	/// Sets whether or not the spreadsheet is drawn.
-	pub spreadsheet_view_open: bool,
-}
-
-impl Default for PortfolioMessageHandler {
-	fn default() -> Self {
-		Self {
-			menu_bar_message_handler: Default::default(),
-			documents: Default::default(),
-			document_ids: Default::default(),
-			active_panel: Default::default(),
-			active_document_id: Default::default(),
-			copy_buffer: Default::default(),
-			persistent_data: Default::default(),
-			executor: Default::default(),
-			selection_mode: Default::default(),
-			spreadsheet_view_open: true,
-		}
-	}
+	/// The spreadsheet UI allows for instance data to be previewed.
+	pub spreadsheet: SpreadsheetMessageHandler,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -109,6 +93,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						message_logging_verbosity,
 					},
 				);
+			}
+			PortfolioMessage::Spreadsheet(message) => {
+				self.spreadsheet.process_message(message, responses, ());
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -1287,7 +1274,7 @@ impl PortfolioMessageHandler {
 
 	/// Get the id of the node that should be used as the target for the spreadsheet
 	pub fn inspect_node_id(&self) -> Option<NodeId> {
-		if !self.spreadsheet_view_open {
+		if !self.spreadsheet.spreadsheet_view_open {
 			warn!("Spreadsheet not open, skipping…");
 			return None;
 		}

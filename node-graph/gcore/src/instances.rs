@@ -131,6 +131,10 @@ impl<T> Instances<T> {
 				source_node_id,
 			})
 	}
+
+	pub fn len(&self) -> usize {
+		self.id.len()
+	}
 }
 
 impl<T: Default + Hash + 'static> Default for Instances<T> {

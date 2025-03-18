@@ -1,6 +1,5 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::layout::node_graph_layout;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::concrete;
@@ -407,9 +406,17 @@ struct InspectState {
 }
 
 /// The resulting value from the temporary inspected during execution
+#[derive(Clone, Debug, Default)]
 pub struct InspectResult {
-	pub introspected_data: Arc<dyn std::any::Any + Send + Sync + 'static>,
+	pub introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
 	pub inspect_node: NodeId,
+}
+
+// This is very ugly but is required to be inside a message
+impl PartialEq for InspectResult {
+	fn eq(&self, other: &Self) -> bool {
+		self.inspect_node == other.inspect_node
+	}
 }
 
 impl InspectState {
@@ -445,14 +452,7 @@ impl InspectState {
 
 	/// Resolve the result from the inspection by accessing the monitor node
 	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		let introspected_data = match executor.introspect(&[self.monitor_node]) {
-			Ok(data) => data,
-			Err(e) => {
-				warn!("Failed to introspect monitor node {e}");
-
-				return None;
-			}
-		};
+		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
 
 		Some(InspectResult {
 			inspect_node: self.inspect_node,
@@ -714,7 +714,7 @@ impl NodeGraphExecutor {
 					// Update the spreadsheet on the frontend using the value of the inspect result.
 					if self.old_inspect_node.is_some() {
 						if let Some(inspect_result) = inspect_result {
-							node_graph_layout::update_layout(responses, inspect_result);
+							responses.add(SpreadsheetMessage::UpdateLayout { inspect_result });
 						}
 					}
 				}
