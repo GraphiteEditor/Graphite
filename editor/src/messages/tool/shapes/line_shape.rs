@@ -80,7 +80,8 @@ impl Shape for Line {
 }
 
 fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
-	let mut document_points = [tool_data.data.drag_start, tool_data.drag_current];
+	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
