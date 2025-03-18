@@ -9,11 +9,28 @@ pub enum SpreadsheetMessage {
 	SetOpen {
 		open: bool,
 	},
+
 	UpdateLayout {
 		#[serde(skip)]
 		inspect_result: InspectResult,
 	},
-	PushInstance {
+
+	PushToInstancePath {
 		id: InstanceId,
 	},
+	TruncateInstancePath {
+		len: usize,
+	},
+
+	ViewVectorDataDomain {
+		domain: VectorDataDomain,
+	},
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
+pub enum VectorDataDomain {
+	#[default]
+	Points,
+	Segments,
+	Regions,
 }

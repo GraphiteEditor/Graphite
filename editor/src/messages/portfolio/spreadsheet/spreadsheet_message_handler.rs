@@ -14,6 +14,8 @@ use graphene_std::vector::InstanceId;
 use std::any::Any;
 use std::sync::Arc;
 
+use super::VectorDataDomain;
+
 /// The spreadsheet UI allows for instance data to be previewed.
 #[derive(Debug, Clone)]
 pub struct SpreadsheetMessageHandler {
@@ -21,16 +23,18 @@ pub struct SpreadsheetMessageHandler {
 	pub spreadsheet_view_open: bool,
 	inspect_node: Option<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
-	path: Vec<InstanceId>,
+	instances_path: Vec<InstanceId>,
+	viewing_vector_data_domain: VectorDataDomain,
 }
 
 impl Default for SpreadsheetMessageHandler {
 	fn default() -> Self {
 		Self {
 			spreadsheet_view_open: true,
-			inspect_node: None,
-			introspected_data: None,
-			path: Vec::new(),
+			inspect_node: Default::default(),
+			introspected_data: Default::default(),
+			instances_path: Default::default(),
+			viewing_vector_data_domain: Default::default(),
 		}
 	}
 }
@@ -47,8 +51,16 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 				self.introspected_data = inspect_result.introspected_data;
 				self.update_layout(responses)
 			}
-			SpreadsheetMessage::PushInstance { id } => {
-				self.path.push(id);
+			SpreadsheetMessage::PushToInstancePath { id } => {
+				self.instances_path.push(id);
+				self.update_layout(responses);
+			}
+			SpreadsheetMessage::TruncateInstancePath { len } => {
+				self.instances_path.truncate(len);
+				self.update_layout(responses);
+			}
+			SpreadsheetMessage::ViewVectorDataDomain { domain } => {
+				self.viewing_vector_data_domain = domain;
 				self.update_layout(responses);
 			}
 		}
@@ -70,14 +82,23 @@ impl SpreadsheetMessageHandler {
 		}
 		let mut layout_data = LayoutData {
 			current_depth: 0,
-			desired_path: &mut self.path,
+			desired_path: &mut self.instances_path,
+			breadcrumbs: Vec::new(),
+			vector_data_domain: self.viewing_vector_data_domain,
 		};
-		let layout = self
+		let mut layout = self
 			.introspected_data
 			.as_ref()
 			.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data))
 			.unwrap_or_else(|| Some(label("No data")))
 			.unwrap_or_else(|| label("Failed to downcast data"));
+
+		if layout_data.breadcrumbs.len() > 1 {
+			let breadcrumb = BreadcrumbTrailButtons::new(layout_data.breadcrumbs)
+				.on_update(|&len| SpreadsheetMessage::TruncateInstancePath { len: len as usize }.into())
+				.widget_holder();
+			layout.insert(0, LayoutGroup::Row { widgets: vec![breadcrumb] });
+		}
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(WidgetLayout { layout }),
@@ -89,57 +110,24 @@ impl SpreadsheetMessageHandler {
 struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<InstanceId>,
-}
-
-fn instances_layout<T: InstanceLayout>(instances: &Instances<T>, data: &mut LayoutData) -> Vec<LayoutGroup> {
-	if let Some(id) = data.desired_path.get(data.current_depth).copied() {
-		if let Some(instance) = instances.instances().find(|instance| *instance.id == id) {
-			data.current_depth += 1;
-			let result = instance.instance.layout(data);
-			data.current_depth -= 1;
-			return result;
-		} else {
-			warn!("Desired path truncated");
-			data.desired_path.truncate(data.current_depth);
-		}
-	}
-
-	let mut rows = instances
-		.instances()
-		.map(|instance| {
-			let id = *instance.id;
-			vec![
-				TextLabel::new(format!("{}", instance.id.inner())).widget_holder(),
-				TextButton::new(instance.instance.identifier())
-					.on_update(move |_| SpreadsheetMessage::PushInstance { id }.into())
-					.widget_holder(),
-				TextLabel::new(format!("{}", instance.transform)).widget_holder(),
-				TextLabel::new(format!("{:?}", instance.alpha_blending)).widget_holder(),
-				TextLabel::new(instance.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
-			]
-		})
-		.collect::<Vec<_>>();
-
-	rows.insert(0, column_headings(&["id", "instance", "transform", "alpha_blending", "source_node_id"]));
-
-	let instances = vec![TextLabel::new("Instances:").widget_holder()];
-	vec![LayoutGroup::Row { widgets: instances }, LayoutGroup::Table { rows }]
+	breadcrumbs: Vec<String>,
+	vector_data_domain: VectorDataDomain,
 }
 
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// We simply try random types. TODO: better strategy.
 	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, ArtboardGroupTable>>() {
-		Some(instances_layout(&io.output, data))
+		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), ArtboardGroupTable>>() {
-		Some(instances_layout(&io.output, data))
+		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-		Some(instances_layout(&io.output, data))
+		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), VectorDataTable>>() {
-		Some(instances_layout(&io.output, data))
+		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, GraphicGroupTable>>() {
-		Some(instances_layout(&io.output, data))
+		Some(io.output.layout_with_breadcrumb(data))
 	} else if let Some(io) = introspected_data.downcast_ref::<IORecord<(), GraphicGroupTable>>() {
-		Some(instances_layout(&io.output, data))
+		Some(io.output.layout_with_breadcrumb(data))
 	} else {
 		None
 	}
@@ -155,41 +143,145 @@ fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
 }
 
 trait InstanceLayout {
+	fn type_name() -> &'static str;
 	fn identifier(&self) -> String;
-	fn layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup>;
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		data.breadcrumbs.push(self.identifier());
+		self.compute_layout(data)
+	}
+	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup>;
 }
 
 impl InstanceLayout for GraphicElement {
+	fn type_name() -> &'static str {
+		"GraphicElement"
+	}
 	fn identifier(&self) -> String {
 		match self {
-			Self::GraphicGroup(instances) => format!("Instances<GraphicElement> (length={})", instances.len()),
-			Self::VectorData(instances) => format!("Instances<VectorData> (length={})", instances.len()),
+			Self::GraphicGroup(instances) => instances.identifier(),
+			Self::VectorData(instances) => instances.identifier(),
 			Self::RasterFrame(_) => format!("RasterFrame"),
 		}
 	}
-	fn layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+	// Don't put a breadcrumb for GraphicElement
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.compute_layout(data)
+	}
+	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		match self {
-			Self::GraphicGroup(instances) => instances_layout(instances, data),
-			Self::VectorData(instances) => instances_layout(instances, data),
+			Self::GraphicGroup(instances) => instances.layout_with_breadcrumb(data),
+			Self::VectorData(instances) => instances.layout_with_breadcrumb(data),
 			Self::RasterFrame(_) => label("Raster frame not supported"),
 		}
 	}
 }
 
 impl InstanceLayout for VectorData {
+	fn type_name() -> &'static str {
+		"VectorData"
+	}
 	fn identifier(&self) -> String {
 		format!("Vector Data (points={}, segments={})", self.point_domain.ids().len(), self.segment_domain.ids().len())
 	}
-	fn layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		label("vector data")
+	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let mut rows = Vec::new();
+		match data.vector_data_domain {
+			VectorDataDomain::Points => {
+				rows.push(column_headings(&["id", "position"]));
+				rows.extend(
+					self.point_domain
+						.iter()
+						.map(|(id, position)| vec![TextLabel::new(format!("{}", id.inner())).widget_holder(), TextLabel::new(format!("{}", position)).widget_holder()]),
+				);
+			}
+			VectorDataDomain::Segments => {
+				rows.push(column_headings(&["id", "start_index", "end_index", "handles"]));
+				rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
+					vec![
+						TextLabel::new(format!("{}", id.inner())).widget_holder(),
+						TextLabel::new(format!("{}", start)).widget_holder(),
+						TextLabel::new(format!("{}", end)).widget_holder(),
+						TextLabel::new(format!("{:?}", handles)).widget_holder(),
+					]
+				}));
+			}
+			VectorDataDomain::Regions => {
+				rows.push(column_headings(&["id", "segment_range", "fill"]));
+				rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
+					vec![
+						TextLabel::new(format!("{}", id.inner())).widget_holder(),
+						TextLabel::new(format!("{:?}", segment_range)).widget_holder(),
+						TextLabel::new(format!("{}", fill.inner())).widget_holder(),
+					]
+				}));
+			}
+		}
+
+		let entries = [VectorDataDomain::Points, VectorDataDomain::Segments, VectorDataDomain::Regions]
+			.into_iter()
+			.map(|domain| {
+				RadioEntryData::new(format!("{domain:?}"))
+					.label(format!("{domain:?}"))
+					.on_update(move |_| SpreadsheetMessage::ViewVectorDataDomain { domain }.into())
+			})
+			.collect();
+
+		let domain = vec![RadioInput::new(entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
+		vec![LayoutGroup::Row { widgets: domain }, LayoutGroup::Table { rows }]
 	}
 }
 
 impl InstanceLayout for Artboard {
+	fn type_name() -> &'static str {
+		"Artboard"
+	}
 	fn identifier(&self) -> String {
 		self.label.clone()
 	}
-	fn layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		instances_layout(&self.graphic_group, data)
+	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.graphic_group.compute_layout(data)
+	}
+}
+
+impl<T: InstanceLayout> InstanceLayout for Instances<T> {
+	fn type_name() -> &'static str {
+		"Instances"
+	}
+	fn identifier(&self) -> String {
+		format!("Instances<{}> (length={})", T::type_name(), self.len())
+	}
+	fn compute_layout(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		if let Some(id) = data.desired_path.get(data.current_depth).copied() {
+			if let Some(instance) = self.instances().find(|instance| *instance.id == id) {
+				data.current_depth += 1;
+				let result = instance.instance.layout_with_breadcrumb(data);
+				data.current_depth -= 1;
+				return result;
+			} else {
+				warn!("Desired path truncated");
+				data.desired_path.truncate(data.current_depth);
+			}
+		}
+
+		let mut rows = self
+			.instances()
+			.map(|instance| {
+				let id = *instance.id;
+				vec![
+					TextLabel::new(format!("{}", instance.id.inner())).widget_holder(),
+					TextButton::new(instance.instance.identifier())
+						.on_update(move |_| SpreadsheetMessage::PushToInstancePath { id }.into())
+						.widget_holder(),
+					TextLabel::new(format!("{}", instance.transform)).widget_holder(),
+					TextLabel::new(format!("{:?}", instance.alpha_blending)).widget_holder(),
+					TextLabel::new(instance.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0))).widget_holder(),
+				]
+			})
+			.collect::<Vec<_>>();
+
+		rows.insert(0, column_headings(&["id", "instance", "transform", "alpha_blending", "source_node_id"]));
+
+		let instances = vec![TextLabel::new("Instances:").widget_holder()];
+		vec![LayoutGroup::Row { widgets: instances }, LayoutGroup::Table { rows }]
 	}
 }
