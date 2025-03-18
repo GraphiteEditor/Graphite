@@ -131,7 +131,7 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	let mut context = wgpu_executor::RenderContext::default();
 	data.render_to_vello(&mut child, Default::default(), &mut context);
 
-	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
+	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(n) cost
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
 	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);

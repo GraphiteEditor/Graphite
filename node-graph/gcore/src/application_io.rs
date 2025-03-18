@@ -91,7 +91,7 @@ impl PartialEq for ImageTexture {
 		}
 		#[cfg(not(feature = "wgpu"))]
 		{
-			true // Unit values are always equal
+			self.texture == other.texture
 		}
 	}
 }

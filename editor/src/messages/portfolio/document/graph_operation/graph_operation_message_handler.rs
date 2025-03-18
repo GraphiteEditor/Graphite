@@ -410,7 +410,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops(stops);
+			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient {
 				start,
@@ -437,7 +437,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops(stops);
+			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient {
 				start,

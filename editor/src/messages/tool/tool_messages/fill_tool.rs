@@ -91,8 +91,8 @@ impl Fsm for FillToolFsmState {
 					return self;
 				}
 				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
+					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
+					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
 					_ => return self,
 				};
 
@@ -167,7 +167,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0], Fill::Solid(Color::GREEN));
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
 	}
 
 	#[tokio::test]
@@ -180,6 +180,6 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0], Fill::Solid(color));
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), color.to_rgba8_srgb());
 	}
 }

@@ -481,12 +481,13 @@ impl EditorHandle {
 	/// Update primary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
 	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let primary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
-			Some(color) => color,
-			None => return Err(Error::new("Invalid color").into()),
+		let Some(primary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectPrimaryColor { color: primary_color };
+		let message = ToolMessage::SelectPrimaryColor {
+			color: primary_color.to_linear_srgb(),
+		};
 		self.dispatch(message);
 
 		Ok(())
@@ -495,12 +496,13 @@ impl EditorHandle {
 	/// Update secondary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updateSecondaryColor)]
 	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let secondary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
-			Some(color) => color,
-			None => return Err(Error::new("Invalid color").into()),
+		let Some(secondary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectSecondaryColor { color: secondary_color };
+		let message = ToolMessage::SelectSecondaryColor {
+			color: secondary_color.to_linear_srgb(),
+		};
 		self.dispatch(message);
 
 		Ok(())
@@ -777,7 +779,10 @@ impl EditorHandle {
 			to_front: false,
 		});
 
-		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+		let Some(document) = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut() else {
+			warn!("Document wasn't loaded");
+			return;
+		};
 		for node in document
 			.network_interface
 			.document_network_metadata()
