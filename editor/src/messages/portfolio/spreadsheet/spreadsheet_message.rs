@@ -6,9 +6,7 @@ use graphene_std::vector::InstanceId;
 #[impl_message(Message, PortfolioMessage, Spreadsheet)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SpreadsheetMessage {
-	SetOpen {
-		open: bool,
-	},
+	ToggleOpen,
 
 	UpdateLayout {
 		#[serde(skip)]

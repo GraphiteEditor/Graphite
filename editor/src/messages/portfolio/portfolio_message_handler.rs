@@ -61,38 +61,29 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 		match message {
 			// Sub-messages
 			PortfolioMessage::MenuBar(message) => {
-				let mut has_active_document = false;
-				let mut rulers_visible = false;
-				let mut node_graph_open = false;
-				let mut has_selected_nodes = false;
-				let mut has_selected_layers = false;
-				let mut has_selection_history = (false, false);
+				self.menu_bar_message_handler.has_active_document = false;
+				self.menu_bar_message_handler.rulers_visible = false;
+				self.menu_bar_message_handler.node_graph_open = false;
+				self.menu_bar_message_handler.has_selected_nodes = false;
+				self.menu_bar_message_handler.has_selected_layers = false;
+				self.menu_bar_message_handler.has_selection_history = (false, false);
+				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
+				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
-					has_active_document = true;
-					rulers_visible = document.rulers_visible;
-					node_graph_open = document.is_graph_overlay_open();
+					self.menu_bar_message_handler.has_active_document = true;
+					self.menu_bar_message_handler.rulers_visible = document.rulers_visible;
+					self.menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
 					let selected_nodes = document.network_interface.selected_nodes();
-					has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
-					has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
-					has_selection_history = {
+					self.menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
+					self.menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+					self.menu_bar_message_handler.has_selection_history = {
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
 				}
-				self.menu_bar_message_handler.process_message(
-					message,
-					responses,
-					MenuBarMessageData {
-						has_active_document,
-						rulers_visible,
-						node_graph_open,
-						has_selected_nodes,
-						has_selected_layers,
-						has_selection_history,
-						message_logging_verbosity,
-					},
-				);
+
+				self.menu_bar_message_handler.process_message(message, responses, ());
 			}
 			PortfolioMessage::Spreadsheet(message) => {
 				self.spreadsheet.process_message(message, responses, ());

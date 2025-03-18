@@ -42,15 +42,23 @@ impl Default for SpreadsheetMessageHandler {
 impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 	fn process_message(&mut self, message: SpreadsheetMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
-			SpreadsheetMessage::SetOpen { open } => {
-				self.spreadsheet_view_open = open;
+			SpreadsheetMessage::ToggleOpen => {
+				self.spreadsheet_view_open = !self.spreadsheet_view_open;
+				// Run the graph to grab the data
+				if self.spreadsheet_view_open {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				// Update checked UI state for open
+				responses.add(MenuBarMessage::SendLayout);
 				self.update_layout(responses);
 			}
+
 			SpreadsheetMessage::UpdateLayout { inspect_result } => {
 				self.inspect_node = Some(inspect_result.inspect_node);
 				self.introspected_data = inspect_result.introspected_data;
 				self.update_layout(responses)
 			}
+
 			SpreadsheetMessage::PushToInstancePath { id } => {
 				self.instances_path.push(id);
 				self.update_layout(responses);
@@ -59,6 +67,7 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 				self.instances_path.truncate(len);
 				self.update_layout(responses);
 			}
+
 			SpreadsheetMessage::ViewVectorDataDomain { domain } => {
 				self.viewing_vector_data_domain = domain;
 				self.update_layout(responses);
