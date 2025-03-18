@@ -503,7 +503,7 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops.0 {
+					for &(offset, color) in &gradient.stops {
 						stops.push(peniko::ColorStop {
 							offset: offset as f32,
 							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
@@ -664,7 +664,7 @@ impl GraphicElementRendered for Artboard {
 		if !render_params.hide_artboards {
 			// Background
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("fill", format!("#{}", self.background.rgb_hex()));
+				attributes.push("fill", format!("#{}", self.background.to_rgb_hex_srgb_from_gamma()));
 				if self.background.a() < 1. {
 					attributes.push("fill-opacity", ((self.background.a() * 1000.).round() / 1000.).to_string());
 				}
@@ -1059,13 +1059,13 @@ impl GraphicElementRendered for Option<Color> {
 			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
 			return;
 		};
-		let color_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
+		let color_info = format!("{:?} #{} {:?}", color, color.to_rgba_hex_srgb(), color.to_rgba8_srgb());
 
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("width", "100");
 			attributes.push("height", "100");
 			attributes.push("y", "40");
-			attributes.push("fill", format!("#{}", color.rgb_hex()));
+			attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
 			if color.a() < 1. {
 				attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 			}
@@ -1086,7 +1086,7 @@ impl GraphicElementRendered for Vec<Color> {
 				attributes.push("height", "100");
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
-				attributes.push("fill", format!("#{}", color.rgb_hex()));
+				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}

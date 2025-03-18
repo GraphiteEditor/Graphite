@@ -401,7 +401,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							}
 						}
 					} else {
-						// TODO: Fix handle snap to anchor issue, see <https://github.com/GraphiteEditor/Graphite/issues/2451>
 						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
 
 						if handle_length == Some(0.) {

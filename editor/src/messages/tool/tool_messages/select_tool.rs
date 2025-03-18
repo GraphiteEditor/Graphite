@@ -692,7 +692,7 @@ impl Fsm for SelectToolFsmState {
 							let color = if !hover {
 								color
 							} else {
-								let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+								let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
 								&format!("#{}", color_string)
 							};
 							let line_center = tool_data.line_center;
@@ -707,7 +707,10 @@ impl Fsm for SelectToolFsmState {
 					let angle = -mouse_position.angle_to(DVec2::X);
 					let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-					let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+					let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+						.unwrap()
+						.with_alpha(0.25)
+						.to_rgba_hex_srgb();
 					other.insert(0, '#');
 					let other = other.as_str();
 
@@ -758,7 +761,7 @@ impl Fsm for SelectToolFsmState {
 					let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
 						.with_alpha(0.05)
-						.rgba_hex();
+						.to_rgba_hex_srgb();
 					fill_color.insert(0, '#');
 					let fill_color = Some(fill_color.as_str());
 
