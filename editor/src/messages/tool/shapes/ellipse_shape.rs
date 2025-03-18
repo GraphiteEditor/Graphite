@@ -13,32 +13,29 @@ use std::collections::VecDeque;
 #[derive(Default)]
 pub struct Ellipse;
 
-impl Shape for Ellipse {
-	fn name() -> &'static str {
+impl Ellipse {
+	pub fn name() -> &'static str {
 		"Ellipse"
 	}
 
-	fn icon_name() -> &'static str {
+	pub fn icon_name() -> &'static str {
 		"VectorEllipseTool"
 	}
 
-	fn create_node(_: &DocumentMessageHandler, _: ShapeInitData) -> NodeTemplate {
+	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_document_node_type("Ellipse").expect("Ellipse node does not exist");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
 	}
 
-	fn update_shape(
+	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
-		shape_data: ShapeUpdateData,
+		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) -> bool {
-		let (center, lock_ratio) = match shape_data {
-			ShapeUpdateData::Ellipse { center, lock_ratio } => (center, lock_ratio),
-			_ => unreachable!(),
-		};
+		let (center, lock_ratio) = (modifier[0], modifier[1]);
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_ellipse_id(layer, &document.network_interface) else {
 				return true;
@@ -54,7 +51,7 @@ impl Shape for Ellipse {
 			});
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_translation((start + end) / 2.),
+				transform: DAffine2::from_translation(start.midpoint(end)),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});

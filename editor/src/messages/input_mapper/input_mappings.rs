@@ -179,7 +179,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyM); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Rectangle)),
 		entry!(KeyDown(KeyE); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Ellipse)),
 		entry!(KeyDown(KeyL); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Line)),
-		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove { center: Alt, lock_ratio: Shift, lock_angle: Control, snap_angle: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove ([Alt, Shift, Control, Shift])),
 		//
 		// ImaginateToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),

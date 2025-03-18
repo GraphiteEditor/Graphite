@@ -22,20 +22,17 @@ pub enum LineEnd {
 #[derive(Default)]
 pub struct Line;
 
-impl Shape for Line {
-	fn name() -> &'static str {
+impl Line {
+	pub fn name() -> &'static str {
 		"Line"
 	}
 
-	fn icon_name() -> &'static str {
+	pub fn icon_name() -> &'static str {
 		"VectorLineTool"
 	}
 
-	fn create_node(document: &DocumentMessageHandler, shape_data: ShapeInitData) -> NodeTemplate {
-		let drag_start = match shape_data {
-			ShapeInitData::Line { drag_start } => drag_start,
-			_ => unreachable!(),
-		};
+	pub fn create_node(document: &DocumentMessageHandler, init_data: LineInitData) -> NodeTemplate {
+		let drag_start = init_data.drag_start;
 		let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 		node_type.node_template_input_override([
 			None,
@@ -44,18 +41,15 @@ impl Shape for Line {
 		])
 	}
 
-	fn update_shape(
+	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
-		shape_data: ShapeUpdateData,
+		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) -> bool {
-		let (center, snap_angle, lock_angle) = match shape_data {
-			ShapeUpdateData::Line { center, snap_angle, lock_angle } => (center, snap_angle, lock_angle),
-			_ => unreachable!(),
-		};
+		let (center, snap_angle, lock_angle) = (modifier[0], modifier[3], modifier[2]);
 		shape_tool_data.drag_current = ipp.mouse.position;
 		let keyboard = &ipp.keyboard;
 		let ignore = vec![layer];

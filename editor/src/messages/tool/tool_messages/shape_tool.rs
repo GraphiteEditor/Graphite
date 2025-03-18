@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
-use crate::messages::tool::shapes::{Ellipse, Line, LineEnd, Rectangle, Shape, ShapeInitData, ShapeType, ShapeUpdateData};
+use crate::messages::tool::shapes::{Ellipse, Line, LineEnd, LineInitData, Rectangle, ShapeType, ShapeToolModifierKey};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 
@@ -56,8 +56,8 @@ pub enum ShapeToolMessage {
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	PointerMove { center: Key, lock_ratio: Key, lock_angle: Key, snap_angle: Key },
-	PointerOutsideViewport { center: Key, lock_ratio: Key, lock_angle: Key, snap_angle: Key },
+	PointerMove(ShapeToolModifierKey),
+	PointerOutsideViewport(ShapeToolModifierKey),
 	UpdateOptions(ShapeOptionsUpdate),
 	SetShape(ShapeType),
 }
@@ -226,9 +226,9 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				let node = match tool_data.current_shape {
-					ShapeType::Rectangle => Rectangle::create_node(&document, ShapeInitData::Rectangle),
-					ShapeType::Ellipse => Ellipse::create_node(&document, ShapeInitData::Ellipse),
-					ShapeType::Line => Line::create_node(&document, ShapeInitData::Line { drag_start: shape_data.drag_start }),
+					ShapeType::Rectangle => Rectangle::create_node(),
+					ShapeType::Ellipse => Ellipse::create_node(),
+					ShapeType::Line => Line::create_node(&document, LineInitData { drag_start: shape_data.drag_start }),
 				};
 				let nodes = vec![(NodeId(0), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
@@ -257,41 +257,18 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::Drawing
 			}
-			(
-				ShapeToolFsmState::Drawing,
-				ShapeToolMessage::PointerMove {
-					center,
-					lock_ratio,
-					snap_angle,
-					lock_angle,
-				},
-			) => {
+			(ShapeToolFsmState::Drawing, ShapeToolMessage::PointerMove(modifier)) => {
 				let Some(layer) = shape_data.layer else { return ShapeToolFsmState::Ready };
 				if match tool_data.current_shape {
-					ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, tool_data, ShapeUpdateData::Rectangle { center, lock_ratio }, responses),
-					ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, tool_data, ShapeUpdateData::Ellipse { center, lock_ratio }, responses),
-					ShapeType::Line => Line::update_shape(&document, &input, layer, tool_data, ShapeUpdateData::Line { center, snap_angle, lock_angle }, responses),
+					ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, tool_data, modifier, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(&document, &input, layer, tool_data, modifier, responses),
 				} {
 					return if tool_data.current_shape == ShapeType::Line { ShapeToolFsmState::Ready } else { self };
 				}
 
 				// Auto-panning
-				let messages = [
-					ShapeToolMessage::PointerOutsideViewport {
-						center,
-						lock_ratio,
-						snap_angle,
-						lock_angle,
-					}
-					.into(),
-					ShapeToolMessage::PointerMove {
-						center,
-						lock_ratio,
-						snap_angle,
-						lock_angle,
-					}
-					.into(),
-				];
+				let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				self
@@ -307,32 +284,9 @@ impl Fsm for ShapeToolFsmState {
 
 				ShapeToolFsmState::Drawing
 			}
-			(
-				state,
-				ShapeToolMessage::PointerOutsideViewport {
-					center,
-					lock_ratio,
-					snap_angle,
-					lock_angle,
-				},
-			) => {
+			(state, ShapeToolMessage::PointerOutsideViewport(modifier)) => {
 				// Auto-panning
-				let messages = [
-					ShapeToolMessage::PointerOutsideViewport {
-						center,
-						lock_ratio,
-						snap_angle,
-						lock_angle,
-					}
-					.into(),
-					ShapeToolMessage::PointerMove {
-						center,
-						lock_ratio,
-						lock_angle,
-						snap_angle,
-					}
-					.into(),
-				];
+				let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
 				tool_data.auto_panning.stop(&messages, responses);
 
 				state
