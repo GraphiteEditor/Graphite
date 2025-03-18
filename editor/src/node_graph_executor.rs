@@ -668,10 +668,10 @@ impl NodeGraphExecutor {
 			..
 		} = export_config;
 
-		let file_suffix = &format!(".{file_type:?}").to_lowercase();
+		let file_suffix = format!(".{file_type:?}").to_lowercase();
 		let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
-			true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
-			false => file_name + file_suffix,
+			true => file_name.replace(FILE_SAVE_SUFFIX, &file_suffix),
+			false => file_name + file_suffix.as_str(),
 		};
 
 		if file_type == FileType::Svg {

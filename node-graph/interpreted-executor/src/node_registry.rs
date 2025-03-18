@@ -1,7 +1,7 @@
 use dyn_any::StaticType;
 use glam::{DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
-use graph_craft::proto::{NodeConstructor, TypeErasedBox};
+use graph_craft::proto::{DowncastNoneNode, NodeConstructor, TypeErasedBox};
 use graphene_core::fn_type;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::image::ImageFrameTable;
@@ -66,6 +66,15 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// 	|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
 		// 	NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		// ),
+		(
+			ProtoNodeIdentifier::new("graphene_std::rhai::RhaiNode"),
+			|mut vec| Box::pin(async move { Box::new(graphene_std::rhai::RhaiNode::new(DowncastNoneNode::new(vec.remove(0)), DowncastNoneNode::new(vec.remove(0)))) as TypeErasedBox }),
+			NodeIOTypes::new(
+				generic!(C),
+				Type::Future(Box::new(Type::Dynamic)),
+				vec![Type::Fn(Box::new(concrete!(Context)), Box::new(Type::Future(Box::new(generic!(I))))), fn_type_fut!(Context, String)],
+			),
+		),
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<SRGBA8>>, input: ImageFrameTable<Color>, params: []),
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
 		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),

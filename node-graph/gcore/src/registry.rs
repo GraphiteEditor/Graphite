@@ -198,6 +198,31 @@ impl<I, O> DowncastBothNode<I, O> {
 		}
 	}
 }
+/// Boxes the input and downcasts the output.
+/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
+#[derive(Clone)]
+pub struct DowncastNoneNode {
+	node: SharedNodeContainer,
+}
+impl<'input> Node<'input, Any<'input>> for DowncastNoneNode {
+	type Output = FutureAny<'input>;
+	#[inline]
+	fn eval(&'input self, input: Any<'input>) -> Self::Output {
+		self.node.eval(input)
+	}
+	fn reset(&self) {
+		self.node.reset();
+	}
+
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
+		self.node.serialize()
+	}
+}
+impl DowncastNoneNode {
+	pub const fn new(node: SharedNodeContainer) -> Self {
+		Self { node }
+	}
+}
 pub struct FutureWrapperNode<Node> {
 	node: Node,
 }

@@ -266,6 +266,7 @@ pub(crate) fn property_from_type(
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
+		Type::Dynamic => vec![TextLabel::new("Dynamic type (not supported)").widget_holder()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, context),
 	};
@@ -2554,4 +2555,17 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		LayoutGroup::Row { widgets: operand_b }.with_tooltip(r#"The value of "B" when calculating the expression"#),
 		LayoutGroup::Row { widgets: operand_a_hint }.with_tooltip(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected"#),
 	]
+}
+
+pub(crate) fn script_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in script_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let source = text_area_widget(document_node, node_id, 1, "Code", false);
+
+	vec![LayoutGroup::Row { widgets: source }]
 }
