@@ -22,6 +22,10 @@ pub trait ExtractTime {
 	fn try_time(&self) -> Option<f64>;
 }
 
+pub trait ExtractAnimationTime {
+	fn try_animation_time(&self) -> Option<f64>;
+}
+
 pub trait ExtractIndex {
 	fn try_index(&self) -> Option<usize>;
 }
@@ -38,9 +42,9 @@ pub trait CloneVarArgs: ExtractVarArgs {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
 
-pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs {}
+pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs {}
 
-impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs> ExtractAll for T {}
+impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
@@ -81,6 +85,11 @@ impl<T: ExtractTime + Sync> ExtractTime for Option<T> {
 		self.as_ref().and_then(|x| x.try_time())
 	}
 }
+impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.as_ref().and_then(|x| x.try_animation_time())
+	}
+}
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
 	fn try_index(&self) -> Option<usize> {
 		self.as_ref().and_then(|x| x.try_index())
@@ -105,6 +114,11 @@ impl<T: ExtractFootprint + Sync> ExtractFootprint for Arc<T> {
 impl<T: ExtractTime + Sync> ExtractTime for Arc<T> {
 	fn try_time(&self) -> Option<f64> {
 		(**self).try_time()
+	}
+}
+impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
+	fn try_animation_time(&self) -> Option<f64> {
+		(**self).try_animation_time()
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
@@ -182,6 +196,11 @@ impl ExtractTime for OwnedContextImpl {
 		self.time
 	}
 }
+impl ExtractAnimationTime for OwnedContextImpl {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.animation_time
+	}
+}
 impl ExtractIndex for OwnedContextImpl {
 	fn try_index(&self) -> Option<usize> {
 		self.index
@@ -227,6 +246,7 @@ pub struct OwnedContextImpl {
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,
 	time: Option<f64>,
+	animation_time: Option<f64>,
 }
 
 impl Default for OwnedContextImpl {
@@ -252,6 +272,7 @@ impl OwnedContextImpl {
 		let footprint = value.try_footprint().copied();
 		let index = value.try_index();
 		let time = value.try_time();
+		let frame_time = value.try_animation_time();
 		let parent = value.arc_clone();
 		OwnedContextImpl {
 			footprint,
@@ -259,6 +280,7 @@ impl OwnedContextImpl {
 			parent,
 			index,
 			time,
+			animation_time: frame_time,
 		}
 	}
 	pub const fn empty() -> Self {
@@ -268,6 +290,7 @@ impl OwnedContextImpl {
 			parent: None,
 			index: None,
 			time: None,
+			animation_time: None,
 		}
 	}
 }
@@ -278,6 +301,14 @@ impl OwnedContextImpl {
 	}
 	pub fn with_footprint(mut self, footprint: Footprint) -> Self {
 		self.footprint = Some(footprint);
+		self
+	}
+	pub fn with_time(mut self, time: f64) -> Self {
+		self.time = Some(time);
+		self
+	}
+	pub fn with_animation_time(mut self, animation_time: f64) -> Self {
+		self.animation_time = Some(animation_time);
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
