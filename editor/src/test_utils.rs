@@ -46,7 +46,7 @@ impl EditorTestUtils {
 
 			let viewport_resolution = glam::UVec2::ONE;
 			exector
-				.submit_current_node_graph_evaluation(document, viewport_resolution)
+				.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default())
 				.expect("submit_current_node_graph_evaluation failed");
 			runtime.run().await;
 

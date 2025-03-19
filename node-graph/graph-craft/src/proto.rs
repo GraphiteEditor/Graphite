@@ -559,12 +559,10 @@ impl core::fmt::Debug for GraphErrorType {
 				let inputs = inputs.replace("Option<Arc<OwnedContextImpl>>", "Context");
 				write!(
 					f,
-					"This node isn't compatible with the com-\n\
-					bination of types for the data it is given:\n\
+					"This node isn't compatible with the combination of types for the data it is given:\n\
 					{inputs}\n\
 					\n\
-					Each invalid input should be replaced by\n\
-					data with one of these supported types:\n\
+					Each invalid input should be replaced by data with one of these supported types:\n\
 					{}",
 					errors.join("\n")
 				)
