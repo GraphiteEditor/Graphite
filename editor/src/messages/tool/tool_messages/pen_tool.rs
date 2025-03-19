@@ -314,6 +314,7 @@ struct PenToolData {
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
 	alt_press: bool,
+	space_press: bool,
 
 	handle_mode: HandleMode,
 	/// The point that is being dragged
@@ -411,7 +412,7 @@ impl PenToolData {
 	}
 
 	/// Remove the handles selected when swapping handles
-	fn cleanup_target_selections(&self, shape_editor: &mut ShapeState, layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) {
+	fn cleanup_target_selections(&self, shape_editor: &mut ShapeState, layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(shape_state) = layer.and_then(|layer| shape_editor.selected_shape_state.get_mut(&layer)) else {
 			return;
 		};
@@ -425,6 +426,7 @@ impl PenToolData {
 			TargetHandle::PrimaryHandle(segment) => shape_state.deselect_point(ManipulatorPointId::PrimaryHandle(segment)),
 			_ => {}
 		}
+		responses.add(OverlaysMessage::Draw);
 	}
 
 	/// Selects the handle which is currently dragged by the user  
@@ -588,18 +590,13 @@ impl PenToolData {
 		let snap = &mut self.snap_manager;
 		let snap_data = SnapData::new_snap_cache(snap_data.document, input, &self.snap_cache);
 
-		let document_pos = viewport_to_document.transform_point2(*mouse);
+		let handle_start_offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
+		let document_pos = viewport_to_document.transform_point2(*mouse + handle_start_offset);
 
-		let offset = transform.transform_point2(self.next_point) - transform.transform_point2(self.next_handle_start);
+		let anchor_offset = transform.transform_point2(self.next_point - self.next_handle_start);
 
-		let start_offset = self
-			.handle_start_offset
-			.map(|offset| viewport_to_document.transform_point2(offset))
-			.filter(|vec| !vec.abs().cmple(DVec2::splat(10.0)).all())
-			.unwrap_or(DVec2::ZERO);
-
-		let handle_start = SnapCandidatePoint::handle(document_pos + start_offset);
-		let anchor = SnapCandidatePoint::handle(document_pos + offset + start_offset);
+		let handle_start = SnapCandidatePoint::handle(document_pos);
+		let anchor = SnapCandidatePoint::handle(document_pos + anchor_offset);
 
 		let snapped_near_handle_start = snap.free_snap(&snap_data, &handle_start, SnapTypeConfiguration::default());
 		let snapped_anchor = snap.free_snap(&snap_data, &anchor, SnapTypeConfiguration::default());
@@ -609,7 +606,7 @@ impl PenToolData {
 			TargetHandle::HandleStart => None,
 			_ => {
 				let handle_offset = transform.transform_point2(handle - self.next_handle_start);
-				let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset + start_offset);
+				let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
 				Some((handle, handle_snap))
 			}
 		});
@@ -670,8 +667,15 @@ impl PenToolData {
 			modification_type: modification_type_anchor,
 		});
 
-		let Some(handle_pos) = self.target_handle_position(self.handle_type, vector_data) else { return };
-		self.update_target_handle_pos(self.handle_type, responses, handle_pos + delta, layer);
+		// Move the end handle
+		let end_handle_type = self.check_end_handle_type(vector_data);
+		match end_handle_type {
+			TargetHandle::EndHandle(..) | TargetHandle::PrimaryHandle(..) => {
+				let Some(handle_pos) = self.target_handle_position(end_handle_type, vector_data) else { return };
+				self.update_target_handle_pos(end_handle_type, responses, handle_pos + delta, layer);
+			}
+			_ => {}
+		}
 	}
 
 	fn drag_handle(
@@ -689,6 +693,7 @@ impl PenToolData {
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let viewport_to_document = document.metadata().document_to_viewport.inverse();
 
+		// Handles pressing `space` to drag anchor and its handles
 		if self.modifiers.move_anchor_with_handles {
 			let Some(delta) = self.space_anchor_handle_snap(&viewport_to_document, &transform, &snap_data, &mouse, &vector_data, input) else {
 				return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
@@ -709,15 +714,15 @@ impl PenToolData {
 			responses.add(OverlaysMessage::Draw);
 			return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
 		}
-		if self.handle_type == TargetHandle::HandleStart {
-			let mouse_offset = mouse + self.handle_end_offset.unwrap_or(DVec2::ZERO);
 
+		if self.handle_type != TargetHandle::HandleStart {
+			let offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
+			self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse + offset, Some(self.next_point), false);
+		} else {
+			let mouse_offset = mouse + self.handle_end_offset.unwrap_or(DVec2::ZERO);
 			let mouse_pos = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_offset, Some(self.next_point), false);
 			let opposite_target = self.get_opposite_handle_type(&vector_data);
 			self.update_target_handle_pos(opposite_target, responses, mouse_pos, layer);
-		} else {
-			let offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
-			self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse + offset, Some(self.next_point), false);
 		}
 
 		match self.handle_mode {
@@ -1450,7 +1455,7 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.end_point = None;
 
-				tool_data.cleanup_target_selections(shape_editor, layer, document);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 				tool_data
 					.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
 					.unwrap_or(PenToolFsmState::PlacingAnchor)
@@ -1479,6 +1484,16 @@ impl Fsm for PenToolFsmState {
 						HandleMode::ColinearEquidistant | HandleMode::ColinearLocked => HandleMode::Free,
 					};
 					tool_data.toggle_colinear_debounce = true;
+				}
+
+				if tool_data.modifiers.move_anchor_with_handles && !tool_data.space_press {
+					let handle_start = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start));
+					tool_data.handle_start_offset = handle_start.map(|start| start - input.mouse.position);
+					tool_data.space_press = true;
+				}
+
+				if !tool_data.modifiers.move_anchor_with_handles {
+					tool_data.space_press = false;
 				}
 
 				if !tool_data.modifiers.colinear {
@@ -1568,7 +1583,7 @@ impl Fsm for PenToolFsmState {
 						tool_data.handle_start_offset = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start) - input.mouse.position);
 
 						tool_data.update_handle_custom(&vector_data);
-						tool_data.cleanup_target_selections(shape_editor, layer, document);
+						tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 					}
 					_ => {
 						tool_data.add_target_selections(shape_editor, layer);
@@ -1579,7 +1594,7 @@ impl Fsm for PenToolFsmState {
 							.target_handle_position(tool_data.handle_type, &vector_data)
 							.zip(viewport)
 							.map(|(opposite, transform)| transform.transform_point2(opposite) - input.mouse.position);
-
+						tool_data.handle_start_offset = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start) - input.mouse.position);
 						tool_data.handle_end_offset = offset;
 						tool_data.update_handle_type(TargetHandle::HandleStart);
 					}
@@ -1660,7 +1675,7 @@ impl Fsm for PenToolFsmState {
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
 				tool_data.snap_manager.cleanup(responses);
-				tool_data.cleanup_target_selections(shape_editor, layer, document);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				PenToolFsmState::Ready
 			}
@@ -1670,7 +1685,7 @@ impl Fsm for PenToolFsmState {
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
 				tool_data.snap_manager.cleanup(responses);
-				tool_data.cleanup_target_selections(shape_editor, layer, document);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				responses.add(OverlaysMessage::Draw);
 
