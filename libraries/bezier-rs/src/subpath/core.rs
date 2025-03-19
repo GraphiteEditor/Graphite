@@ -293,8 +293,8 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		Self::new(manipulator_groups, true)
 	}
 
-	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians.
-	pub fn new_arc(radius: f64, angle_start: f64, angle_size: f64) -> Self {
+	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians. Slice option makes it look like pie or pacman.
+	pub fn new_arc(radius: f64, angle_start: f64, angle_size: f64, closed: bool, slice: bool) -> Self {
 		let center = DVec2::new(0., 0.);
 		let segments = (angle_size.abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
 		let step = angle_size / segments as f64;
@@ -323,7 +323,11 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		}
 		manipulator_groups.push(ManipulatorGroup::new(prev_end, prev_in_handle, None));
 
-		Self::new(manipulator_groups, false)
+		if slice {
+			manipulator_groups.push(ManipulatorGroup::new(center, None, None));
+		}
+
+		Self::new(manipulator_groups, closed || slice)
 	}
 
 	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
