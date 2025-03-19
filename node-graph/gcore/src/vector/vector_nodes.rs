@@ -79,7 +79,7 @@ where
 			},
 		};
 
-		let color = gradient.evalute(factor);
+		let color = gradient.evaluate(factor);
 
 		if fill {
 			vector_data.instance.style.set_fill(Fill::Solid(color));

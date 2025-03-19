@@ -206,7 +206,22 @@ impl SelectedEdges {
 				}
 				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
 
-				let mut scale_factor = (snapped_bounds - pivot) / (updated - pivot);
+				let new_from_pivot = snapped_bounds - pivot; // The new vector from the snapped point to the pivot
+				let original_from_pivot = updated - pivot; // The original vector from the point to the pivot
+				let mut scale_factor = new_from_pivot / original_from_pivot;
+
+				// Constrain should always scale by the same factor in x and y
+				if constrain {
+					// When the point is on the pivot, we simply copy the other axis.
+					if original_from_pivot.x.abs() < 1e-5 {
+						scale_factor.x = scale_factor.y;
+					} else if original_from_pivot.y.abs() < 1e-5 {
+						scale_factor.y = scale_factor.x;
+					}
+
+					debug_assert!((scale_factor.x - scale_factor.y).abs() < 1e-5);
+				}
+
 				if !(self.left || self.right || constrain) {
 					scale_factor.x = 1.
 				}
@@ -359,7 +374,7 @@ pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	/// The transform to viewport space for the bounds co-ordinates when the bounds were last updated.
 	pub transform: DAffine2,
-	/// Was the transform previously singular?
+	/// Whether the transform is actually singular but adjusted to not be so.
 	pub transform_tampered: bool,
 	/// The transform to viewport space for the bounds co-ordinates when the transformation was started.
 	pub original_bound_transform: DAffine2,
@@ -551,16 +566,24 @@ impl BoundingBoxManager {
 		}
 	}
 
+	pub fn render_quad(&self, overlay_context: &mut OverlayContext) {
+		let quad = self.transform * Quad::from_box(self.bounds);
+
+		// Draw the bounding box rectangle
+		overlay_context.quad(quad, None);
+	}
+
 	/// Update the position of the bounding box and transform handles
-	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
+	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext, render_quad: bool) {
 		let quad = self.transform * Quad::from_box(self.bounds);
 		let category = self.overlay_display_category();
 
 		let horizontal_edges = [quad.top_right().midpoint(quad.bottom_right()), quad.bottom_left().midpoint(quad.top_left())];
 		let vertical_edges = [quad.top_left().midpoint(quad.top_right()), quad.bottom_right().midpoint(quad.bottom_left())];
 
-		// Draw the bounding box rectangle
-		overlay_context.quad(quad, None);
+		if render_quad {
+			self.render_quad(overlay_context);
+		}
 
 		let mut draw_handle = |point: DVec2, angle: f64| {
 			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);

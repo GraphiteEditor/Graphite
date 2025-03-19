@@ -8,6 +8,7 @@ use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use core::ptr::addr_of;
+use core::time::Duration;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
 
@@ -91,7 +92,7 @@ impl PartialEq for ImageTexture {
 		}
 		#[cfg(not(feature = "wgpu"))]
 		{
-			true // Unit values are always equal
+			self.texture == other.texture
 		}
 	}
 }
@@ -250,10 +251,17 @@ pub enum ExportFormat {
 	Canvas,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct TimingInformation {
+	pub time: f64,
+	pub animation_time: Duration,
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
+	pub time: TimingInformation,
 	pub view_mode: ViewMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,

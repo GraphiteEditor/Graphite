@@ -116,7 +116,7 @@ impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![WorkingColorsInput::new(self.primary_color, self.secondary_color).widget_holder()],
+				widgets: vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_holder()],
 			},
 			LayoutGroup::Row {
 				widgets: vec![

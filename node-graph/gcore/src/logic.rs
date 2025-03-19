@@ -1,22 +1,44 @@
-use crate::Context;
-use crate::Ctx;
 use crate::vector::VectorDataTable;
+use crate::{Color, Context, Ctx};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> T {
+fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
 	#[cfg(not(target_arch = "spirv"))]
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 	debug!("{:#?}", value);
 	value
 }
 
-#[node_macro::node(category("Debug"), skip_impl)]
+#[node_macro::node(category("Text"))]
 fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
 	format!("{:?}", value)
 }
 
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category("Text"))]
+fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, #[implementations(String)] second: String) -> String {
+	first.clone() + &second
+}
+
+#[node_macro::node(category("Text"))]
+fn string_replace(_: impl Ctx, #[implementations(String)] string: String, from: String, to: String) -> String {
+	string.replace(&from, &to)
+}
+
+#[node_macro::node(category("Text"))]
+fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f64, end: f64) -> String {
+	let start = if start < 0. { string.len() - start.abs() as usize } else { start as usize };
+	let end = if end <= 0. { string.len() - end.abs() as usize } else { end as usize };
+	let n = end.saturating_sub(start);
+	string.char_indices().skip(start).take(n).map(|(_, c)| c).collect()
+}
+
+#[node_macro::node(category("Text"))]
+fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usize {
+	string.len()
+}
+
+#[node_macro::node(category("Text"))]
 async fn switch<T, C: Send + 'n + Clone>(
 	#[implementations(Context)] ctx: C,
 	condition: bool,

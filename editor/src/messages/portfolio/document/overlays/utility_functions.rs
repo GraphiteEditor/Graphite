@@ -59,17 +59,17 @@ fn overlay_bezier_handles(bezier: Bezier, segment_id: SegmentId, transform: DAff
 
 	match bezier.handles {
 		BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
-			overlay_context.line(handle, bezier.start, None);
-			overlay_context.line(handle, bezier.end, None);
+			overlay_context.line(handle, bezier.start, None, None);
+			overlay_context.line(handle, bezier.end, None, None);
 			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
 			if not_under_anchor(handle_start, bezier.start) {
-				overlay_context.line(handle_start, bezier.start, None);
+				overlay_context.line(handle_start, bezier.start, None, None);
 				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
 			if not_under_anchor(handle_end, bezier.end) {
-				overlay_context.line(handle_end, bezier.end, None);
+				overlay_context.line(handle_end, bezier.end, None, None);
 				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
 			}
 		}
@@ -93,17 +93,17 @@ pub fn overlay_bezier_handle_specific_point(
 		BezierHandles::Quadratic { handle } => {
 			if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) {
 				let end = if start == point_to_render { bezier.start } else { bezier.end };
-				overlay_context.line(handle, end, None);
+				overlay_context.line(handle, end, None, None);
 				overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
 			if not_under_anchor(handle_start, bezier.start) && (point_to_render == start) {
-				overlay_context.line(handle_start, bezier.start, None);
+				overlay_context.line(handle_start, bezier.start, None, None);
 				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
 			if not_under_anchor(handle_end, bezier.end) && (point_to_render == end) {
-				overlay_context.line(handle_end, bezier.end, None);
+				overlay_context.line(handle_end, bezier.end, None, None);
 				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
 			}
 		}

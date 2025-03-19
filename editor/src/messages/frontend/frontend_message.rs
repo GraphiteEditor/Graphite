@@ -150,6 +150,15 @@ pub enum FrontendMessage {
 	UpdateGraphViewOverlay {
 		open: bool,
 	},
+	UpdateSpreadsheetState {
+		open: bool,
+		node: Option<NodeId>,
+	},
+	UpdateSpreadsheetLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
 	UpdateImportReorderIndex {
 		#[serde(rename = "importIndex")]
 		index: Option<usize>,
