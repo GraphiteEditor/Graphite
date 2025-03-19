@@ -82,6 +82,7 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
+						// Decodes the colors in gamma, not linear
 						let decode_color = |color: &serde_json::map::Map<String, serde_json::value::Value>| -> Option<Color> {
 							let red = color.get("red").and_then(|x| x.as_f64()).map(|x| x as f32);
 							let green = color.get("green").and_then(|x| x.as_f64()).map(|x| x as f32);
@@ -120,20 +121,13 @@ impl LayoutMessageHandler {
 									.filter_map(|stop| {
 										stop.as_object().and_then(|stop| {
 											let position = stop.get("position").and_then(|x| x.as_f64());
-											let color = stop.get("color").and_then(|x| x.as_object());
-
-											if let (Some(position), Some(color_object)) = (position, color) {
-												if let Some(color) = decode_color(color_object) {
-													return Some((position, color));
-												}
-											}
-
-											None
+											let color = stop.get("color").and_then(|x| x.as_object()).and_then(decode_color);
+											if let (Some(position), Some(color)) = (position, color) { Some((position, color)) } else { None }
 										})
 									})
 									.collect::<Vec<_>>();
 
-								color_button.value = FillChoice::Gradient(GradientStops(gradient_stops));
+								color_button.value = FillChoice::Gradient(GradientStops::new(gradient_stops));
 								return (color_button.on_update.callback)(color_button);
 							}
 

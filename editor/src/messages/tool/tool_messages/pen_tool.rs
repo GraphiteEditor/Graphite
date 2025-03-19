@@ -176,16 +176,12 @@ impl LayoutHolder for PenTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
 
-		widgets.push(self.tool_mode_widget());
-
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
 			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -195,12 +191,16 @@ impl LayoutHolder for PenTool {
 			true,
 			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.push(create_weight_widget(self.options.line_weight));
+
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+		widgets.push(self.tool_mode_widget());
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
