@@ -688,6 +688,224 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn sharpen(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[default(10.0)]
+	#[min(0.0)]
+	max_handle_distance: f64,
+) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let mut vector_data = vector_data.one_instance().instance.clone();
+
+	for (_, handles, start, end) in vector_data.segment_domain.handles_mut() {
+		// Only convert to linear if handles are within the threshold distance
+		match *handles {
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+				let start_pos = vector_data.point_domain.positions()[start];
+				let end_pos = vector_data.point_domain.positions()[end];
+
+				let start_handle_distance = (handle_start - start_pos).length();
+				let end_handle_distance = (handle_end - end_pos).length();
+
+				// If handles are close enough to their anchor points, make the segment linear
+				if start_handle_distance <= max_handle_distance && end_handle_distance <= max_handle_distance {
+					*handles = bezier_rs::BezierHandles::Linear;
+				}
+			}
+			bezier_rs::BezierHandles::Quadratic { handle } => {
+				let start_pos = vector_data.point_domain.positions()[start];
+				let end_pos = vector_data.point_domain.positions()[end];
+
+				// Use average distance from handle to both points
+				let avg_distance = ((handle - start_pos).length() + (handle - end_pos).length()) / 2.0;
+
+				if avg_distance <= max_handle_distance {
+					*handles = bezier_rs::BezierHandles::Linear;
+				}
+			}
+			_ => {}
+		}
+	}
+
+	let mut result = VectorDataTable::new(vector_data);
+	*result.transform_mut() = vector_data_transform;
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn soften(
+	_: impl Ctx,
+	source: VectorDataTable,
+	#[default(0.4)]
+	#[range((0.0, 1.0))]
+	curvature: f64,
+) -> VectorDataTable {
+	let source_transform = source.transform();
+	let source = source.one_instance().instance;
+
+	let mut result = VectorData::empty();
+	result.style = source.style.clone();
+
+	for mut subpath in source.stroke_bezier_paths() {
+		subpath.apply_transform(source_transform);
+
+		let groups = subpath.manipulator_groups();
+		if groups.len() < 2 {
+			// Not enough points for softening
+			result.append_subpath(subpath, true);
+			continue;
+		}
+
+		let mut new_groups = Vec::with_capacity(groups.len());
+		let is_closed = subpath.closed();
+
+		for i in 0..groups.len() {
+			let curr = &groups[i];
+
+			// Check if this point has handles
+			let has_handles =
+				(curr.in_handle.is_some() && !curr.in_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5)) || (curr.out_handle.is_some() && !curr.out_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5));
+
+			if has_handles || (!is_closed && (i == 0 || i == groups.len() - 1)) {
+				new_groups.push(curr.clone());
+				continue;
+			}
+
+			// Get previous and next points
+			let prev_idx = if i == 0 { if is_closed { groups.len() - 1 } else { i } } else { i - 1 };
+			let next_idx = if i == groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
+
+			let prev = groups[prev_idx].anchor;
+			let curr_pos = curr.anchor;
+			let next = groups[next_idx].anchor;
+
+			// Calculate directions to adjacent points
+			let dir_prev = (prev - curr_pos).normalize_or_zero();
+			let dir_next = (next - curr_pos).normalize_or_zero();
+
+			// Check if we have valid directions
+			if dir_prev.length_squared() < 1e-5 || dir_next.length_squared() < 1e-5 {
+				new_groups.push(curr.clone());
+				continue;
+			}
+
+			// Calculate handle direction (perpendicular to the angle bisector)
+			let handle_dir = (dir_prev - dir_next).try_normalize().unwrap_or(dir_prev.perp());
+			let handle_dir = if dir_prev.dot(handle_dir) < 0.0 { -handle_dir } else { handle_dir };
+
+			// Calculate handle lengths - 1/3 of distance to adjacent points, scaled by curvature
+			let in_length = (curr_pos - prev).length() / 3.0 * curvature;
+			let out_length = (next - curr_pos).length() / 3.0 * curvature;
+
+			// Create new manipulator group with handles
+			new_groups.push(ManipulatorGroup {
+				anchor: curr_pos,
+				in_handle: Some(curr_pos + handle_dir * in_length),
+				out_handle: Some(curr_pos - handle_dir * out_length),
+				id: curr.id,
+			});
+		}
+
+		let mut softened_subpath = Subpath::new(new_groups, is_closed);
+		softened_subpath.apply_transform(source_transform.inverse());
+		result.append_subpath(softened_subpath, true);
+	}
+
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = source_transform;
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn subdivide(
+	_: impl Ctx,
+	source: VectorDataTable,
+	#[default(1.)]
+	#[range((1., 7.))]
+	subdivisions: f64,
+) -> VectorDataTable {
+	let source_transform = source.transform();
+	let source = source.one_instance().instance;
+	let subdivisions = subdivisions as usize;
+
+	let mut result = VectorData::empty();
+	result.style = source.style.clone();
+
+	for mut subpath in source.stroke_bezier_paths() {
+		subpath.apply_transform(source_transform);
+
+		if subpath.manipulator_groups().len() < 2 {
+			// Not enough points to subdivide
+			result.append_subpath(subpath, true);
+			continue;
+		}
+
+		// Apply subdivisions recursively
+		let mut current_subpath = subpath;
+		for _ in 0..subdivisions {
+			current_subpath = subdivide_once(&current_subpath);
+		}
+
+		current_subpath.apply_transform(source_transform.inverse());
+		result.append_subpath(current_subpath, true);
+	}
+
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = source_transform;
+	result_table
+}
+
+fn subdivide_once(subpath: &Subpath<PointId>) -> Subpath<PointId> {
+	let original_groups = subpath.manipulator_groups();
+	let mut new_groups = Vec::new();
+	let is_closed = subpath.closed();
+	let mut last_in_handle = None;
+
+	for i in 0..original_groups.len() {
+		let start_idx = i;
+		let end_idx = (i + 1) % original_groups.len();
+
+		// Skip the last segment for open paths
+		if !is_closed && end_idx == 0 {
+			break;
+		}
+
+		let current_bezier = original_groups[start_idx].to_bezier(&original_groups[end_idx]);
+
+		// Create modified start point with original ID, but updated in_handle & out_handle
+		let mut start_point = original_groups[start_idx].clone();
+		let [first, _] = current_bezier.split(TValue::Euclidean(0.5));
+		start_point.out_handle = first.handle_start();
+		start_point.in_handle = last_in_handle;
+		new_groups.push(start_point);
+
+		// Add midpoint
+		let [first, second] = current_bezier.split(TValue::Euclidean(0.5));
+		new_groups.push(ManipulatorGroup {
+			anchor: first.end,
+			in_handle: first.handle_end(),
+			out_handle: second.handle_start(),
+			id: PointId::generate(),
+		});
+
+		last_in_handle = second.handle_end();
+	}
+
+	// Handle the final point for open paths
+	if !is_closed && !original_groups.is_empty() {
+		let mut last_point = original_groups.last().unwrap().clone();
+		last_point.in_handle = last_in_handle;
+		new_groups.push(last_point);
+	} else if is_closed && !new_groups.is_empty() {
+		// Update the first point's in_handle for closed paths
+		new_groups[0].in_handle = last_in_handle;
+	}
+
+	Subpath::new(new_groups, is_closed)
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
