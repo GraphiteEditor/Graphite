@@ -293,6 +293,39 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		Self::new(manipulator_groups, true)
 	}
 
+	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians.
+	pub fn new_arc(radius: f64, angle_start: f64, angle_size: f64) -> Self {
+		let center = DVec2::new(0., 0.);
+		let segments = (angle_size.abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
+		let step = angle_size / segments as f64;
+		let half_step = step / 2.;
+		let factor = 4. / 3. * half_step.sin() / (1. + half_step.cos());
+
+		let mut manipulator_groups = Vec::with_capacity(segments);
+		let mut prev_in_handle = None;
+		let mut prev_end = DVec2::new(0., 0.);
+
+		for i in 0..segments {
+			let start_angle = angle_start + step * i as f64;
+			let end_angle = start_angle + step;
+			let start_vec = DVec2::from_angle(start_angle);
+			let end_vec = DVec2::from_angle(end_angle);
+
+			let start = center + radius * start_vec;
+			let end = center + radius * end_vec;
+
+			let handle_start = start + start_vec.perp() * radius * factor;
+			let handle_end = end - end_vec.perp() * radius * factor;
+
+			manipulator_groups.push(ManipulatorGroup::new(start, prev_in_handle, Some(handle_start)));
+			prev_in_handle = Some(handle_end);
+			prev_end = end;
+		}
+		manipulator_groups.push(ManipulatorGroup::new(prev_end, prev_in_handle, None));
+
+		Self::new(manipulator_groups, false)
+	}
+
 	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
 	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
 		let sides = sides.max(3);

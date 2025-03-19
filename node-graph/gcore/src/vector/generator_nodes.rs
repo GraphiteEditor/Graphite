@@ -1,4 +1,5 @@
 use crate::Ctx;
+use crate::registry::types::{Angle, AngularDistance};
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
@@ -38,6 +39,15 @@ impl CornerRadius for [f64; 4] {
 #[node_macro::node(category("Vector: Shape"))]
 fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: f64) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
+fn arc(_: impl Ctx, _primary: (), #[default(50.)] radius: f64, start_angle: Angle, #[default(90.)] angle_size: AngularDistance) -> VectorDataTable {
+	VectorDataTable::new(VectorData::from_subpath(Subpath::new_arc(
+		radius,
+		start_angle / 360. * std::f64::consts::TAU,
+		angle_size / 360. * std::f64::consts::TAU,
+	)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
