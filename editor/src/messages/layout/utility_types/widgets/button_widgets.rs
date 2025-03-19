@@ -147,6 +147,7 @@ pub struct ImageButton {
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorInput {
+	/// WARNING: The colors are gamma, not linear!
 	#[widget_builder(constructor)]
 	pub value: FillChoice,
 

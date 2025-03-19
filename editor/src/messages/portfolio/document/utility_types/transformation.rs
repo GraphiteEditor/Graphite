@@ -299,6 +299,22 @@ pub enum TransformOperation {
 	Scaling(Scale),
 }
 
+#[derive(Debug, Clone, PartialEq, Copy, serde::Serialize, serde::Deserialize)]
+pub enum TransformType {
+	Grab,
+	Rotate,
+	Scale,
+}
+
+impl TransformType {
+	pub fn equivalent_to(&self, operation: TransformOperation) -> bool {
+		matches!(
+			(operation, self),
+			(TransformOperation::Scaling(_), TransformType::Scale) | (TransformOperation::Grabbing(_), TransformType::Grab) | (TransformOperation::Rotating(_), TransformType::Rotate)
+		)
+	}
+}
+
 impl TransformOperation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
