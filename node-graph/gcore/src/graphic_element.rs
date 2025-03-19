@@ -296,31 +296,31 @@ async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElemen
 	stack
 }
 
-// TODO: Once we have nicely working spreadsheet tables, test this and make it nicely user-facing and move it from "Debug" to "General"
-#[node_macro::node(category("Debug"))]
-async fn concatenate<T: Clone>(
-	_: impl Ctx,
-	#[implementations(
-		GraphicGroupTable,
-	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
-	)]
-	from: Instances<T>,
-	#[expose]
-	#[implementations(
-		GraphicGroupTable,
-	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
-	)]
-	mut to: Instances<T>,
-) -> Instances<T> {
-	for instance in from.instances() {
-		to.push_instance(instance);
-	}
-	to
-}
+// // TODO: Once we have nicely working spreadsheet tables, test this and make it nicely user-facing and move it from "Debug" to "General"
+// #[node_macro::node(category("Debug"))]
+// async fn concatenate<T: Clone>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		GraphicGroupTable,
+// 	 	VectorDataTable,
+// 		ImageFrameTable<Color>,
+// 	 	TextureFrameTable,
+// 	)]
+// 	from: Instances<T>,
+// 	#[expose]
+// 	#[implementations(
+// 		GraphicGroupTable,
+// 	 	VectorDataTable,
+// 		ImageFrameTable<Color>,
+// 	 	TextureFrameTable,
+// 	)]
+// 	mut to: Instances<T>,
+// ) -> Instances<T> {
+// 	for instance in from.instances() {
+// 		to.push_instance(instance);
+// 	}
+// 	to
+// }
 
 #[node_macro::node(category("Debug"))]
 async fn to_element<Data: Into<GraphicElement> + 'n>(

@@ -418,6 +418,12 @@ fn blend_mode_value(_: impl Ctx, _primary: (), blend_mode: BlendMode) -> BlendMo
 	blend_mode
 }
 
+/// Constructs a string value which may be set to any plain text.
+#[node_macro::node(category("Value"))]
+fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+	string
+}
+
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Debug"))]

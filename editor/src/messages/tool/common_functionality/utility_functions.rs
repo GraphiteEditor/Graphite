@@ -57,7 +57,9 @@ where
 
 /// Calculates the bounding box of the layer's text, based on the settings for max width and height specified in the typesetting config.
 pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, font_cache: &FontCache) -> Quad {
-	let (text, font, typesetting) = get_text(layer, &document.network_interface).expect("Text layer should have text when interacting with the Text tool");
+	let Some((text, font, typesetting)) = get_text(layer, &document.network_interface) else {
+		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
+	};
 
 	let buzz_face = font_cache.get(font).map(|data| load_face(data));
 	let far = graphene_core::text::bounding_box(text, buzz_face.as_ref(), typesetting);
