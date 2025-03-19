@@ -1,6 +1,5 @@
 use crate::messages::prelude::*;
 use crate::node_graph_executor::InspectResult;
-use graphene_std::vector::InstanceId;
 
 /// The spreadsheet UI allows for instance data to be previewed.
 #[impl_message(Message, PortfolioMessage, Spreadsheet)]
@@ -14,7 +13,7 @@ pub enum SpreadsheetMessage {
 	},
 
 	PushToInstancePath {
-		id: InstanceId,
+		index: usize,
 	},
 	TruncateInstancePath {
 		len: usize,

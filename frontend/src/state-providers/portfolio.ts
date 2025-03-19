@@ -3,7 +3,6 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import type { InspectResult } from "@graphite/messages";
 import {
 	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,

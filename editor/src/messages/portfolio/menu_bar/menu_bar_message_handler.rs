@@ -565,7 +565,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						..MenuBarEntry::default()
 					}],
 					vec![MenuBarEntry {
-						label: "Spreadsheet Panel".into(),
+						label: "Window: Spreadsheet".into(),
 						icon: Some(if self.spreadsheet_view_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 						action: MenuBarEntry::create_action(|_| SpreadsheetMessage::ToggleOpen.into()),
 						disabled: no_active_document,
