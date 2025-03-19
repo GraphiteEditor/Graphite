@@ -878,6 +878,7 @@ impl PenToolData {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		let extension_choice = should_extend(document, viewport, tolerance, selected_nodes.selected_layers(document.metadata()), preferences);
 		if let Some((layer, point, position)) = extension_choice {
+			responses.add(DocumentMessage::StartTransaction);
 			self.extend_existing_path(document, layer, point, position, responses);
 			return;
 		}
