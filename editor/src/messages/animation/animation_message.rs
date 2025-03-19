@@ -8,7 +8,7 @@ pub enum AnimationMessage {
 	ToggleLivePreview,
 	EnableLivePreview,
 	DisableLivePreview,
-	ResetAnimation,
+	RestartAnimation,
 	SetFrameIndex(f64),
 	SetTime(f64),
 	UpdateTime,

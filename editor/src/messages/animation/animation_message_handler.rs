@@ -14,6 +14,8 @@ pub enum AnimationTimeMode {
 #[derive(Debug, Default)]
 pub struct AnimationMessageHandler {
 	live_preview: bool,
+	/// Used to re-send the UI on the next frame after playback starts
+	live_preview_recently_zero: bool,
 	timestamp: f64,
 	frame_index: f64,
 	animation_start: Option<f64>,
@@ -29,6 +31,10 @@ impl AnimationMessageHandler {
 		};
 		TimingInformation { time: self.timestamp, animation_time }
 	}
+
+	pub fn is_playing(&self) -> bool {
+		self.live_preview
+	}
 }
 
 impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
@@ -38,23 +44,37 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 				if self.animation_start.is_none() {
 					self.animation_start = Some(self.timestamp);
 				}
-				self.live_preview = !self.live_preview
+				self.live_preview = !self.live_preview;
+
+				// Update the restart and pause/play buttons
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			AnimationMessage::EnableLivePreview => {
 				if self.animation_start.is_none() {
 					self.animation_start = Some(self.timestamp);
 				}
-				self.live_preview = true
+				self.live_preview = true;
+
+				// Update the restart and pause/play buttons
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			AnimationMessage::DisableLivePreview => self.live_preview = false,
+			AnimationMessage::DisableLivePreview => {
+				self.live_preview = false;
+
+				// Update the restart and pause/play buttons
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
 			AnimationMessage::SetFrameIndex(frame) => {
 				self.frame_index = frame;
-				log::debug!("set frame index to {}", frame);
-				responses.add(PortfolioMessage::SubmitActiveGraphRender)
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				// Update the restart and pause/play buttons
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			AnimationMessage::SetTime(time) => {
 				self.timestamp = time;
-				responses.add(AnimationMessage::UpdateTime);
+				if self.live_preview {
+					responses.add(AnimationMessage::UpdateTime);
+				}
 			}
 			AnimationMessage::IncrementFrameCounter => {
 				if self.live_preview {
@@ -64,21 +84,32 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::UpdateTime => {
 				if self.live_preview {
-					responses.add(PortfolioMessage::SubmitActiveGraphRender)
+					responses.add(PortfolioMessage::SubmitActiveGraphRender);
+
+					if self.live_preview_recently_zero {
+						// Update the restart and pause/play buttons
+						responses.add(PortfolioMessage::UpdateDocumentWidgets);
+						self.live_preview_recently_zero = false;
+					}
 				}
 			}
-			AnimationMessage::ResetAnimation => {
+			AnimationMessage::RestartAnimation => {
 				self.frame_index = 0.;
 				self.animation_start = None;
-				responses.add(PortfolioMessage::SubmitActiveGraphRender)
+				self.live_preview_recently_zero = true;
+				responses.add(PortfolioMessage::SubmitActiveGraphRender);
+				// Update the restart and pause/play buttons
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			AnimationMessage::SetAnimationTimeMode(animation_time_mode) => self.animation_time_mode = animation_time_mode,
+			AnimationMessage::SetAnimationTimeMode(animation_time_mode) => {
+				self.animation_time_mode = animation_time_mode;
+			}
 		}
 	}
 
 	advertise_actions!(AnimationMessageDiscriminant;
 		ToggleLivePreview,
 		SetFrameIndex,
-		ResetAnimation,
+		RestartAnimation,
 	);
 }

@@ -234,6 +234,7 @@ impl Dispatcher {
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					let timing_information = self.message_handlers.animation_message_handler.timing_information();
+					let animation = &self.message_handlers.animation_message_handler;
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -244,6 +245,7 @@ impl Dispatcher {
 							current_tool,
 							message_logging_verbosity,
 							timing_information,
+							animation,
 						},
 					);
 				}

@@ -34,6 +34,7 @@ pub struct PortfolioMessageData<'a> {
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub timing_information: TimingInformation,
+	pub animation: &'a AnimationMessageHandler,
 }
 
 #[derive(Debug, Default)]
@@ -59,6 +60,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			current_tool,
 			message_logging_verbosity,
 			timing_information,
+			animation,
 		} = data;
 
 		match message {
@@ -1108,7 +1110,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
-					document.update_document_widgets(responses);
+					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
 				}
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
@@ -1275,16 +1277,19 @@ impl PortfolioMessageHandler {
 
 	/// Get the id of the node that should be used as the target for the spreadsheet
 	pub fn inspect_node_id(&self) -> Option<NodeId> {
+		// Spreadsheet not open, skipping
 		if !self.spreadsheet.spreadsheet_view_open {
-			warn!("Spreadsheet not open, skipping…");
 			return None;
 		}
+
 		let document = self.documents.get(&self.active_document_id?)?;
 		let selected_nodes = document.network_interface.selected_nodes().0;
+
+		// Selected nodes != 1, skipping
 		if selected_nodes.len() != 1 {
-			warn!("selected nodes != 1, skipping…");
 			return None;
 		}
+
 		selected_nodes.first().copied()
 	}
 }
