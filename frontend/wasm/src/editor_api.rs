@@ -829,6 +829,7 @@ impl EditorHandle {
 				portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(),
 				glam::UVec2::ONE,
 				Default::default(),
+				None,
 				true,
 			)
 			.unwrap();
