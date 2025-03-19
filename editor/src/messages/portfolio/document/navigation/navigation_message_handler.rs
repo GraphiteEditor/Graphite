@@ -174,7 +174,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
-				let delta = if use_y_as_x { -ipp.mouse.scroll_delta.as_dvec2() } else { (-ipp.mouse.scroll_delta.y, 0.).into() } * VIEWPORT_SCROLL_RATE;
+				let delta = if use_y_as_x { (-ipp.mouse.scroll_delta.y, 0.).into() } else { -ipp.mouse.scroll_delta.as_dvec2() } * VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
