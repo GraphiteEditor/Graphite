@@ -115,6 +115,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		transparent_background: bool,
 	},
+	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
 		ignore_hash: bool,

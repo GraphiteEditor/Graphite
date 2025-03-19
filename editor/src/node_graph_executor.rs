@@ -1,4 +1,5 @@
 use crate::consts::FILE_SAVE_SUFFIX;
+use crate::messages::animation::TimingInformation;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -572,13 +573,14 @@ impl NodeGraphExecutor {
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
-	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
+	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<(), String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},
+			time,
 			#[cfg(any(feature = "resvg", feature = "vello"))]
 			export_format: graphene_core::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
@@ -596,9 +598,16 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, inspect_node: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	pub fn submit_node_graph_evaluation(
+		&mut self,
+		document: &mut DocumentMessageHandler,
+		viewport_resolution: UVec2,
+		time: TimingInformation,
+		inspect_node: Option<NodeId>,
+		ignore_hash: bool,
+	) -> Result<(), String> {
 		self.update_node_graph(document, inspect_node, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, viewport_resolution)?;
+		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)?;
 
 		Ok(())
 	}
@@ -623,6 +632,7 @@ impl NodeGraphExecutor {
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
+			time: Default::default(),
 			export_format: graphene_core::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,

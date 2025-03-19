@@ -47,3 +47,41 @@ impl core::fmt::Display for BooleanOperation {
 		}
 	}
 }
+
+pub trait AsU64 {
+	fn as_u64(&self) -> u64;
+}
+impl AsU64 for u32 {
+	fn as_u64(&self) -> u64 {
+		*self as u64
+	}
+}
+impl AsU64 for u64 {
+	fn as_u64(&self) -> u64 {
+		*self
+	}
+}
+impl AsU64 for f64 {
+	fn as_u64(&self) -> u64 {
+		*self as u64
+	}
+}
+
+pub trait AsI64 {
+	fn as_i64(&self) -> i64;
+}
+impl AsI64 for u32 {
+	fn as_i64(&self) -> i64 {
+		*self as i64
+	}
+}
+impl AsI64 for u64 {
+	fn as_i64(&self) -> i64 {
+		*self as i64
+	}
+}
+impl AsI64 for f64 {
+	fn as_i64(&self) -> i64 {
+		*self as i64
+	}
+}

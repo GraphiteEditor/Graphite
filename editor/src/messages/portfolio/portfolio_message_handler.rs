@@ -4,6 +4,7 @@ use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
@@ -32,6 +33,7 @@ pub struct PortfolioMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
+	pub timing_information: TimingInformation,
 }
 
 #[derive(Debug, Default)]
@@ -56,6 +58,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			preferences,
 			current_tool,
 			message_logging_verbosity,
+			timing_information,
 		} = data;
 
 		match message {
@@ -306,6 +309,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let _ = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						ipp.viewport_bounds.size().as_uvec2(),
+						timing_information,
 						inspect_node,
 						true,
 					);
@@ -1072,11 +1076,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					});
 				}
 			}
+			PortfolioMessage::SubmitActiveGraphRender => {
+				if let Some(document_id) = self.active_document_id {
+					responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+				}
+			}
 			PortfolioMessage::SubmitGraphRender { document_id, ignore_hash } => {
 				let inspect_node = self.inspect_node_id();
 				let result = self.executor.submit_node_graph_evaluation(
 					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
 					ipp.viewport_bounds.size().as_uvec2(),
+					timing_information,
 					inspect_node,
 					ignore_hash,
 				);

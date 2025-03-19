@@ -138,19 +138,18 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
+			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
-						let micros: f64 = timestamp * 1000.;
-						let timestamp = Duration::from_micros(micros.round() as u64);
-
-						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
+							timestamp: js_sys::Date::now() as u64,
+						}) {
 							handle.send_frontend_message_to_js(message);
 						}
 
-						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
 					});
@@ -826,7 +825,13 @@ impl EditorHandle {
 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, None, true)
+			.submit_node_graph_evaluation(
+				portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(),
+				glam::UVec2::ONE,
+				Default::default(),
+				None,
+				true,
+			)
 			.unwrap();
 		editor::node_graph_executor::run_node_graph().await;
 
