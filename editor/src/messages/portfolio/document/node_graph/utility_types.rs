@@ -1,8 +1,7 @@
-use graph_craft::document::value::TaggedValue;
-use graph_craft::document::NodeId;
-use graphene_core::Type;
-
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
+use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
+use graphene_core::Type;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -204,8 +203,8 @@ pub enum Direction {
 #[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum GraphWireStyle {
 	#[default]
-	GridAligned = 0,
-	Direct = 1,
+	Direct = 0,
+	GridAligned = 1,
 }
 
 impl std::fmt::Display for GraphWireStyle {

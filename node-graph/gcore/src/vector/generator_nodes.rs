@@ -1,6 +1,5 @@
-use crate::transform::Footprint;
-use crate::vector::{HandleId, PointId, VectorData, VectorDataTable};
-
+use crate::Ctx;
+use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
 
@@ -35,12 +34,12 @@ impl CornerRadius for [f64; 4] {
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn circle<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), #[default(50.)] radius: f64) -> VectorDataTable {
+fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: f64) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn ellipse<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), #[default(50)] radius_x: f64, #[default(25)] radius_y: f64) -> VectorDataTable {
+fn ellipse(_: impl Ctx, _primary: (), #[default(50)] radius_x: f64, #[default(25)] radius_y: f64) -> VectorDataTable {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -58,8 +57,8 @@ fn ellipse<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _prima
 }
 
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
-fn rectangle<F: 'n + Send, T: CornerRadius>(
-	#[implementations((), Footprint)] _footprint: F,
+fn rectangle<T: CornerRadius>(
+	_: impl Ctx,
 	_primary: (),
 	#[default(100)] width: f64,
 	#[default(100)] height: f64,
@@ -71,8 +70,8 @@ fn rectangle<F: 'n + Send, T: CornerRadius>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon<F: 'n + Send>(
-	#[implementations((), Footprint)] _footprint: F,
+fn regular_polygon(
+	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
 	#[min(3.)]
@@ -85,8 +84,8 @@ fn regular_polygon<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn star<F: 'n + Send>(
-	#[implementations((), Footprint)] _footprint: F,
+fn star(
+	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
 	#[min(2.)]
@@ -102,19 +101,6 @@ fn star<F: 'n + Send>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, _primary: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorDataTable {
+fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
-}
-
-// TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
-#[node_macro::node(category(""))]
-fn path<F: 'n + Send>(#[implementations((), Footprint)] _footprint: F, path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> VectorDataTable {
-	let mut vector_data = VectorData::from_subpaths(path_data, false);
-
-	vector_data.colinear_manipulators = colinear_manipulators
-		.iter()
-		.filter_map(|&point| super::ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
-		.collect();
-
-	VectorDataTable::new(vector_data)
 }

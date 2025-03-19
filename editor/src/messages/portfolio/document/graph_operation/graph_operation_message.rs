@@ -2,19 +2,17 @@ use super::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_core::raster::image::ImageFrame;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
 use graphene_core::vector::VectorModificationType;
+use graphene_core::vector::brush_stroke::BrushStroke;
+use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::{Artboard, Color};
-
-use glam::{DAffine2, DVec2, IVec2};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -68,7 +66,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image_frame: ImageFrame<Color>,
+		image_frame: ImageFrameTable<Color>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

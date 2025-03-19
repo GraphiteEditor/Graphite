@@ -1,7 +1,5 @@
 use crate::vector::PointId;
-
 use bezier_rs::{ManipulatorGroup, Subpath};
-
 use glam::DVec2;
 use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
@@ -138,7 +136,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 					}
 				}
 				// Clip when the height is exceeded
-				if typesetting.max_height.is_some_and(|max_height| builder.pos.y > max_height) {
+				if typesetting.max_height.is_some_and(|max_height| builder.pos.y > max_height - line_height) {
 					return builder.other_subpaths;
 				}
 
@@ -160,7 +158,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 	builder.other_subpaths
 }
 
-pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> DVec2 {
+pub fn bounding_box(str: &str, buzz_face: Option<&rustybuzz::Face>, typesetting: TypesettingConfig) -> DVec2 {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
@@ -168,7 +166,7 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 	};
 	let space_glyph = buzz_face.glyph_index(' ');
 
-	let (scale, line_height, mut buffer) = font_properties(&buzz_face, typesetting.font_size, typesetting.line_height_ratio);
+	let (scale, line_height, mut buffer) = font_properties(buzz_face, typesetting.font_size, typesetting.line_height_ratio);
 
 	let mut pos = DVec2::ZERO;
 	let mut bounds = DVec2::ZERO;
@@ -177,7 +175,7 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
 			push_str(&mut buffer, word);
 
-			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+			let glyph_buffer = rustybuzz::shape(buzz_face, &[], buffer);
 
 			// Don't wrap the first word
 			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, pos.x, space_glyph) {
@@ -213,6 +211,59 @@ pub fn bounding_box(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: 
 
 pub fn load_face(data: &[u8]) -> rustybuzz::Face {
 	rustybuzz::Face::from_slice(data, 0).expect("Loading font failed")
+}
+
+pub fn lines_clipping(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> bool {
+	let buzz_face = match buzz_face {
+		Some(face) => face,
+		// False if font hasn't loaded
+		None => return false,
+	};
+
+	if typesetting.max_height.is_none() {
+		return false;
+	}
+
+	let space_glyph = buzz_face.glyph_index(' ');
+
+	let (scale, line_height, mut buffer) = font_properties(&buzz_face, typesetting.font_size, typesetting.line_height_ratio);
+
+	let mut pos = DVec2::ZERO;
+	let mut bounds = DVec2::ZERO;
+
+	for line in str.split('\n') {
+		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
+			push_str(&mut buffer, word);
+
+			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+
+			// Don't wrap the first word
+			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, pos.x, space_glyph) {
+				pos = DVec2::new(0., pos.y + line_height);
+			}
+
+			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
+				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
+				if let Some(max_width) = typesetting.max_width {
+					if space_glyph != Some(glyph_id) && pos.x + (glyph_position.x_advance as f64 * scale * typesetting.character_spacing) >= max_width {
+						pos = DVec2::new(0., pos.y + line_height);
+					}
+				}
+				pos += DVec2::new(glyph_position.x_advance as f64 * typesetting.character_spacing, glyph_position.y_advance as f64) * scale;
+				bounds = bounds.max(pos + DVec2::new(0., line_height));
+			}
+
+			buffer = glyph_buffer.clear();
+		}
+		pos = DVec2::new(0., pos.y + line_height);
+		bounds = bounds.max(pos);
+	}
+
+	if typesetting.max_height.unwrap() < bounds.y {
+		return true;
+	}
+
+	false
 }
 
 struct SplitWordsIncludingSpaces<'a> {

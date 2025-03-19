@@ -1,5 +1,4 @@
 use dyn_any::DynAny;
-
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)
@@ -7,7 +6,7 @@ use std::collections::HashMap;
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,
-	#[serde(rename = "fontStyle")]
+	#[serde(rename = "fontStyle", deserialize_with = "migrate_font_style")]
 	pub font_style: String,
 }
 impl Font {
@@ -72,4 +71,10 @@ impl core::hash::Hash for FontCache {
 		self.font_file_data.len().hash(state);
 		self.font_file_data.keys().for_each(|font| font.hash(state));
 	}
+}
+
+// TODO: Eventually remove this migration document upgrade code
+fn migrate_font_style<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+	use serde::Deserialize;
+	String::deserialize(deserializer).map(|name| if name == "Normal (400)" { "Regular (400)".to_string() } else { name })
 }

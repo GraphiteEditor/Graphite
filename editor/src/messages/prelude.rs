@@ -20,7 +20,8 @@ pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, Nod
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageData, OverlaysMessageDiscriminant, OverlaysMessageHandler};
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageData, DocumentMessageDiscriminant, DocumentMessageHandler};
-pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageData, MenuBarMessageDiscriminant, MenuBarMessageHandler};
+pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, MenuBarMessageHandler};
+pub use crate::messages::portfolio::spreadsheet::{SpreadsheetMessage, SpreadsheetMessageDiscriminant};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageData, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};
@@ -51,9 +52,7 @@ pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextT
 // Helper
 pub use crate::messages::globals::global_variables::*;
 pub use crate::messages::portfolio::document::utility_types::misc::DocumentId;
-
 pub use graphite_proc_macros::*;
-
 pub use std::collections::{HashMap, HashSet, VecDeque};
 
 pub trait Responses {

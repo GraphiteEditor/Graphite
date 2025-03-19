@@ -2,16 +2,14 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
-
+use glam::DVec2;
 use graphene_core::raster::color::Color;
 use graphene_core::renderer::Quad;
-
-use glam::DVec2;
 use graphene_std::vector::style::FillChoice;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
-	let grid_color = document.snapping_state.grid.grid_color;
+	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
@@ -38,11 +36,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(
-				document_to_viewport.transform_point2(start),
-				document_to_viewport.transform_point2(end),
-				Some(&("#".to_string() + &grid_color.rgba_hex())),
-			);
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color));
 		}
 	}
 }
@@ -54,7 +48,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 // TODO: Implement this with a dashed line (`set_line_dash`), with integer spacing which is continuously adjusted to correct the accumulated error.
 fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
-	let grid_color = document.snapping_state.grid.grid_color;
+	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
@@ -82,16 +76,13 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 		let x_per_dot = (end.x - start.x) / total_dots;
 		for dot_index in 0..=total_dots as usize {
 			let exact_x = x_per_dot * dot_index as f64;
-			overlay_context.pixel(
-				document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(),
-				Some(&("#".to_string() + &grid_color.rgba_hex())),
-			)
+			overlay_context.pixel(document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(), Some(&grid_color))
 		}
 	}
 }
 
 fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
-	let grid_color = document.snapping_state.grid.grid_color;
+	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
@@ -114,11 +105,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
-		overlay_context.line(
-			document_to_viewport.transform_point2(start),
-			document_to_viewport.transform_point2(end),
-			Some(&("#".to_string() + &grid_color.rgba_hex())),
-		);
+		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color));
 	}
 
 	for (tan, multiply) in [(tan_a, -1.), (tan_b, 1.)] {
@@ -132,17 +119,13 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
 			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
 			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
-			overlay_context.line(
-				document_to_viewport.transform_point2(start),
-				document_to_viewport.transform_point2(end),
-				Some(&("#".to_string() + &grid_color.rgba_hex())),
-			);
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color));
 		}
 	}
 }
 
 fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
-	let grid_color = document.snapping_state.grid.grid_color;
+	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
 	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
@@ -182,7 +165,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 		overlay_context.dashed_line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
-			Some(&("#".to_string() + &grid_color.rgba_hex())),
+			Some(&grid_color),
 			Some(1.),
 			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
 			None,
@@ -211,7 +194,7 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 
 pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	let mut widgets = Vec::new();
-	fn update_val<I>(grid: &GridSnapping, update: impl Fn(&mut GridSnapping, &I)) -> impl Fn(&I) -> Message {
+	fn update_val<I, F: Fn(&mut GridSnapping, &I)>(grid: &GridSnapping, update: F) -> impl Fn(&I) -> Message + use<I, F> {
 		let grid = grid.clone();
 		move |input: &I| {
 			let mut grid = grid.clone();
@@ -220,7 +203,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		}
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
-		update_val::<NumberInput>(grid, move |grid, val| {
+		update_val::<NumberInput, _>(grid, move |grid, val| {
 			if let Some(val) = val.value {
 				if let Some(update) = update(grid) {
 					*update = val;
@@ -229,16 +212,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
-		update_val::<ColorInput>(grid, move |grid, color| {
-			if let FillChoice::Solid(color) = color.value {
-				if let Some(update_color) = update(grid) {
-					*update_color = color;
-				}
+		update_val::<ColorInput, _>(grid, move |grid, color| {
+			if let (Some(color), Some(update_color)) = (color.value.as_solid(), update(grid)) {
+				*update_color = color.to_linear_srgb();
 			}
 		})
 	};
 	let update_display = |grid, update: fn(&mut GridSnapping) -> Option<&mut bool>| {
-		update_val::<CheckboxInput>(grid, move |grid, checkbox| {
+		update_val::<CheckboxInput, _>(grid, move |grid, checkbox| {
 			if let Some(update) = update(grid) {
 				*update = checkbox.checked;
 			}
@@ -280,7 +261,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 	]);
 	color_widgets.push(
-		ColorInput::new(FillChoice::Solid(grid.grid_color))
+		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
 			.tooltip("Grid display color")
 			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))

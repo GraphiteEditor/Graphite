@@ -1,57 +1,39 @@
-use crate::transform::Footprint;
 use crate::vector::VectorDataTable;
-
+use crate::{Color, Context, Ctx};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
-async fn log_to_console<T: core::fmt::Debug, F: Send + 'n>(
-	#[implementations((), (), (), (), (), (), (), (), Footprint)] footprint: F,
-	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorDataTable, () -> DAffine2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorDataTable, Footprint -> DAffine2,
-	)]
-	value: impl Node<F, Output = T>,
-) -> T {
+fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
 	#[cfg(not(target_arch = "spirv"))]
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
-	let value = value.eval(footprint).await;
 	debug!("{:#?}", value);
 	value
 }
 
-#[node_macro::node(category("Debug"))]
-async fn to_string<T: core::fmt::Debug + 'n, F: Send + 'n>(
-	#[implementations((), (), (), (), (), (), Footprint)] footprint: F,
-	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2,
-	)]
-	value: impl Node<F, Output = T>,
-) -> String {
-	let value = value.eval(footprint).await;
+#[node_macro::node(category("Debug"), skip_impl)]
+fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
 	format!("{:?}", value)
 }
 
 #[node_macro::node(category("Debug"))]
-async fn switch<T, F: Send + 'n>(
-	#[implementations((), (), (), (), (), (), (), (), Footprint)] footprint: F,
+async fn switch<T, C: Send + 'n + Clone>(
+	#[implementations(Context)] ctx: C,
 	condition: bool,
 	#[expose]
 	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorDataTable, () -> DAffine2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorDataTable, Footprint -> DAffine2
+		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
 	)]
-	if_true: impl Node<F, Output = T>,
+	if_true: impl Node<C, Output = T>,
 	#[expose]
 	#[implementations(
-		() -> String, () -> bool, () -> f64, () -> u32, () -> u64, () -> DVec2, () -> VectorDataTable, () -> DAffine2,
-		Footprint -> String, Footprint -> bool, Footprint -> f64, Footprint -> u32, Footprint -> u64, Footprint -> DVec2, Footprint -> VectorDataTable, Footprint -> DAffine2
+		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
 	)]
-	if_false: impl Node<F, Output = T>,
+	if_false: impl Node<C, Output = T>,
 ) -> T {
 	if condition {
-		if_true.eval(footprint).await
+		// We can't remove these calls because we only want to evaluate the branch that we actually need
+		if_true.eval(ctx).await
 	} else {
-		if_false.eval(footprint).await
+		if_false.eval(ctx).await
 	}
 }

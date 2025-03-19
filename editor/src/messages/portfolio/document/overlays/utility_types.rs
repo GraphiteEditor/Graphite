@@ -4,14 +4,12 @@ use crate::consts::{
 	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
-
 use bezier_rs::{Bezier, Subpath};
-use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
-
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
@@ -40,6 +38,30 @@ impl core::hash::Hash for OverlayContext {
 impl OverlayContext {
 	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
 		self.dashed_polygon(&quad.0, color_fill, None, None, None);
+	}
+
+	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let normal = direction.perp();
+		let top = base + direction * size;
+		let edge1 = base + normal * size / 2.;
+		let edge2 = base - normal * size / 2.;
+
+		self.start_dpi_aware_transform();
+
+		self.render_context.begin_path();
+		self.render_context.move_to(top.x, top.y);
+		self.render_context.line_to(edge1.x, edge1.y);
+		self.render_context.line_to(edge2.x, edge2.y);
+		self.render_context.close_path();
+
+		self.render_context.set_fill_style_str(color_fill);
+		self.render_context.set_stroke_style_str(color_stroke);
+		self.render_context.fill();
+		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
 	}
 
 	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
@@ -298,7 +320,7 @@ impl OverlayContext {
 		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
-			.rgba_hex();
+			.to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
@@ -335,7 +357,10 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
+			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+				.unwrap()
+				.with_alpha(0.5)
+				.to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);

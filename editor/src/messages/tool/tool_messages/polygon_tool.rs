@@ -10,8 +10,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -135,7 +135,7 @@ impl LayoutHolder for PolygonTool {
 			true,
 			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -145,7 +145,7 @@ impl LayoutHolder for PolygonTool {
 			true,
 			|_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -325,7 +325,7 @@ impl Fsm for PolygonToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
-							transform_in: TransformIn::Local,
+							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
 					}
@@ -385,7 +385,7 @@ impl Fsm for PolygonToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PolygonToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),

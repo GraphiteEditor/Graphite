@@ -2,16 +2,13 @@ use crate::instances::Instances;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
-use crate::AlphaBlending;
-
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
-
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use core::future::Future;
 use core::hash::{Hash, Hasher};
 use core::pin::Pin;
 use core::ptr::addr_of;
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,6 +47,7 @@ impl TransformMut for SurfaceFrame {
 	}
 }
 
+#[cfg(feature = "dyn-any")]
 unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;
 }
@@ -65,53 +63,46 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-pub type TextureFrameTable = Instances<TextureFrame>;
+// TODO: Rename to ImageTextureTable
+pub type TextureFrameTable = Instances<ImageTexture>;
 
 #[derive(Debug, Clone)]
-pub struct TextureFrame {
+pub struct ImageTexture {
 	#[cfg(feature = "wgpu")]
 	pub texture: Arc<wgpu::Texture>,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
-	pub transform: DAffine2,
-	pub alpha_blend: AlphaBlending,
 }
 
-impl Hash for TextureFrame {
+impl Hash for ImageTexture {
+	#[cfg(feature = "wgpu")]
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		#[cfg(feature = "wgpu")]
 		self.texture.hash(state);
 	}
+	#[cfg(not(feature = "wgpu"))]
+	fn hash<H: Hasher>(&self, _state: &mut H) {}
 }
 
-impl PartialEq for TextureFrame {
+impl PartialEq for ImageTexture {
 	fn eq(&self, other: &Self) -> bool {
 		#[cfg(feature = "wgpu")]
-		return self.transform.eq(&other.transform) && self.texture == other.texture;
-
+		{
+			self.texture == other.texture
+		}
 		#[cfg(not(feature = "wgpu"))]
-		self.transform.eq(&other.transform)
+		{
+			self.texture == other.texture
+		}
 	}
 }
 
-impl Transform for TextureFrame {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for TextureFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
-unsafe impl StaticType for TextureFrame {
-	type Static = TextureFrame;
+#[cfg(feature = "dyn-any")]
+unsafe impl StaticType for ImageTexture {
+	type Static = ImageTexture;
 }
 
 #[cfg(feature = "wgpu")]
-impl Size for TextureFrame {
+impl Size for ImageTexture {
 	fn size(&self) -> UVec2 {
 		UVec2::new(self.texture.width(), self.texture.height())
 	}
@@ -144,6 +135,7 @@ impl<S: Size> Size for SurfaceHandle<S> {
 	}
 }
 
+#[cfg(feature = "dyn-any")]
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }
@@ -154,6 +146,7 @@ pub struct SurfaceHandleFrame<Surface> {
 	pub transform: DAffine2,
 }
 
+#[cfg(feature = "dyn-any")]
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
 	type Static = SurfaceHandleFrame<T>;
 }
@@ -333,6 +326,7 @@ impl<T> Debug for EditorApi<T> {
 	}
 }
 
+#[cfg(feature = "dyn-any")]
 unsafe impl<T: StaticTypeSized> StaticType for EditorApi<T> {
 	type Static = EditorApi<T::Static>;
 }

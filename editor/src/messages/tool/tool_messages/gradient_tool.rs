@@ -5,7 +5,6 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default)]
@@ -185,11 +184,11 @@ impl SelectedGradient {
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
-				self.gradient.stops.0[s].0 = clamped;
-				let new_pos = self.gradient.stops.0[s];
+				self.gradient.stops.get_mut(s).unwrap().0 = clamped;
+				let new_pos = self.gradient.stops[s];
 
-				self.gradient.stops.0.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-				self.dragging = GradientDragTarget::Step(self.gradient.stops.0.iter().position(|x| *x == new_pos).unwrap());
+				self.gradient.stops.sort();
+				self.dragging = GradientDragTarget::Step(self.gradient.stops.iter().position(|x| *x == new_pos).unwrap());
 			}
 		}
 		self.render_gradient(responses);
@@ -246,7 +245,7 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
@@ -260,7 +259,7 @@ impl Fsm for GradientToolFsmState {
 					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
 					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
 
-					for (index, (position, _)) in stops.0.into_iter().enumerate() {
+					for (index, (position, _)) in stops.into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
@@ -277,7 +276,7 @@ impl Fsm for GradientToolFsmState {
 				};
 
 				// Skip if invalid gradient
-				if selected_gradient.gradient.stops.0.len() < 2 {
+				if selected_gradient.gradient.stops.len() < 2 {
 					return self;
 				}
 
@@ -285,25 +284,31 @@ impl Fsm for GradientToolFsmState {
 
 				// Remove the selected point
 				match selected_gradient.dragging {
-					GradientDragTarget::Start => selected_gradient.gradient.stops.0.remove(0),
-					GradientDragTarget::End => selected_gradient.gradient.stops.0.pop().unwrap(),
-					GradientDragTarget::Step(index) => selected_gradient.gradient.stops.0.remove(index),
+					GradientDragTarget::Start => {
+						selected_gradient.gradient.stops.remove(0);
+					}
+					GradientDragTarget::End => {
+						let _ = selected_gradient.gradient.stops.pop();
+					}
+					GradientDragTarget::Step(index) => {
+						selected_gradient.gradient.stops.remove(index);
+					}
 				};
 
 				// The gradient has only one point and so should become a fill
-				if selected_gradient.gradient.stops.0.len() == 1 {
+				if selected_gradient.gradient.stops.len() == 1 {
 					if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
 							layer,
-							fill: Fill::Solid(selected_gradient.gradient.stops.0[0].1),
+							fill: Fill::Solid(selected_gradient.gradient.stops[0].1),
 						});
 					}
 					return self;
 				}
 
 				// Find the minimum and maximum positions
-				let min_position = selected_gradient.gradient.stops.0.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
-				let max_position = selected_gradient.gradient.stops.0.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
+				let min_position = selected_gradient.gradient.stops.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
+				let max_position = selected_gradient.gradient.stops.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
 
 				// Recompute the start and end position of the gradient (in viewport transform)
 				let transform = selected_gradient.transform;
@@ -313,7 +318,7 @@ impl Fsm for GradientToolFsmState {
 				selected_gradient.gradient.end = transform.inverse().transform_point2(new_end);
 
 				// Remap the positions
-				for (position, _) in selected_gradient.gradient.stops.0.iter_mut() {
+				for (position, _) in selected_gradient.gradient.stops.iter_mut() {
 					*position = (*position - min_position) / (max_position - min_position);
 				}
 
@@ -323,7 +328,7 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(mut gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					// TODO: This transform is incorrect. I think this is since it is based on the Footprint which has not been updated yet
 					let transform = gradient_space_transform(layer, document);
@@ -362,11 +367,11 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
-				for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					// Check for dragging step
-					for (index, (pos, _)) in gradient.stops.0.iter().enumerate() {
+					for (index, (pos, _)) in gradient.stops.iter().enumerate() {
 						let pos = transform.transform_point2(gradient.start.lerp(gradient.end, *pos));
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
@@ -401,7 +406,7 @@ impl Fsm for GradientToolFsmState {
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
-						if !document.network_interface.selected_nodes(&[]).unwrap().selected_layers_contains(layer, document.metadata()) {
+						if !document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata()) {
 							let nodes = vec![layer.to_node()];
 
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
@@ -492,7 +497,7 @@ impl Fsm for GradientToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"),

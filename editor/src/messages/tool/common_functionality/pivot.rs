@@ -6,7 +6,6 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
 
@@ -45,7 +44,7 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
 		let Some(first) = layers.next() else {
 			// If no layers are selected then we revert things back to default
@@ -67,8 +66,7 @@ impl Pivot {
 			// If more than one layer is selected we use the AABB with the mean of the pivots
 			let xy_summation = document
 				.network_interface
-				.selected_nodes(&[])
-				.unwrap()
+				.selected_nodes()
 				.selected_visible_and_unlocked_layers(&document.network_interface)
 				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network_interface))
 				.reduce(|a, b| a + b)
@@ -104,12 +102,7 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for layer in document
-			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
-			.selected_visible_and_unlocked_layers(&document.network_interface)
-		{
+		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			// Only update the pivot when computed position is finite.
 			if transform.matrix2.determinant().abs() <= f64::EPSILON {
