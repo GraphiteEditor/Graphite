@@ -65,6 +65,7 @@ pub enum PathToolMessage {
 		direct_insert_without_sliding: Key,
 		extend_selection: Key,
 		lasso_select: Key,
+		handle_drag_from_anchor: Key,
 	},
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -375,6 +376,7 @@ struct PathToolData {
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
 	snapping_axis: Option<Axis>,
+	stored_handle_positions: Option<(DVec2, DVec2)>,
 }
 
 impl PathToolData {
@@ -489,6 +491,7 @@ impl PathToolData {
 		extend_selection: bool,
 		direct_insert_without_sliding: bool,
 		lasso_select: bool,
+		handle_drag_from_anchor: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -514,6 +517,40 @@ impl PathToolData {
 				}
 				if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
 					self.saved_points_before_handle_drag = old_selection;
+				}
+
+				//here if Alt pressed and dragging only an anchor then do the desired changes
+				let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+
+				if single_anchor_selected && handle_drag_from_anchor {
+					let manipulator_point_id = shape_editor.selected_points().next().unwrap();
+					let point_id = manipulator_point_id.as_anchor().unwrap();
+
+					let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
+					let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+
+					let handles: Vec<_> = vector_data.all_connected(point_id).collect();
+					// log::info!("Handles are these: {:?}", handles);
+
+					//TODO: Store the previous handle positions in tool data
+
+					let pos1 = handles[0].to_manipulator_point().get_position(&vector_data).unwrap();
+					let pos2 = handles[1].to_manipulator_point().get_position(&vector_data).unwrap();
+					self.stored_handle_positions = Some((pos1, pos2));
+
+					for handle in &handles {
+						let modification_type = handle.set_relative_position(DVec2::ZERO);
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
+
+					let manipulator_point_id = handles[0].to_manipulator_point();
+
+					//here decide which anchor point we need to select based on the drag? No actually do it in drag wala function
+
+					// change the selection to one of the handles
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
+					responses.add(PathToolMessage::SelectionChanged);
 				}
 
 				self.start_dragging_point(selected_points, input, document, shape_editor);
@@ -831,6 +868,9 @@ impl PathToolData {
 		let unsnapped_delta = current_mouse - previous_mouse;
 
 		if self.snapping_axis.is_none() {
+			if self.stored_handle_positions.is_some() && !equidistant {
+				//here add modification for handles
+			}
 			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
@@ -1021,16 +1061,27 @@ impl Fsm for PathToolFsmState {
 					direct_insert_without_sliding,
 					extend_selection,
 					lasso_select,
+					handle_drag_from_anchor,
 				},
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let lasso_select = input.keyboard.get(lasso_select as usize);
 				let direct_insert_without_sliding = input.keyboard.get(direct_insert_without_sliding as usize);
+				let handle_drag_from_anchor = input.keyboard.get(handle_drag_from_anchor as usize);
 
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select)
+				tool_data.mouse_down(
+					shape_editor,
+					document,
+					input,
+					responses,
+					extend_selection,
+					direct_insert_without_sliding,
+					lasso_select,
+					handle_drag_from_anchor,
+				)
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
