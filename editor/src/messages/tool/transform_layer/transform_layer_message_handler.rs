@@ -699,3 +699,75 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		common
 	}
 }
+
+#[cfg(test)]
+mod test_transform_layer {
+    use crate::test_utils::test_prelude::*;
+    use crate::messages::portfolio::document::graph_operation::transform_utils;
+    use glam::DAffine2;
+    async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> DAffine2 {
+        let document = editor.active_document();
+        let network_interface = &document.network_interface;
+        let layer_graph = NodeGraphLayer::new(layer, network_interface);
+        let transform_node = layer_graph.upstream_node_id_from_protonode("Transform").unwrap();
+        let node = network_interface.document_network().nodes.get(&transform_node).unwrap();
+        transform_utils::get_current_transform(&node.inputs)
+    }
+
+    #[tokio::test]
+    async fn test_grab_cancel() {
+        let mut editor = EditorTestUtils::create();
+        editor.new_document().await;
+        editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+        let document = editor.active_document();
+        let layer = document.metadata().all_layers().next().unwrap();
+        let original_transform = get_layer_transform(&mut editor, layer).await;
+        editor.handle_message(TransformLayerMessage::BeginGrab).await;
+        editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+        editor.handle_message(TransformLayerMessage::PointerMove { 
+            slow_key: Key::Shift, 
+            increments_key: Key::Control 
+        }).await;
+        editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+        let final_transform = get_layer_transform(&mut editor, layer).await;
+        assert_eq!(original_transform, final_transform);
+    }
+    
+    #[tokio::test]
+    async fn test_rotate_cancel() {
+        let mut editor = EditorTestUtils::create();
+        editor.new_document().await;
+        editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+        let document = editor.active_document();
+        let layer = document.metadata().all_layers().next().unwrap();
+        let original_transform = get_layer_transform(&mut editor, layer).await;
+        editor.handle_message(TransformLayerMessage::BeginRotate).await;
+        editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+        editor.handle_message(TransformLayerMessage::PointerMove { 
+            slow_key: Key::Shift, 
+            increments_key: Key::Control 
+        }).await;
+        editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+        let final_transform = get_layer_transform(&mut editor, layer).await;
+        assert_eq!(original_transform, final_transform);
+    }
+    
+    #[tokio::test]
+    async fn test_scale_cancel() {
+        let mut editor = EditorTestUtils::create();
+        editor.new_document().await;
+        editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+        let document = editor.active_document();
+        let layer = document.metadata().all_layers().next().unwrap();
+        let original_transform = get_layer_transform(&mut editor, layer).await;
+        editor.handle_message(TransformLayerMessage::BeginScale).await;
+        editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+        editor.handle_message(TransformLayerMessage::PointerMove { 
+            slow_key: Key::Shift, 
+            increments_key: Key::Control 
+        }).await;
+        editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+        let final_transform = get_layer_transform(&mut editor, layer).await;
+        assert_eq!(original_transform, final_transform);
+    }
+}
