@@ -363,7 +363,6 @@ impl PenToolData {
 	fn get_opposite_handle_type(&self, vector_data: &VectorData) -> TargetHandle {
 		match self.handle_type {
 			TargetHandle::HandleStart => self.check_end_handle_type(vector_data),
-			TargetHandle::None => TargetHandle::None,
 			_ => TargetHandle::HandleStart,
 		}
 	}
@@ -1453,9 +1452,8 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
-				tool_data.end_point = None;
-
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+				tool_data.end_point = None;
 				tool_data
 					.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
 					.unwrap_or(PenToolFsmState::PlacingAnchor)
@@ -1579,7 +1577,7 @@ impl Fsm for PenToolFsmState {
 				match tool_data.handle_type {
 					TargetHandle::None => {}
 					TargetHandle::HandleStart => {
-						// will be moving the `next_handle_start` need to check the offset
+						// The hanlde which will be dragged will be the `next_handle_start` need to check the offset
 						tool_data.handle_start_offset = layer.map(|layer| document.metadata().transform_to_viewport(layer).transform_point2(tool_data.next_handle_start) - input.mouse.position);
 
 						tool_data.update_handle_custom(&vector_data);
@@ -1625,7 +1623,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::DraggingHandle(mode), PenToolMessage::PointerOutsideViewport { .. }) => {
-				// Auto-panning
+				// Auto-panningF
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				PenToolFsmState::DraggingHandle(mode)
