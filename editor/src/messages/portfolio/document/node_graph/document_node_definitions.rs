@@ -809,6 +809,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 					],
+					manual_composition: Some(generic!(T)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
