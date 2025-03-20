@@ -1,0 +1,25 @@
+name: "Audit Security Advisories"
+
+on:
+  # Run once each day
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🔒 Check crate security advisories for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+
+      - name: 🔒 Check crate security advisories for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
+          manifest-path: libraries/rawkit/Cargo.toml
