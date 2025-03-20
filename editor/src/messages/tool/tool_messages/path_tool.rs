@@ -933,7 +933,7 @@ impl Fsm for PathToolFsmState {
 						let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
-							.rgba_hex();
+							.to_rgba_hex_srgb();
 						fill_color.insert(0, '#');
 						let fill_color = Some(fill_color.as_str());
 
@@ -961,18 +961,21 @@ impl Fsm for PathToolFsmState {
 							let origin = tool_data.drag_start_pos;
 							let viewport_diagonal = input.viewport_bounds.size().length();
 
-							let mut faded_blue = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+							let mut faded_blue = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+								.unwrap()
+								.with_alpha(0.25)
+								.to_rgba_hex_srgb();
 							faded_blue.insert(0, '#');
 							let other = faded_blue.as_str();
 
 							match axis {
 								Axis::Y => {
-									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(other));
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(other), None);
 								}
 								Axis::X | Axis::Both => {
-									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(other));
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(other), None);
 								}
 							}
 						}
@@ -983,8 +986,8 @@ impl Fsm for PathToolFsmState {
 						if let Some(closest_segment) = &tool_data.segment {
 							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
 							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
-								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE));
-								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE));
+								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);
+								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE), None);
 								overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
 								overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
 							}
