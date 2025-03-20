@@ -298,7 +298,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let radius = start_mouse.distance(pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
 							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
-							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
+							let angle_in_degrees = angle.to_degrees();
+							let display_angle = if angle_in_degrees.is_sign_positive() {
+								angle_in_degrees - (angle_in_degrees / 360.).floor() * 360.
+							} else if angle_in_degrees.is_sign_negative() {
+								angle_in_degrees - ((angle_in_degrees / 360.).floor() + 1.) * 360.
+							} else {
+								angle_in_degrees
+							};
+							let text = format!("{}°", format_rounded(display_angle, 2));
 							let text_texture_width = overlay_context.get_width(&text) / 2.;
 							let text_texture_height = 12.;
 							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
