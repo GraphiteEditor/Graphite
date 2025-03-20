@@ -56,11 +56,7 @@ impl<PointId: crate::Identifier> Iterator for SubpathIter<'_, PointId> {
 			return None;
 		}
 		let closed = if self.is_always_closed { true } else { self.subpath.closed };
-		let len = self.subpath.len() - 1
-			+ match closed {
-				true => 1,
-				false => 0,
-			};
+		let len = self.subpath.len() - 1 + if closed { 1 } else { 0 };
 		if self.index >= len {
 			return None;
 		}

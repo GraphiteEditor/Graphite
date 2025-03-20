@@ -15,7 +15,8 @@
 	const PANEL_SIZES = {
 		/**/ root: 100,
 		/*   ├─ */ content: 80,
-		/*   │     └─ */ document: 100,
+		/*   │     ├─ */ document: 70,
+		/*   │     └─ */ spreadsheet: 30,
 		/*   └─ */ details: 20,
 		/*         ├─ */ properties: 45,
 		/*         └─ */ layers: 55,
@@ -146,6 +147,12 @@
 					bind:this={documentPanel}
 				/>
 			</LayoutRow>
+			{#if $portfolio.spreadsheetOpen}
+				<LayoutRow class="workspace-grid-resize-gutter" data-gutter-vertical on:pointerdown={(e) => resizePanel(e)} />
+				<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["spreadsheet"] }} data-subdivision-name="spreadsheet">
+					<Panel panelType="Spreadsheet" tabLabels={[{ name: "Spreadsheet" }]} tabActiveIndex={0} />
+				</LayoutRow>
+			{/if}
 		</LayoutCol>
 		<LayoutCol class="workspace-grid-resize-gutter" data-gutter-horizontal on:pointerdown={(e) => resizePanel(e)} />
 		<LayoutCol class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["details"] }} data-subdivision-name="details">

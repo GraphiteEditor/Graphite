@@ -1273,7 +1273,7 @@ impl Fsm for PenToolFsmState {
 				}
 
 				// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
-				overlay_context.line(next_anchor, next_handle_start, None);
+				overlay_context.line(next_anchor, next_handle_start, None, None);
 
 				match tool_options.pen_overlay_mode {
 					PenOverlayMode::AllHandles => {
@@ -1290,19 +1290,19 @@ impl Fsm for PenToolFsmState {
 
 				if let (Some(anchor_start), Some(handle_start), Some(handle_end)) = (anchor_start, handle_start, handle_end) {
 					// Draw the line between the most recently placed anchor and its outgoing handle (which is currently influencing the currently-being-placed segment)
-					overlay_context.line(anchor_start, handle_start, None);
+					overlay_context.line(anchor_start, handle_start, None, None);
 
 					// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
-					overlay_context.line(next_anchor, handle_end, None);
+					overlay_context.line(next_anchor, handle_end, None, None);
 
 					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.lock_angle {
 						// Draw the line between the currently-being-placed anchor and last-placed point (lock angle bent overlays)
-						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
+						overlay_context.dashed_line(anchor_start, next_anchor, None, None, Some(4.), Some(4.), Some(0.5));
 					}
 
 					// Draw the line between the currently-being-placed anchor and last-placed point (snap angle bent overlays)
 					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.snap_angle {
-						overlay_context.dashed_line(anchor_start, next_anchor, None, Some(4.), Some(4.), Some(0.5));
+						overlay_context.dashed_line(anchor_start, next_anchor, None, None, Some(4.), Some(4.), Some(0.5));
 					}
 
 					if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, handle_end) {
