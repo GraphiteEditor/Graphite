@@ -714,18 +714,19 @@ impl Fsm for SelectToolFsmState {
 
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
 					let perp = edge.perp();
+					let edge_dot_horizontal = edge.normalize().dot(DVec2::X).abs();
+					let perp_dot_horizontal = perp.normalize().dot(DVec2::X).abs();
 
-
-					let (edge_color, perp_color) = if edge.x >= edge.y {
+					let (edge_color, perp_color) = if edge_dot_horizontal >= perp_dot_horizontal{
 						(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
 					} else {
 						(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
 					};
-					let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).rgba_hex();
+					let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgb_hex_srgb();
 					perp_color.insert(0, '#');
 					let perp_color = perp_color.as_str();
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color));
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color));
+					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color),None);
+					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color),None);
 
 				}
 
