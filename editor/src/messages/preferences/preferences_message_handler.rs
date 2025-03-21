@@ -89,10 +89,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
 
-				let variant = match zoom_with_scroll {
-					false => MappingVariant::Default,
-					true => MappingVariant::ZoomWithScroll,
-				};
+				let variant = if zoom_with_scroll { MappingVariant::ZoomWithScroll } else { MappingVariant::Default };
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {

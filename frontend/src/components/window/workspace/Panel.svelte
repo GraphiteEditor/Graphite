@@ -2,11 +2,13 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
+	import Spreadsheet from "@graphite/components/panels/Spreadsheet.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
 		Layers,
 		Properties,
+		Spreadsheet,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>

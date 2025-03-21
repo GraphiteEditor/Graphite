@@ -182,6 +182,7 @@ tagged_value! {
 	NodePath(Vec<NodeId>),
 	VecDVec2(Vec<DVec2>),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
+	RealTimeMode(graphene_core::animation::RealTimeMode),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),
 	NoiseType(graphene_core::raster::NoiseType),
 	FractalType(graphene_core::raster::FractalType),
