@@ -11,20 +11,32 @@ pub enum AnimationTimeMode {
 	FrameBased,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default, Debug, Clone, PartialEq)]
+enum AnimationState {
+	#[default]
+	Stopped,
+	Playing {
+		start: f64,
+	},
+	Paused {
+		start: f64,
+		pause_time: f64,
+	},
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct AnimationMessageHandler {
-	live_preview: bool,
 	/// Used to re-send the UI on the next frame after playback starts
 	live_preview_recently_zero: bool,
 	timestamp: f64,
 	frame_index: f64,
-	animation_start: Option<f64>,
+	animation_state: AnimationState,
 	fps: f64,
 	animation_time_mode: AnimationTimeMode,
 }
 impl AnimationMessageHandler {
 	pub(crate) fn timing_information(&self) -> TimingInformation {
-		let animation_time = self.timestamp - self.animation_start.unwrap_or(self.timestamp);
+		let animation_time = self.timestamp - self.animation_start();
 		let animation_time = match self.animation_time_mode {
 			AnimationTimeMode::TimeBased => Duration::from_millis(animation_time as u64),
 			AnimationTimeMode::FrameBased => Duration::from_secs((self.frame_index / self.fps) as u64),
@@ -32,34 +44,39 @@ impl AnimationMessageHandler {
 		TimingInformation { time: self.timestamp, animation_time }
 	}
 
+	pub(crate) fn animation_start(&self) -> f64 {
+		match self.animation_state {
+			AnimationState::Stopped => self.timestamp,
+			AnimationState::Playing { start } => start,
+			AnimationState::Paused { start, pause_time } => start + self.timestamp - pause_time,
+		}
+	}
+
 	pub fn is_playing(&self) -> bool {
-		self.live_preview
+		matches!(self.animation_state, AnimationState::Playing { .. })
 	}
 }
 
 impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 	fn process_message(&mut self, message: AnimationMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
-			AnimationMessage::ToggleLivePreview => {
-				if self.animation_start.is_none() {
-					self.animation_start = Some(self.timestamp);
-				}
-				self.live_preview = !self.live_preview;
-
-				// Update the restart and pause/play buttons
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-			}
+			AnimationMessage::ToggleLivePreview => match self.animation_state {
+				AnimationState::Stopped => responses.add(AnimationMessage::EnableLivePreview),
+				AnimationState::Playing { .. } => responses.add(AnimationMessage::DisableLivePreview),
+				AnimationState::Paused { .. } => responses.add(AnimationMessage::EnableLivePreview),
+			},
 			AnimationMessage::EnableLivePreview => {
-				if self.animation_start.is_none() {
-					self.animation_start = Some(self.timestamp);
-				}
-				self.live_preview = true;
+				self.animation_state = AnimationState::Playing { start: self.animation_start() };
 
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			AnimationMessage::DisableLivePreview => {
-				self.live_preview = false;
+				match self.animation_state {
+					AnimationState::Stopped => (),
+					AnimationState::Playing { start } => self.animation_state = AnimationState::Paused { start, pause_time: self.timestamp },
+					AnimationState::Paused { .. } => (),
+				}
 
 				// Update the restart and pause/play buttons
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -72,18 +89,16 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::SetTime(time) => {
 				self.timestamp = time;
-				if self.live_preview {
-					responses.add(AnimationMessage::UpdateTime);
-				}
+				responses.add(AnimationMessage::UpdateTime);
 			}
 			AnimationMessage::IncrementFrameCounter => {
-				if self.live_preview {
+				if self.is_playing() {
 					self.frame_index += 1.;
 					responses.add(AnimationMessage::UpdateTime);
 				}
 			}
 			AnimationMessage::UpdateTime => {
-				if self.live_preview {
+				if self.is_playing() {
 					responses.add(PortfolioMessage::SubmitActiveGraphRender);
 
 					if self.live_preview_recently_zero {
@@ -95,7 +110,10 @@ impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 			}
 			AnimationMessage::RestartAnimation => {
 				self.frame_index = 0.;
-				self.animation_start = None;
+				self.animation_state = match self.animation_state {
+					AnimationState::Playing { .. } => AnimationState::Playing { start: self.timestamp },
+					_ => AnimationState::Stopped,
+				};
 				self.live_preview_recently_zero = true;
 				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 				// Update the restart and pause/play buttons
