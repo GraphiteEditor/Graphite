@@ -135,8 +135,11 @@
 		editor.handle.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClick(id: bigint) {
-		editor.handle.toggleLayerExpansion(id);
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
+		const accel = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const collapseRecursive = e.altKey || accel;
+		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		e.stopPropagation();
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -432,8 +435,10 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							title={listing.entry.expanded ? "Collapse" : `Expand${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
-							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
+							title={listing.entry.expanded
+								? "Collapse (Click) / Collapse All (Alt Click)"
+								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
 					{/if}
@@ -545,11 +550,11 @@
 				}
 
 				&.ancestor-of-selected .expand-arrow:not(.expanded) {
-					background-image: var(--inheritance-stripes-background);
+					background-image: var(--inheritance-dots-background-6-lowergray);
 				}
 
 				&.descendant-of-selected {
-					background-image: var(--inheritance-dots-background);
+					background-image: var(--inheritance-dots-background-4-dimgray);
 				}
 
 				&.selected-but-not-in-selected-network {

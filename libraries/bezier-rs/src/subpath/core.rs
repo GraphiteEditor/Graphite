@@ -1,7 +1,6 @@
 use super::*;
 use crate::consts::*;
 use crate::utils::format_point;
-
 use glam::DVec2;
 use std::fmt::Write;
 
@@ -296,6 +295,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
 	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
+		let sides = sides.max(3);
 		let angle_increment = std::f64::consts::TAU / (sides as f64);
 		let anchor_positions = (0..sides).map(|i| {
 			let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
@@ -307,6 +307,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Constructs a star polygon (n-star). See [new_regular_polygon], but with interspersed vertices at an `inner_radius`.
 	pub fn new_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
+		let sides = sides.max(2);
 		let angle_increment = 0.5 * std::f64::consts::TAU / (sides as f64);
 		let anchor_positions = (0..sides * 2).map(|i| {
 			let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;

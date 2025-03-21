@@ -277,11 +277,11 @@
 		clearTimeout(repeatTimeout);
 	}
 
-	function onIncrementMouseDown(e: MouseEvent) {
-		if (e.button === BUTTON_RIGHT) incrementPressAbort();
-	}
+	function incrementPressAbort(e: KeyboardEvent | MouseEvent) {
+		// Only abort if the user right clicks or presses Escape
+		if (e instanceof KeyboardEvent && e.key !== "Escape") return;
+		if (e instanceof MouseEvent && e.button !== BUTTON_RIGHT) return;
 
-	function incrementPressAbort() {
 		const element = self?.element() || undefined;
 		if (element) preventEscapeClosingParentFloatingMenu(element);
 
@@ -580,14 +580,13 @@
 		// Logic for aborting from a right click or pressing Escape.
 		const abortWithEscape = e instanceof KeyboardEvent && e.key === "Escape";
 		const abortWithRightClick = e instanceof MouseEvent && e.button === BUTTON_RIGHT;
-		if (abortWithEscape || abortWithRightClick) {
-			// Call the abort helper function
-			sliderAbort(abortWithEscape);
 
-			// Clean up these event listeners because they were for getting us into this function and now we're done with them.
-			removeEventListener("mousedown", sliderAbortFromMousedown);
-			removeEventListener("keydown", sliderAbortFromMousedown);
-		}
+		// Call the abort helper function
+		if (abortWithEscape || abortWithRightClick) sliderAbort(abortWithEscape);
+
+		// Clean up these event listeners because they were for getting us into this function and now we're done with them.
+		removeEventListener("mousedown", sliderAbortFromMousedown);
+		removeEventListener("keydown", sliderAbortFromMousedown);
 	}
 
 	// Helper function that performs the state management and cleanup for aborting the slider drag.
@@ -658,7 +657,7 @@
 			<button
 				class="arrow left"
 				on:pointerdown={(e) => onIncrementPointerDown(e, "Decrease")}
-				on:mousedown={onIncrementMouseDown}
+				on:mousedown={incrementPressAbort}
 				on:pointerup={onIncrementPointerUp}
 				on:pointerleave={onIncrementPointerUp}
 				tabindex="-1"
@@ -666,7 +665,7 @@
 			<button
 				class="arrow right"
 				on:pointerdown={(e) => onIncrementPointerDown(e, "Increase")}
-				on:mousedown={onIncrementMouseDown}
+				on:mousedown={incrementPressAbort}
 				on:pointerup={onIncrementPointerUp}
 				on:pointerleave={onIncrementPointerUp}
 				tabindex="-1"
@@ -738,6 +737,9 @@
 				background: rgba(var(--color-1-nearblack-rgb), 0.5);
 				// An outline can appear when pressing the arrow button with left click then hitting Escape, so this stops that from showing
 				outline: none;
+				// TODO: This is a quick, imperfect way to make the arrow buttons appear like they're behind the text (without messing with the element click targets if we used z-index).
+				// TODO: But it doesn't preserve the exact hover color due to the blending. Improve this by using a separate element for displaying the arrow and listening for pointer events.
+				mix-blend-mode: screen;
 
 				&.right {
 					right: 0;

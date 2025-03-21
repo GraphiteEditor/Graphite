@@ -1,11 +1,9 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
-
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default)]
@@ -41,6 +39,29 @@ impl LayoutMessageHandler {
 				// A section contains more LayoutGroups which we add to the stack.
 				LayoutGroup::Section { layout, .. } => {
 					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
+				}
+
+				LayoutGroup::Table { rows } => {
+					for (row_index, cell) in rows.iter().enumerate() {
+						for (cell_index, entry) in cell.iter().enumerate() {
+							// Return if this is the correct ID
+							if entry.widget_id == widget_id {
+								widget_path.push(row_index);
+								widget_path.push(cell_index);
+								return Some((entry, widget_path));
+							}
+
+							if let Widget::PopoverButton(popover) = &entry.widget {
+								stack.extend(
+									popover
+										.popover_layout
+										.iter()
+										.enumerate()
+										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, child]].concat(), val)),
+								);
+							}
+						}
+					}
 				}
 			}
 		}
@@ -84,6 +105,7 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
+						// Decodes the colors in gamma, not linear
 						let decode_color = |color: &serde_json::map::Map<String, serde_json::value::Value>| -> Option<Color> {
 							let red = color.get("red").and_then(|x| x.as_f64()).map(|x| x as f32);
 							let green = color.get("green").and_then(|x| x.as_f64()).map(|x| x as f32);
@@ -122,20 +144,13 @@ impl LayoutMessageHandler {
 									.filter_map(|stop| {
 										stop.as_object().and_then(|stop| {
 											let position = stop.get("position").and_then(|x| x.as_f64());
-											let color = stop.get("color").and_then(|x| x.as_object());
-
-											if let (Some(position), Some(color_object)) = (position, color) {
-												if let Some(color) = decode_color(color_object) {
-													return Some((position, color));
-												}
-											}
-
-											None
+											let color = stop.get("color").and_then(|x| x.as_object()).and_then(decode_color);
+											if let (Some(position), Some(color)) = (position, color) { Some((position, color)) } else { None }
 										})
 									})
 									.collect::<Vec<_>>();
 
-								color_button.value = FillChoice::Gradient(GradientStops(gradient_stops));
+								color_button.value = FillChoice::Gradient(GradientStops::new(gradient_stops));
 								return (color_button.on_update.callback)(color_button);
 							}
 
@@ -413,6 +428,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesSections => FrontendMessage::UpdatePropertyPanelSectionsLayout { layout_target, diff },
+			LayoutTarget::Spreadsheet => FrontendMessage::UpdateSpreadsheetLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },

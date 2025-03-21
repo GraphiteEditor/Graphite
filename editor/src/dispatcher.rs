@@ -13,6 +13,7 @@ pub struct Dispatcher {
 
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
+	animation_message_handler: AnimationMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -24,6 +25,15 @@ pub struct DispatcherMessageHandlers {
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	workspace_message_handler: WorkspaceMessageHandler,
+}
+
+impl DispatcherMessageHandlers {
+	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
+		Self {
+			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
+			..Default::default()
+		}
+	}
 }
 
 /// For optimization, these are messages guaranteed to be redundant when repeated.
@@ -41,16 +51,20 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame)),
-	MessageDiscriminant::InputPreprocessor(InputPreprocessorMessageDiscriminant::FrameTimeAdvance),
-];
+const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame))];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
-const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw"];
+const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
 	pub fn new() -> Self {
 		Self::default()
+	}
+
+	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
+		Self {
+			message_handlers: DispatcherMessageHandlers::with_executor(executor),
+			..Default::default()
+		}
 	}
 
 	// If the deepest queues (higher index in queues list) are now empty (after being popped from) then remove them
@@ -125,14 +139,18 @@ impl Dispatcher {
 					};
 
 					let graphene_std::renderer::RenderMetadata {
-						footprints,
+						upstream_footprints: footprints,
+						local_transforms,
 						click_targets,
 						clip_targets,
 					} = render_metadata;
 
 					// Run these update state messages immediately
 					let messages = [
-						DocumentMessage::UpdateUpstreamTransforms { upstream_transforms: footprints },
+						DocumentMessage::UpdateUpstreamTransforms {
+							upstream_footprints: footprints,
+							local_transforms,
+						},
 						DocumentMessage::UpdateClickTargets { click_targets },
 						DocumentMessage::UpdateClipTargets { clip_targets },
 					];
@@ -156,6 +174,9 @@ impl Dispatcher {
 
 					// Finish loading persistent data from the browser database
 					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
+				}
+				Message::Animation(message) => {
+					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Batched(messages) => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
@@ -212,6 +233,8 @@ impl Dispatcher {
 					let preferences = &self.message_handlers.preferences_message_handler;
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					let timing_information = self.message_handlers.animation_message_handler.timing_information();
+					let animation = &self.message_handlers.animation_message_handler;
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -221,6 +244,8 @@ impl Dispatcher {
 							preferences,
 							current_tool,
 							message_logging_verbosity,
+							timing_information,
+							animation,
 						},
 					);
 				}
@@ -263,6 +288,7 @@ impl Dispatcher {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
 		list.extend(self.message_handlers.dialog_message_handler.actions());
+		list.extend(self.message_handlers.animation_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
@@ -283,11 +309,7 @@ impl Dispatcher {
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
 			if index == queues.len() - 1 {
-				if queue.is_empty() {
-					"└── "
-				} else {
-					"├── "
-				}
+				if queue.is_empty() { "└── " } else { "├── " }
 			} else if queue.is_empty() {
 				"   "
 			} else {
@@ -328,60 +350,48 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::application::Editor;
-	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-	use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-	use crate::messages::prelude::*;
-	use crate::test_utils::EditorTestUtils;
-	use graphene_core::raster::color::Color;
-
-	fn init_logger() {
-		let _ = env_logger::builder().is_test(true).try_init();
-	}
+	pub use crate::test_utils::test_prelude::*;
 
 	/// Create an editor with three layers
 	/// 1. A red rectangle
 	/// 2. A blue shape
 	/// 3. A green ellipse
-	fn create_editor_with_three_layers() -> Editor {
-		init_logger();
-		let mut editor = Editor::create();
+	async fn create_editor_with_three_layers() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
 
-		editor.new_document();
+		editor.new_document().await;
 
-		editor.select_primary_color(Color::RED);
-		editor.draw_rect(100., 200., 300., 400.);
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(100., 200., 300., 400.).await;
 
-		editor.select_primary_color(Color::BLUE);
-		editor.draw_polygon(10., 1200., 1300., 400.);
+		editor.select_primary_color(Color::BLUE).await;
+		editor.draw_polygon(10., 1200., 1300., 400.).await;
 
-		editor.select_primary_color(Color::GREEN);
-		editor.draw_ellipse(104., 1200., 1300., 400.);
+		editor.select_primary_color(Color::GREEN).await;
+		editor.draw_ellipse(104., 1200., 1300., 400.).await;
 
 		editor
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
 	/// - create rect, shape and ellipse
 	/// - copy
 	/// - paste
 	/// - assert that ellipse was copied
-	fn copy_paste_single_layer() {
-		let mut editor = create_editor_with_three_layers();
+	#[tokio::test]
+	async fn copy_paste_single_layer() {
+		let mut editor = create_editor_with_three_layers().await;
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
+		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
 
-		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -392,33 +402,30 @@ mod test {
 		}
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
 	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select shape
 	/// - copy
 	/// - paste
 	/// - assert that shape was copied
-	fn copy_paste_single_layer_from_middle() {
-		let mut editor = create_editor_with_three_layers();
+	#[tokio::test]
+	async fn copy_paste_single_layer_from_middle() {
+		let mut editor = create_editor_with_three_layers().await;
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let shape_id = document_before_copy.metadata().all_layers().nth(1).unwrap();
+		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] });
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-
-		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -429,9 +436,6 @@ mod test {
 		}
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
 	#[cfg_attr(miri, ignore)]
 	/// - create rect, shape and ellipse
 	/// - select ellipse and rect
@@ -440,36 +444,40 @@ mod test {
 	/// - create another rect
 	/// - paste
 	/// - paste
-	fn copy_paste_deleted_layers() {
-		let mut editor = create_editor_with_three_layers();
+	#[tokio::test]
+	async fn copy_paste_deleted_layers() {
+		let mut editor = create_editor_with_three_layers().await;
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 3);
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let mut layers = document_before_copy.metadata().all_layers();
-		let rect_id = layers.next().expect("rectangle");
-		let shape_id = layers.next().expect("shape");
-		let ellipse_id = layers.next().expect("ellipse");
+		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
+		let rect_id = layers_before_copy[0];
+		let shape_id = layers_before_copy[1];
+		let ellipse_id = layers_before_copy[2];
 
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet {
-			nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
-		});
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
-		editor.draw_rect(0., 800., 12., 200.);
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT_PARENT,
-			insert_index: 0,
-		});
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
+			})
+			.await;
+		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal }).await;
+		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
+		editor.draw_rect(0., 800., 12., 200.).await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		editor
+			.handle_message(PortfolioMessage::PasteIntoFolder {
+				clipboard: Clipboard::Internal,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-
-		let layers_before_copy = document_before_copy.metadata().all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata().all_layers().collect::<Vec<_>>();
+		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
@@ -498,8 +506,7 @@ mod test {
 			panic!()
 		};
 
-		init_logger();
-		let mut editor = Editor::create();
+		let mut editor = EditorTestUtils::create();
 
 		// UNCOMMENT THIS FOR RUNNING UNDER MIRI
 		//
@@ -523,20 +530,13 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
 				document_name: document_name.into(),
 				document_serialized_content,
 			});
 
 			// Check if the graph renders
-			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-			portfolio
-				.executor
-				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE, true)
-				.expect("submit_node_graph_evaluation failed");
-			crate::node_graph_executor::run_node_graph().await;
-			let mut messages = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
+			editor.eval_graph().await;
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file

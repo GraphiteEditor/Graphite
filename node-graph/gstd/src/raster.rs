@@ -1,14 +1,13 @@
 use dyn_any::DynAny;
-use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{ImageFrame, ImageFrameTable};
-use graphene_core::raster::{
-	Alpha, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
-};
-use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{AlphaBlending, Color, Node};
-
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::raster::bbox::Bbox;
+use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::{
+	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
+};
+use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -28,15 +27,18 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
-	let image_frame = image_frame.one_item();
+fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
+	let image_frame_transform = image_frame.transform();
+	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
+
+	let image = image_frame.one_instance().instance;
 
 	// Resize the image using the image crate
-	let image = &image_frame.image;
 	let data = bytemuck::cast_vec(image.data.clone());
 
+	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-	let image_bounds = Bbox::from_transform(image_frame.transform).to_axis_aligned_bbox();
+	let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
 	let intersection = viewport_bounds.intersect(&image_bounds);
 	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
 	let size = intersection.size();
@@ -44,7 +46,7 @@ fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> Im
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::default();
+		return ImageFrameTable::one_empty_image();
 	}
 
 	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
@@ -79,15 +81,13 @@ fn sample_image(footprint: Footprint, image_frame: ImageFrameTable<Color>) -> Im
 	};
 	// we need to adjust the offset if we truncate the offset calculation
 
-	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
 
-	let result = ImageFrame {
-		image,
-		transform: new_transform,
-		alpha_blending: image_frame.alpha_blending,
-	};
+	let mut result = ImageFrameTable::new(image);
+	*result.transform_mut() = new_transform;
+	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
 
-	ImageFrameTable::new(result)
+	result
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -107,15 +107,7 @@ where
 	image
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct InsertChannelNode<P, S, Insertion, TargetChannel> {
-	insertion: Insertion,
-	target_channel: TargetChannel,
-	_p: PhantomData<P>,
-	_s: PhantomData<S>,
-}
-
-#[node_macro::old_node_fn(InsertChannelNode<_P, _S>)]
+#[node_macro::node]
 fn insert_channel<
 	// _P is the color of the input image.
 	_P: RGBMut,
@@ -124,8 +116,9 @@ fn insert_channel<
 	Input: BitmapMut<Pixel = _P>,
 	Insertion: Bitmap<Pixel = _S>,
 >(
-	mut image: Input,
-	insertion: Insertion,
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	#[implementations(ImageFrameTable<Color>)] insertion: Insertion,
 	target_channel: RedGreenBlue,
 ) -> Input
 where
@@ -154,15 +147,60 @@ where
 
 	image
 }
+#[node_macro::node]
+fn combine_channels<
+	// _P is the color of the input image.
+	_P: RGBMut + AlphaMut,
+	_S: Pixel + Luminance,
+	// Input image
+	Input: BitmapMut<Pixel = _P>,
+	Red: Bitmap<Pixel = _S>,
+	Green: Bitmap<Pixel = _S>,
+	Blue: Bitmap<Pixel = _S>,
+	Alpha: Bitmap<Pixel = _S>,
+>(
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	#[implementations(ImageFrameTable<Color>)] red: Red,
+	#[implementations(ImageFrameTable<Color>)] green: Green,
+	#[implementations(ImageFrameTable<Color>)] blue: Blue,
+	#[implementations(ImageFrameTable<Color>)] alpha: Alpha,
+) -> Input
+where
+	_P::ColorChannel: Linear,
+{
+	let dimensions = [red.dim(), green.dim(), blue.dim(), alpha.dim()];
+	if dimensions.iter().all(|&(x, _)| x == 0) {
+		return image;
+	}
 
-#[derive(Debug, Clone, Copy)]
-pub struct MaskImageNode<P, S, Stencil> {
-	stencil: Stencil,
-	_p: PhantomData<P>,
-	_s: PhantomData<S>,
+	if dimensions.iter().any(|&(x, y)| x != image.width() || y != image.height()) {
+		log::warn!("Stencil and image have different sizes. This is not supported.");
+		return image;
+	}
+
+	for y in 0..image.height() {
+		for x in 0..image.width() {
+			let image_pixel = image.get_pixel_mut(x, y).unwrap();
+			if let Some(r) = red.get_pixel(x, y) {
+				image_pixel.set_red(r.l().cast_linear_channel());
+			}
+			if let Some(g) = green.get_pixel(x, y) {
+				image_pixel.set_green(g.l().cast_linear_channel());
+			}
+			if let Some(b) = blue.get_pixel(x, y) {
+				image_pixel.set_blue(b.l().cast_linear_channel());
+			}
+			if let Some(a) = alpha.get_pixel(x, y) {
+				image_pixel.set_alpha(a.l().cast_linear_channel());
+			}
+		}
+	}
+
+	image
 }
 
-#[node_macro::old_node_fn(MaskImageNode<_P, _S>)]
+#[node_macro::node()]
 fn mask_image<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
@@ -175,8 +213,9 @@ fn mask_image<
 	// Stencil
 	Stencil: Transform + Sample<Pixel = _S>,
 >(
-	mut image: Input,
-	stencil: Stencil,
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	#[implementations(ImageFrameTable<Color>)] stencil: Stencil,
 ) -> Input {
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 	let mask_size = stencil.transform().decompose_scale();
@@ -207,41 +246,42 @@ fn mask_image<
 	image
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlendImageTupleNode<P, Fg, MapFn> {
-	map_fn: MapFn,
-	_p: PhantomData<P>,
-	_fg: PhantomData<Fg>,
-}
+// #[derive(Debug, Clone, Copy)]
+// pub struct BlendImageTupleNode<P, Fg, MapFn> {
+// 	map_fn: MapFn,
+// 	_p: PhantomData<P>,
+// 	_fg: PhantomData<Fg>,
+// }
 
-#[node_macro::old_node_fn(BlendImageTupleNode<_P, _Fg>)]
-fn blend_image_tuple<_P: Alpha + Pixel + Debug, MapFn, _Fg: Sample<Pixel = _P> + Transform>(images: (ImageFrame<_P>, _Fg), map_fn: &'input MapFn) -> ImageFrame<_P>
+#[node_macro::node(skip_impl)]
+async fn blend_image_tuple<_P, MapFn, _Fg>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'n MapFn) -> ImageFrameTable<_P>
 where
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'input + Clone,
+	_P: Alpha + Pixel + Debug + Send,
+	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'n + Clone,
+	_Fg: Sample<Pixel = _P> + Transform + Clone + Send + 'n,
+	GraphicElement: From<Image<_P>>,
 {
 	let (background, foreground) = images;
 
 	blend_image(foreground, background, map_fn)
 }
 
-fn blend_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: BitmapMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
-	foreground: Frame,
-	background: Background,
-	map_fn: &'input MapFn,
-) -> Background
+fn blend_image<'input, _P, MapFn, Frame, Background>(foreground: Frame, background: Background, map_fn: &'input MapFn) -> Background
 where
 	MapFn: Node<'input, (_P, _P), Output = _P>,
+	_P: Pixel + Alpha + Debug,
+	Frame: Sample<Pixel = _P> + Transform,
+	Background: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
 {
 	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
 }
 
-pub fn blend_image_closure<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: BitmapMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
-	foreground: Frame,
-	mut background: Background,
-	map_fn: MapFn,
-) -> Background
+pub fn blend_image_closure<_P, MapFn, Frame, Background>(foreground: Frame, mut background: Background, map_fn: MapFn) -> Background
 where
 	MapFn: Fn(_P, _P) -> _P,
+	_P: Pixel + Alpha + Debug,
+	Frame: Sample<Pixel = _P> + Transform,
+	Background: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
 {
 	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
 
@@ -278,19 +318,20 @@ pub struct ExtendImageToBoundsNode<Bounds> {
 }
 
 #[node_macro::old_node_fn(ExtendImageToBoundsNode)]
-fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFrame<Color> {
+fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
 		return image;
 	}
 
-	if image.image.width == 0 || image.image.height == 0 {
+	let image_instance = image.one_instance().instance;
+	if image_instance.width == 0 || image_instance.height == 0 {
 		return empty_image((), bounds, Color::TRANSPARENT);
 	}
 
-	let orig_image_scale = DVec2::new(image.image.width as f64, image.image.height as f64);
-	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image.transform.inverse();
+	let orig_image_scale = DVec2::new(image_instance.width as f64, image_instance.height as f64);
+	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image.transform().inverse();
 	let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
 
 	let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
@@ -300,36 +341,37 @@ fn extend_image_to_bounds(image: ImageFrame<Color>, bounds: DAffine2) -> ImageFr
 	// Copy over original image into enlarged image.
 	let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
 	let offset_in_new_image = (-new_start).as_uvec2();
-	for y in 0..image.image.height {
-		let old_start = y * image.image.width;
+	for y in 0..image_instance.height {
+		let old_start = y * image_instance.width;
 		let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
-		let old_row = &image.image.data[old_start as usize..(old_start + image.image.width) as usize];
-		let new_row = &mut new_img.data[new_start as usize..(new_start + image.image.width) as usize];
+		let old_row = &image_instance.data[old_start as usize..(old_start + image_instance.width) as usize];
+		let new_row = &mut new_img.data[new_start as usize..(new_start + image_instance.width) as usize];
 		new_row.copy_from_slice(old_row);
 	}
 
 	// Compute new transform.
 	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
-	let new_texture_to_layer_space = image.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
-	ImageFrame {
-		image: new_img,
-		transform: new_texture_to_layer_space,
-		alpha_blending: image.alpha_blending,
-	}
+	let new_texture_to_layer_space = image.transform() * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+
+	let mut result = ImageFrameTable::new(new_img);
+	*result.transform_mut() = new_texture_to_layer_space;
+	*result.one_instance_mut().alpha_blending = *image.one_instance().alpha_blending;
+
+	result
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] color: P) -> ImageFrame<P> {
+fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> ImageFrameTable<Color> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
 
-	ImageFrame {
-		image,
-		transform,
-		alpha_blending: AlphaBlending::default(),
-	}
+	let mut result = ImageFrameTable::new(image);
+	*result.transform_mut() = transform;
+	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
+
+	result
 }
 
 // #[cfg(feature = "serde")]
@@ -431,10 +473,10 @@ fn empty_image<P: Pixel>(_: (), transform: DAffine2, #[implementations(Color)] c
 // 	tiling: Tiling: bool,
 // }
 
-#[node_macro::node(category("Raster: Generator"))]
+#[node_macro::node(category("Raster"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
-	footprint: Footprint,
+	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	clip: bool,
 	seed: u32,
@@ -452,6 +494,7 @@ fn noise_pattern(
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
 ) -> ImageFrameTable<Color> {
+	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let mut size = viewport_bounds.size();
@@ -468,7 +511,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::default();
+		return ImageFrameTable::one_empty_image();
 	}
 
 	let footprint_scale = footprint.scale();
@@ -512,13 +555,11 @@ fn noise_pattern(
 				}
 			}
 
-			let result = ImageFrame {
-				image,
-				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-				alpha_blending: AlphaBlending::default(),
-			};
+			let mut result = ImageFrameTable::new(image);
+			*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+			*result.one_instance_mut().alpha_blending = AlphaBlending::default();
 
-			return ImageFrameTable::new(result);
+			return result;
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -576,17 +617,16 @@ fn noise_pattern(
 		}
 	}
 
-	let result = ImageFrame {
-		image,
-		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-		alpha_blending: AlphaBlending::default(),
-	};
+	let mut result = ImageFrameTable::new(image);
+	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
 
-	ImageFrameTable::new(result)
+	result
 }
 
-#[node_macro::node(category("Raster: Generator"))]
-fn mandelbrot(footprint: Footprint) -> ImageFrameTable<Color> {
+#[node_macro::node(category("Raster"))]
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
+	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
 	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
@@ -597,7 +637,7 @@ fn mandelbrot(footprint: Footprint) -> ImageFrameTable<Color> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::default();
+		return ImageFrameTable::one_empty_image();
 	}
 
 	let scale = footprint.scale();
@@ -619,18 +659,17 @@ fn mandelbrot(footprint: Footprint) -> ImageFrameTable<Color> {
 		}
 	}
 
-	let result = ImageFrame {
-		image: Image {
-			width,
-			height,
-			data,
-			..Default::default()
-		},
-		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-		alpha_blending: Default::default(),
+	let image = Image {
+		width,
+		height,
+		data,
+		..Default::default()
 	};
+	let mut result = ImageFrameTable::new(image);
+	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+	*result.one_instance_mut().alpha_blending = Default::default();
 
-	ImageFrameTable::new(result)
+	result
 }
 
 #[inline(always)]

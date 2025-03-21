@@ -10,10 +10,8 @@ use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
-use graph_craft::document::NodeId;
-
 use glam::{DAffine2, DVec2};
+use graph_craft::document::NodeId;
 
 pub struct NavigationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -176,10 +174,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
-				let delta = match use_y_as_x {
-					false => -ipp.mouse.scroll_delta.as_dvec2(),
-					true => (-ipp.mouse.scroll_delta.y, 0.).into(),
-				} * VIEWPORT_SCROLL_RATE;
+				let delta = if use_y_as_x { (-ipp.mouse.scroll_delta.y, 0.).into() } else { -ipp.mouse.scroll_delta.as_dvec2() } * VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}

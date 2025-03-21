@@ -3,18 +3,16 @@ use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
-use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
+use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
-
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
 use graphene_std::vector::{VectorData, VectorModificationType};
-
-use glam::{DAffine2, DVec2};
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
 
@@ -37,11 +35,15 @@ pub struct TransformLayerMessageHandler {
 
 	original_transforms: OriginalTransforms,
 	pivot: ViewportPosition,
+
 	local_pivot: DocumentPosition,
 	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
+
 	ptz: PTZ,
 	initial_transform: DAffine2,
+
+	operation_count: usize,
 
 	// Pen tool (outgoing handle GRS manipulation)
 	handle: DVec2,
@@ -105,8 +107,6 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 }
 
 fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	use std::f64::consts::PI;
-
 	for &layer in selected_layers {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
@@ -143,8 +143,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		// TODO: Add support for transforming layer not in the document network
 		let selected_layers = document
 			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_layers(document.metadata())
 			.filter(|&layer| document.network_interface.is_visible(&layer.to_node(), &[]) && !document.network_interface.is_locked(&layer.to_node(), &[]))
 			.collect::<Vec<_>>();
@@ -191,9 +190,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					*selected.pivot = new_pivot;
 
 					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
-
-					self.grab_target = grab_target;
-
 					self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
 				} else {
 					log::warn!("Failed to calculate pivot.");
@@ -245,24 +241,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let e1 = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).normalize_or(DVec2::X);
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
-								let end = if self.local {
-									(quad[1] - quad[0]).length() * e1 * e1.dot(quad[1] - quad[0]).signum() + quad[0]
-								} else {
-									quad[1]
-								};
-								overlay_context.line(quad[0], end, None);
+								let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
+								overlay_context.line(quad[0], end, None, None);
 
 								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
 								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
 							}
 
 							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
-								let end = if self.local {
-									(quad[3] - quad[0]).length() * e1.perp() * e1.perp().dot(quad[3] - quad[0]).signum() + quad[0]
-								} else {
-									quad[3]
-								};
-								overlay_context.line(quad[0], end, None);
+								let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
+								overlay_context.line(quad[0], end, None, None);
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
@@ -271,8 +259,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								}
 							}
 							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
-								overlay_context.dashed_line(quad[1], quad[2], None, Some(2.), Some(2.), Some(0.5));
-								overlay_context.dashed_line(quad[3], quad[2], None, Some(2.), Some(2.), Some(0.5));
+								overlay_context.dashed_line(quad[1], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
+								overlay_context.dashed_line(quad[3], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
 							}
 						}
 						TransformOperation::Scaling(scale) => {
@@ -286,9 +274,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let end_point = pivot + local_edge * scale.max(1.);
 
 							if scale > 0. {
-								overlay_context.dashed_line(pivot, boundary_point, None, Some(4.), Some(4.), Some(0.5));
+								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(4.), Some(4.), Some(0.5));
 							}
-							overlay_context.line(boundary_point, end_point, None);
+							overlay_context.line(boundary_point, end_point, None, None);
 
 							let transform = DAffine2::from_translation(boundary_point.midpoint(pivot) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.);
 							overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
@@ -327,17 +315,19 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			// Messages
-			TransformLayerMessage::ApplyTransformOperation => {
+			TransformLayerMessage::ApplyTransformOperation { final_transform } => {
 				selected.original_transforms.clear();
 				self.typing.clear();
-				self.transform_operation = TransformOperation::None;
+				if final_transform {
+					self.transform_operation = TransformOperation::None;
+					self.operation_count = 0;
+				}
 
 				if using_pen_tool {
 					self.last_point = DVec2::ZERO;
 					self.grs_pen_handle = false;
 
 					selected.pen_handle = None;
-
 					selected.responses.add(PenToolMessage::Confirm);
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
@@ -346,7 +336,9 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				if final_transform {
+					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				}
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
@@ -382,89 +374,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGrab => {
-				if (!using_path_tool && !using_select_tool && !using_pen_tool)
-					|| (using_path_tool && shape_editor.selected_points().next().is_none())
-					|| selected_layers.is_empty()
-					|| matches!(self.transform_operation, TransformOperation::Grabbing(_))
-				{
-					return;
-				}
-
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-
-				self.transform_operation = TransformOperation::Grabbing(Default::default());
-				self.local = false;
-				self.layer_bounding_box = selected.bounding_box();
-
-				selected.original_transforms.clear();
-
-				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
-				responses.add(TransformLayerMessage::PointerMove {
-					slow_key: SLOW_KEY,
-					increments_key: INCREMENTS_KEY,
-				});
-			}
-			TransformLayerMessage::BeginRotate => {
+			TransformLayerMessage::BeginGRS { transform_type } => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
-
-				if (!using_path_tool && !using_select_tool && !using_pen_tool)
-					|| (using_path_tool && selected_points.is_empty())
-					|| selected_layers.is_empty()
-					|| matches!(self.transform_operation, TransformOperation::Rotating(_))
-				{
-					return;
-				}
-
-				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
-					selected.original_transforms.clear();
-					return;
-				};
-
-				if let [point] = selected_points.as_slice() {
-					if matches!(point, ManipulatorPointId::Anchor(_)) {
-						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-							let handle1_length = handle1.length(&vector_data);
-							let handle2_length = handle2.length(&vector_data);
-
-							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
-								return;
-							}
-						}
-					} else {
-						// TODO: Fix handle snap to anchor issue, see <https://discord.com/channels/731730685944922173/1217752903209713715>
-
-						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
-
-						if handle_length == Some(0.) {
-							selected.original_transforms.clear();
-							return;
-						}
-					}
-				}
-
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
-
-				self.transform_operation = TransformOperation::Rotating(Default::default());
-
-				self.local = false;
-				self.layer_bounding_box = selected.bounding_box();
-
-				selected.original_transforms.clear();
-
-				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
-				responses.add(TransformLayerMessage::PointerMove {
-					slow_key: SLOW_KEY,
-					increments_key: INCREMENTS_KEY,
-				});
-			}
-			TransformLayerMessage::BeginScale => {
-				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
-
 				if (using_path_tool && selected_points.is_empty())
 					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
 					|| selected_layers.is_empty()
-					|| matches!(self.transform_operation, TransformOperation::Scaling(_))
+					|| transform_type.equivalent_to(self.transform_operation)
 				{
 					return;
 				}
@@ -495,20 +410,41 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					}
 				}
 
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
+				let chain_operation = self.transform_operation != TransformOperation::None;
+				if chain_operation {
+					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
+				} else {
+					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				}
 
-				self.transform_operation = TransformOperation::Scaling(Default::default());
+				let response = match transform_type {
+					TransformType::Grab => TransformLayerMessage::BeginGrab,
+					TransformType::Rotate => TransformLayerMessage::BeginRotate,
+					TransformType::Scale => TransformLayerMessage::BeginScale,
+				};
 
 				self.local = false;
-				self.layer_bounding_box = selected.bounding_box();
-
-				selected.original_transforms.clear();
-
-				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				self.operation_count += 1;
+				responses.add(response);
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
 					increments_key: INCREMENTS_KEY,
 				});
+			}
+			TransformLayerMessage::BeginGrab => {
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
+				self.transform_operation = TransformOperation::Grabbing(Default::default());
+				self.layer_bounding_box = selected.bounding_box();
+			}
+			TransformLayerMessage::BeginRotate => {
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
+				self.transform_operation = TransformOperation::Rotating(Default::default());
+				self.layer_bounding_box = selected.bounding_box();
+			}
+			TransformLayerMessage::BeginScale => {
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
+				self.transform_operation = TransformOperation::Scaling(Default::default());
+				self.layer_bounding_box = selected.bounding_box();
 			}
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_pen_tool {
@@ -521,12 +457,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(PenToolMessage::Abort);
 					responses.add(ToolMessage::UpdateHints);
 				} else {
-					selected.revert_operation();
 					selected.original_transforms.clear();
 					self.typing.clear();
 					self.transform_operation = TransformOperation::None;
 
-					responses.add(DocumentMessage::AbortTransaction);
+					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: self.operation_count });
+					self.operation_count = 0;
 					responses.add(ToolMessage::UpdateHints);
 				}
 
@@ -669,7 +605,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
-				let target_layers = document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()).collect();
+				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => {
@@ -742,9 +678,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(TransformLayerMessageDiscriminant;
-			BeginGrab,
-			BeginScale,
-			BeginRotate,
+			BeginGRS,
 		);
 
 		if self.transform_operation != TransformOperation::None {

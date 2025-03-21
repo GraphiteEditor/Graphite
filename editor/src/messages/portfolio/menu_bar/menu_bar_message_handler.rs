@@ -2,49 +2,24 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
+use graphene_std::vector::misc::BooleanOperation;
 
-pub struct MenuBarMessageData {
+#[derive(Debug, Clone, Default)]
+pub struct MenuBarMessageHandler {
 	pub has_active_document: bool,
 	pub rulers_visible: bool,
 	pub node_graph_open: bool,
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
 	pub has_selection_history: (bool, bool),
+	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct MenuBarMessageHandler {
-	has_active_document: bool,
-	rulers_visible: bool,
-	node_graph_open: bool,
-	has_selected_nodes: bool,
-	has_selected_layers: bool,
-	has_selection_history: (bool, bool),
-	message_logging_verbosity: MessageLoggingVerbosity,
-}
-
-impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandler {
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, data: MenuBarMessageData) {
-		let MenuBarMessageData {
-			has_active_document,
-			rulers_visible,
-			node_graph_open,
-			has_selected_nodes,
-			has_selected_layers,
-			has_selection_history,
-			message_logging_verbosity,
-		} = data;
-		self.has_active_document = has_active_document;
-		self.rulers_visible = rulers_visible;
-		self.node_graph_open = node_graph_open;
-		self.has_selected_nodes = has_selected_nodes;
-		self.has_selected_layers = has_selected_layers;
-		self.has_selection_history = has_selection_history;
-		self.message_logging_verbosity = message_logging_verbosity;
-
+impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
@@ -199,8 +174,26 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![
+						MenuBarEntry {
+							label: "Duplicate".into(),
+							icon: Some("Copy".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::DuplicateSelectedLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::DuplicateSelectedLayers.into()),
+							disabled: no_active_document || !has_selected_nodes,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Delete".into(),
+							icon: Some("Trash".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
+							disabled: no_active_document || !has_selected_nodes,
+							..MenuBarEntry::default()
+						},
+					],
 					vec![MenuBarEntry {
-						label: "Remove Artboards".into(),
+						label: "Convert to Infinite Canvas".into(),
 						icon: Some("Artboard".into()),
 						action: MenuBarEntry::create_action(|_| DocumentMessage::RemoveArtboards.into()),
 						disabled: no_active_document,
@@ -212,17 +205,17 @@ impl LayoutHolder for MenuBarMessageHandler {
 				"Layer".into(),
 				no_active_document,
 				MenuBarEntryChildren(vec![
+					vec![MenuBarEntry {
+						label: "New".into(),
+						icon: Some("NewLayer".into()),
+						shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
+						action: MenuBarEntry::create_action(|_| DocumentMessage::CreateEmptyFolder.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
 					vec![
 						MenuBarEntry {
-							label: "New Layer".into(),
-							icon: Some("NewLayer".into()),
-							shortcut: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::CreateEmptyFolder.into()),
-							disabled: no_active_document,
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Group Selected".into(),
+							label: "Group".into(),
 							icon: Some("Folder".into()),
 							shortcut: action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers),
 							action: MenuBarEntry::create_action(|_| {
@@ -235,14 +228,216 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
-							label: "Delete Selected".into(),
-							icon: Some("Trash".into()),
-							shortcut: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::DeleteSelectedLayers.into()),
-							disabled: no_active_document || !has_selected_nodes,
+							label: "Ungroup".into(),
+							icon: Some("FolderOpen".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::UngroupSelectedLayers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::UngroupSelectedLayers.into()),
+							disabled: no_active_document || !has_selected_layers,
 							..MenuBarEntry::default()
 						},
 					],
+					vec![
+						MenuBarEntry {
+							label: "Hide/Show".into(),
+							icon: Some("EyeHide".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::ToggleSelectedVisibility.into()),
+							disabled: no_active_document || !has_selected_layers,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Lock/Unlock".into(),
+							icon: Some("PadlockLocked".into()),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::ToggleSelectedLocked.into()),
+							disabled: no_active_document || !has_selected_layers,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![
+						MenuBarEntry {
+							label: "Grab".into(),
+							icon: Some("TransformationGrab".into()),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
+							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginGrab.into()),
+							disabled: no_active_document || !has_selected_layers,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Rotate".into(),
+							icon: Some("TransformationRotate".into()),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
+							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginRotate.into()),
+							disabled: no_active_document || !has_selected_layers,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Scale".into(),
+							icon: Some("TransformationScale".into()),
+							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
+							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginScale.into()),
+							disabled: no_active_document || !has_selected_layers,
+							..MenuBarEntry::default()
+						},
+					],
+					vec![
+						MenuBarEntry {
+							label: "Arrange".into(),
+							icon: Some("StackHollow".into()),
+							action: MenuBarEntry::no_action(),
+							disabled: no_active_document || !has_selected_layers,
+							children: MenuBarEntryChildren(vec![
+								vec![
+									MenuBarEntry {
+										label: "Raise To Front".into(),
+										icon: Some("Stack".into()),
+										shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront),
+										action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaiseToFront.into()),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									},
+									MenuBarEntry {
+										label: "Raise".into(),
+										icon: Some("StackRaise".into()),
+										shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise),
+										action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaise.into()),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									},
+									MenuBarEntry {
+										label: "Lower".into(),
+										icon: Some("StackLower".into()),
+										shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLower),
+										action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLower.into()),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									},
+									MenuBarEntry {
+										label: "Lower to Back".into(),
+										icon: Some("StackBottom".into()),
+										shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack),
+										action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLowerToBack.into()),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									},
+								],
+								vec![MenuBarEntry {
+									label: "Reverse".into(),
+									icon: Some("StackReverse".into()),
+									action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersReverse.into()),
+									disabled: no_active_document || !has_selected_layers,
+									..MenuBarEntry::default()
+								}],
+							]),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Align".into(),
+							icon: Some("AlignVerticalCenter".into()),
+							action: MenuBarEntry::no_action(),
+							disabled: no_active_document || !has_selected_layers,
+							children: MenuBarEntryChildren({
+								let choices = [
+									[
+										(AlignAxis::X, AlignAggregate::Min, "AlignLeft", "Align Left"),
+										(AlignAxis::X, AlignAggregate::Center, "AlignHorizontalCenter", "Align Horizontal Center"),
+										(AlignAxis::X, AlignAggregate::Max, "AlignRight", "Align Right"),
+									],
+									[
+										(AlignAxis::Y, AlignAggregate::Min, "AlignTop", "Align Top"),
+										(AlignAxis::Y, AlignAggregate::Center, "AlignVerticalCenter", "Align Vertical Center"),
+										(AlignAxis::Y, AlignAggregate::Max, "AlignBottom", "Align Bottom"),
+									],
+								];
+
+								choices
+									.into_iter()
+									.map(|group| {
+										group
+											.into_iter()
+											.map(|(axis, aggregate, icon, name)| MenuBarEntry {
+												label: name.into(),
+												icon: Some(icon.into()),
+												action: MenuBarEntry::create_action(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into()),
+												disabled: no_active_document || !has_selected_layers,
+												..MenuBarEntry::default()
+											})
+											.collect()
+									})
+									.collect()
+							}),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Flip".into(),
+							icon: Some("FlipVertical".into()),
+							action: MenuBarEntry::no_action(),
+							disabled: no_active_document || !has_selected_layers,
+							children: MenuBarEntryChildren(vec![{
+								[(FlipAxis::X, "FlipHorizontal", "Horizontal"), (FlipAxis::Y, "FlipVertical", "Vertical")]
+									.into_iter()
+									.map(|(flip_axis, icon, name)| MenuBarEntry {
+										label: name.into(),
+										icon: Some(icon.into()),
+										action: MenuBarEntry::create_action(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into()),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									})
+									.collect()
+							}]),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Turn".into(),
+							icon: Some("TurnPositive90".into()),
+							action: MenuBarEntry::no_action(),
+							disabled: no_active_document || !has_selected_layers,
+							children: MenuBarEntryChildren(vec![{
+								[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
+									.into_iter()
+									.map(|(degrees, icon, name)| MenuBarEntry {
+										label: name.into(),
+										icon: Some(icon.into()),
+										action: MenuBarEntry::create_action(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into()),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									})
+									.collect()
+							}]),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Boolean".into(),
+							icon: Some("BooleanSubtractFront".into()),
+							action: MenuBarEntry::no_action(),
+							disabled: no_active_document || !has_selected_layers,
+							children: MenuBarEntryChildren(vec![{
+								let operations = BooleanOperation::list();
+								let icons = BooleanOperation::icons();
+								operations
+									.into_iter()
+									.zip(icons)
+									.map(move |(operation, icon)| MenuBarEntry {
+										label: operation.to_string(),
+										icon: Some(icon.into()),
+										action: MenuBarEntry::create_action(move |_| {
+											let group_folder_type = GroupFolderType::BooleanOperation(operation);
+											DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+										}),
+										disabled: no_active_document || !has_selected_layers,
+										..MenuBarEntry::default()
+									})
+									.collect()
+							}]),
+							..MenuBarEntry::default()
+						},
+					],
+				]),
+			),
+			MenuBarEntry::new_root(
+				"Select".into(),
+				no_active_document,
+				MenuBarEntryChildren(vec![
 					vec![
 						MenuBarEntry {
 							label: "Select All".into(),
@@ -262,11 +457,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 						},
 						MenuBarEntry {
 							label: "Select Parent".into(),
+							icon: Some("SelectParent".into()),
 							shortcut: action_keys!(DocumentMessageDiscriminant::SelectParentLayer),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::SelectParentLayer.into()),
 							disabled: no_active_document || !has_selected_nodes,
 							..MenuBarEntry::default()
 						},
+					],
+					vec![
 						MenuBarEntry {
 							label: "Previous Selection".into(),
 							icon: Some("HistoryUndo".into()),
@@ -284,82 +482,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![
-						MenuBarEntry {
-							label: "Grab Selected".into(),
-							icon: Some("TransformationGrab".into()),
-							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
-							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginGrab.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Rotate Selected".into(),
-							icon: Some("TransformationRotate".into()),
-							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
-							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginRotate.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Scale Selected".into(),
-							icon: Some("TransformationScale".into()),
-							shortcut: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
-							action: MenuBarEntry::create_action(|_| TransformLayerMessage::BeginScale.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuBarEntry::default()
-						},
-					],
-					vec![MenuBarEntry {
-						label: "Order".into(),
-						icon: Some("StackHollow".into()),
-						action: MenuBarEntry::no_action(),
-						disabled: no_active_document || !has_selected_layers,
-						children: MenuBarEntryChildren(vec![
-							vec![
-								MenuBarEntry {
-									label: "Raise To Front".into(),
-									icon: Some("Stack".into()),
-									shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront),
-									action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaiseToFront.into()),
-									disabled: no_active_document || !has_selected_layers,
-									..MenuBarEntry::default()
-								},
-								MenuBarEntry {
-									label: "Raise".into(),
-									icon: Some("StackRaise".into()),
-									shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise),
-									action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersRaise.into()),
-									disabled: no_active_document || !has_selected_layers,
-									..MenuBarEntry::default()
-								},
-								MenuBarEntry {
-									label: "Lower".into(),
-									icon: Some("StackLower".into()),
-									shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLower),
-									action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLower.into()),
-									disabled: no_active_document || !has_selected_layers,
-									..MenuBarEntry::default()
-								},
-								MenuBarEntry {
-									label: "Lower to Back".into(),
-									icon: Some("StackBottom".into()),
-									shortcut: action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack),
-									action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersLowerToBack.into()),
-									disabled: no_active_document || !has_selected_layers,
-									..MenuBarEntry::default()
-								},
-							],
-							vec![MenuBarEntry {
-								label: "Reverse".into(),
-								icon: Some("StackReverse".into()),
-								action: MenuBarEntry::create_action(|_| DocumentMessage::SelectedLayersReverse.into()),
-								disabled: no_active_document || !has_selected_layers,
-								..MenuBarEntry::default()
-							}],
-						]),
-						..MenuBarEntry::default()
-					}],
 				]),
 			),
 			MenuBarEntry::new_root(
@@ -439,6 +561,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						icon: Some(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 						shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
 						action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRulers.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
+					vec![MenuBarEntry {
+						label: "Window: Spreadsheet".into(),
+						icon: Some(if self.spreadsheet_view_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+						action: MenuBarEntry::create_action(|_| SpreadsheetMessage::ToggleOpen.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					}],

@@ -2,12 +2,10 @@ use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
-
-use graphene_core::vector::ManipulatorPointId;
-use graphene_std::vector::{PointId, SegmentId};
-
 use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
+use graphene_core::vector::ManipulatorPointId;
+use graphene_std::vector::{PointId, SegmentId};
 use wasm_bindgen::JsCast;
 
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
@@ -42,7 +40,7 @@ pub fn selected_segments(document: &DocumentMessageHandler, shape_editor: &mut S
 
 	// TODO: Currently if there are two duplicate layers, both of their segments get overlays
 	// Adding segments which are are connected to selected anchors
-	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 		for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
@@ -61,17 +59,17 @@ fn overlay_bezier_handles(bezier: Bezier, segment_id: SegmentId, transform: DAff
 
 	match bezier.handles {
 		BezierHandles::Quadratic { handle } if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) => {
-			overlay_context.line(handle, bezier.start, None);
-			overlay_context.line(handle, bezier.end, None);
+			overlay_context.line(handle, bezier.start, None, None);
+			overlay_context.line(handle, bezier.end, None, None);
 			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
 			if not_under_anchor(handle_start, bezier.start) {
-				overlay_context.line(handle_start, bezier.start, None);
+				overlay_context.line(handle_start, bezier.start, None, None);
 				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
 			if not_under_anchor(handle_end, bezier.end) {
-				overlay_context.line(handle_end, bezier.end, None);
+				overlay_context.line(handle_end, bezier.end, None, None);
 				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
 			}
 		}
@@ -95,17 +93,17 @@ pub fn overlay_bezier_handle_specific_point(
 		BezierHandles::Quadratic { handle } => {
 			if not_under_anchor(handle, bezier.start) && not_under_anchor(handle, bezier.end) {
 				let end = if start == point_to_render { bezier.start } else { bezier.end };
-				overlay_context.line(handle, end, None);
+				overlay_context.line(handle, end, None, None);
 				overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
 			if not_under_anchor(handle_start, bezier.start) && (point_to_render == start) {
-				overlay_context.line(handle_start, bezier.start, None);
+				overlay_context.line(handle_start, bezier.start, None, None);
 				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
 			}
 			if not_under_anchor(handle_end, bezier.end) && (point_to_render == end) {
-				overlay_context.line(handle_end, bezier.end, None);
+				overlay_context.line(handle_end, bezier.end, None, None);
 				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
 			}
 		}
@@ -114,7 +112,7 @@ pub fn overlay_bezier_handle_specific_point(
 }
 
 pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandles, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport(layer);
 		overlay_context.outline_vector(&vector_data, transform);
@@ -167,7 +165,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 }
 
 pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
-	for layer in document.network_interface.selected_nodes(&[]).unwrap().selected_layers(document.metadata()) {
+	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
 			continue;
 		};

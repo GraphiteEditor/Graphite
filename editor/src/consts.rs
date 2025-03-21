@@ -88,6 +88,11 @@ pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 /// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
 pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
 
+// SKEW TRIANGLES
+pub const SKEW_TRIANGLE_SIZE: f64 = 7.;
+pub const SKEW_TRIANGLE_OFFSET: f64 = 4.;
+pub const MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY: f64 = 48.;
+
 // PATH TOOL
 pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;

@@ -1,10 +1,9 @@
-use crate::application_io::{TextureFrame, TextureFrameTable};
+use crate::application_io::TextureFrameTable;
+use crate::instances::Instances;
 use crate::raster::bbox::AxisAlignedBbox;
-use crate::raster::image::{ImageFrame, ImageFrameTable};
-use crate::raster::Pixel;
-use crate::vector::{VectorData, VectorDataTable};
-use crate::{Artboard, ArtboardGroup, Color, GraphicElement, GraphicGroup, GraphicGroupTable};
-
+use crate::raster::image::ImageFrameTable;
+use crate::vector::VectorDataTable;
+use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 
 pub trait Transform {
@@ -31,153 +30,6 @@ pub trait TransformMut: Transform {
 impl<T: Transform> Transform for &T {
 	fn transform(&self) -> DAffine2 {
 		(*self).transform()
-	}
-}
-
-// Implementations for ImageFrame<P>
-impl<P: Pixel> Transform for ImageFrame<P> {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		self.local_pivot(pivot)
-	}
-}
-impl<P: Pixel> TransformMut for ImageFrame<P> {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
-// Implementations for ImageFrameTable<P>
-impl<P: Pixel> Transform for ImageFrameTable<P>
-where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
-{
-	fn transform(&self) -> DAffine2 {
-		let image_frame = self.one_item();
-		image_frame.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let image_frame = self.one_item();
-		image_frame.local_pivot(pivot)
-	}
-}
-impl<P: Pixel> TransformMut for ImageFrameTable<P>
-where
-	P: dyn_any::StaticType,
-	P::Static: Pixel,
-	GraphicElement: From<ImageFrame<P>>,
-{
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let image_frame = self.one_item_mut();
-		&mut image_frame.transform
-	}
-}
-
-// Implementations for TextureTable
-impl Transform for TextureFrameTable {
-	fn transform(&self) -> DAffine2 {
-		let image_frame = self.one_item();
-		image_frame.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let image_frame = self.one_item();
-		image_frame.local_pivot(pivot)
-	}
-}
-impl TransformMut for TextureFrameTable {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let image_frame = self.one_item_mut();
-		&mut image_frame.transform
-	}
-}
-
-// Implementations for GraphicGroup
-impl Transform for GraphicGroup {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for GraphicGroup {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
-// Implementations for GraphicGroupTable
-impl Transform for GraphicGroupTable {
-	fn transform(&self) -> DAffine2 {
-		let graphic_group = self.one_item();
-		graphic_group.transform
-	}
-}
-impl TransformMut for GraphicGroupTable {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let graphic_group = self.one_item_mut();
-		&mut graphic_group.transform
-	}
-}
-
-// Implementations for GraphicElement
-impl Transform for GraphicElement {
-	fn transform(&self) -> DAffine2 {
-		match self {
-			GraphicElement::VectorData(vector_shape) => vector_shape.transform(),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform(),
-			GraphicElement::RasterFrame(raster) => raster.transform(),
-		}
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		match self {
-			GraphicElement::VectorData(vector_shape) => vector_shape.local_pivot(pivot),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-			GraphicElement::RasterFrame(raster) => raster.local_pivot(pivot),
-		}
-	}
-}
-impl TransformMut for GraphicElement {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		match self {
-			GraphicElement::VectorData(vector_shape) => vector_shape.transform_mut(),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
-			GraphicElement::RasterFrame(raster) => raster.transform_mut(),
-		}
-	}
-}
-
-// Implementations for VectorData
-impl Transform for VectorData {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		self.local_pivot(pivot)
-	}
-}
-impl TransformMut for VectorData {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
-// Implementations for VectorDataTable
-impl Transform for VectorDataTable {
-	fn transform(&self) -> DAffine2 {
-		let vector_data = self.one_item();
-		vector_data.transform
-	}
-	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
-		let vector_data = self.one_item();
-		vector_data.local_pivot(pivot)
-	}
-}
-impl TransformMut for VectorDataTable {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		let vector_data = self.one_item_mut();
-		&mut vector_data.transform
 	}
 }
 
@@ -238,22 +90,22 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
-	/// When the transform is set downstream, all upstream modifications have to be ignored
-	pub ignore_modifications: bool,
 }
 
 impl Default for Footprint {
 	fn default() -> Self {
-		Self {
-			transform: DAffine2::IDENTITY,
-			resolution: glam::UVec2::new(1920, 1080),
-			quality: RenderQuality::Full,
-			ignore_modifications: false,
-		}
+		Self::empty()
 	}
 }
 
 impl Footprint {
+	pub const fn empty() -> Self {
+		Self {
+			transform: DAffine2::IDENTITY,
+			resolution: glam::UVec2::new(1920, 1080),
+			quality: RenderQuality::Full,
+		}
+	}
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
 		let start = inverse.transform_point2((0., 0.).into());
@@ -277,7 +129,7 @@ impl From<()> for Footprint {
 }
 
 #[node_macro::node(category("Debug"))]
-fn cull<T>(_footprint: Footprint, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroup)] data: T) -> T {
+fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroupTable)] data: T) -> T {
 	data
 }
 
@@ -301,53 +153,48 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-async fn transform<I: Into<Footprint> + 'n + ApplyTransform + Clone + Send + Sync, T: 'n + TransformMut>(
+async fn transform<T: 'n + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
 	)]
-	mut input: I,
-	#[implementations(
-		() -> VectorDataTable,
-		() -> GraphicGroupTable,
-		() -> ImageFrameTable<Color>,
-		() -> TextureFrame,
-		Footprint -> VectorDataTable,
-		Footprint -> GraphicGroupTable,
-		Footprint -> ImageFrameTable<Color>,
-		Footprint -> TextureFrame,
-	)]
-	transform_target: impl Node<I, Output = T>,
+	transform_target: impl Node<Context<'static>, Output = Instances<T>>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
 	_pivot: DVec2,
-) -> T {
-	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	let footprint = input.clone().into();
-	if !footprint.ignore_modifications {
-		input.apply_transform(&modification);
+) -> Instances<T> {
+	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+
+	let footprint = ctx.try_footprint().copied();
+
+	let mut ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		footprint.apply_transform(&matrix);
+		ctx = ctx.with_footprint(footprint);
 	}
 
-	let mut data = transform_target.eval(input).await;
+	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
-	let data_transform = data.transform_mut();
-	*data_transform = modification * (*data_transform);
+	for data_transform in transform_target.instances_mut() {
+		*data_transform.transform = matrix * *data_transform.transform;
+	}
 
-	data
+	transform_target
 }
 
 #[node_macro::node(category(""))]
-fn replace_transform<Data: TransformMut, TransformInput: Transform>(
-	_: (),
-	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
+fn replace_transform<Data, TransformInput: Transform>(
+	_: impl Ctx,
+	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Instances<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
-) -> Data {
-	let data_transform = data.transform_mut();
-	*data_transform = transform.transform();
+) -> Instances<Data> {
+	for data_transform in data.instances_mut() {
+		*data_transform.transform = transform.transform();
+	}
 	data
 }

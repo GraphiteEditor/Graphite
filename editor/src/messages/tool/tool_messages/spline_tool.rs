@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
@@ -104,7 +103,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -114,7 +113,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -318,24 +317,21 @@ impl Fsm for SplineToolFsmState {
 					}
 				}
 
-				let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+				let selected_nodes = document.network_interface.selected_nodes();
 				let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
 				let selected_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 
 				let append_to_selected_layer = input.keyboard.key(append_to_selected);
 
 				// Create new path in the selected layer when shift is down
-				match (selected_layer, append_to_selected_layer) {
-					(Some(layer), true) => {
-						tool_data.current_layer = Some(layer);
+				if let (Some(layer), true) = (selected_layer, append_to_selected_layer) {
+					tool_data.current_layer = Some(layer);
 
-						let transform = document.metadata().transform_to_viewport(layer);
-						let position = transform.inverse().transform_point2(input.mouse.position);
-						tool_data.next_point = position;
+					let transform = document.metadata().transform_to_viewport(layer);
+					let position = transform.inverse().transform_point2(input.mouse.position);
+					tool_data.next_point = position;
 
-						return SplineToolFsmState::Drawing;
-					}
-					_ => {}
+					return SplineToolFsmState::Drawing;
 				}
 
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -367,7 +363,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
-				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
+				if tool_data.points.last().is_none_or(|last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					let preview_point = tool_data.preview_point;
 					extend_spline(tool_data, false, responses);
 					tool_data.preview_point = preview_point;
@@ -442,7 +438,7 @@ impl Fsm for SplineToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),

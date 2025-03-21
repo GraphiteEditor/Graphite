@@ -1,9 +1,7 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::*;
-
-use graphene_core::renderer::Quad;
-
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {
@@ -89,7 +87,7 @@ impl AlignmentSnapper {
 			if let Some(point_on_x) = point_on_x {
 				let distance_to_snapped = point.document_point.distance(point_on_x);
 				let distance_to_align_target = point_on_x.distance(target_position);
-				if distance_to_snapped < tolerance && snap_x.as_ref().map_or(true, |point| distance_to_align_target < point.distance_to_align_target) {
+				if distance_to_snapped < tolerance && snap_x.as_ref().is_none_or(|point| distance_to_align_target < point.distance_to_align_target) {
 					snap_x = Some(SnappedPoint {
 						snapped_point_document: point_on_x,
 						source: point.source, // TODO(0Hypercube): map source
@@ -108,7 +106,7 @@ impl AlignmentSnapper {
 			if let Some(point_on_y) = point_on_y {
 				let distance_to_snapped = point.document_point.distance(point_on_y);
 				let distance_to_align_target = point_on_y.distance(target_position);
-				if distance_to_snapped < tolerance && snap_y.as_ref().map_or(true, |point| distance_to_align_target < point.distance_to_align_target) {
+				if distance_to_snapped < tolerance && snap_y.as_ref().is_none_or(|point| distance_to_align_target < point.distance_to_align_target) {
 					snap_y = Some(SnappedPoint {
 						snapped_point_document: point_on_y,
 						source: point.source, // TODO(0Hypercube): map source

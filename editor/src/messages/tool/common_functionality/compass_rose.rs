@@ -1,7 +1,6 @@
 use crate::consts::{COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::DocumentMessageHandler;
-
 use glam::{DAffine2, DVec2};
 use std::f64::consts::FRAC_PI_2;
 
@@ -19,7 +18,7 @@ impl CompassRose {
 		layer_transform * bounds_transform
 	}
 	pub fn refresh_position(&mut self, document: &DocumentMessageHandler) {
-		let selected_nodes = document.network_interface.selected_nodes(&[]).unwrap();
+		let selected_nodes = document.network_interface.selected_nodes();
 		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
 
 		let Some(first) = layers.next() else { return };
@@ -100,5 +99,15 @@ pub enum Axis {
 impl Axis {
 	pub fn is_constraint(&self) -> bool {
 		matches!(self, Self::X | Self::Y)
+	}
+}
+
+impl From<Axis> for DVec2 {
+	fn from(value: Axis) -> Self {
+		match value {
+			Axis::X => DVec2::X,
+			Axis::Y => DVec2::Y,
+			Axis::None => DVec2::ZERO,
+		}
 	}
 }

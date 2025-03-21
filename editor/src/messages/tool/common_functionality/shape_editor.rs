@@ -6,12 +6,10 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use crate::messages::tool::tool_messages::path_tool::PointSelectState;
-
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
+use glam::{DAffine2, DVec2};
 use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
-
-use glam::{DAffine2, DVec2};
 use graphene_std::vector::{HandleId, SegmentId};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -575,7 +573,7 @@ impl ShapeState {
 		Some(())
 	}
 
-	/// Iterates over the selected manipulator groups, returning whether their handles have mixed, colinear, or free angles.
+	/// Iterates over the selected manipulator groups exluding endpoints, returning whether their handles have mixed, colinear, or free angles.
 	/// If there are no points selected this function returns mixed.
 	pub fn selected_manipulator_angles(&self, network_interface: &NodeNetworkInterface) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
@@ -583,16 +581,19 @@ impl ShapeState {
 			.selected_shape_state
 			.iter()
 			.map(|(&layer, selection_state)| (network_interface.compute_modified_vector(layer), selection_state))
-			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().is_some_and(|data| data.colinear(point))));
+			.flat_map(|(data, selection_state)| {
+				selection_state.selected_points.iter().filter_map(move |&point| {
+					let Some(data) = &data else { return None };
+					let _ = point.get_handle_pair(data)?; // ignores the endpoints.
+					Some(data.colinear(point))
+				})
+			});
 
 		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
 		if points_colinear_status.any(|point| first_is_colinear != point) {
 			return ManipulatorAngle::Mixed;
 		}
-		match first_is_colinear {
-			false => ManipulatorAngle::Free,
-			true => ManipulatorAngle::Colinear,
-		}
+		if first_is_colinear { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free }
 	}
 
 	pub fn convert_manipulator_handles_to_colinear(&self, vector_data: &VectorData, point_id: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
@@ -1283,10 +1284,13 @@ impl ShapeState {
 
 			for point in self.selected_points().filter(|point| point.as_handle().is_some()) {
 				let anchor = point.get_anchor(&vector_data);
-				if let Some(handles) = point.get_handle_pair(&vector_data) {
-					points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
-				} else {
-					points_to_select.push((layer, anchor, None));
+				match point.get_handle_pair(&vector_data) {
+					Some(handles) => {
+						points_to_select.push((layer, anchor, Some(handles[1].to_manipulator_point())));
+					}
+					_ => {
+						points_to_select.push((layer, anchor, None));
+					}
 				}
 			}
 		}
