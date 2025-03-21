@@ -716,10 +716,7 @@ impl Fsm for SelectToolFsmState {
 					let perp = edge.perp();
 
 
-					let edge_dot_horizontal = edge.normalize().dot(DVec2::X).abs();
-					let perp_dot_horizontal = perp.normalize().dot(DVec2::X).abs();
-
-					let (edge_color, perp_color) = if edge_dot_horizontal >= perp_dot_horizontal {
+					let (edge_color, perp_color) = if edge.x >= edge.y {
 						(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
 					} else {
 						(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
