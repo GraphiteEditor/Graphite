@@ -50,6 +50,7 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	/// The spreadsheet UI allows for instance data to be previewed.
 	pub spreadsheet: SpreadsheetMessageHandler,
+	device_pixel_ratio: Option<f64>,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -103,6 +104,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							executor: &mut self.executor,
 							current_tool,
 							preferences,
+							device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -119,6 +121,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
+						device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -1007,6 +1010,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::SetActivePanel { panel } => {
 				self.active_panel = panel;
 				responses.add(DocumentMessage::SetActivePanel { active_panel: self.active_panel });
+			}
+			PortfolioMessage::SetDevicePixelRatio { ratio } => {
+				self.device_pixel_ratio = Some(ratio);
+				responses.add(OverlaysMessage::Draw);
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
