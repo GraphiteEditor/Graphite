@@ -130,6 +130,25 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("The identity node passes its data through. You can use this to organize your node graph."),
 			properties: Some("identity_properties"),
 		},
+		DocumentNodeDefinition {
+			identifier: "Script",
+			category: "General",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_std::rhai::RhaiNode"),
+					manual_composition: Some(concrete!(Context)),
+					inputs: vec![NodeInput::value(TaggedValue::F64(0.), true), NodeInput::value(TaggedValue::String("input".into()), false)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_properties: vec!["In".into(), "String".into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed(""),
+			properties: Some("script_properties"),
+		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Monitor",
@@ -2897,6 +2916,7 @@ fn static_node_properties() -> NodeProperties {
 		"monitor_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The Monitor node is used by the editor to access the data flowing through it.")),
 	);
+	map.insert("script_properties".to_string(), Box::new(node_properties::script_properties));
 	map
 }
 

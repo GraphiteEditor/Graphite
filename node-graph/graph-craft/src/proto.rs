@@ -696,7 +696,7 @@ impl TypingContext {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
 				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => type1 == type2,
+				(Type::Future(type1), Type::Future(type2)) => valid_subtype(type1, type2),
 				// Loose comparison of function types, where loose means that functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
 				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
@@ -708,6 +708,8 @@ impl TypingContext {
 				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
 				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_subtype(out2, out1) && (valid_subtype(in1, in2) || **in1 == concrete!(())),
+				// Allow Dynamic types an input to concrete or generic types
+				(Type::Concrete(_), Type::Dynamic) | (Type::Generic(_), Type::Dynamic) => true,
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
 				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -823,6 +825,10 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 	let mut generics = inputs
 		.filter_map(|t| match t {
 			Type::Generic(out) => Some(out.clone()),
+			Type::Future(fut) => match fut.as_ref() {
+				Type::Generic(out) => Some(out.clone()),
+				_ => None,
+			},
 			_ => None,
 		})
 		.collect::<Vec<_>>();
@@ -837,7 +843,9 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
 	let inputs = [(Some(&types.call_argument), Some(input))]
 		.into_iter()
-		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
+		.chain(types.inputs.iter().map(|x| x.fn_fut_output()).zip(parameters.iter().map(|x| x.fn_fut_output())));
+	let inputs: Vec<_> = inputs.collect();
+	let inputs = inputs.into_iter();
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
 	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs
