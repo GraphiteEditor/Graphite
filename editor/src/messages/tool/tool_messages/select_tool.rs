@@ -594,7 +594,7 @@ impl Fsm for SelectToolFsmState {
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;
-					bounding_box_manager.render_overlays(&mut overlay_context);
+					bounding_box_manager.render_overlays(&mut overlay_context, true);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -656,7 +656,7 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
 
 				// Update compass rose
 				tool_data.compass_rose.refresh_position(document);
@@ -696,7 +696,7 @@ impl Fsm for SelectToolFsmState {
 								&format!("#{}", color_string)
 							};
 							let line_center = tool_data.line_center;
-							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color));
+							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 						}
 					}
 				}
@@ -721,8 +721,8 @@ impl Fsm for SelectToolFsmState {
 					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
 					let perp = edge.perp();
 
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other));
+					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other), None);
 				}
 
 				// Check if the tool is in selection mode
@@ -1269,18 +1269,6 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				tool_data.axis_align = false;
-				tool_data.snap_manager.cleanup(responses);
-				responses.add_front(response);
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
 			(SelectToolFsmState::Dragging { has_dragged, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
@@ -1337,44 +1325,21 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
+			(
+				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::Dragging { .. },
+				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
+			) => {
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
-
+				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
+				if !matches!(self, SelectToolFsmState::DraggingPivot) {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.original_transforms.clear();
+					}
 				}
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
-			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				responses.add(response);
-
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
-				}
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				responses.add(response);
-
-				tool_data.snap_manager.cleanup(responses);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }

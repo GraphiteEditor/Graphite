@@ -33,6 +33,7 @@ use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
+use std::time::Duration;
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -41,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub device_pixel_ratio: f64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -172,6 +174,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			executor,
 			current_tool,
 			preferences,
+			device_pixel_ratio,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -196,7 +199,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::Overlays(message) => {
 				let overlays_visible = self.overlays_visible;
-				self.overlays_message_handler.process_message(message, responses, OverlaysMessageData { overlays_visible, ipp });
+				self.overlays_message_handler.process_message(
+					message,
+					responses,
+					OverlaysMessageData {
+						overlays_visible,
+						ipp,
+						device_pixel_ratio,
+					},
+				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
@@ -1988,7 +1999,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
@@ -2026,6 +2037,18 @@ impl DocumentMessageHandler {
 		let mut snapping_state2 = self.snapping_state.clone();
 
 		let mut widgets = vec![
+			IconButton::new("PlaybackToStart", 24)
+				.tooltip("Restart Animation")
+				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
+				.on_update(|_| AnimationMessage::RestartAnimation.into())
+				.disabled(time == Duration::ZERO)
+				.widget_holder(),
+			IconButton::new(if animation_is_playing { "PlaybackPause" } else { "PlaybackPlay" }, 24)
+				.tooltip(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
+				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
+				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.overlays_visible)
 				.icon("Overlays")
 				.tooltip("Overlays")
