@@ -86,72 +86,40 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		downstream_input: InputConnector::node(second_layer.to_node(), 1),
 		input_connector: InputConnector::node(merge_node_id, 1),
 	});
+	// Delete the second layer layer node without deleting it's children nodes.
 	responses.add(NodeGraphMessage::DeleteNodes {
 		node_ids: vec![second_layer.to_node()],
 		delete_children: false,
 	});
 
 	// Add a flatten vector elements node after the merge
-	let flatten_node_id = NodeId::new();
-	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
-		.expect("Failed to create flatten node")
-		.default_node_template();
-	responses.add(NodeGraphMessage::InsertNode {
-		node_id: flatten_node_id,
-		node_template: flatten_node,
-	});
-	responses.add(NodeGraphMessage::MoveNodeToChainStart {
-		node_id: flatten_node_id,
-		parent: first_layer,
-	});
-
+	insert_node_to_layer(first_layer, "Flatten Vector Elements", responses);
 	// Add a path node after the flatten node
-	let path_node_id = NodeId::new();
-	let path_node = document_node_definitions::resolve_document_node_type("Path")
-		.expect("Failed to create path node")
-		.default_node_template();
-	responses.add(NodeGraphMessage::InsertNode {
-		node_id: path_node_id,
-		node_template: path_node,
-	});
-	responses.add(NodeGraphMessage::MoveNodeToChainStart {
-		node_id: path_node_id,
-		parent: first_layer,
-	});
+	insert_node_to_layer(first_layer, "Path", responses);
 
 	// Add a Spline node after the Path node if both the layers we are merging is spline.
 	if current_and_other_layer_is_spline {
-		let spline_node_id = NodeId::new();
-		let spline_node = document_node_definitions::resolve_document_node_type("Spline")
-			.expect("Failed to create Spline node")
-			.default_node_template();
-		responses.add(NodeGraphMessage::InsertNode {
-			node_id: spline_node_id,
-			node_template: spline_node,
-		});
-		responses.add(NodeGraphMessage::MoveNodeToChainStart {
-			node_id: spline_node_id,
-			parent: first_layer,
-		});
+		insert_node_to_layer(first_layer, "Spline", responses);
 	}
 
+	insert_node_to_layer(first_layer, "Fill", responses);
+	insert_node_to_layer(first_layer, "Stroke", responses);
 	// Add a transform node to ensure correct tooling modifications
-	let transform_node_id = NodeId::new();
-	let transform_node = document_node_definitions::resolve_document_node_type("Transform")
-		.expect("Failed to create transform node")
-		.default_node_template();
-	responses.add(NodeGraphMessage::InsertNode {
-		node_id: transform_node_id,
-		node_template: transform_node,
-	});
-	responses.add(NodeGraphMessage::MoveNodeToChainStart {
-		node_id: transform_node_id,
-		parent: first_layer,
-	});
+	insert_node_to_layer(first_layer, "Transform", responses);
 
 	responses.add(NodeGraphMessage::RunDocumentGraph);
 	responses.add(Message::StartBuffer);
 	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+}
+
+fn insert_node_to_layer(layer: LayerNodeIdentifier, node_identifier: &str, responses: &mut VecDeque<Message>) {
+	// Add a transform node to ensure correct tooling modifications
+	let node_id = NodeId::new();
+	let node = document_node_definitions::resolve_document_node_type(node_identifier)
+		.expect(&format!("Failed to create {} node.", node_identifier))
+		.default_node_template();
+	responses.add(NodeGraphMessage::InsertNode { node_id, node_template: node });
+	responses.add(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer });
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.
