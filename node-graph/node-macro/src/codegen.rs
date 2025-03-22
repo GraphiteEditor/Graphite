@@ -175,6 +175,33 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		}
 	});
 
+	let min_max_args = fields.iter().map(|field| match field {
+		ParsedField::Regular {
+			pat_ident,
+			number_hard_min,
+			number_hard_max,
+			..
+		} => {
+			let name = &pat_ident.ident;
+			let mut tokens = quote!();
+			if let Some(min) = number_hard_min {
+				tokens.extend(quote! {
+					let #name = #graphene_core::num_traits::clamp_min(#name, #graphene_core::num_traits::FromPrimitive::from_f64(#min).unwrap());
+				});
+			}
+
+			if let Some(max) = number_hard_max {
+				tokens.extend(quote! {
+					let #name = #graphene_core::num_traits::clamp_max(#name, #graphene_core::num_traits::FromPrimitive::from_f64(#max).unwrap());
+				});
+			}
+			tokens
+		}
+		ParsedField::Node { .. } => {
+			quote!()
+		}
+	});
+
 	let all_implementation_types = fields.iter().flat_map(|field| match field {
 		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
 		ParsedField::Node { implementations, .. } => implementations
@@ -237,6 +264,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		fn eval(&'n self, __input: #input_type) -> Self::Output {
 			Box::pin(async move {
 				#(#eval_args)*
+				#(#min_max_args)*
 				self::#fn_name(__input #(, #field_names)*) #await_keyword
 			})
 		}
