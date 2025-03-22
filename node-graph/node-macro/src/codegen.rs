@@ -177,7 +177,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let min_max_args = fields.iter().map(|field| match field {
 		ParsedField::Regular {
-			pat_ident, number_hard_min, number_hard_max, ..
+			pat_ident,
+			number_hard_min,
+			number_hard_max,
+			..
 		} => {
 			let name = &pat_ident.ident;
 			let mut tokens = quote!();
