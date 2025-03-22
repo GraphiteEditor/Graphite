@@ -735,6 +735,9 @@ mod tests {
 				value_source: ParsedValueSource::None,
 				number_min: None,
 				number_max: None,
+
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -800,6 +803,8 @@ mod tests {
 					value_source: ParsedValueSource::None,
 					number_min: None,
 					number_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
 				},
@@ -853,6 +858,9 @@ mod tests {
 				value_source: ParsedValueSource::Default(quote!(50.)),
 				number_min: None,
 				number_max: None,
+
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -904,6 +912,9 @@ mod tests {
 				value_source: ParsedValueSource::None,
 				number_min: None,
 				number_max: None,
+
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: {
 					let mut p = Punctuated::new();
@@ -967,6 +978,9 @@ mod tests {
 				value_source: ParsedValueSource::None,
 				number_min: Some(parse_quote!(-500.)),
 				number_max: Some(parse_quote!(500.)),
+
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: Some(parse_quote!((0., 100.))),
 				implementations: Punctuated::new(),
 			}],
@@ -1018,6 +1032,9 @@ mod tests {
 				value_source: ParsedValueSource::None,
 				number_min: None,
 				number_max: None,
+
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
