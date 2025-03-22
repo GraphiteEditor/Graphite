@@ -88,9 +88,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),
 			|args| {
 				Box::pin(async move {
-					let editor_api: DowncastBothNode<(), &WasmEditorApi> = DowncastBothNode::new(args[0].clone());
+					let editor_api: DowncastBothNode<Context, &WasmEditorApi> = DowncastBothNode::new(args[0].clone());
 					let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(editor_api);
-					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(node);
+					let any: DynAnyNode<Context, _, _> = graphene_std::any::DynAnyNode::new(node);
 					Box::new(any) as TypeErasedBox
 				})
 			},
