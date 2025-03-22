@@ -177,17 +177,17 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let min_max_args = fields.iter().map(|field| match field {
 		ParsedField::Regular {
-			pat_ident, number_min, number_max, ..
+			pat_ident, number_hard_min, number_hard_max, ..
 		} => {
 			let name = &pat_ident.ident;
 			let mut tokens = quote!();
-			if let Some(min) = number_min {
+			if let Some(min) = number_hard_min {
 				tokens.extend(quote! {
 					let #name = #graphene_core::num_traits::clamp_min(#name, #graphene_core::num_traits::FromPrimitive::from_f64(#min).unwrap());
 				});
 			}
 
-			if let Some(max) = number_max {
+			if let Some(max) = number_hard_max {
 				tokens.extend(quote! {
 					let #name = #graphene_core::num_traits::clamp_max(#name, #graphene_core::num_traits::FromPrimitive::from_f64(#max).unwrap());
 				});

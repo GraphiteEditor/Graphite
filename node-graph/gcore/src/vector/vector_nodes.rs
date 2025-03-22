@@ -625,7 +625,7 @@ async fn poisson_disk_points(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(10.)]
-	#[min(0.01)]
+	#[hard_min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
 ) -> VectorDataTable {
@@ -785,7 +785,7 @@ async fn morph(
 	#[range((0., 1.))]
 	#[default(0.5)]
 	time: Fraction,
-	#[min(0.)] start_index: IntegerCount,
+	#[hard_min(0.)] start_index: IntegerCount,
 ) -> VectorDataTable {
 	let time = time.clamp(0., 1.);
 

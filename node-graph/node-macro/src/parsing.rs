@@ -107,6 +107,8 @@ pub(crate) enum ParsedField {
 		value_source: ParsedValueSource,
 		number_min: Option<LitFloat>,
 		number_max: Option<LitFloat>,
+		number_hard_min: Option<LitFloat>,
+		number_hard_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
 		implementations: Punctuated<Type, Comma>,
 	},
@@ -230,7 +232,7 @@ impl Parse for NodeFnAttributes {
 							r#"
 							Unsupported attribute in `node`.
 							Supported attributes are 'category', 'path' and 'name'.
-							
+
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
 							"#
@@ -432,6 +434,19 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		})
 		.transpose()?;
 
+	let number_hard_min = extract_attribute(attrs, "hard_min")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+	let number_hard_max = extract_attribute(attrs, "hard_max")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+
 	let number_mode_range = extract_attribute(attrs, "range")
 		.map(|attr| {
 			attr.parse_args::<ExprTuple>().map_err(|e| {
@@ -502,6 +517,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			exposed,
 			number_min,
 			number_max,
+			number_hard_min,
+			number_hard_max,
 			number_mode_range,
 			ty,
 			value_source,

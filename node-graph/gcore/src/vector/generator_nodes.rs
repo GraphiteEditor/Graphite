@@ -74,7 +74,7 @@ fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
-	#[min(3.)]
+	#[hard_min(3.)]
 	sides: u32,
 	#[default(50)] radius: f64,
 ) -> VectorDataTable {
@@ -88,7 +88,7 @@ fn star(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	sides: u32,
 	#[default(50)] radius: f64,
 	#[default(25)] inner_radius: f64,
