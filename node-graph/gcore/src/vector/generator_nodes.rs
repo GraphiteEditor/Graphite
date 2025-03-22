@@ -1,6 +1,6 @@
 use crate::Ctx;
-use crate::vector::{HandleId, VectorData, VectorDataTable};
 use crate::graphene_core::num_traits::FromPrimitive;
+use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
 
@@ -73,7 +73,7 @@ fn rectangle<T: CornerRadius>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon<T: AsU64 + std::cmp::PartialOrd + FromPrimitive  >(
+fn regular_polygon<T: AsU64 + std::cmp::PartialOrd + FromPrimitive>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
