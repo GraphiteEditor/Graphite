@@ -12,9 +12,11 @@
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	export let disabled = false;
+	// Add prop for initial search term from compatible type
+	export let initialSearchTerm = "";
 
 	let nodeSearchInput: TextInput | undefined = undefined;
-	let searchTerm = "";
+	let searchTerm = initialSearchTerm;
 
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 
@@ -25,33 +27,62 @@
 
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
 		const categories = new Map<string, NodeCategoryDetails>();
+		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
+		let typeSearchTerm = "";
+		let remainingSearchTerms = [];
+
+		if (isTypeSearch) {
+			// Extract the first word after "type:" as the type search
+			const searchParts = searchTerm.substring(5).trim().split(/\s+/);
+			typeSearchTerm = searchParts[0].toLowerCase();
+
+			remainingSearchTerms = searchParts.slice(1).map((term) => term.toLowerCase());
+		} else {
+			remainingSearchTerms = [searchTerm.toLowerCase()];
+		}
 
 		nodeTypes.forEach((node) => {
-			let nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+			let matchesTypeSearch = true;
+			let matchesRemainingTerms = true;
 
-			// Quick and dirty hack to alias "Layer" to "Merge" in the search
-			if (node.name === "Merge") {
-				nameIncludesSearchTerm = nameIncludesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
+			if (isTypeSearch && typeSearchTerm) {
+				matchesTypeSearch = node.inputTypes?.some((inputType) => inputType.toLowerCase().includes(typeSearchTerm)) || false;
 			}
 
-			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
+			if (remainingSearchTerms.length > 0) {
+				matchesRemainingTerms = remainingSearchTerms.every((term) => {
+					const nameMatch = node.name.toLowerCase().includes(term);
+					const categoryMatch = node.category.toLowerCase().includes(term);
+
+					// Quick and dirty hack to alias "Layer" to "Merge" in the search
+					const layerAliasMatch = node.name === "Merge" && "layer".includes(term);
+
+					return nameMatch || categoryMatch || layerAliasMatch;
+				});
+			}
+
+			// Node matches if it passes both type search and remaining terms filters
+			const includesSearchTerm = matchesTypeSearch && matchesRemainingTerms;
+
+			if (searchTerm.length > 0 && !includesSearchTerm) {
 				return;
 			}
 
 			const category = categories.get(node.category);
-			let open = nameIncludesSearchTerm;
+			let open = includesSearchTerm;
 			if (searchTerm.length === 0) {
 				open = false;
 			}
 
 			if (category) {
-				category.open = open;
+				category.open = category.open || open;
 				category.nodes.push(node);
-			} else
+			} else {
 				categories.set(node.category, {
 					open,
 					nodes: [node],
 				});
+			}
 		});
 
 		const START_CATEGORIES_ORDER = ["UNCATEGORIZED", "General", "Value", "Math", "Style"];
@@ -82,7 +113,7 @@
 </script>
 
 <div class="node-catalog">
-	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+	<TextInput placeholder="Search Nodes... (or type:InputType)" value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
