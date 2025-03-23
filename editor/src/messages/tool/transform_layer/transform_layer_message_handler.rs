@@ -908,4 +908,71 @@ mod test_transform_layer {
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
 		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
 	}
+
+	#[tokio::test]
+	async fn test_grab_rotate_scale_chained() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+
+		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_grab_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+
+		editor.move_mouse(150.0, 100.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_rotate_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+
+		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_scale_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// Verifying translation is preserved
+		let translation_diff = (after_scale_transform.translation - original_transform.translation).length();
+		assert!(translation_diff > 1.0, "Translation should be preserved through the chain");
+
+		// Verifying rotation is preserved
+		let rotation_matrix_diff = (after_scale_transform.matrix2.x_axis - after_grab_transform.matrix2.x_axis).length();
+		assert!(rotation_matrix_diff > 0.1, "Rotation should be preserved through the chain");
+
+		// Verifying scaling was applied
+		let scale_diff_x = (after_scale_transform.matrix2.x_axis.length() - after_rotate_transform.matrix2.x_axis.length()).abs();
+		let scale_diff_y = (after_scale_transform.matrix2.y_axis.length() - after_rotate_transform.matrix2.y_axis.length()).abs();
+		assert!(scale_diff_x > 0.1 || scale_diff_y > 0.1, "Scaling should be applied in the chain");
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert_eq!(after_scale_transform, final_transform, "Final transform should match the chained operations");
+	}
 }
