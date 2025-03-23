@@ -86,10 +86,6 @@ impl Fsm for FillToolFsmState {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;
 				};
-				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
-				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
-					return self;
-				}
 				let fill = match color_event {
 					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
 					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
@@ -97,7 +93,16 @@ impl Fsm for FillToolFsmState {
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+				// If the layer is a raster layer, use the raster fill command instead
+				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
+					responses.add(GraphOperationMessage::RasterFillSet {
+						layer: layer_identifier,
+						fill,
+						position: input.mouse.position,
+					});
+				} else {
+					responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+				}
 
 				FillToolFsmState::Filling
 			}

@@ -7,6 +7,7 @@ use graphene_core::raster::{
 	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::vector::style::{Fill, Gradient};
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -682,6 +683,67 @@ fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 		}
 	}
 	max_iter
+}
+
+#[node_macro::node(category("Raster"))]
+fn raster_fill<F: Into<Fill> + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)]
+	/// The vector elements, or group of vector elements, to apply the fill to.
+	mut image: ImageFrameTable<Color>,
+	#[implementations(
+		Fill,
+		Option<Color>,
+		Color,
+		Gradient,
+	)]
+	#[default(Color::BLACK)]
+	/// The fill to paint the path with.
+	fill: F,
+	/// The position of the fill in the image.
+	position: DVec2,
+) -> ImageFrameTable<Color> {
+	let width = image.width();
+	let height = image.height();
+
+	if width == 0 || height == 0 {
+		return image;
+	}
+
+	// Transform the global position to local image space
+	let image_transform = image.transform();
+	let image_size = DVec2::new(width as f64, height as f64);
+	// Transform from global space to local pixel space
+	let bg_to_local = DAffine2::from_scale(image_size) * image_transform.inverse();
+	let local_pos = bg_to_local.transform_point2(position);
+
+	// Convert to pixel coordinates
+	let pixel_x = local_pos.x.floor() as i32;
+	let pixel_y = local_pos.y.floor() as i32;
+
+	let fill = fill.into();
+	let color = match fill {
+		Fill::Solid(color) => color,
+		Fill::Gradient(_) => Color::RED, // Debug color for gradient
+		Fill::None => Color::TRANSPARENT,
+	};
+
+	// Fill a 10x10 square around the clicked position
+	for dy in -5..5 {
+		for dx in -5..5 {
+			let x = pixel_x + dx;
+			let y = pixel_y + dy;
+
+			// Check bounds
+			if x >= 0 && y >= 0 && x < width as i32 && y < height as i32 {
+				if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
+					*pixel = color;
+				}
+			}
+		}
+	}
+
+	image
 }
 
 fn map_color(iter: usize, max_iter: usize) -> Color {

@@ -347,6 +347,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
+	pub fn raster_fill_set(&mut self, fill: Fill, position: DVec2) {
+		let Some(raster_fill_node_id) = self.existing_node_id("Raster Fill", true) else { return };
+		let input_connector_1 = InputConnector::node(raster_fill_node_id, 1);
+		self.set_input_with_refresh(input_connector_1, NodeInput::value(TaggedValue::Fill(fill), false), false);
+		let input_connector_2 = InputConnector::node(raster_fill_node_id, 2);
+		self.set_input_with_refresh(input_connector_2, NodeInput::value(TaggedValue::DVec2(position), false), false);
+	}
+
 	pub fn stroke_set(&mut self, stroke: Stroke) {
 		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 

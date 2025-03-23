@@ -21,6 +21,11 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
+	RasterFillSet {
+		layer: LayerNodeIdentifier,
+		fill: Fill,
+		position: DVec2,
+	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,
