@@ -3400,9 +3400,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
- "js-sys",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
@@ -5640,13 +5637,11 @@ dependencies = [
 [[package]]
 name = "rhai"
 version = "1.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce4d759a4729a655ddfdbb3ff6e77fb9eadd902dae12319455557796e435d2a6"
+source = "git+https://github.com/TrueDoctor/rhai#7a5ab7bbcbcd101f8aae362448fcde2a32fc2dd1"
 dependencies = [
  "ahash",
  "bitflags 2.9.0",
  "getrandom 0.2.15",
- "instant",
  "num-traits",
  "once_cell",
  "rhai_codegen",
@@ -5659,8 +5654,7 @@ dependencies = [
 [[package]]
 name = "rhai_codegen"
 version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5a11a05ee1ce44058fa3d5961d05194fdbe3ad6b40f904af764d81b86450e6b"
+source = "git+https://github.com/TrueDoctor/rhai#7a5ab7bbcbcd101f8aae362448fcde2a32fc2dd1"
 dependencies = [
  "proc-macro2",
  "quote",

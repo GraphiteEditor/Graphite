@@ -89,13 +89,7 @@ web-sys = { workspace = true, optional = true, features = [
 # Optional dependencies
 image-compare = { version = "0.4.1", optional = true }
 ndarray = "0.16.1"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-rhai = { version = "1.21.0", features = ["serde", "wasm-bindgen"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rhai = { version = "1.21.0", features = ["serde"] }
-
+rhai = { git = "https://github.com/TrueDoctor/rhai", features = ["serde", "no_time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros"] }
