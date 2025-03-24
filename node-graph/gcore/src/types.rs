@@ -2,6 +2,7 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
+use spirv_std::image::sample_with::NoneTy;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
@@ -293,12 +294,24 @@ impl Type {
 		}
 	}
 
-	pub fn nested_type(self) -> Type {
+	pub fn nested_type(&self) -> &Type {
 		match self {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+		}
+	}
+
+	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
+		if let Some(replacement) = f(self) {
+			return Some(std::mem::replace(self, replacement));
+		}
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(_) => None,
+			Self::Fn(_, output) => output.replace_nested(f),
+			Self::Future(output) => output.replace_nested(f),
 		}
 	}
 }

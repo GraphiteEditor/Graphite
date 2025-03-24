@@ -281,7 +281,7 @@ impl DocumentNode {
 		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
 		let input_source = &mut self.original_location.inputs_source;
 		for source in source {
-			input_source.insert(source, index + self.original_location.skip_inputs - skip);
+			input_source.insert(source, (index + self.original_location.skip_inputs).saturating_sub(skip));
 		}
 	}
 
@@ -291,11 +291,12 @@ impl DocumentNode {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
+		let identifier = fqn;
 		// TODO replace with proper generics removal
-		let identifier = match fqn.name.clone().split_once('<') {
-			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
-			_ => ProtoNodeIdentifier { name: fqn.name },
-		};
+		// let identifier = match fqn.name.clone().split_once('<') {
+		// 	Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
+		// 	_ => ProtoNodeIdentifier { name: fqn.name },
+		// };
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {
