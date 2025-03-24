@@ -90,6 +90,7 @@ macro_rules! tagged_value {
 					Type::Generic(_) => {
 						None
 					}
+					Type::Dynamic => None,
 					Type::Concrete(concrete_type) => {
 						let internal_id = concrete_type.id?;
 						use std::any::TypeId;
@@ -279,6 +280,7 @@ impl TaggedValue {
 		}
 
 		match ty {
+			Type::Dynamic => None,
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
 				let internal_id = concrete_type.id?;
