@@ -5,7 +5,7 @@ use graphene_core::{Color, Ctx};
 async fn image_color_palette(
 	_: impl Ctx,
 	image: ImageFrameTable<Color>,
-	#[min(1.)]
+	#[hard_min(1.)]
 	#[hard_max(28.)]
 	max_size: u32,
 ) -> Vec<Color> {
