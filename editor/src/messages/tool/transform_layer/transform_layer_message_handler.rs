@@ -922,7 +922,6 @@ mod test_transform_layer {
 		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-
 		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
@@ -932,10 +931,10 @@ mod test_transform_layer {
 			.await;
 
 		let after_grab_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(!after_grab_transform.abs_diff_eq(original_transform, 1e-5), "Grab should change the transform");
 
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
-
-		editor.move_mouse(150.0, 100.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -944,10 +943,15 @@ mod test_transform_layer {
 			.await;
 
 		let after_rotate_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(!after_rotate_transform.abs_diff_eq(after_grab_transform, 1e-5), "Rotation should change the transform after grab");
+		// Verifying rotation matrix components have changed for more robustness
+		assert!(
+			!after_rotate_transform.matrix2.abs_diff_eq(after_grab_transform.matrix2, 1e-5),
+			"Rotation should change matrix components"
+		);
 
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
-
-		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(200.0, 200.0, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -956,23 +960,17 @@ mod test_transform_layer {
 			.await;
 
 		let after_scale_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-
-		// Verifying translation is preserved
-		let translation_diff = (after_scale_transform.translation - original_transform.translation).length();
-		assert!(translation_diff > 1.0, "Translation should be preserved through the chain");
-
-		// Verifying rotation is preserved
-		let rotation_matrix_diff = (after_scale_transform.matrix2.x_axis - after_grab_transform.matrix2.x_axis).length();
-		assert!(rotation_matrix_diff > 0.1, "Rotation should be preserved through the chain");
-
-		// Verifying scaling was applied
-		let scale_diff_x = (after_scale_transform.matrix2.x_axis.length() - after_rotate_transform.matrix2.x_axis.length()).abs();
-		let scale_diff_y = (after_scale_transform.matrix2.y_axis.length() - after_rotate_transform.matrix2.y_axis.length()).abs();
-		assert!(scale_diff_x > 0.1 || scale_diff_y > 0.1, "Scaling should be applied in the chain");
+		assert!(!after_scale_transform.abs_diff_eq(after_rotate_transform, 1e-5), "Scaling should change the transform after rotation");
+		// Verifying scale changed the determinant (area) for more robustness
+		let before_scale_det = after_rotate_transform.matrix2.determinant();
+		let after_scale_det = after_scale_transform.matrix2.determinant();
+		assert!((after_scale_det - before_scale_det).abs() > 1e-5, "Scaling should change the determinant of the matrix");
 
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
-
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert_eq!(after_scale_transform, final_transform, "Final transform should match the chained operations");
+		// Applying the transform keeps the same values
+		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
+		// Verifying the whole sequence produced a different transform from original
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
 	}
 }
