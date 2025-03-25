@@ -733,7 +733,6 @@ impl TypingContext {
 					.map(|generic| check_generic(node_io, &primary_input_or_call_argument, &inputs, generic).map(|x| (generic.to_string(), x)))
 					.collect();
 
-				// TODO: Proper error handling
 				generics_lookup.map(|generics_lookup| {
 					let orig_node_io = (*node_io).clone();
 					let mut new_node_io = orig_node_io.clone();
@@ -750,7 +749,6 @@ impl TypingContext {
 			[] => {
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
-				log::debug!("impls: {impls:?}");
 				for node_io in impls.keys() {
 					let current_errors = [&primary_input_or_call_argument]
 						.into_iter()
@@ -852,7 +850,6 @@ fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic
 	if outputs.any(|ty| ty != out_ty) {
 		return Err(format!("Generic output type {generic} is dependent on multiple inputs or parameters",));
 	}
-	log::debug!("concrete type: {}", out_ty);
 	Ok(out_ty.clone())
 }
 

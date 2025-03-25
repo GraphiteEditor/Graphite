@@ -287,16 +287,10 @@ impl DocumentNode {
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
-		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
+		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
-		let identifier = fqn;
-		// TODO replace with proper generics removal
-		// let identifier = match fqn.name.clone().split_once('<') {
-		// 	Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
-		// 	_ => ProtoNodeIdentifier { name: fqn.name },
-		// };
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {

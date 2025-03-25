@@ -329,14 +329,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// This occurs for the ChannelMixerNode presumably because of the long name.
 		// This might be caused by the stringify! macro
 		let mut new_name = id.name.replace('\n', " ");
-		// Remove struct generics
-		log::debug!("into node with path: {}", new_name);
+		// Remove struct generics for all nodes except for the IntoNode
 		if !new_name.contains("IntoNode") {
 			if let Some((path, _generics)) = new_name.split_once("<") {
 				new_name = path.to_string();
 			}
-		} else {
-			log::debug!("into node with path: {}", new_name);
 		}
 		let nid = ProtoNodeIdentifier { name: Cow::Owned(new_name) };
 		map.entry(nid).or_default().insert(types.clone(), c);

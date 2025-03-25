@@ -76,10 +76,6 @@ pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyL
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send>>;
 #[cfg(target_arch = "wasm32")]
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
-#[cfg(not(target_arch = "wasm32"))]
-pub type SyncFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n + Send + Sync>>;
-#[cfg(target_arch = "wasm32")]
-pub type SyncFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 pub type LocalFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
 #[cfg(not(target_arch = "wasm32"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
