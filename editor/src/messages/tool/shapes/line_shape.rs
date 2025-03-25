@@ -23,14 +23,6 @@ pub enum LineEnd {
 pub struct Line;
 
 impl Line {
-	pub fn name() -> &'static str {
-		"Line"
-	}
-
-	pub fn icon_name() -> &'static str {
-		"VectorLineTool"
-	}
-
 	pub fn create_node(document: &DocumentMessageHandler, init_data: LineInitData) -> NodeTemplate {
 		let drag_start = init_data.drag_start;
 		let node_type = resolve_document_node_type("Line").expect("Line node does not exist");

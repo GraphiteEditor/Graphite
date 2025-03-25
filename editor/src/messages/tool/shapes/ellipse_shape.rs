@@ -14,14 +14,6 @@ use std::collections::VecDeque;
 pub struct Ellipse;
 
 impl Ellipse {
-	pub fn name() -> &'static str {
-		"Ellipse"
-	}
-
-	pub fn icon_name() -> &'static str {
-		"VectorEllipseTool"
-	}
-
 	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_document_node_type("Ellipse").expect("Ellipse node does not exist");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])

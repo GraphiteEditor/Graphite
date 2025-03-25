@@ -17,10 +17,43 @@ pub enum ShapeType {
 	Line,
 }
 
-pub struct LineInitData {
-	pub drag_start: DVec2
+impl ShapeType {
+	pub fn name(&self) -> String {
+		match self {
+			Self::Line => "Line",
+			Self::Rectangle => "Rectangle",
+			Self::Ellipse => "Ellipse",
+		}.into()
+	}
+
+	pub fn tooltip(&self) -> String {
+		match self {
+			Self::Line => "Line tool",
+			Self::Rectangle => "Rectangle tool",
+			Self::Ellipse => "Ellipse tool",
+		}.into()
+	}
+
+	pub fn icon_name(&self) -> String {
+		match self {
+			Self::Line => "VectorLineTool",
+			Self::Rectangle => "VectorRectangleTool",
+			Self::Ellipse => "VectorEllipseTool",
+		}.into()
+	}
+
+	pub fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
+		match self {
+			Self::Line => ToolType::Line,
+			Self::Rectangle => ToolType::Rectangle,
+			Self::Ellipse => ToolType::Ellipse,
+		}
+	}
 }
 
-// Center, Lock ratio, Lock angle, Snap angle
-// Saved in unnamed fashion to reduce boilerplate required
+pub struct LineInitData {
+	pub drag_start: DVec2,
+}
+
+// Center, Lock Ratio, Lock Angle, Snap Angle
 pub type ShapeToolModifierKey = [Key; 4];

@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
-use crate::messages::tool::shapes::{Ellipse, Line, LineEnd, LineInitData, Rectangle, ShapeType, ShapeToolModifierKey};
+use crate::messages::tool::shapes::{Ellipse, Line, LineEnd, LineInitData, Rectangle, ShapeToolModifierKey, ShapeType};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 
@@ -146,12 +146,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 
 impl ToolMetadata for ShapeTool {
 	fn icon_name(&self) -> String {
-		match self.tool_data.current_shape {
-			ShapeType::Ellipse => Ellipse::icon_name(),
-			ShapeType::Rectangle => Rectangle::icon_name(),
-			ShapeType::Line => Line::icon_name(),
-		}
-		.into()
+		"VectorPolygonTool".into()
 	}
 	fn tooltip(&self) -> String {
 		"Shape Tool".into()

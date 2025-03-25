@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::common_functionality::shape_editor::ShapeState;
+use super::shapes::ShapeType;
 use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::broadcast::broadcast_event::BroadcastEvent;
@@ -204,6 +205,7 @@ pub trait ToolMetadata {
 
 pub struct ToolData {
 	pub active_tool_type: ToolType,
+	pub active_shape_type: Option<ToolType>,
 	pub tools: HashMap<ToolType, Box<Tool>>,
 }
 
@@ -225,6 +227,7 @@ impl ToolData {
 
 impl LayoutHolder for ToolData {
 	fn layout(&self) -> Layout {
+		let active_tool = self.active_shape_type.unwrap_or(self.active_tool_type);
 		let tool_groups_layout = list_tools_in_groups()
 			.iter()
 			.map(|tool_group| tool_group.iter().map(|tool_availability| {
@@ -232,6 +235,9 @@ impl LayoutHolder for ToolData {
 					ToolAvailability::Available(tool) => ToolEntry::new(tool.tool_type(), tool.icon_name())
 						.tooltip(tool.tooltip())
 						.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type()))),
+					ToolAvailability::AvailableAsShape(shape) => ToolEntry::new(shape.tool_type(), shape.icon_name())
+						.tooltip(shape.tooltip())
+						.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(shape.tool_type()))),
 					ToolAvailability::ComingSoon(tool) => tool.clone(),
 				}
 			})
@@ -240,9 +246,9 @@ impl LayoutHolder for ToolData {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
-						.disabled( false)
-						.active( self.active_tool_type == tool_type)
-						.tooltip( tooltip.clone())
+						.disabled(false)
+						.active(active_tool == tool_type)
+						.tooltip(tooltip.clone())
 						.tooltip_shortcut(tooltip_shortcut)
 						.on_update(move |_| {
 							if !tooltip.contains("Coming Soon") {
@@ -287,11 +293,13 @@ impl Default for ToolFsmState {
 		Self {
 			tool_data: ToolData {
 				active_tool_type: ToolType::Select,
+				active_shape_type: None,
 				tools: list_tools_in_groups()
 					.into_iter()
 					.flatten()
 					.filter_map(|tool| match tool {
 						ToolAvailability::Available(tool) => Some((tool.tool_type(), tool)),
+						ToolAvailability::AvailableAsShape(_) => None,
 						ToolAvailability::ComingSoon(_) => None,
 					})
 					.collect(),
@@ -331,6 +339,11 @@ pub enum ToolType {
 	Polygon,
 	Text,
 
+	// Shape group
+	Rectangle,
+	Ellipse,
+	Line,
+
 	// Raster tool group
 	Brush,
 	Heal,
@@ -342,8 +355,22 @@ pub enum ToolType {
 	Frame,
 }
 
+impl ToolType {
+	pub fn get_shape(&self) -> Option<Self> {
+		match self {
+			Self::Rectangle | Self::Line | Self::Ellipse => Some(*self),
+			_ => None,
+		}
+	}
+
+	pub fn get_tool(self) -> Self {
+		if self.get_shape().is_some() { ToolType::Shape } else { self }
+	}
+}
+
 enum ToolAvailability {
 	Available(Box<Tool>),
+	AvailableAsShape(ShapeType),
 	ComingSoon(ToolEntry),
 }
 
@@ -366,6 +393,9 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
 			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
 			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
+			ToolAvailability::AvailableAsShape(ShapeType::Rectangle),
+			ToolAvailability::AvailableAsShape(ShapeType::Ellipse),
+			ToolAvailability::AvailableAsShape(ShapeType::Line),
 			ToolAvailability::Available(Box::<polygon_tool::PolygonTool>::default()),
 			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
@@ -432,6 +462,10 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
 		ToolType::Polygon => ToolMessageDiscriminant::ActivateToolPolygon,
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
+
+		ToolType::Rectangle => ToolMessageDiscriminant::ActivateShapeRectangle,
+		ToolType::Ellipse => ToolMessageDiscriminant::ActivateShapeEllipse,
+		ToolType::Line => ToolMessageDiscriminant::ActivateShapeLine,
 
 		// Raster tool group
 		ToolType::Brush => ToolMessageDiscriminant::ActivateToolBrush,

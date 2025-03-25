@@ -39,6 +39,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			preferences,
 		} = data;
 		let font_cache = &persistent_data.font_cache;
+		use super::shapes::ShapeType::*;
 
 		match message {
 			// Messages
@@ -64,12 +65,35 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
 			ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 
+			ToolMessage::ActivateShapeRectangle | ToolMessage::ActivateShapeEllipse | ToolMessage::ActivateShapeLine => {
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+				let shape = match message {
+					ToolMessage::ActivateShapeEllipse => Ellipse,
+					ToolMessage::ActivateShapeLine => Line,
+					ToolMessage::ActivateShapeRectangle => Rectangle,
+					_ => unreachable!(),
+				};
+				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
+				responses.add(ShapeToolMessage::SetShape(shape));
+			}
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let old_tool = tool_data.active_tool_type;
 
+				let shape = tool_type;
+				let old_shape = tool_data.active_shape_type;
+				debug!("{shape:?}");
+				let tool_type = tool_type.get_tool();
+				let old_tool = old_tool.get_tool();
+
+				tool_data.active_shape_type = if tool_type != ToolType::Shape { None } else { Some(shape.get_shape().unwrap_or(old_shape)) };
+
 				// Do nothing if switching to the same tool
 				if self.tool_is_active && tool_type == old_tool {
+					if tool_data.active_shape_type.is_some() {
+						responses.add(ToolMessage::RefreshToolOptions);
+						tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+					}
 					return;
 				}
 				self.tool_is_active = true;
@@ -306,6 +330,10 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 
 			ActivateToolBrush,
 			ActivateToolImaginate,
+
+			ActivateShapeRectangle,
+			ActivateShapeEllipse,
+			ActivateShapeLine,
 
 			SelectRandomPrimaryColor,
 			ResetColors,

@@ -69,6 +69,10 @@ pub enum ToolMessage {
 	ActivateToolShape,
 	ActivateToolPolygon,
 
+	ActivateShapeRectangle,
+	ActivateShapeEllipse,
+	ActivateShapeLine,
+
 	ActivateToolBrush,
 	ActivateToolImaginate,
 

@@ -9,7 +9,6 @@ use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::prelude::*;
-use crate::messages::tool::shapes::ShapeType;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use glam::DVec2;
@@ -176,9 +175,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyUp(MouseLeft); action_dispatch=ShapeToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=ShapeToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
-		entry!(KeyDown(KeyM); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Rectangle)),
-		entry!(KeyDown(KeyE); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Ellipse)),
-		entry!(KeyDown(KeyL); action_dispatch=ShapeToolMessage::SetShape(ShapeType::Line)),
 		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove ([Alt, Shift, Control, Shift])),
 		//
 		// ImaginateToolMessage
@@ -296,6 +292,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyP); action_dispatch=ToolMessage::ActivateToolPen),
 		entry!(KeyDown(KeyN); action_dispatch=ToolMessage::ActivateToolFreehand),
 		entry!(KeyDown(KeyU); action_dispatch=ToolMessage::ActivateToolShape),
+		entry!(KeyDown(KeyM); action_dispatch=ToolMessage::ActivateShapeRectangle),
+		entry!(KeyDown(KeyL); action_dispatch=ToolMessage::ActivateShapeLine),
+		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateShapeEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolPolygon),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
 		entry!(KeyDown(KeyX); modifiers=[Accel, Shift], action_dispatch=ToolMessage::ResetColors),

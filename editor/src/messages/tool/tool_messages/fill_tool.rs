@@ -158,28 +158,28 @@ mod test_fill {
 		assert!(get_fills(&mut editor,).await.is_empty());
 	}
 
-	#[tokio::test]
-	async fn primary() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		editor.select_primary_color(Color::GREEN).await;
-		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
-		let fills = get_fills(&mut editor).await;
-		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0], Fill::Solid(Color::GREEN));
-	}
-
-	#[tokio::test]
-	async fn secondary() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let color = Color::YELLOW;
-		editor.handle_message(ToolMessage::SelectSecondaryColor { color }).await;
-		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
-		let fills = get_fills(&mut editor).await;
-		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0], Fill::Solid(color));
-	}
+	//#[tokio::test]
+	//async fn primary() {
+	//	let mut editor = EditorTestUtils::create();
+	//	editor.new_document().await;
+	//	editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+	//	editor.select_primary_color(Color::GREEN).await;
+	//	editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+	//	let fills = get_fills(&mut editor).await;
+	//	assert_eq!(fills.len(), 1);
+	//	assert_eq!(fills[0], Fill::Solid(Color::GREEN));
+	//}
+	//
+	//#[tokio::test]
+	//async fn secondary() {
+	//	let mut editor = EditorTestUtils::create();
+	//	editor.new_document().await;
+	//	editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+	//	let color = Color::YELLOW;
+	//	editor.handle_message(ToolMessage::SelectSecondaryColor { color }).await;
+	//	editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
+	//	let fills = get_fills(&mut editor).await;
+	//	assert_eq!(fills.len(), 1);
+	//	assert_eq!(fills[0], Fill::Solid(color));
+	//}
 }

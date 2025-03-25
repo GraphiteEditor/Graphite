@@ -14,14 +14,6 @@ use std::collections::VecDeque;
 pub struct Rectangle;
 
 impl Rectangle {
-	pub fn name() -> &'static str {
-		"Rectangle"
-	}
-
-	pub fn icon_name() -> &'static str {
-		"VectorRectangleTool"
-	}
-
 	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))])
