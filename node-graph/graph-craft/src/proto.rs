@@ -840,11 +840,12 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 
 /// Checks if a generic type can be substituted with a concrete type and returns the concrete type
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
-	let inputs = [(&types.call_argument, input)]
+	let inputs = [(Some(&types.call_argument), Some(input))]
 		.into_iter()
-		.chain(types.inputs.iter().map(|x| x.nested_type()).zip(parameters.iter().map(|x| x.nested_type())));
-	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Type::Generic(input) if generic == input));
-	let mut outputs = concrete_inputs.map(|(_, out)| out);
+		.chain(types.inputs.iter().map(|x| x.fn_input()).zip(parameters.iter().map(|x| x.fn_input())))
+		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
+	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
+	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
 	let out_ty = outputs
 		.next()
 		.ok_or_else(|| format!("Generic output type {generic} is not dependent on input {input:?} or parameters {parameters:?}",))?;

@@ -2,8 +2,8 @@ use super::node_properties;
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, NumberInputSettings,
-	PropertiesRow, Vec2InputSettings, WidgetOverride,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTemplate,
+	NodeTypePersistentMetadata, NumberInputSettings, PropertiesRow, Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -2734,7 +2734,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					match inputs.len() {
 						1 => {
 							let input = inputs.iter().next().unwrap();
-							let fn_input = input.fn_input().expect("Node inputs should have a function type");
 							let input_ty = input.nested_type();
 							let into_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
@@ -2782,6 +2781,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			.collect();
 		nodes.insert(NodeId(input_count as u64), document_node);
 		node_names.insert(NodeId(input_count as u64), display_name.to_string());
+		let node_type_metadata = |id: NodeId| {
+			NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Absolute(if id.0 == input_count as u64 {
+				IVec2::default()
+			} else {
+				IVec2 { x: -10, y: id.0 as i32 }
+			})))
+		};
 
 		let node = DocumentNodeDefinition {
 			identifier: display_name,
@@ -2822,10 +2828,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							node_metadata: node_names
 								.into_iter()
 								.map(|(id, display_name)| {
+									let node_type_metadata = node_type_metadata(id);
 									(
 										id,
 										DocumentNodeMetadata {
-											persistent_metadata: DocumentNodePersistentMetadata { display_name, ..Default::default() },
+											persistent_metadata: DocumentNodePersistentMetadata {
+												display_name,
+												node_type_metadata,
+												..Default::default()
+											},
 											..Default::default()
 										},
 									)

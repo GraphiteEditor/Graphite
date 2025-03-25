@@ -2,7 +2,6 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
-use spirv_std::image::sample_with::NoneTy;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 

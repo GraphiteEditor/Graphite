@@ -6438,6 +6438,12 @@ pub struct NodePersistentMetadata {
 	position: NodePosition,
 }
 
+impl NodePersistentMetadata {
+	pub fn new(position: NodePosition) -> Self {
+		Self { position }
+	}
+}
+
 /// A layer can either be position as Absolute or in a Stack
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LayerPosition {
