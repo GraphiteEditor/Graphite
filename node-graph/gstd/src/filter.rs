@@ -5,6 +5,11 @@ use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{Color, Ctx};
 use image::{DynamicImage, ImageBuffer, Rgba};
 
+enum ConvertFunction {
+	ToLinear,
+	ToNonlinear,
+}
+
 #[node_macro::node(category("Raster"))]
 async fn blur(_: impl Ctx, image_frame: ImageFrameTable<Color>, #[range((0., 100.))] radius: PixelLength, gaussian_blur: bool, nonlinear: bool) -> ImageFrameTable<Color> {
 	let image_frame_transform = image_frame.transform();
@@ -36,41 +41,44 @@ async fn blur(_: impl Ctx, image_frame: ImageFrameTable<Color>, #[range((0., 100
 	result
 }
 
-// Helpers to convert image buffer to linear/nonlinear color spaces in-place
-fn to_linear_helper(image_buffer: &mut ImageBuffer<Rgba<f32>, Vec<f32>>) {
+// Helper to convert image buffer to linear/nonlinear color spaces in-place
+fn convert_color_space(image_buffer: &mut ImageBuffer<Rgba<f32>, Vec<f32>>, convert: ConvertFunction) {
 	for pixel in image_buffer.pixels_mut() {
 		// Leave alpha channels
 		let channels = pixel.0;
-		pixel.0[0] = channels[0].to_linear();
-		pixel.0[1] = channels[1].to_linear();
-		pixel.0[2] = channels[2].to_linear();
-	}
-}
-fn from_linear_helper(image_buffer: &mut ImageBuffer<Rgba<f32>, Vec<f32>>) {
-	for pixel in image_buffer.pixels_mut() {
-		let channels = pixel.0;
-		pixel.0[0] = Channel::from_linear(channels[0]);
-		pixel.0[1] = Channel::from_linear(channels[1]);
-		pixel.0[2] = Channel::from_linear(channels[2]);
+
+		match convert {
+			ConvertFunction::ToLinear => {
+				pixel.0[0] = channels[0].to_linear();
+				pixel.0[1] = channels[1].to_linear();
+				pixel.0[2] = channels[2].to_linear();
+			}
+
+			ConvertFunction::ToNonlinear => {
+				pixel.0[0] = Channel::from_linear(channels[0]);
+				pixel.0[1] = Channel::from_linear(channels[1]);
+				pixel.0[2] = Channel::from_linear(channels[2]);
+			}
+		}
 	}
 }
 
 fn blur_helper(image_buffer: &mut ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64, gaussian: bool, nonlinear: bool) -> DynamicImage {
 	// For small radius, image would not change much -> just return original image
-	if radius < 1 as f64 {
-		return image_buffer.clone().into();
+	if radius < 1_f64 {
+		image_buffer.clone().into()
 	} else {
 		// Convert to linear color space by default
 		if !nonlinear {
-			to_linear_helper(image_buffer);
+			convert_color_space(image_buffer, ConvertFunction::ToLinear)
 		}
 		// Run the gaussian blur algorithm, if user wants
 		if gaussian {
-			return gaussian_blur(image_buffer.clone(), radius, nonlinear);
+			gaussian_blur(image_buffer.clone(), radius, nonlinear)
 		}
 		// Else, run box blur
 		else {
-			return box_blur(image_buffer.clone(), radius, nonlinear);
+			box_blur(image_buffer.clone(), radius, nonlinear)
 		}
 	}
 }
@@ -87,11 +95,11 @@ fn gaussian_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64,
 	// Blur along x-axis
 	for y in 0..height {
 		for x in 0..width {
-			let mut r_sum = 0.0;
-			let mut g_sum = 0.0;
-			let mut b_sum = 0.0;
-			let mut a_sum = 0.0;
-			let mut weight_sum = 0.0;
+			let mut r_sum = 0.;
+			let mut g_sum = 0.;
+			let mut b_sum = 0.;
+			let mut a_sum = 0.;
+			let mut weight_sum = 0.;
 
 			for (i, &weight) in kernel.iter().enumerate() {
 				let kx = i as i32 - half_kernel as i32;
@@ -109,16 +117,7 @@ fn gaussian_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64,
 			}
 
 			// Normalize
-			if weight_sum > 0.0 {
-				let r = (r_sum / weight_sum) as f32;
-				let g = (g_sum / weight_sum) as f32;
-				let b = (b_sum / weight_sum) as f32;
-				let a = (a_sum / weight_sum) as f32;
-
-				x_axis.put_pixel(x, y, Rgba([r, g, b, a]));
-			} else {
-				x_axis.put_pixel(x, y, *original_buffer.get_pixel(x, y));
-			}
+			normalize(&mut x_axis, &original_buffer, weight_sum, (r_sum, b_sum, g_sum, a_sum), x, y);
 		}
 	}
 
@@ -127,11 +126,11 @@ fn gaussian_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64,
 	// Blur along y-axis
 	for y in 0..height {
 		for x in 0..width {
-			let mut r_sum = 0.0;
-			let mut g_sum = 0.0;
-			let mut b_sum = 0.0;
-			let mut a_sum: f64 = 0.0;
-			let mut weight_sum = 0.0;
+			let mut r_sum = 0.;
+			let mut g_sum = 0.;
+			let mut b_sum = 0.;
+			let mut a_sum: f64 = 0.;
+			let mut weight_sum = 0.;
 
 			for (i, &weight) in kernel.iter().enumerate() {
 				let ky = i as i32 - half_kernel as i32;
@@ -148,47 +147,52 @@ fn gaussian_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64,
 				}
 			}
 
-			if weight_sum > 0.0 {
-				let r = (r_sum / weight_sum) as f32;
-				let g = (g_sum / weight_sum) as f32;
-				let b = (b_sum / weight_sum) as f32;
-				let a = (a_sum / weight_sum) as f32;
-
-				y_axis.put_pixel(x, y, Rgba([r, g, b, a]));
-			} else {
-				y_axis.put_pixel(x, y, *x_axis.get_pixel(x, y));
-			}
+			normalize(&mut y_axis, &x_axis, weight_sum, (r_sum, b_sum, g_sum, a_sum), x, y);
 		}
 	}
 
 	// Convert linear back to nonlinear if converted initially
 	if !nonlinear {
-		from_linear_helper(&mut y_axis);
+		convert_color_space(&mut y_axis, ConvertFunction::ToNonlinear);
 	}
 	DynamicImage::ImageRgba32F(y_axis)
+}
+
+fn normalize(current_buffer: &mut ImageBuffer<Rgba<f32>, Vec<f32>>, old_buffer: &ImageBuffer<Rgba<f32>, Vec<f32>>, weight_sum: f64, rgba: (f64, f64, f64, f64), x: u32, y: u32) {
+	if weight_sum > 0. {
+		let r = (rgba.0 / weight_sum) as f32;
+		let g = (rgba.1 / weight_sum) as f32;
+		let b = (rgba.2 / weight_sum) as f32;
+		let a = (rgba.3 / weight_sum) as f32;
+
+		current_buffer.put_pixel(x, y, Rgba([r, g, b, a]));
+	} else {
+		current_buffer.put_pixel(x, y, *old_buffer.get_pixel(x, y));
+	}
 }
 
 // 1D gaussian kernel
 fn create_gaussian_kernel(radius: f64) -> Vec<f64> {
 	// Given radius, compute size of kernel -> 3*radius (approx.)
-	let kernel_radius = (3.0 * radius).ceil() as usize;
+	let kernel_radius = (3. * radius).ceil() as usize;
 	let kernel_size = 2 * kernel_radius + 1;
-	let mut gaussian_kernel: Vec<f64> = vec![0.0; kernel_size];
+	let mut gaussian_kernel: Vec<f64> = vec![0.; kernel_size];
 
 	// Kernel values
-	let two_radius_squared = 2.0 * radius * radius;
-	let mut sum = 0.0;
-	for i in 0..kernel_size {
-		let x: f64 = i as f64 - kernel_radius as f64;
-		let exponent = -(x * x) / two_radius_squared;
-		gaussian_kernel[i] = exponent.exp();
-		sum += gaussian_kernel[i];
-	}
+	let two_radius_squared = 2. * radius * radius;
+	let sum: f64 = gaussian_kernel
+		.iter_mut()
+		.enumerate()
+		.map(|(i, value_at_index)| {
+			let x = i as f64 - kernel_radius as f64;
+			let exponent = -(x * x) / two_radius_squared;
+			*value_at_index = exponent.exp();
+			*value_at_index
+		})
+		.sum();
 
 	// Normalize
-	for i in 0..kernel_size {
-		gaussian_kernel[i] /= sum;
-	}
+	gaussian_kernel.iter_mut().for_each(|value_at_index| *value_at_index /= sum);
 
 	gaussian_kernel
 }
@@ -201,15 +205,15 @@ fn box_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64, nonl
 	// Blur along x-axis
 	for y in 0..height {
 		for x in 0..width {
-			let mut r_sum = 0.0;
-			let mut g_sum = 0.0;
-			let mut b_sum = 0.0;
-			let mut a_sum = 0.0;
-			let mut weight_sum = 0.0;
+			let mut r_sum = 0.;
+			let mut g_sum = 0.;
+			let mut b_sum = 0.;
+			let mut a_sum = 0.;
+			let mut weight_sum = 0.;
 
 			for dx in (x as i32 - radius as i32).max(0)..=(x as i32 + radius as i32).min(width as i32 - 1) {
 				let pixel = original_buffer.get_pixel(dx as u32, y);
-				let weight = 1.0;
+				let weight = 1.;
 
 				r_sum += pixel[0] as f64 * weight;
 				g_sum += pixel[1] as f64 * weight;
@@ -229,15 +233,15 @@ fn box_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64, nonl
 	// Blur along y-axis
 	for y in 0..height {
 		for x in 0..width {
-			let mut r_sum = 0.0;
-			let mut g_sum = 0.0;
-			let mut b_sum = 0.0;
-			let mut a_sum = 0.0;
-			let mut weight_sum = 0.0;
+			let mut r_sum = 0.;
+			let mut g_sum = 0.;
+			let mut b_sum = 0.;
+			let mut a_sum = 0.;
+			let mut weight_sum = 0.;
 
 			for dy in (y as i32 - radius as i32).max(0)..=(y as i32 + radius as i32).min(height as i32 - 1) {
 				let pixel = x_axis.get_pixel(x, dy as u32);
-				let weight = 1.0;
+				let weight = 1.;
 
 				r_sum += pixel[0] as f64 * weight;
 				g_sum += pixel[1] as f64 * weight;
@@ -256,7 +260,7 @@ fn box_blur(original_buffer: ImageBuffer<Rgba<f32>, Vec<f32>>, radius: f64, nonl
 
 	// Convert linear back to nonlinear if converted initially
 	if !nonlinear {
-		from_linear_helper(&mut blurred_image);
+		convert_color_space(&mut blurred_image, ConvertFunction::ToNonlinear);
 	}
 	DynamicImage::ImageRgba32F(blurred_image)
 }
