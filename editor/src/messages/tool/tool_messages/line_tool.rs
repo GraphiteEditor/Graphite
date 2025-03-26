@@ -424,30 +424,24 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 #[cfg(test)]
 mod test_line_tool {
-	use crate::{messages::tool::common_functionality::graph_modification_utils, test_utils::test_prelude::*};
-	use graph_craft::document::NodeInput;
+	use crate::{messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer, test_utils::test_prelude::*};
 	use graph_craft::document::value::TaggedValue;
-	use std::collections::VecDeque;
 
-	async fn get_line_node_inputs(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<(NodeInput, NodeInput)> {
+	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
 		let node_id = network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
-			.find_map(|layer| graph_modification_utils::get_line_id(layer, network_interface))
-			.unwrap();
-		let document_node = network_interface.document_node(&node_id, &[node_id])?;
-		let start_input = document_node.inputs.get(1)?.clone();
-		let end_input = document_node.inputs.get(2)?.clone();
-		Some((start_input, end_input))
-	}
-
-	pub fn to_dvec2(input: &str) -> Option<DVec2> {
-		let mut split = input.split(',');
-		let x = split.next()?.trim().parse().ok()?;
-		let y = split.next()?.trim().parse().ok()?;
-		Some(DVec2::new(x, y))
+			.filter_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, &network_interface).find_node_inputs("Line")?;
+				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+					return None;
+				};
+				Some((start, end))
+			})
+			.next();
+		node_id
 	}
 
 	#[tokio::test]
@@ -455,19 +449,12 @@ mod test_line_tool {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let document = editor.active_document();
-		let layer = document.metadata().all_layers().next().unwrap();
-		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor, layer).await {
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			match (start_input, end_input) {
-				(NodeInput::Value { tagged_value: start, .. }, NodeInput::Value { tagged_value: end, .. }) => {
-					let start_point = start.to_primitive_string();
-					let end_point = end.to_primitive_string();
-					let start_point_dvec2 = to_dvec2(&start_point).unwrap();
-					let end_point_dvec2 = to_dvec2(&end_point).unwrap();
-					assert!((start_point_dvec2 - DVec2::ZERO).length() < 1.0, "Start point should be near (0,0)");
-					assert!((end_point_dvec2 - DVec2::new(100.0, 100.0)).length() < 1.0, "End point should be near (100,100)");
+				(start_input, end_input) => {
+					assert!((start_input - DVec2::ZERO).length() < 1.0, "Start point should be near (0,0)");
+					assert!((end_input - DVec2::new(100.0, 100.0)).length() < 1.0, "End point should be near (100,100)");
 				}
-				_ => panic!("Unexpected input types for line node"),
 			}
 		}
 	}
@@ -477,35 +464,23 @@ mod test_line_tool {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
-		let document = editor.active_document();
-		let layer = document.metadata().all_layers().next().unwrap();
-		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor, layer).await {
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			match (start_input, end_input) {
-				(NodeInput::Value { tagged_value: start, .. }, NodeInput::Value { tagged_value: end, .. }) => {
-					let start_point = start.to_primitive_string();
-					let end_point = end.to_primitive_string();
-					let start_point_dvec2 = to_dvec2(&start_point).unwrap();
-					let end_point_dvec2 = to_dvec2(&end_point).unwrap();
-					let line_vec = end_point_dvec2 - start_point_dvec2;
+				(start_input, end_input) => {
+					let line_vec = end_input - start_input;
 					let original_angle = line_vec.angle_to(DVec2::X);
 					editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
-					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor, layer).await {
+					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
 						match (updated_start, updated_end) {
-							(NodeInput::Value { tagged_value: updated_start, .. }, NodeInput::Value { tagged_value: updated_end, .. }) => {
-								let updated_start_point = updated_start.to_primitive_string();
-								let updated_end_point = updated_end.to_primitive_string();
-								let updated_start_dvec2 = to_dvec2(&updated_start_point).unwrap();
-								let updated_end_dvec2 = to_dvec2(&updated_end_point).unwrap();
-								let updated_line_vec = updated_end_dvec2 - updated_start_dvec2;
+							(updated_start, updated_end) => {
+								let updated_line_vec = updated_end - updated_start;
 								let updated_angle = updated_line_vec.angle_to(DVec2::X);
-								assert!((original_angle - updated_angle).abs() < 0.1, "Line angle should be locked when Ctrl is pressed");
-								assert!((updated_end_dvec2 - end_point_dvec2).length() > 1.0, "Line should be able to change length when Ctrl is pressed");
+								assert!((original_angle - updated_angle).abs() < 0.1, "Line angle should be locked when Ctrl is kept pressed");
+								assert!((updated_start - updated_end).length() > 1.0, "Line should be able to change length when Ctrl is kept pressed");
 							}
-							_ => panic!("Unexpected input types for updated line node"),
 						}
 					}
 				}
-				_ => panic!("Unexpected input types for line node"),
 			}
 		}
 	}
