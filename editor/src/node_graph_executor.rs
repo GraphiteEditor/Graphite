@@ -1,10 +1,10 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::animation::TimingInformation;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, TaggedValue};
