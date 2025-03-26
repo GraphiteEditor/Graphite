@@ -1,9 +1,8 @@
+use crate::tiff::Ifd;
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::SonyDataOffset;
-use crate::tiff::Ifd;
 use crate::{RawImage, SubtractBlack, Transform};
-
-use bitstream_io::{BitRead, BitReader, Endianness, BE};
+use bitstream_io::{BE, BitRead, BitReader, Endianness};
 use std::io::{Read, Seek};
 
 pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
@@ -63,11 +62,7 @@ fn ljpeg_diff<R: Read + Seek, E: Endianness>(huff: &[u16], file: &mut BitReader<
 
 	let diff = read_n_bits_from_file(length, file) as i32;
 
-	if length == 0 || (diff & (1 << (length - 1))) == 0 {
-		diff - (1 << length) - 1
-	} else {
-		diff
-	}
+	if length == 0 || (diff & (1 << (length - 1))) == 0 { diff - (1 << length) - 1 } else { diff }
 }
 
 fn sony_arw_load_raw<R: Read + Seek>(width: usize, height: usize, file: &mut BitReader<R, BE>) -> Option<Vec<u16>> {

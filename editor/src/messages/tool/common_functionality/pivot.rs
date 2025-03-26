@@ -6,7 +6,6 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
 
@@ -82,10 +81,10 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
 		self.recalculate_pivot(document);
-		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot, angle);
+		if let (Some(pivot), Some(data)) = (self.pivot, draw_data) {
+			overlay_context.pivot(pivot, data.0);
 		}
 	}
 

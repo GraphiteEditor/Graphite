@@ -1,17 +1,15 @@
-use crate::raster::image::ImageFrameTable;
+use crate::Ctx;
 use crate::raster::BlendMode;
+use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
 use crate::vector::style::GradientStops;
-use crate::Ctx;
 use crate::{Color, Node};
-
-use math_parser::ast;
-use math_parser::context::{EvalContext, NothingMap, ValueProvider};
-use math_parser::value::{Number, Value};
-
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
 use glam::DVec2;
+use math_parser::ast;
+use math_parser::context::{EvalContext, NothingMap, ValueProvider};
+use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 
@@ -136,11 +134,7 @@ fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy
 	modulus: T,
 	always_positive: bool,
 ) -> <U as Rem<T>>::Output {
-	if always_positive {
-		(numerator % modulus + modulus) % modulus
-	} else {
-		numerator % modulus
-	}
+	if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus }
 }
 
 /// The exponent operation (^) calculates the result of raising a number to a power.
@@ -198,61 +192,37 @@ fn logarithm<U: num_traits::float::Float>(
 /// The sine trigonometric function (sin) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
 fn sine<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
-	if radians {
-		theta.sin()
-	} else {
-		theta.to_radians().sin()
-	}
+	if radians { theta.sin() } else { theta.to_radians().sin() }
 }
 
 /// The cosine trigonometric function (cos) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
 fn cosine<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
-	if radians {
-		theta.cos()
-	} else {
-		theta.to_radians().cos()
-	}
+	if radians { theta.cos() } else { theta.to_radians().cos() }
 }
 
 /// The tangent trigonometric function (tan) calculates the ratio of the angle's opposite side length to its adjacent side length.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
-	if radians {
-		theta.tan()
-	} else {
-		theta.to_radians().tan()
-	}
+	if radians { theta.tan() } else { theta.to_radians().tan() }
 }
 
 /// The inverse sine trigonometric function (asin) calculates the angle whose sine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
 fn sine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians {
-		value.asin()
-	} else {
-		value.asin().to_degrees()
-	}
+	if radians { value.asin() } else { value.asin().to_degrees() }
 }
 
 /// The inverse cosine trigonometric function (acos) calculates the angle whose cosine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
 fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians {
-		value.acos()
-	} else {
-		value.acos().to_degrees()
-	}
+	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
 /// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians {
-		value.atan()
-	} else {
-		value.atan().to_degrees()
-	}
+	if radians { value.atan() } else { value.atan().to_degrees() }
 }
 
 /// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
@@ -265,11 +235,7 @@ fn tangent_inverse_2_argument<U: num_traits::float::Float>(
 	x: U,
 	radians: bool,
 ) -> U {
-	if radians {
-		y.atan2(x)
-	} else {
-		y.atan2(x).to_degrees()
-	}
+	if radians { y.atan2(x) } else { y.atan2(x).to_degrees() }
 }
 
 /// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
@@ -333,19 +299,13 @@ fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn min<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value < other_value {
-		true => value,
-		false => other_value,
-	}
+	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn max<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value > other_value {
-		true => value,
-		false => other_value,
-	}
+	if value > other_value { value } else { other_value }
 }
 
 /// The clamp function (clamp) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
@@ -450,6 +410,12 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 #[node_macro::node(category("Value"))]
 fn blend_mode_value(_: impl Ctx, _primary: (), blend_mode: BlendMode) -> BlendMode {
 	blend_mode
+}
+
+/// Constructs a string value which may be set to any plain text.
+#[node_macro::node(category("Value"))]
+fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+	string
 }
 
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.

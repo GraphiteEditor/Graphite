@@ -1,7 +1,5 @@
 use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
-
 use dyn_any::{DynAny, StaticType};
-
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -11,20 +9,21 @@ use std::sync::{LazyLock, Mutex};
 pub mod types {
 	/// 0% - 100%
 	pub type Percentage = f64;
-	/// -180° - 180°
-	pub type Angle = f64;
 	/// -100% - 100%
 	pub type SignedPercentage = f64;
-	/// Non negative integer, px unit
+	/// -180° - 180°
+	pub type Angle = f64;
+	/// Non-negative integer with px unit
 	pub type PixelLength = f64;
-	/// Non negative
+	/// Non-negative
 	pub type Length = f64;
 	/// 0 to 1
 	pub type Fraction = f64;
+	/// Unsigned integer
 	pub type IntegerCount = u32;
-	/// Int input with randomization button
+	/// Unsigned integer to be used for random seeds
 	pub type SeedValue = u32;
-	/// Non Negative integer vec with px unit
+	/// Non-negative integer vector2 with px unit
 	pub type Resolution = glam::UVec2;
 }
 
@@ -149,7 +148,9 @@ impl NodeContainer {
 
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		unsafe {
+			std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+		}
 	}
 }
 

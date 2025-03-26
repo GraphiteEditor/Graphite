@@ -1,52 +1,25 @@
-use graphene_std::vector::misc::BooleanOperation;
-
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
+use graphene_std::vector::misc::BooleanOperation;
 
-pub struct MenuBarMessageData {
+#[derive(Debug, Clone, Default)]
+pub struct MenuBarMessageHandler {
 	pub has_active_document: bool,
 	pub rulers_visible: bool,
 	pub node_graph_open: bool,
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
 	pub has_selection_history: (bool, bool),
+	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct MenuBarMessageHandler {
-	has_active_document: bool,
-	rulers_visible: bool,
-	node_graph_open: bool,
-	has_selected_nodes: bool,
-	has_selected_layers: bool,
-	has_selection_history: (bool, bool),
-	message_logging_verbosity: MessageLoggingVerbosity,
-}
-
-impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandler {
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, data: MenuBarMessageData) {
-		let MenuBarMessageData {
-			has_active_document,
-			rulers_visible,
-			node_graph_open,
-			has_selected_nodes,
-			has_selected_layers,
-			has_selection_history,
-			message_logging_verbosity,
-		} = data;
-		self.has_active_document = has_active_document;
-		self.rulers_visible = rulers_visible;
-		self.node_graph_open = node_graph_open;
-		self.has_selected_nodes = has_selected_nodes;
-		self.has_selected_layers = has_selected_layers;
-		self.has_selection_history = has_selection_history;
-		self.message_logging_verbosity = message_logging_verbosity;
-
+impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
@@ -588,6 +561,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						icon: Some(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 						shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
 						action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRulers.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
+					vec![MenuBarEntry {
+						label: "Window: Spreadsheet".into(),
+						icon: Some(if self.spreadsheet_view_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+						action: MenuBarEntry::create_action(|_| SpreadsheetMessage::ToggleOpen.into()),
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					}],

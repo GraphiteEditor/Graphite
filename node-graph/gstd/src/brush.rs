@@ -1,5 +1,5 @@
-use crate::raster::{blend_image_closure, BlendImageTupleNode, ExtendImageToBoundsNode};
-
+use crate::raster::{BlendImageTupleNode, ExtendImageToBoundsNode, blend_image_closure};
+use glam::{DAffine2, DVec2};
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
 use graphene_core::raster::adjustments::blend_colors;
@@ -9,11 +9,9 @@ use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{Alpha, Bitmap, BlendMode, Color, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
-use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::vector::VectorDataTable;
+use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
-
-use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
@@ -335,11 +333,9 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 #[cfg(test)]
 mod test {
 	use super::*;
-
+	use glam::DAffine2;
 	use graphene_core::raster::Bitmap;
 	use graphene_core::transform::Transform;
-
-	use glam::DAffine2;
 
 	#[test]
 	fn test_brush_texture() {

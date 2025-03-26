@@ -3,10 +3,9 @@ use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-
+use graphene_core::Color;
 use graphene_core::raster::Image;
 use graphene_core::text::Font;
-use graphene_core::Color;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -16,6 +15,8 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
 	DocumentPassMessage {
@@ -104,6 +105,9 @@ pub enum PortfolioMessage {
 	SetActivePanel {
 		panel: PanelType,
 	},
+	SetDevicePixelRatio {
+		ratio: f64,
+	},
 	SelectDocument {
 		document_id: DocumentId,
 	},
@@ -114,6 +118,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		transparent_background: bool,
 	},
+	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
 		ignore_hash: bool,

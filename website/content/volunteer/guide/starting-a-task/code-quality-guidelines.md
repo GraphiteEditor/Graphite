@@ -39,14 +39,9 @@ Please make a habit of grouping together related lines of code in blocks separat
 
 ## Imports
 
-Our imports used to be a mess before we tamed the chaos with these rules.
+Our imports used to be a mess before we tamed the chaos with a formatting rule that has to be applied manually, since `rustfmt` doesn't support it.
 
-At the top of Rust files, use the convention of separating imports into three blocks, ordered as:
-1. Local (`use super::` and `use crate::`)
-2. First-party crates (e.g. `use editor::` or `bezier_rs::`)
-3. Third-party libraries (e.g. `use std::` or `use glam::`)
-
-Combine related imports with common paths at the same depth. For example:
+We always combine imports with common paths, but only at the same depth. For example:
 
 ```rs
 use crate::A::B::C;
@@ -58,4 +53,13 @@ use crate::A::B::C::Bar;
 use crate::A::B::C::{self, Foo, Bar};
 ```
 
-But do not combine imports at mixed path depths. For example, `use crate::A::{B::C::Foo, X::Hello};` should be split into two separate import lines— avoid having `::` inside `{}`.
+But we do not combine imports at mixed path depths. In other words, never put `::` inside `{}`. For example:
+
+```rs
+use crate::A::{B::C::Foo, X::Hello};
+
+// Should be separated into:
+
+use crate::A::B::C::Foo;
+use crate::A::X::Hello;
+```

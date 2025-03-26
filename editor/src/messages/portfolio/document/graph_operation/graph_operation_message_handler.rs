@@ -5,15 +5,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
-
+use glam::{DAffine2, DVec2};
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
-use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
-
-use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone)]
 struct ArtboardInfo {
@@ -262,10 +260,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					// Modify upstream connections
 					for outward_wire in &artboard.1.output_nodes {
 						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
-						let input_connector = if let Some(artboard_info) = artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
-							InputConnector::node(artboard_info.merge_node, outward_wire.input_index())
-						} else {
-							*outward_wire
+						let input_connector = match artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
+							Some(artboard_info) => InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
+							_ => *outward_wire,
 						};
 						responses.add(NodeGraphMessage::SetInput { input_connector, input });
 					}
@@ -413,7 +410,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops(stops);
+			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient {
 				start,
@@ -440,7 +437,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops(stops);
+			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient {
 				start,

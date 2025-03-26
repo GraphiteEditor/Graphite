@@ -3,18 +3,17 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-
 use bezier_rs::Subpath;
+use glam::DVec2;
 use graph_craft::concrete;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrameTable;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
-use graphene_core::Color;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
-
-use glam::DVec2;
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -276,7 +275,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	let TaggedValue::Fill(graphene_std::vector::style::Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
-	Some(*color)
+	Some(color.to_linear_srgb())
 }
 
 /// Get the current blend mode of a layer from the closest Blend Mode node
@@ -385,7 +384,7 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Return an iterator up the horizontal flow of the layer
-	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + 'a {
+	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = NodeId> + use<'a> {
 		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], &[], FlowType::HorizontalFlow)
 	}
 

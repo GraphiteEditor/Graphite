@@ -2,8 +2,8 @@ use crate::helpers::call_site_ident;
 use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::parse::{Parse, ParseStream};
 use syn::Token;
+use syn::parse::{Parse, ParseStream};
 use syn::{ItemEnum, TypePath};
 
 struct MessageArgs {

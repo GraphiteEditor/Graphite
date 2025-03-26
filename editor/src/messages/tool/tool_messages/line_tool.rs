@@ -2,13 +2,14 @@ use super::tool_prelude::*;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::{document_metadata::LayerNodeIdentifier, network_interface::InputConnector};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -85,7 +86,7 @@ impl LayoutHolder for LineTool {
 			true,
 			|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -188,7 +189,7 @@ impl Fsm for LineToolFsmState {
 
 						let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
 						if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
-							overlay_context.line(viewport_start, viewport_end, None);
+							overlay_context.line(viewport_start, viewport_end, None, None);
 							overlay_context.square(viewport_start, Some(6.), None, None);
 							overlay_context.square(viewport_end, Some(6.), None, None);
 						}
@@ -203,6 +204,8 @@ impl Fsm for LineToolFsmState {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
+
+				responses.add(DocumentMessage::StartTransaction);
 
 				for (layer, [document_start, document_end]) in tool_data.selected_layers_with_position.iter() {
 					let transform = document.metadata().transform_to_viewport(*layer);
@@ -224,8 +227,6 @@ impl Fsm for LineToolFsmState {
 						return LineToolFsmState::Drawing;
 					}
 				}
-
-				responses.add(DocumentMessage::StartTransaction);
 
 				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 				let node = node_type.node_template_input_override([
@@ -319,9 +320,7 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.editing_layer.take();
-				if tool_data.dragging_endpoint.is_none() {
-					responses.add(DocumentMessage::AbortTransaction);
-				}
+				responses.add(DocumentMessage::AbortTransaction);
 				LineToolFsmState::Ready
 			}
 			(_, LineToolMessage::WorkingColorChanged) => {
@@ -376,12 +375,12 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 	tool_data.angle = angle;
 
+	let angle_vec = DVec2::from_angle(angle);
 	if lock_angle {
-		let angle_vec = DVec2::new(angle.cos(), angle.sin());
 		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
 	}
 
-	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
+	document_points[1] = document_points[0] + line_length * angle_vec;
 
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.snap_manager;

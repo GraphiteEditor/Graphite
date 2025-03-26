@@ -13,6 +13,7 @@ pub struct Dispatcher {
 
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
+	animation_message_handler: AnimationMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -50,12 +51,9 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame)),
-	MessageDiscriminant::InputPreprocessor(InputPreprocessorMessageDiscriminant::FrameTimeAdvance),
-];
+const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame))];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
-const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw"];
+const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
 	pub fn new() -> Self {
@@ -177,6 +175,9 @@ impl Dispatcher {
 					// Finish loading persistent data from the browser database
 					queue.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 				}
+				Message::Animation(message) => {
+					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
+				}
 				Message::Batched(messages) => {
 					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
 				}
@@ -232,6 +233,8 @@ impl Dispatcher {
 					let preferences = &self.message_handlers.preferences_message_handler;
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					let timing_information = self.message_handlers.animation_message_handler.timing_information();
+					let animation = &self.message_handlers.animation_message_handler;
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -241,6 +244,8 @@ impl Dispatcher {
 							preferences,
 							current_tool,
 							message_logging_verbosity,
+							timing_information,
+							animation,
 						},
 					);
 				}
@@ -283,6 +288,7 @@ impl Dispatcher {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
 		list.extend(self.message_handlers.dialog_message_handler.actions());
+		list.extend(self.message_handlers.animation_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
@@ -303,11 +309,7 @@ impl Dispatcher {
 	fn create_indents(queues: &[VecDeque<Message>]) -> String {
 		String::from_iter(queues.iter().enumerate().skip(1).map(|(index, queue)| {
 			if index == queues.len() - 1 {
-				if queue.is_empty() {
-					"└── "
-				} else {
-					"├── "
-				}
+				if queue.is_empty() { "└── " } else { "├── " }
 			} else if queue.is_empty() {
 				"   "
 			} else {
