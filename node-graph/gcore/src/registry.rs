@@ -1,4 +1,3 @@
-use crate::transform::Footprint;
 use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
 
 use dyn_any::{DynAny, StaticType};
