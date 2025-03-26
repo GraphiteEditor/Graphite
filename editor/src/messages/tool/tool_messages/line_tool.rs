@@ -188,7 +188,7 @@ impl Fsm for LineToolFsmState {
 						};
 
 						let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
-						if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
+						if !start.abs_diff_eq(end, f64::EPSILON * 1000.) {
 							overlay_context.line(viewport_start, viewport_end, None, None);
 							overlay_context.square(viewport_start, Some(6.), None, None);
 							overlay_context.square(viewport_end, Some(6.), None, None);
