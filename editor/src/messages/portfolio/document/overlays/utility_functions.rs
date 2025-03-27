@@ -121,7 +121,6 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 		let is_selected = |point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 
 		let opposite_handles_data: Vec<(PointId, SegmentId)> = shape_editor.selected_points().filter_map(|point_id| vector_data.adjacent_segment(point_id)).collect();
-
 		match draw_handles {
 			DrawHandles::All => {
 				vector_data.segment_bezier_iter().for_each(|(segment_id, bezier, _start, _end)| {
