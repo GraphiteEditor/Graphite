@@ -705,7 +705,7 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::transform_utils;
 	use crate::test_utils::test_prelude::*;
 	// Use ModifyInputsContext to locate the transform node
-	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+	use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 	use crate::messages::prelude::Message;
 	use glam::DAffine2;
 	use std::collections::VecDeque;
@@ -907,5 +907,143 @@ mod test_transform_layer {
 		// Also check translation component is similar
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
 		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+	}
+
+	#[tokio::test]
+	async fn test_scale_to_zero_apply() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+
+		// Move mouse exactly to the pivot point to achieve zero scale
+		let center_x = 50.0;
+		let center_y = 50.0;
+		editor.move_mouse(center_x, center_y, ModifierKeys::empty(), MouseKeys::NONE).await;
+
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// Checking the transform matrix components are valid (not NaN or infinite)
+		assert!(final_transform.matrix2.x_axis.x.is_finite(), "X-axis x component should be finite");
+		assert!(final_transform.matrix2.x_axis.y.is_finite(), "X-axis y component should be finite");
+		assert!(final_transform.matrix2.y_axis.x.is_finite(), "Y-axis x component should be finite");
+		assert!(final_transform.matrix2.y_axis.y.is_finite(), "Y-axis y component should be finite");
+
+		let scale_x = final_transform.matrix2.x_axis.length();
+		let scale_y = final_transform.matrix2.y_axis.length();
+
+		assert!(scale_x == 0.0, "Scale factor X should be effectively zero, got: {}", scale_x);
+		assert!(scale_y == 0.0, "Scale factor Y should be effectively zero, got: {}", scale_y);
+
+		// Checking that the determinant is very close to zero
+		let determinant = final_transform.matrix2.determinant();
+		assert!(determinant.abs() <= 1e-10, "Determinant should be effectively zero");
+	}
+
+	#[tokio::test]
+	async fn test_transform_with_panned_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let pan_amount = DVec2::new(200.0, 150.0);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
+
+		// Applying a direct transform change in viewport space
+		editor
+			.handle_message(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation(DVec2::new(50.0, 50.0)),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: false,
+			})
+			.await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let translation_delta = final_transform.translation - original_transform.translation;
+
+		assert!(
+			translation_delta.distance(DVec2::new(50.0, 50.0)) < 5.0,
+			"Expected translation delta around (50,50), got: {:?}",
+			translation_delta
+		);
+	}
+
+	#[tokio::test]
+	async fn test_transform_with_zoomed_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+
+		editor
+			.handle_message(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation(DVec2::new(50.0, 50.0)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let translation_delta = final_transform.translation - original_transform.translation;
+
+		assert!(
+			translation_delta.distance(DVec2::new(50.0, 50.0)) < 5.0,
+			"Expected translation delta around (50,50), got: {:?}",
+			translation_delta
+		);
+	}
+
+	#[tokio::test]
+	async fn test_transform_with_rotated_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
+
+		editor
+			.handle_message(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation(DVec2::new(50.0, 0.0)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let translation_delta = final_transform.translation - original_transform.translation;
+
+		assert!(
+			translation_delta.distance(DVec2::new(50.0, 0.0)) < 5.0,
+			"Expected translation delta around (50,0), got: {:?}",
+			translation_delta
+		);
 	}
 }
