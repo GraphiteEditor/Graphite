@@ -976,7 +976,6 @@ mod test_transform_layer {
 		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
-		// Type "90" to set rotation angle to 90 degrees
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
