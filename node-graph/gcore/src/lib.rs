@@ -9,6 +9,7 @@ use core::future::Future;
 #[cfg(feature = "log")]
 extern crate log;
 pub use crate as graphene_core;
+pub use num_traits;
 
 #[cfg(feature = "reflections")]
 pub use ctor;
