@@ -193,6 +193,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
+					preferences,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
