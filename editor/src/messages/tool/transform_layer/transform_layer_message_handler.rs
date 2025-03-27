@@ -908,4 +908,47 @@ mod test_transform_layer {
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
 		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
 	}
+
+	#[tokio::test]
+	async fn test_scale_to_zero_apply() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+
+		// Move mouse exactly to the pivot point to achieve zero scale
+		let center_x = 50.0;
+		let center_y = 50.0;
+		editor.move_mouse(center_x, center_y, ModifierKeys::empty(), MouseKeys::NONE).await;
+
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// Checking the transform matrix components are valid (not NaN or infinite)
+		assert!(final_transform.matrix2.x_axis.x.is_finite(), "X-axis x component should be finite");
+		assert!(final_transform.matrix2.x_axis.y.is_finite(), "X-axis y component should be finite");
+		assert!(final_transform.matrix2.y_axis.x.is_finite(), "Y-axis x component should be finite");
+		assert!(final_transform.matrix2.y_axis.y.is_finite(), "Y-axis y component should be finite");
+
+		let scale_x = final_transform.matrix2.x_axis.length();
+		let scale_y = final_transform.matrix2.y_axis.length();
+
+		assert!(scale_x == 0.0, "Scale factor X should be effectively zero, got: {}", scale_x);
+		assert!(scale_y == 0.0, "Scale factor Y should be effectively zero, got: {}", scale_y);
+
+		// Checking that the determinant is very close to zero
+		let determinant = final_transform.matrix2.determinant();
+		assert!(determinant.abs() <= 1e-10, "Determinant should be effectively zero");
+	}
 }
