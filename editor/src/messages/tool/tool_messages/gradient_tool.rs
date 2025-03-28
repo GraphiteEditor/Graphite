@@ -523,7 +523,7 @@ mod test_gradient {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_core::vector::fill;
-	use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType};
+	use graphene_std::vector::style::Fill;
 
 	use super::gradient_space_transform;
 
@@ -574,7 +574,8 @@ mod test_gradient {
 		let (fill, transform) = fills.first().unwrap();
 		let gradient = fill.as_gradient().unwrap();
 		// Gradient goes from secondary colour to primary colour
-		assert_eq!(gradient.stops, GradientStops(vec![(0., Color::BLUE), (1., Color::GREEN)]));
+		let stops = gradient.stops.iter().map(|stop| (stop.0, stop.1.to_rgba8_srgb())).collect::<Vec<_>>();
+		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
