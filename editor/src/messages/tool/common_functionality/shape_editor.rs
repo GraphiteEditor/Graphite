@@ -104,6 +104,14 @@ impl ClosestSegment {
 		self.layer
 	}
 
+	pub fn segment(&self) -> SegmentId {
+		self.segment
+	}
+
+	pub fn points(&self) -> [PointId; 2] {
+		self.points
+	}
+
 	pub fn closest_point_to_viewport(&self) -> DVec2 {
 		self.bezier_point_to_viewport
 	}
@@ -856,6 +864,29 @@ impl ShapeState {
 				Some((layer, opposing_handle_lengths))
 			})
 			.collect::<HashMap<_, _>>()
+	}
+
+	pub fn dissolve_segment(&self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, segment: SegmentId, points: [PointId; 2]) {
+		//take a note that which point was terminal point
+		let is_point1_terminal = vector_data.connected_count(points[0]) == 1;
+		let is_point2_terminal = vector_data.connected_count(points[1]) == 1;
+
+		//Delete the segment and terminal points
+		let modification_type = VectorModificationType::RemoveSegment { id: segment };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		for &handles in vector_data.colinear_manipulators.iter().filter(|handles| handles.iter().any(|handle| handle.segment == segment)) {
+			let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		if is_point1_terminal {
+			let modification_type = VectorModificationType::RemovePoint { id: points[0] };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+		if is_point2_terminal {
+			let modification_type = VectorModificationType::RemovePoint { id: points[1] };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 	}
 
 	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId); 2]> {
