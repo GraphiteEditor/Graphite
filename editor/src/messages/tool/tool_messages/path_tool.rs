@@ -62,7 +62,7 @@ pub enum PathToolMessage {
 	ManipulatorMakeHandlesFree,
 	ManipulatorMakeHandlesColinear,
 	MouseDown {
-		direct_insert_without_sliding: Key,
+		delete_segment: Key,
 		extend_selection: Key,
 		lasso_select: Key,
 	},
@@ -271,6 +271,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				ClosePath,
+				PointerMove,
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -487,7 +488,7 @@ impl PathToolData {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 		extend_selection: bool,
-		direct_insert_without_sliding: bool,
+		delete_segment: bool,
 		lasso_select: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
@@ -524,11 +525,40 @@ impl PathToolData {
 		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
 		else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
 			responses.add(DocumentMessage::StartTransaction);
-			if direct_insert_without_sliding {
+
+			if delete_segment {
+				//delete the segment
+				// self.start_insertion(responses, closed_segment);
+				// self.segment = Some(closed_segment);
+				let segment = closed_segment.segment();
+				let layer = closed_segment.layer();
+				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+					return PathToolFsmState::Ready;
+				};
+				let points: [PointId; 2] = closed_segment.points();
+				shape_editor.dissolve_segment(responses, layer, &vector_data, segment, points);
+				responses.add(DocumentMessage::EndTransaction);
+
+				return PathToolFsmState::Ready;
+			} else {
+				//TODO: Add overlay before the point being added
+
+				//need to calculate the tangential direction to the segment at that point
+				// if let (Some(handle1), Some(handle2)) = closed_segment.handle_positions(document.metadata()) {
+				// 	let tangential_vector = (handle1 - handle2).normalize();
+				// 	let perp = tangential_vector.perp();
+
+				// }
+				// else {
+				// 	//if there are no handles then it means that segment is a line segment
+				// 	// let points = closed_segment.points();
+				// 	// let tangential_vector = (points[0])
+				// }
+
+				// let perp =
+
 				self.start_insertion(responses, closed_segment);
 				self.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
-			} else {
-				self.start_insertion(responses, closed_segment)
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
@@ -984,12 +1014,20 @@ impl Fsm for PathToolFsmState {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
 
 						if let Some(closest_segment) = &tool_data.segment {
-							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
+							// overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
+							// if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
+							// 	overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);
+							// 	overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE), None);
+							// 	overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
+							// 	overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+							// }
+
+							//instead of this we want to make a perpendicular line
 							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
-								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
-								overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+								let tangent = (handle1 - handle2).normalize();
+								let perp = tangent.perp();
+								let point = closest_segment.closest_point_to_viewport();
+								overlay_context.line(point - perp * 10., point + perp * 10., Some(COLOR_OVERLAY_BLUE), None);
 							}
 						}
 
@@ -1021,19 +1059,19 @@ impl Fsm for PathToolFsmState {
 			(
 				_,
 				PathToolMessage::MouseDown {
-					direct_insert_without_sliding,
+					delete_segment,
 					extend_selection,
 					lasso_select,
 				},
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let lasso_select = input.keyboard.get(lasso_select as usize);
-				let direct_insert_without_sliding = input.keyboard.get(direct_insert_without_sliding as usize);
+				let delete_segment = input.keyboard.get(delete_segment as usize);
 
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, direct_insert_without_sliding, lasso_select)
+				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, delete_segment, lasso_select)
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
@@ -1163,6 +1201,19 @@ impl Fsm for PathToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
+			}
+			(PathToolFsmState::Ready, PathToolMessage::PointerMove { .. }) => {
+				//check for nearby point then should not go in insert point mode
+				log::info!("reached here");
+				if let Some(_selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, false) {
+					PathToolFsmState::Ready
+				}
+				//check for a segment nearby, if present then enter into insert point mode else go for ready
+				else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
+					tool_data.start_insertion(responses, closed_segment)
+				} else {
+					PathToolFsmState::Ready
+				}
 			}
 			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
@@ -1377,7 +1428,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::PointerMove { .. }) => self,
+			// (_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 				shape_editor.move_selected_points(
 					tool_data.opposing_handle_lengths.take(),
