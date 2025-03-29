@@ -2,8 +2,8 @@ use super::node_properties;
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, NumberInputSettings,
-	PropertiesRow, Vec2InputSettings, WidgetOverride,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTemplate,
+	NodeTypePersistentMetadata, NumberInputSettings, PropertiesRow, Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -2664,6 +2664,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
 		use graphene_core::registry::*;
+		let id = id.clone();
 
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
@@ -2674,7 +2675,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -2686,12 +2687,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description,
 			properties,
 		} = metadata;
-		let Some(implementations) = &node_registry.get(id) else { continue };
+		let Some(implementations) = &node_registry.get(&id) else { continue };
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut input_type = &first_node_io.call_argument;
 		if valid_inputs.len() > 1 {
-			input_type = &const { generic!(T) };
+			input_type = &const { generic!(D) };
 		}
 		let output_type = &first_node_io.return_value;
 
@@ -2741,6 +2742,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
+
 					..Default::default()
 				},
 			},
