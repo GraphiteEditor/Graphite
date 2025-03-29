@@ -26,7 +26,7 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 				let field_type = &fields.unnamed.first().unwrap().ty;
 				quote! {
 					tree.push(format!("{}{}{}", "│   ".repeat(depth), #tree_symbol, stringify!(#variant_type)));
-					<#field_type>::display_enum_variants(depth + 1, tree);
+					<#field_type>::generate_enum_variants(depth + 1, tree);
 				}
 			} else {
 				quote! {
@@ -42,14 +42,14 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 
 	let res = quote! {
 		impl HierarchicalTree for #input_type {
-			fn display_tree() -> Vec<String> {
+			fn generate_hierarchical_tree() -> Vec<String> {
 				let mut hierarchical_tree = Vec::new();
 				hierarchical_tree.push(format!("{}", stringify!(#input_type)));
-				Self::display_enum_variants(0, &mut hierarchical_tree);
+				Self::generate_enum_variants(0, &mut hierarchical_tree);
 				hierarchical_tree
 			}
 
-			fn display_enum_variants(depth: usize, tree: &mut Vec<String>) {
+			fn generate_enum_variants(depth: usize, tree: &mut Vec<String>) {
 				#(#variant_prints)*
 			}
 		}
