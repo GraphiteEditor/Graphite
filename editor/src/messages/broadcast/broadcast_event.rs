@@ -1,7 +1,7 @@
 use crate::messages::prelude::*;
 
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, Hash)]
 #[impl_message(Message, BroadcastMessage, TriggerEvent)]
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, Hash)]
 pub enum BroadcastEvent {
 	AnimationFrame,
 	CanvasTransformed,

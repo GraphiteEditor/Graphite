@@ -45,3 +45,8 @@ pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
 pub trait Hint {
 	fn hints(&self) -> HashMap<String, String>;
 }
+
+pub trait HierarchicalTree {
+	fn display_tree() -> Vec<String>;
+	fn display_enum_variants(depth: usize, tree: &mut Vec<String>);
+}
