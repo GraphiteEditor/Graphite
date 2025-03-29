@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
-	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
+	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
@@ -370,6 +370,8 @@ struct PathToolData {
 	select_anchor_toggled: bool,
 	saved_points_before_handle_drag: Vec<ManipulatorPointId>,
 	handle_drag_toggle: bool,
+	saved_points_before_flip: HashMap<LayerNodeIdentifier, Vec<ManipulatorPointId>>,
+	flip_toggle: bool,
 	dragging_state: DraggingState,
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
@@ -496,6 +498,7 @@ impl PathToolData {
 		self.drag_start_pos = input.mouse.position;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
+		log::info!("old {:?}", old_selection);
 
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
@@ -514,6 +517,7 @@ impl PathToolData {
 				}
 				if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
 					self.saved_points_before_handle_drag = old_selection;
+					log::info!("{:?}", self.saved_points_before_handle_drag);
 				}
 
 				self.start_dragging_point(selected_points, input, document, shape_editor);
@@ -1245,7 +1249,6 @@ impl Fsm for PathToolFsmState {
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
-
 					tool_data.saved_points_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
@@ -1290,6 +1293,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
+					log::info!("after drag {:?}", shape_editor.selected_points().collect::<Vec<_>>());
 
 					tool_data.saved_points_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
@@ -1310,6 +1314,10 @@ impl Fsm for PathToolFsmState {
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !extend_selection {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 						if clicked_selected {
+							if tool_data.flip_toggle {
+								tool_data.saved_points_before_flip = shape_editor.selected_shape_state.iter().map(|(k, v)| (*k, v.selected().collect::<Vec<_>>())).collect();
+								tool_data.flip_toggle = false;
+							}
 							shape_editor.deselect_all_points();
 							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
 							responses.add(OverlaysMessage::Draw);
@@ -1356,8 +1364,11 @@ impl Fsm for PathToolFsmState {
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						tool_data.flip_toggle = true;
 						responses.add(DocumentMessage::StartTransaction);
+						shape_editor.select_points_by_manipulator_id_by_layer(&tool_data.saved_points_before_flip);
 						shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
+						tool_data.saved_points_before_flip.clear();
 						responses.add(DocumentMessage::EndTransaction);
 						responses.add(PathToolMessage::SelectedPointUpdated);
 					}

@@ -489,9 +489,14 @@ impl ShapeState {
 		!self.selected_shape_state.is_empty()
 	}
 
-	/// Provide the currently selected points by reference.
+	/// Provide the currently selected points by reference.(TODO: Use unique ids)
 	pub fn selected_points(&self) -> impl Iterator<Item = &'_ ManipulatorPointId> {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
+	}
+
+	// Alternative for above
+	pub fn selected_points_by_layer(&self) -> HashMap<LayerNodeIdentifier, impl Iterator<Item = &ManipulatorPointId> + '_> {
+		self.selected_shape_state.iter().map(|(&k, v)| (k, v.selected_points.iter())).collect()
 	}
 
 	pub fn selected_points_in_layer(&self, layer: LayerNodeIdentifier) -> Option<&HashSet<ManipulatorPointId>> {
@@ -1318,51 +1323,69 @@ impl ShapeState {
 			}
 		}
 	}
+
+	pub fn select_points_by_manipulator_id_by_layer(&mut self, points: &HashMap<LayerNodeIdentifier, Vec<ManipulatorPointId>>) {
+		for (layer, point_iter) in points {
+			if let Some(state) = self.selected_shape_state.get_mut(layer) {
+				for point in point_iter {
+					state.select_point(*point);
+				}
+			}
+		}
+	}
+
 	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
 	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
 	/// This can can be activated by double clicking on an anchor with the Path tool.
-	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
-		let mut process_layer = |layer| {
-			let vector_data = network_interface.compute_modified_vector(layer)?;
-			let transform_to_screenspace = network_interface.document_metadata().transform_to_viewport(layer);
+	pub fn flip_smooth_sharp(&mut self, network_interface: &NodeNetworkInterface, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
+		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, target, tolerance) {
+			let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+				return;
+			};
+			let Some(id) = manipulator_point_id.as_anchor() else {
+				return;
+			};
+			let Some(anchor) = manipulator_point_id.get_position(&vector_data) else {
+				return;
+			};
 
-			let mut result = None;
-			let mut closest_distance_squared = tolerance * tolerance;
-
-			// Find the closest anchor point on the current layer
-			for (&id, &anchor) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
-				let screenspace = transform_to_screenspace.transform_point2(anchor);
-				let distance_squared = screenspace.distance_squared(target);
-
-				if distance_squared < closest_distance_squared {
-					closest_distance_squared = distance_squared;
-					result = Some((id, anchor));
-				}
-			}
-
-			let (id, anchor) = result?;
 			let handles = vector_data.all_connected(id);
 			let mut positions = handles
 				.filter_map(|handle| handle.to_manipulator_point().get_position(&vector_data))
 				.filter(|&handle| !anchor.abs_diff_eq(handle, 1e-5));
-
-			// Check by comparing the handle positions to the anchor if this manipulator group is a point
 			let already_sharp = positions.next().is_none();
+			for &layer in self.selected_shape_state.keys() {
+				self.flip_smooth_sharp_each(network_interface, layer, already_sharp, responses);
+			}
+		}
+	}
+
+	fn flip_smooth_sharp_each(&self, network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, already_sharp: bool, responses: &mut VecDeque<Message>) {
+		let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+			return;
+		};
+		let Some(selected_state) = self.selected_shape_state.get(&layer) else {
+			return;
+		};
+
+		let anchors = selected_state.selected_points.iter().filter_map(|point| point.as_anchor());
+
+		for id in anchors {
 			if already_sharp {
 				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
 			} else {
 				for handle in vector_data.all_connected(id) {
-					let Some(bezier) = vector_data.segment_from_id(handle.segment) else { continue };
+					let Some(bezier) = vector_data.segment_from_id(handle.segment) else {
+						continue;
+					};
 
 					match bezier.handles {
 						BezierHandles::Linear => {}
 						BezierHandles::Quadratic { .. } => {
 							let segment = handle.segment;
-							// Convert to linear
 							let modification_type = VectorModificationType::SetHandles { segment, handles: [None; 2] };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-							// Set the manipulator to have non-colinear handles
 							for &handles in &vector_data.colinear_manipulators {
 								if handles.contains(&HandleId::primary(segment)) {
 									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
@@ -1371,11 +1394,9 @@ impl ShapeState {
 							}
 						}
 						BezierHandles::Cubic { .. } => {
-							// Set handle position to anchor position
 							let modification_type = handle.set_relative_position(DVec2::ZERO);
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-							// Set the manipulator to have non-colinear handles
 							for &handles in &vector_data.colinear_manipulators {
 								if handles.contains(&handle) {
 									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
@@ -1385,18 +1406,8 @@ impl ShapeState {
 						}
 					}
 				}
-			};
-
-			Some(true)
-		};
-
-		for &layer in self.selected_shape_state.keys() {
-			if let Some(result) = process_layer(layer) {
-				return result;
 			}
 		}
-
-		false
 	}
 
 	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
