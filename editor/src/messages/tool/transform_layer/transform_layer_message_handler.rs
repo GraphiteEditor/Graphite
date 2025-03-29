@@ -908,4 +908,78 @@ mod test_transform_layer {
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
 		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
 	}
+
+	#[tokio::test]
+	async fn test_grab_rotate_scale_chained() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(150.0, 130.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_grab_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let expected_translation = DVec2::new(50.0, 30.0);
+		let actual_translation = after_grab_transform.translation - original_transform.translation;
+		assert!(
+			(actual_translation - expected_translation).length() < 1e-5,
+			"Expected translation of {:?}, got {:?}",
+			expected_translation,
+			actual_translation
+		);
+
+		// 2. Chain to rotation - from current position to create ~45 degree rotation
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		editor.move_mouse(190.0, 90.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		let after_rotate_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Checking for off-diagonal elements close to 0.707, which corresponds to cos(45°) and sin(45°)
+		assert!(
+			!after_rotate_transform.matrix2.abs_diff_eq(after_grab_transform.matrix2, 1e-5) &&
+			(after_rotate_transform.matrix2.x_axis.y.abs() - 0.707).abs() < 0.1 &&  // Check for off-diagonal elements close to 0.707
+			(after_rotate_transform.matrix2.y_axis.x.abs() - 0.707).abs() < 0.1, // that would indicate ~45° rotation
+			"Rotation should change matrix components with approximately 45° rotation"
+		);
+
+		// 3. Chain to scaling - scale(area) up by 2x
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.move_mouse(250.0, 200.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_scale_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let before_scale_det = after_rotate_transform.matrix2.determinant();
+		let after_scale_det = after_scale_transform.matrix2.determinant();
+		assert!(
+			after_scale_det >= 2.0 * before_scale_det,
+			"Scale should increase the determinant of the matrix (before: {}, after: {})",
+			before_scale_det,
+			after_scale_det
+		);
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
+	}
 }
