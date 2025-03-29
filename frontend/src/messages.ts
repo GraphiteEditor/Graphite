@@ -46,6 +46,8 @@ const ContextTupleToVec2 = Transform((data) => {
 	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
 	if (contextMenuData.ToggleLayer !== undefined) {
 		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
+	} else if (contextMenuData.CreateNode !== undefined) {
+		contextMenuData = { type: "CreateNode", compatibleType: contextMenuData.CreateNode.compatibleType };
 	}
 	return { contextMenuCoordinates, contextMenuData };
 });
@@ -185,8 +187,7 @@ export type FrontendClickTargets = {
 
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-
-	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
+	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
@@ -337,6 +338,8 @@ export class FrontendNodeType {
 	readonly name!: string;
 
 	readonly category!: string;
+
+	readonly inputTypes!: string[];
 }
 
 export class NodeGraphTransform {

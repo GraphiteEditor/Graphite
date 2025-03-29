@@ -298,6 +298,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
+				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+					log::error!("Could not get network metadata in EnterNestedNetwork");
+					return;
+				};
+
+				let click = ipp.mouse.position;
+				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+
+				// Check if clicked on empty area (no node, no input/output connector)
+				let clicked_id = network_interface.node_from_click(click, selection_network_path);
+				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
+				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
+
+				if clicked_id.is_none() && clicked_input.is_none() && clicked_output.is_none() && self.context_menu.is_none() {
+					// Create a context menu with node creation options
+					self.context_menu = Some(ContextMenuInformation {
+						context_menu_coordinates: (node_graph_point.x as i32, node_graph_point.y as i32),
+						context_menu_data: ContextMenuData::CreateNode { compatible_type: None },
+					});
+
+					responses.add(FrontendMessage::UpdateContextMenuInformation {
+						context_menu_information: self.context_menu.clone(),
+					});
+				}
 				let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, selection_network_path) else {
 					return;
 				};
@@ -611,11 +635,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							currently_is_node: !network_interface.is_layer(&node_id, selection_network_path),
 						}
 					} else {
-						ContextMenuData::CreateNode
+						ContextMenuData::CreateNode { compatible_type: None }
 					};
 
 					// TODO: Create function
-					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
+					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode { compatible_type: None }) {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
@@ -999,14 +1023,31 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							warn!("No network_metadata");
 							return;
 						};
+						// Get the compatible type from the output connector
+						let compatible_type = if let Some(output_connector) = &output_connector {
+							if let Some(node_id) = output_connector.node_id() {
+								let output_index = output_connector.index();
+								// Get the output types from the network interface
+								let output_types = network_interface.output_types(&node_id, selection_network_path);
 
+								// Extract the type if available
+								output_types.get(output_index).and_then(|type_option| type_option.as_ref()).map(|(output_type, _)| {
+									// Create a search term based on the type
+									format!("type:{}", output_type.clone().nested_type())
+								})
+							} else {
+								None
+							}
+						} else {
+							None
+						};
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
-							context_menu_data: ContextMenuData::CreateNode,
+							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
 						responses.add(FrontendMessage::UpdateContextMenuInformation {
