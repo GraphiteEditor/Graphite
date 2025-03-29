@@ -47,11 +47,31 @@ macro_rules! async_node {
 				let node = <$path>::new($(
 					graphene_std::any::PanicNode::<$arg, core::pin::Pin<Box<dyn core::future::Future<Output = $type> + Send>>>::new()
 				),*);
-				// TODO: Propagate the future type through the node graph
-				// let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
 				let params = vec![$(fn_type_fut!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_async_node_io(&node, params);
 				node_io.call_argument = concrete!(<$input as StaticType>::Static);
+				node_io
+			},
+		)
+	};
+}
+
+macro_rules! into_node {
+	(from: $from:ty, to: $to:ty) => {
+		(
+			ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
+			|mut args| {
+				Box::pin(async move {
+					args.reverse();
+					let node = graphene_core::ops::IntoNode::<$to>::new();
+					let any: DynAnyNode<$from, _, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
+				})
+			},
+			{
+				let node = graphene_core::ops::IntoNode::<$to>::new();
+				let mut node_io = NodeIO::<'_, $from>::to_async_node_io(&node, vec![]);
+				node_io.call_argument = future!(<$from as StaticType>::Static);
 				node_io
 			},
 		)
@@ -68,15 +88,20 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// ),
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<SRGBA8>>, input: ImageFrameTable<Color>, params: []),
 		// async_node!(graphene_core::ops::IntoNode<ImageFrameTable<Color>>, input: ImageFrameTable<SRGBA8>, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: VectorDataTable, params: []),
+		into_node!(from: f64, to: f64),
+		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
+		into_node!(from: f64,to: f64),
+		into_node!(from: u32,to: f64),
+		into_node!(from: u8,to: u32),
+		into_node!(from: ImageFrameTable<Color>,to: GraphicGroupTable),
+		into_node!(from: VectorDataTable,to: GraphicGroupTable),
 		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::ops::IntoNode<&WgpuExecutor>, input: &WasmEditorApi, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: VectorDataTable, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: ImageFrameTable<Color>, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicElement>, input: GraphicGroupTable, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: VectorDataTable, params: []),
-		async_node!(graphene_core::ops::IntoNode<GraphicGroupTable>, input: ImageFrameTable<Color>, params: []),
+		into_node!(from: &WasmEditorApi,to: &WgpuExecutor),
+		into_node!(from: VectorDataTable,to: GraphicElement),
+		into_node!(from: ImageFrameTable<Color>,to: GraphicElement),
+		into_node!(from: GraphicGroupTable,to: GraphicElement),
+		into_node!(from: VectorDataTable,to: GraphicGroupTable),
+		into_node!(from: ImageFrameTable<Color>,to: GraphicGroupTable),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageFrameTable<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => VectorDataTable]),
@@ -88,9 +113,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),
 			|args| {
 				Box::pin(async move {
-					let editor_api: DowncastBothNode<(), &WasmEditorApi> = DowncastBothNode::new(args[0].clone());
+					let editor_api: DowncastBothNode<Context, &WasmEditorApi> = DowncastBothNode::new(args[0].clone());
 					let node = <wgpu_executor::CreateGpuSurfaceNode<_>>::new(editor_api);
-					let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(node);
+					let any: DynAnyNode<Context, _, _> = graphene_std::any::DynAnyNode::new(node);
 					Box::new(any) as TypeErasedBox
 				})
 			},
@@ -304,9 +329,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// This occurs for the ChannelMixerNode presumably because of the long name.
 		// This might be caused by the stringify! macro
 		let mut new_name = id.name.replace('\n', " ");
-		// Remove struct generics
-		if let Some((path, _generics)) = new_name.split_once("<") {
-			new_name = path.to_string();
+		// Remove struct generics for all nodes except for the IntoNode
+		if !new_name.contains("IntoNode") {
+			if let Some((path, _generics)) = new_name.split_once("<") {
+				new_name = path.to_string();
+			}
 		}
 		let nid = ProtoNodeIdentifier { name: Cow::Owned(new_name) };
 		map.entry(nid).or_default().insert(types.clone(), c);
