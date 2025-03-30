@@ -16,7 +16,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId};
-use graphene_std::vector::{NoHashBuilder, SegmentId};
+use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData, VectorModificationType};
 use std::vec;
 
 #[derive(Default)]
@@ -376,7 +376,8 @@ struct PathToolData {
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
 	snapping_axis: Option<Axis>,
-	stored_handle_positions: Option<(DVec2, DVec2)>,
+	stored_handle_positions: Option<HashMap<HandleId, DVec2>>,
+	alt_dragging_from_anchor: bool,
 }
 
 impl PathToolData {
@@ -519,38 +520,33 @@ impl PathToolData {
 					self.saved_points_before_handle_drag = old_selection;
 				}
 
-				//here if Alt pressed and dragging only an anchor then do the desired changes
-				let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
-
-				if single_anchor_selected && handle_drag_from_anchor {
-					let manipulator_point_id = shape_editor.selected_points().next().unwrap();
-					let point_id = manipulator_point_id.as_anchor().unwrap();
-
-					let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
-					let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-
-					let handles: Vec<_> = vector_data.all_connected(point_id).collect();
-					// log::info!("Handles are these: {:?}", handles);
-
-					//TODO: Store the previous handle positions in tool data
-
-					let pos1 = handles[0].to_manipulator_point().get_position(&vector_data).unwrap();
-					let pos2 = handles[1].to_manipulator_point().get_position(&vector_data).unwrap();
-					self.stored_handle_positions = Some((pos1, pos2));
-
-					for handle in &handles {
-						let modification_type = handle.set_relative_position(DVec2::ZERO);
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if handle_drag_from_anchor {
+					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+						// Check that selected point is an anchor
+						if let (Some(point_id), Some(vector_data)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
+							let position = ManipulatorPointId::Anchor(point_id).get_position(&vector_data).unwrap_or_default();
+							let handles = vector_data.all_connected(point_id).collect::<Vec<_>>();
+							if vector_data.connected_count(point_id) == 2 {
+								if let (Some(pos1), Some(pos2)) = (
+									handles[0].to_manipulator_point().get_position(&vector_data),
+									handles[1].to_manipulator_point().get_position(&vector_data),
+								) {
+									let mut map = HashMap::new();
+									map.insert(handles[0], pos1 - position);
+									map.insert(handles[1], pos2 - position);
+									self.stored_handle_positions = Some(map);
+								}
+							}
+							for handle in &handles {
+								let modification_type = handle.set_relative_position(DVec2::ZERO);
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
+							let manipulator_point_id = handles[0].to_manipulator_point();
+							shape_editor.deselect_all_points();
+							shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
+							responses.add(PathToolMessage::SelectionChanged);
+						}
 					}
-
-					let manipulator_point_id = handles[0].to_manipulator_point();
-
-					//here decide which anchor point we need to select based on the drag? No actually do it in drag wala function
-
-					// change the selection to one of the handles
-					shape_editor.deselect_all_points();
-					shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
-					responses.add(PathToolMessage::SelectionChanged);
 				}
 
 				self.start_dragging_point(selected_points, input, document, shape_editor);
@@ -781,7 +777,7 @@ impl PathToolData {
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
-		shape_editor.move_selected_points(None, document, opposite_delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, opposite_delta, false, true, false, None, responses);
 
 		// Calculate the projected delta and shift the points along that delta
 		let delta = current_mouse - drag_start;
@@ -793,7 +789,7 @@ impl PathToolData {
 			_ => DVec2::new(delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, projected_delta, false, true, false, None, responses);
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -809,14 +805,31 @@ impl PathToolData {
 			_ => DVec2::new(opposite_delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, false, None, responses);
 
 		// Calculate what actually would have been the original delta for the point, and apply that
 		let delta = current_mouse - drag_start;
 
-		shape_editor.move_selected_points(None, document, delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, delta, false, true, false, None, responses);
 
 		self.snapping_axis = None;
+	}
+
+	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector_data: &VectorData) -> Option<DVec2> {
+		let other_point = vector_data.other_point(segment, point)?;
+		let position = ManipulatorPointId::Anchor(point).get_position(vector_data)?;
+
+		let mut handles = vector_data.all_connected(other_point);
+		let other_handle = handles.find(|handle| handle.segment == segment)?;
+
+		let target_position = if other_handle.length(vector_data) == 0. {
+			ManipulatorPointId::Anchor(other_point).get_position(vector_data)?
+		} else {
+			other_handle.to_manipulator_point().get_position(vector_data)?
+		};
+
+		let tangent_vector = target_position - position;
+		tangent_vector.try_normalize()
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -866,12 +879,71 @@ impl PathToolData {
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		let opposite = if lock_angle { None } else { self.opposite_handle_position };
 		let unsnapped_delta = current_mouse - previous_mouse;
+		let mut was_alt_dragging = false;
 
 		if self.snapping_axis.is_none() {
-			if self.stored_handle_positions.is_some() && !equidistant {
-				//here add modification for handles
+			if self.stored_handle_positions.is_some() && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+				//checking that drag is in which direction
+				self.alt_dragging_from_anchor = true;
+				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
+					return;
+				};
+				let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+				let Some(point_id) = shape_editor.selected_points().next().unwrap().get_anchor(&vector_data) else {
+					return;
+				};
+
+				if vector_data.connected_count(point_id) == 2 {
+					let connected_segments: Vec<HandleId> = vector_data.all_connected(point_id).collect();
+					let segment1 = connected_segments[0];
+					let Some(tangent1) = self.get_normalized_tangent(point_id, segment1.segment, &vector_data) else {
+						return;
+					};
+					let segment2 = connected_segments[1];
+					let Some(tangent2) = self.get_normalized_tangent(point_id, segment2.segment, &vector_data) else {
+						return;
+					};
+
+					let delta = input.mouse.position - self.drag_start_pos;
+					let handle = if delta.dot(tangent1) >= delta.dot(tangent2) {
+						segment1.to_manipulator_point()
+					} else {
+						segment2.to_manipulator_point()
+					};
+
+					//now change the selection to this handle
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&vec![handle]);
+					responses.add(PathToolMessage::SelectionChanged);
+				}
 			}
-			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
+
+			if self.alt_dragging_from_anchor && !equidistant && self.stored_handle_positions.is_some() {
+				// Move other handle to the position where it started
+				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
+					return;
+				};
+				let Some(selected_handle) = shape_editor.selected_points().next() else { return };
+				let Some(position_map) = self.stored_handle_positions.clone() else { return };
+				let Some((opposite, opp_position)) = position_map
+					.iter()
+					.find_map(|(&handle, &pos)| if handle.to_manipulator_point() != *selected_handle { Some((handle, pos)) } else { None })
+				else {
+					return;
+				};
+
+				let Ok(handles) = position_map.keys().copied().collect::<Vec<_>>().try_into().map(|v: Vec<HandleId>| [v[0], v[1]]);
+
+				let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				let modification_type = opposite.set_relative_position(opp_position);
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				was_alt_dragging = true;
+				self.alt_dragging_from_anchor = false;
+				self.stored_handle_positions = None;
+			}
+			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -880,7 +952,7 @@ impl PathToolData {
 				Axis::Y => DVec2::new(0., unsnapped_delta.y),
 				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
-			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
+			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, false, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 
@@ -1343,6 +1415,11 @@ impl Fsm for PathToolFsmState {
 					tool_data.handle_drag_toggle = false;
 				}
 
+				if tool_data.alt_dragging_from_anchor {
+					tool_data.alt_dragging_from_anchor = false;
+					tool_data.stored_handle_positions = None;
+				}
+
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
@@ -1432,6 +1509,7 @@ impl Fsm for PathToolFsmState {
 					document,
 					(delta_x, delta_y).into(),
 					true,
+					false,
 					false,
 					tool_data.opposite_handle_position,
 					responses,

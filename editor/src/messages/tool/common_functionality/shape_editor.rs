@@ -745,6 +745,7 @@ impl ShapeState {
 		delta: DVec2,
 		equidistant: bool,
 		in_viewport_space: bool,
+		was_alt_dragging: bool,
 		opposite_handle_position: Option<DVec2>,
 		responses: &mut VecDeque<Message>,
 	) {
@@ -813,9 +814,11 @@ impl ShapeState {
 					let length = opposing_handle.copied().unwrap_or_else(|| transform.transform_vector2(other_position - anchor_position).length());
 					direction.map_or(other_position - anchor_position, |direction| transform.inverse().transform_vector2(-direction * length))
 				};
-				let modification_type = other.set_relative_position(new_relative);
 
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if !was_alt_dragging {
+					let modification_type = other.set_relative_position(new_relative);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 			}
 		}
 	}
