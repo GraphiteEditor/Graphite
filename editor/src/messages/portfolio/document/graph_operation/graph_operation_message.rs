@@ -23,8 +23,8 @@ pub enum GraphOperationMessage {
 	},
 	RasterFillSet {
 		layer: LayerNodeIdentifier,
-		fill: Fill,
-		position: DVec2,
+		fills: Vec<Fill>,
+		start_pos: Vec<DVec2>,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

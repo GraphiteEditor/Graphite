@@ -686,58 +686,82 @@ fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 }
 
 #[node_macro::node(category("Raster"))]
-fn raster_fill<F: Into<Fill> + 'n + Send>(
+fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(ImageFrameTable<Color>)]
-	/// The vector elements, or group of vector elements, to apply the fill to.
+	/// The raster elements to apply the fill to.
 	mut image: ImageFrameTable<Color>,
 	#[implementations(
-		Fill,
-		Option<Color>,
-		Color,
-		Gradient,
+		Vec<Fill>,
+		Vec<Option<Color>>,
+		Vec<Color>,
+		Vec<Gradient>
 	)]
-	#[default(Color::BLACK)]
-	/// The fill to paint the path with.
-	fill: F,
-	/// The position of the fill in the image.
-	position: DVec2,
+	#[default(Vec<Color::BLACK>)]
+	/// The fills to paint the path with.
+	fills: Vec<F>,
+	/// The positions of the fill in image-local coordinates.
+	#[hidden]
+	positions: Vec<DVec2>,
 ) -> ImageFrameTable<Color> {
 	let width = image.width();
 	let height = image.height();
-
-	if width == 0 || height == 0 {
+	if width == 0 || height == 0 || fills.is_empty() || positions.is_empty() {
 		return image;
 	}
 
-	// Transform the global position to local image space
-	let image_transform = image.transform();
-	let image_size = DVec2::new(width as f64, height as f64);
-	// Transform from global space to local pixel space
-	let bg_to_local = DAffine2::from_scale(image_size) * image_transform.inverse();
-	let local_pos = bg_to_local.transform_point2(position);
+	// Process the minimum number of fill and position pairs
+	let fill_count = fills.len().min(positions.len());
 
-	// Convert to pixel coordinates
-	let pixel_x = local_pos.x.floor() as i32;
-	let pixel_y = local_pos.y.floor() as i32;
+	for i in 0..fill_count {
+		// Get the fill and position for this iteration
+		let fill = fills[i].clone().into();
+		let position = positions[i];
 
-	let fill = fill.into();
-	let color = match fill {
-		Fill::Solid(color) => color,
-		Fill::Gradient(_) => Color::RED, // Debug color for gradient
-		Fill::None => Color::TRANSPARENT,
-	};
+		// Scale position to pixel coordinates
+		let image_size = DVec2::new(width as f64, height as f64);
+		let local_pos = position * image_size;
 
-	// Fill a 10x10 square around the clicked position
-	for dy in -5..5 {
-		for dx in -5..5 {
-			let x = pixel_x + dx;
-			let y = pixel_y + dy;
+		// Convert to pixel coordinates
+		let pixel_x = local_pos.x.floor() as i32;
+		let pixel_y = local_pos.y.floor() as i32;
 
+		let color = match fill {
+			Fill::Solid(color) => color,
+			Fill::Gradient(_) => Color::RED, // TODO: Implement raster gradient fill
+			Fill::None => Color::TRANSPARENT,
+		};
+
+		// Get the target color at the clicked position
+		let target_color = match image.get_pixel(pixel_x as u32, pixel_y as u32) {
+			Some(pixel) => pixel.clone(),
+			None => continue,
+		};
+
+		// If the target color is the same as the fill color, no need to fill
+		if target_color == color {
+			continue;
+		}
+
+		// Flood fill algorithm using a stack
+		let mut stack = Vec::new();
+		stack.push((pixel_x, pixel_y));
+
+		while let Some((x, y)) = stack.pop() {
 			// Check bounds
-			if x >= 0 && y >= 0 && x < width as i32 && y < height as i32 {
-				if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
+			if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+				continue;
+			}
+
+			// Get current pixel
+			if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
+				// If pixel matches target color, fill it and add neighbors to stack
+				if *pixel == target_color {
 					*pixel = color;
+					stack.push((x + 1, y)); // Right
+					stack.push((x - 1, y)); // Left
+					stack.push((x, y + 1)); // Down
+					stack.push((x, y - 1)); // Up
 				}
 			}
 		}
