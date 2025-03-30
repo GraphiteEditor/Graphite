@@ -982,4 +982,28 @@ mod test_transform_layer {
 		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
 		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
 	}
+	#[tokio::test]
+	async fn test_grs_single_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Pen, 100., 100., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
+
+		// Testing grab operation - just checking that it doesn't crash
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let final_transform = get_layer_transform(&mut editor, layer).await;
+		// Verifying a transform node was created
+		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
+	}
 }
