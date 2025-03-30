@@ -1,6 +1,6 @@
 - Feature Name: fine_grained_context_caching
 - Start Date: 2025-03-29
-- RFC PR: [rust-lang/rfcs#0000](https://github.com/GraphiteEditor/Graphite/pull/2500)
+- RFC PR: [GraphiteEditor/Graphite#2500](https://github.com/GraphiteEditor/Graphite/pull/2500)
 
 # Summary
 [summary]: #summary
