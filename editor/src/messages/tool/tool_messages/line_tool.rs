@@ -486,39 +486,38 @@ mod test_line_tool {
 	}
 
 	#[tokio::test]
-	async fn test_line_tool_alt(){
-		let mut editor =EditorTestUtils::create();
+	async fn test_line_tool_alt() {
+		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::ALT).await;
-		if let Some((start_input,end_input))=get_line_node_inputs(&mut editor).await {
-			match(start_input,end_input){
-				(start_input,end_input)=>{
-					let expected_start = DVec2::new(0.,100.);
-					let expected_end = DVec2::new(200.,100.);
-					assert!((start_input - expected_start).length()<1.0, "start point should be near (0,100)");
-					assert!((end_input - expected_end).length()<1.0, "end point should be near (200,100)");
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let expected_start = DVec2::new(0., 100.);
+					let expected_end = DVec2::new(200., 100.);
+					assert!((start_input - expected_start).length() < 1.0, "start point should be near (0,100)");
+					assert!((end_input - expected_end).length() < 1.0, "end point should be near (200,100)");
 				}
 			}
 		}
 	}
 
 	#[tokio::test]
-	async fn test_line_tool_alt_shift_drag (){
-		let mut editor =EditorTestUtils::create();
+	async fn test_line_tool_alt_shift_drag() {
+		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 100., 100., 150., 120., ModifierKeys::ALT | ModifierKeys::SHIFT).await;
-		if let Some((start_input,end_input))=get_line_node_inputs(&mut editor).await {
-			match(start_input,end_input){
-				(start_input,end_input)=>{
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
 					let line_vec = end_input - start_input;
 					let angle_radians = line_vec.angle_to(DVec2::X);
 					let angle_degrees = angle_radians.to_degrees();
-					let nearest_angle = (angle_degrees/15.0).round()*15.0;
+					let nearest_angle = (angle_degrees / 15.0).round() * 15.0;
 
-					assert!((angle_degrees-nearest_angle).abs()<1.0,"Angle should snap to the nearest 15 degrees");
+					assert!((angle_degrees - nearest_angle).abs() < 1.0, "Angle should snap to the nearest 15 degrees");
 				}
 			}
 		}
 	}
-
 }
