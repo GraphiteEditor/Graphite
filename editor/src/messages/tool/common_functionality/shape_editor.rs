@@ -593,10 +593,7 @@ impl ShapeState {
 		if points_colinear_status.any(|point| first_is_colinear != point) {
 			return ManipulatorAngle::Mixed;
 		}
-		match first_is_colinear {
-			false => ManipulatorAngle::Free,
-			true => ManipulatorAngle::Colinear,
-		}
+		if first_is_colinear { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free }
 	}
 
 	pub fn convert_manipulator_handles_to_colinear(&self, vector_data: &VectorData, point_id: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {

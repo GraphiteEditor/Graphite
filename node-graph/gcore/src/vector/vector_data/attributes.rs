@@ -410,7 +410,7 @@ impl SegmentDomain {
 	/// Iterates over segments in the domain.
 	///
 	/// Tuple is: (id, start point, end point, handles)
-	pub(crate) fn iter(&self) -> impl Iterator<Item = (SegmentId, usize, usize, BezierHandles)> + '_ {
+	pub fn iter(&self) -> impl Iterator<Item = (SegmentId, usize, usize, BezierHandles)> + '_ {
 		let ids = self.id.iter().copied();
 		let start_point = self.start_point.iter().copied();
 		let end_point = self.end_point.iter().copied();
@@ -531,6 +531,16 @@ impl RegionDomain {
 		self.segment_range
 			.iter_mut()
 			.for_each(|range| *range = *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end()));
+	}
+
+	/// Iterates over regions in the domain.
+	///
+	/// Tuple is: (id, segment_range, fill)
+	pub fn iter(&self) -> impl Iterator<Item = (RegionId, core::ops::RangeInclusive<SegmentId>, FillId)> + '_ {
+		let ids = self.id.iter().copied();
+		let segment_range = self.segment_range.iter().cloned();
+		let fill = self.fill.iter().copied();
+		zip(ids, zip(segment_range, fill)).map(|(id, (segment_range, fill))| (id, segment_range, fill))
 	}
 }
 
