@@ -1,18 +1,17 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::transform_utils;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
-
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
-
-use glam::{DAffine2, DMat2, DVec2};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
@@ -54,9 +53,15 @@ impl OriginalTransforms {
 		}
 	}
 
-	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
-		let document_metadata = network_interface.document_metadata();
+	/// Gets the transform from the most downstream transform node
+	fn get_layer_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DAffine2> {
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
 
+		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
+		Some(transform_utils::get_current_transform(&document_node.inputs))
+	}
+
+	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
@@ -64,7 +69,8 @@ impl OriginalTransforms {
 					if layer == LayerNodeIdentifier::ROOT_PARENT {
 						continue;
 					}
-					layer_map.entry(layer).or_insert_with(|| document_metadata.upstream_transform(layer.to_node()));
+
+					layer_map.entry(layer).or_insert_with(|| Self::get_layer_transform(layer, network_interface).unwrap_or_default());
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -128,11 +134,7 @@ impl Axis {
 			return (target, false);
 		}
 
-		if local {
-			(Axis::Both, false)
-		} else {
-			(self, true)
-		}
+		if local { (Axis::Both, false) } else { (self, true) }
 	}
 }
 
@@ -159,11 +161,7 @@ impl Translation {
 			}
 		};
 		let displacement = transform.inverse().transform_vector2(displacement);
-		if increment_mode {
-			displacement.round()
-		} else {
-			displacement
-		}
+		if increment_mode { displacement.round() } else { displacement }
 	}
 
 	#[must_use]
@@ -251,11 +249,7 @@ impl Default for Scale {
 impl Scale {
 	pub fn to_f64(self, increment: bool) -> f64 {
 		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
-		if increment {
-			(factor / SCALE_INCREMENT).round() * SCALE_INCREMENT
-		} else {
-			factor
-		}
+		if increment { (factor / SCALE_INCREMENT).round() * SCALE_INCREMENT } else { factor }
 	}
 
 	pub fn to_dvec(self, increment_mode: bool) -> DVec2 {
@@ -305,7 +299,24 @@ pub enum TransformOperation {
 	Scaling(Scale),
 }
 
+#[derive(Debug, Clone, PartialEq, Copy, serde::Serialize, serde::Deserialize)]
+pub enum TransformType {
+	Grab,
+	Rotate,
+	Scale,
+}
+
+impl TransformType {
+	pub fn equivalent_to(&self, operation: TransformOperation) -> bool {
+		matches!(
+			(operation, self),
+			(TransformOperation::Scaling(_), TransformType::Scale) | (TransformOperation::Grabbing(_), TransformType::Grab) | (TransformOperation::Rotating(_), TransformType::Rotate)
+		)
+	}
+}
+
 impl TransformOperation {
+	#[allow(clippy::too_many_arguments)]
 	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
 		if self != &TransformOperation::None {
@@ -334,7 +345,7 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation, Some(pivot));
+			selected.update_transforms(transformation, Some(pivot), Some(*self));
 			self.hints(selected.responses, local);
 		}
 	}
@@ -351,6 +362,7 @@ impl TransformOperation {
 		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) -> bool {
 		(*self, local) = match self {
 			TransformOperation::Grabbing(translation) => {
@@ -367,6 +379,7 @@ impl TransformOperation {
 		local
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		match self {
 			TransformOperation::None => (),
@@ -457,6 +470,7 @@ impl TransformOperation {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
 		if *self != TransformOperation::None {
 			*self = match self {
@@ -539,15 +553,14 @@ impl<'a> Selected<'a> {
 
 		let mut transform = self
 			.network_interface
-			.selected_nodes(&[])
-			.unwrap()
+			.selected_nodes()
 			.selected_visible_and_unlocked_layers(self.network_interface)
 			.find(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.map(|layer| metadata.transform_to_viewport(layer))
 			.unwrap_or(DAffine2::IDENTITY);
 
 		if transform.matrix2.determinant().abs() <= f64::EPSILON {
-			transform.matrix2 += DMat2::IDENTITY * 1e-4;
+			transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 		}
 
 		let bounds = self
@@ -572,7 +585,14 @@ impl<'a> Selected<'a> {
 		});
 	}
 
-	fn transform_path(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, initial_points: &mut InitialPoints, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+	fn transform_path(
+		document_metadata: &DocumentMetadata,
+		layer: LayerNodeIdentifier,
+		initial_points: &mut InitialPoints,
+		transformation: DAffine2,
+		responses: &mut VecDeque<Message>,
+		transform_operation: Option<TransformOperation>,
+	) {
 		let viewspace = document_metadata.transform_to_viewport(layer);
 		let layerspace_rotation = viewspace.inverse() * transformation;
 
@@ -582,6 +602,10 @@ impl<'a> Selected<'a> {
 			anchor.current += delta;
 			let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && initial_points.anchors.len() > 1 {
+			return;
 		}
 
 		for (&id, handle) in initial_points.handles.iter() {
@@ -610,7 +634,7 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn apply_transformation(&mut self, transformation: DAffine2) {
+	pub fn apply_transformation(&mut self, transformation: DAffine2, transform_operation: Option<TransformOperation>) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer in self.network_interface.shallowest_unique_layers(&[]) {
@@ -620,7 +644,7 @@ impl<'a> Selected<'a> {
 					}
 					OriginalTransforms::Path(path_transforms) => {
 						if let Some(initial_points) = path_transforms.get_mut(&layer) {
-							Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses)
+							Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses, transform_operation)
 						}
 					}
 				}
@@ -628,12 +652,12 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>) {
-		let pivot = DAffine2::from_translation(pivot.unwrap_or_else(|| *self.pivot));
+	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>, transform_operation: Option<TransformOperation>) {
+		let pivot = DAffine2::from_translation(pivot.unwrap_or(*self.pivot));
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),
-			_ => self.apply_transformation(transformation),
+			_ => self.apply_transformation(transformation, transform_operation),
 		}
 	}
 

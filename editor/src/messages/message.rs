@@ -1,5 +1,4 @@
 use crate::messages::prelude::*;
-
 use graphite_proc_macros::*;
 
 #[impl_message]
@@ -11,6 +10,8 @@ pub enum Message {
 	StartBuffer,
 	EndBuffer(graphene_std::renderer::RenderMetadata),
 
+	#[child]
+	Animation(AnimationMessage),
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]

@@ -1,32 +1,67 @@
 mod attributes;
+mod indexed;
 mod modification;
-pub use attributes::*;
-pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
-
+pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
-use dyn_any::DynAny;
-
 use core::borrow::Borrow;
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+pub use indexed::VectorDataIndex;
+pub use modification::*;
+use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
 	use serde::Deserialize;
+
+	#[derive(Clone, Debug, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldVectorData {
+		pub transform: DAffine2,
+		pub alpha_blending: AlphaBlending,
+
+		pub style: PathStyle,
+
+		/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
+		/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
+		pub colinear_manipulators: Vec<[HandleId; 2]>,
+
+		pub point_domain: PointDomain,
+		pub segment_domain: SegmentDomain,
+		pub region_domain: RegionDomain,
+
+		// Used to store the upstream graphic group during destructive Boolean Operations (and other nodes with a similar effect) so that click targets can be preserved.
+		pub upstream_graphic_group: Option<GraphicGroupTable>,
+	}
 
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	#[allow(clippy::large_enum_variant)]
 	enum EitherFormat {
 		VectorData(VectorData),
+		OldVectorData(OldVectorData),
 		VectorDataTable(VectorDataTable),
 	}
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::VectorData(vector_data) => VectorDataTable::new(vector_data),
+		EitherFormat::OldVectorData(old) => {
+			let mut vector_data_table = VectorDataTable::new(VectorData {
+				style: old.style,
+				colinear_manipulators: old.colinear_manipulators,
+				point_domain: old.point_domain,
+				segment_domain: old.segment_domain,
+				region_domain: old.region_domain,
+				upstream_graphic_group: old.upstream_graphic_group,
+			});
+			*vector_data_table.one_instance_mut().transform = old.transform;
+			*vector_data_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			vector_data_table
+		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
 	})
 }
@@ -35,12 +70,13 @@ pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
+///
+/// Segments are connected if they share endpoints.
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
-	pub transform: DAffine2,
 	pub style: PathStyle,
-	pub alpha_blending: AlphaBlending,
+
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
 	pub colinear_manipulators: Vec<[HandleId; 2]>,
@@ -58,20 +94,17 @@ impl core::hash::Hash for VectorData {
 		self.point_domain.hash(state);
 		self.segment_domain.hash(state);
 		self.region_domain.hash(state);
-		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.style.hash(state);
-		self.alpha_blending.hash(state);
 		self.colinear_manipulators.hash(state);
 	}
 }
 
 impl VectorData {
 	/// An empty subpath with no data, an identity transform, and a black fill.
+	// TODO: Replace with just `Default`
 	pub const fn empty() -> Self {
 		Self {
-			transform: DAffine2::IDENTITY,
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
-			alpha_blending: AlphaBlending::new(),
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
@@ -190,11 +223,6 @@ impl VectorData {
 		bounds_min + bounds_size * normalized_pivot
 	}
 
-	/// Compute the pivot in local space with the current transform applied
-	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
-		self.transform.transform_point2(self.layerspace_pivot(normalized_pivot))
-	}
-
 	pub fn start_point(&self) -> impl Iterator<Item = PointId> + '_ {
 		self.segment_domain.start_point().iter().map(|&index| self.point_domain.ids()[index])
 	}
@@ -239,6 +267,11 @@ impl VectorData {
 	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
 		let index = [self.point_domain.resolve_id(current)].into_iter().flatten();
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
+	}
+
+	/// Get an array slice of all segment IDs.
+	pub fn segment_ids(&self) -> &[SegmentId] {
+		self.segment_domain.ids()
 	}
 
 	/// Enumerate all segments that start at the point.
@@ -312,6 +345,48 @@ impl VectorData {
 			}
 			ManipulatorPointId::Anchor(_) => None,
 		}
+	}
+
+	pub fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64) {
+		let point_map = other
+			.point_domain
+			.ids()
+			.iter()
+			.filter(|id| self.point_domain.ids().contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.collect::<HashMap<_, _>>();
+
+		let segment_map = other
+			.segment_domain
+			.ids()
+			.iter()
+			.filter(|id| self.segment_domain.ids().contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.collect::<HashMap<_, _>>();
+
+		let region_map = other
+			.region_domain
+			.ids()
+			.iter()
+			.filter(|id| self.region_domain.ids().contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.collect::<HashMap<_, _>>();
+
+		let id_map = IdMap {
+			point_offset: self.point_domain.ids().len(),
+			point_map,
+			segment_map,
+			region_map,
+		};
+
+		self.point_domain.concat(&other.point_domain, transform, &id_map);
+		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
+		self.region_domain.concat(&other.region_domain, transform, &id_map);
+
+		// TODO: properly deal with fills such as gradients
+		self.style = other.style.clone();
+
+		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
 	}
 }
 
@@ -444,7 +519,10 @@ impl HandleId {
 
 	/// Calculate the magnitude of the handle from the anchor.
 	pub fn length(self, vector_data: &VectorData) -> f64 {
-		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector_data) else {
+			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
+			return 0.;
+		};
 		let handle_position = self.to_manipulator_point().get_position(vector_data);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}

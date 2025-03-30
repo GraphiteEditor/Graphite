@@ -63,10 +63,10 @@ spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu.git" }
 wgpu-types = "23"
 wgpu = "23"
 once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
-wasm-bindgen = "=0.2.99" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/project-setup/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.100" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/project-setup/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
-js-sys = "=0.3.76"
-web-sys = "=0.3.76"
+js-sys = "=0.3.77"
+web-sys = "=0.3.77"
 winit = "0.29"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
@@ -80,11 +80,12 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rustybuzz = "0.20"
 spirv = "0.3"
+pretty_assertions = "1.4.1"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = "0.7"
 num-derive = "0.4"
 num-traits = { version = "0.2", default-features = false, features = ["i128"] }
-specta = { git = "https://github.com/specta-rs/specta.git", features = [
+specta = { version = "2.0.0-rc.22", features = [
 	"glam",
 	"derive",
 	# "typescript",
@@ -94,6 +95,9 @@ syn = { version = "2.0", default-features = false, features = [
 	"derive",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
+petgraph = { version = "0.7.1", default-features = false, features = [
+	"graphmap",
+] }
 
 [profile.dev]
 opt-level = 1

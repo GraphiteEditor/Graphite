@@ -3,7 +3,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, Mou
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
-
 use glam::DVec2;
 
 pub struct InputPreprocessorMessageData {
@@ -13,6 +12,7 @@ pub struct InputPreprocessorMessageData {
 #[derive(Debug, Default)]
 pub struct InputPreprocessorMessageHandler {
 	pub frame_time: FrameTimeInfo,
+	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
 	pub viewport_bounds: ViewportBounds,
@@ -94,8 +94,9 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
-			InputPreprocessorMessage::FrameTimeAdvance { timestamp } => {
-				self.frame_time.advance_timestamp(timestamp);
+			InputPreprocessorMessage::CurrentTime { timestamp } => {
+				responses.add(AnimationMessage::SetTime(timestamp as f64));
+				self.time = timestamp;
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

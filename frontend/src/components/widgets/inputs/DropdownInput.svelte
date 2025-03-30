@@ -138,6 +138,7 @@
 
 			.dropdown-arrow {
 				margin: 4px;
+				margin-right: 2px;
 				flex: 0 0 auto;
 			}
 

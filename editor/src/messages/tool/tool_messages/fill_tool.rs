@@ -1,7 +1,6 @@
 use super::tool_prelude::*;
-
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_core::vector::style::Fill;
-
 #[derive(Default)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
@@ -87,9 +86,13 @@ impl Fsm for FillToolFsmState {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;
 				};
+				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
+				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
+					return self;
+				}
 				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
+					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
+					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
 					_ => return self,
 				};
 
@@ -108,7 +111,7 @@ impl Fsm for FillToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),
@@ -122,5 +125,61 @@ impl Fsm for FillToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+	}
+}
+
+#[cfg(test)]
+mod test_fill {
+	pub use crate::test_utils::test_prelude::*;
+	use graphene_core::vector::fill;
+	use graphene_std::vector::style::Fill;
+
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
+		let instrumented = editor.eval_graph().await;
+
+		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
+	}
+
+	#[tokio::test]
+	async fn ignore_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor,).await.is_empty());
+	}
+
+	#[tokio::test]
+	async fn ignore_raster() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor,).await.is_empty());
+	}
+
+	#[tokio::test]
+	async fn primary() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+	}
+
+	#[tokio::test]
+	async fn secondary() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let color = Color::YELLOW;
+		editor.handle_message(ToolMessage::SelectSecondaryColor { color }).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), color.to_rgba8_srgb());
 	}
 }

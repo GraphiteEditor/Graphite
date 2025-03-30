@@ -32,11 +32,13 @@ impl LayoutHolder for DemoArtworkDialog {
 			.flat_map(|chunk| {
 				fn make_dialog(name: &str, filename: &str) -> Message {
 					DialogMessage::CloseDialogAndThen {
-						followups: vec![FrontendMessage::TriggerFetchAndOpenDocument {
-							name: name.to_string(),
-							filename: filename.to_string(),
-						}
-						.into()],
+						followups: vec![
+							FrontendMessage::TriggerFetchAndOpenDocument {
+								name: name.to_string(),
+								filename: filename.to_string(),
+							}
+							.into(),
+						],
 					}
 					.into()
 				}

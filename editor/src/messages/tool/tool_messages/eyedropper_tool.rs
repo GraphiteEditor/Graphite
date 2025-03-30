@@ -123,7 +123,7 @@ impl Fsm for EyedropperToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>, _tool_data: &Self::ToolData) {
+	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			EyedropperToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Sample to Primary"),
@@ -159,8 +159,8 @@ fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
 fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler, global_tool_data: &DocumentToolData, set_color_choice: Option<String>) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
 		mouse_position: Some(input.mouse.position.into()),
-		primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
-		secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
+		primary_color: "#".to_string() + global_tool_data.primary_color.to_rgb_hex_srgb().as_str(),
+		secondary_color: "#".to_string() + global_tool_data.secondary_color.to_rgb_hex_srgb().as_str(),
 		set_color_choice,
 	});
 }

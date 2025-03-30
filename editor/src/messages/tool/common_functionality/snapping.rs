@@ -3,21 +3,23 @@ mod distribution_snapper;
 mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
-pub use {alignment_snapper::*, distribution_snapper::*, grid_snapper::*, layer_snapper::*, snap_results::*};
 
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
-
+pub use alignment_snapper::*;
 use bezier_rs::TValue;
+pub use distribution_snapper::*;
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
-
-use glam::{DAffine2, DVec2};
 use graphene_std::vector::NoHashBuilder;
+pub use grid_snapper::*;
+pub use layer_snapper::*;
+pub use snap_results::*;
 use std::cmp::Ordering;
 
 /// Configuration for the relevant snap type
@@ -187,7 +189,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 	best
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct SnapCache {
 	pub manipulators: HashMap<LayerNodeIdentifier, HashSet<PointId, NoHashBuilder>, NoHashBuilder>,
 	pub unselected: Vec<SnapCandidatePoint>,
@@ -324,10 +326,10 @@ impl SnapManager {
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
 		if screen_bounds.intersects(layer_bounds) {
-			if !self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
+			if self.alignment_candidates.as_ref().is_none_or(|candidates| candidates.len() <= 100) {
 				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);
 			}
-			if quad.intersects(layer_bounds) && !self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
+			if quad.intersects(layer_bounds) && self.candidates.as_ref().is_none_or(|candidates| candidates.len() <= 10) {
 				self.candidates.get_or_insert_with(Vec::new).push(layer);
 			}
 		}
@@ -412,11 +414,12 @@ impl SnapManager {
 			let start = DVec2::new(first.max().x, y);
 			let end = DVec2::new(second.min().x, y);
 			let signed_size = if bottom { y_size } else { -y_size };
-			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size), None);
-			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size), None);
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size), None, None);
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size), None, None);
 			overlay_context.line(
 				transform.transform_point2(start + DVec2::Y * signed_size / 2.),
 				transform.transform_point2(end + DVec2::Y * signed_size / 2.),
+				None,
 				None,
 			);
 		}
@@ -430,11 +433,12 @@ impl SnapManager {
 			let start = DVec2::new(x, first.max().y);
 			let end = DVec2::new(x, second.min().y);
 			let signed_size = if right { x_size } else { -x_size };
-			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size), None);
-			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size), None);
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size), None, None);
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size), None, None);
 			overlay_context.line(
 				transform.transform_point2(start + DVec2::X * signed_size / 2.),
 				transform.transform_point2(end + DVec2::X * signed_size / 2.),
+				None,
 				None,
 			);
 		}
@@ -458,7 +462,7 @@ impl SnapManager {
 			let align = [ind.alignment_target_x, ind.alignment_target_y].map(|target| target.map(|target| to_viewport.transform_point2(target)));
 			let any_align = align.iter().flatten().next().is_some();
 			for &target in align.iter().flatten() {
-				overlay_context.line(viewport, target, None);
+				overlay_context.line(viewport, target, None, None);
 			}
 			for &target in align.iter().flatten() {
 				overlay_context.manipulator_handle(target, false, None);

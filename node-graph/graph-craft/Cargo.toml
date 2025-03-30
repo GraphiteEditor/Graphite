@@ -1,7 +1,7 @@
 [package]
 name = "graph-craft"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [features]
@@ -54,10 +54,11 @@ winit = { workspace = true }
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
+pretty_assertions = { workspace = true }
 
 # Required dependencies
-criterion = { version = "0.5", features = ["html_reports"]}
-iai-callgrind = { version = "0.12.3"}
+criterion = { version = "0.5", features = ["html_reports"] }
+iai-callgrind = { version = "0.12.3" }
 
 # Benchmarks
 [[bench]]

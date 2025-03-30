@@ -152,8 +152,11 @@
 			transparent calc((3px * sqrt(2) / 2) + 0.5px),
 			transparent calc(6px * sqrt(2) / 2)
 		);
-		--inheritance-dots-background: url('data:image/svg+xml;utf8,\
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 6" width="6px" height="6px" fill="%23444"><rect width="1" height="1" /><rect x="3" y="3" width="1" height="1" /></svg>\
+		--inheritance-dots-background-4-dimgray: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4px" height="4px" fill="%23444"><rect width="1" height="1" /><rect x="2" y="2" width="1" height="1" /></svg>\
+			');
+		--inheritance-dots-background-6-lowergray: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4px" height="4px" fill="%23666"><rect width="1" height="1" /><rect x="2" y="2" width="1" height="1" /></svg>\
 			');
 
 		// Array of 2x3 dots (fill: --color-e-nearwhite)
@@ -235,11 +238,11 @@
 		.scrollable-y {
 			overflow: hidden;
 
-			// Firefox (standardized in CSS, but less capable)
 			scrollbar-width: thin;
+			// Not supported in Safari
 			scrollbar-color: var(--color-5-dullgray) transparent;
 
-			// WebKit (only in Chromium/Safari but more capable)
+			// Safari (more capable, removed from recent versions of Chromium, possibly still supported in Safari but not tested)
 			&::-webkit-scrollbar {
 				width: calc(2px + 6px + 2px);
 				height: calc(2px + 6px + 2px);

@@ -1,8 +1,6 @@
 use crate::svg_drawing::*;
 use crate::utils::{parse_cap, parse_join, parse_point};
-
 use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
-
 use glam::DVec2;
 use js_sys::Array;
 use js_sys::Math;
