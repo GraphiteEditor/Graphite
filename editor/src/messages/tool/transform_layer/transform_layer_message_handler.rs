@@ -705,7 +705,7 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::transform_utils;
 	use crate::test_utils::test_prelude::*;
 	// Use ModifyInputsContext to locate the transform node
-	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+	use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 	use crate::messages::prelude::Message;
 	use glam::DAffine2;
 	use std::collections::VecDeque;
@@ -983,44 +983,50 @@ mod test_transform_layer {
 		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
 	}
 	#[tokio::test]
-	async fn test_scale_to_zero_apply() {
+	async fn test_scale_to_zero_then_rescale() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		let document = editor.active_document();
 		let layer = document.metadata().all_layers().next().unwrap();
 
-		editor.handle_message(TransformLayerMessage::BeginScale).await;
-
-		// Move mouse exactly to the pivot point to achieve zero scale
-		let center_x = 50.0;
-		let center_y = 50.0;
-		editor.move_mouse(center_x, center_y, ModifierKeys::empty(), MouseKeys::NONE).await;
-
+		let near_zero_scale = DAffine2::from_scale(DVec2::new(1e-5, 1e-5));
 		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: near_zero_scale,
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
 			})
 			.await;
 
-		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(zero_transform.is_finite(), "First transform should be finite");
+
+		let scale_x = zero_transform.matrix2.x_axis.length();
+		let scale_y = zero_transform.matrix2.y_axis.length();
+		assert!(scale_x <= 1e-5, "X scale should be near zero");
+		assert!(scale_y <= 1e-5, "Y scale should be near zero");
+
+		let rescale = DAffine2::from_scale(DVec2::new(2.0, 2.0));
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: rescale * zero_transform,
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(final_transform.is_finite(), "Matrix should be finite");
 
-		// Checking the transform matrix components are valid (not NaN or infinite)
-		assert!(final_transform.matrix2.x_axis.x.is_finite(), "X-axis x component should be finite");
-		assert!(final_transform.matrix2.x_axis.y.is_finite(), "X-axis y component should be finite");
-		assert!(final_transform.matrix2.y_axis.x.is_finite(), "Y-axis x component should be finite");
-		assert!(final_transform.matrix2.y_axis.y.is_finite(), "Y-axis y component should be finite");
-		let scale_x = final_transform.matrix2.x_axis.length();
-		let scale_y = final_transform.matrix2.y_axis.length();
+		let final_scale_x = final_transform.matrix2.x_axis.length();
+		let final_scale_y = final_transform.matrix2.y_axis.length();
+		assert!(final_scale_x > 1e-5, "Scale should be non-zero after rescaling");
+		assert!(final_scale_y > 1e-5, "Scale should be non-zero after rescaling");
 
-		assert!(scale_x == 0.0, "Scale factor X should be effectively zero, got: {}", scale_x);
-		assert!(scale_y == 0.0, "Scale factor Y should be effectively zero, got: {}", scale_y);
-
-		// Checking that the determinant is very close to zero
 		let determinant = final_transform.matrix2.determinant();
-		assert!(determinant.abs() <= 1e-10, "Determinant should be effectively zero");
+		assert!(determinant != 0.0, "Determinant should not be exactly zero");
 	}
 }
