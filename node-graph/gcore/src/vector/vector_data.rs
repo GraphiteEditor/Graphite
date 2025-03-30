@@ -527,7 +527,10 @@ impl HandleId {
 
 	/// Calculate the magnitude of the handle from the anchor.
 	pub fn length(self, vector_data: &VectorData) -> f64 {
-		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector_data) else {
+			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
+			return 0.;
+		};
 		let handle_position = self.to_manipulator_point().get_position(vector_data);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
