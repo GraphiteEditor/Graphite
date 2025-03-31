@@ -303,7 +303,6 @@ struct PenToolData {
 	next_handle_start: DVec2,
 
 	g1_continuous: bool,
-	toggle_colinear_debounce: bool,
 
 	angle: f64,
 	auto_panning: AutoPanning,
@@ -313,9 +312,13 @@ struct PenToolData {
 
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
+	toggle_colinear_debounce: bool,
 	colinear: bool,
 	alt_press: bool,
 	space_press: bool,
+	lock_toggle: bool,
+	handle_swap: bool,
+	angle_locked: bool,
 	close_path: bool,
 
 	handle_mode: HandleMode,
@@ -495,6 +498,7 @@ impl PenToolData {
 		self.next_handle_start = self.next_point;
 		let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 		self.update_handle_type(TargetHandle::HandleStart);
+		self.handle_mode = HandleMode::ColinearLocked;
 
 		// Break the control
 		let Some((last_pos, id)) = self.latest_point().map(|point| (point.pos, point.id)) else { return };
@@ -510,6 +514,7 @@ impl PenToolData {
 				let last_segment = self.end_point_segment;
 				let Some(point) = self.latest_point_mut() else { return };
 				point.in_segment = last_segment;
+				self.lock_toggle = true;
 				return;
 			}
 
@@ -518,6 +523,7 @@ impl PenToolData {
 			}
 		}
 
+		//Closing path
 		for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != id) {
 			let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
@@ -528,10 +534,11 @@ impl PenToolData {
 				self.close_path = true;
 				self.next_handle_start = self.next_point;
 				self.store_clicked_endpoint(document, &transform, snap_data.input, preferences);
+				self.handle_mode = HandleMode::Free;
 				if self.modifiers.lock_angle {
 					self.set_lock_angle(&vector_data, self.end_point.unwrap(), self.end_point_segment);
+					self.lock_toggle = true;
 				}
-				self.handle_mode = HandleMode::Free;
 			}
 		}
 	}
@@ -541,6 +548,7 @@ impl PenToolData {
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
 		let mouse = snap_data.input.mouse.position;
+		self.handle_swap = false;
 		self.handle_end_offset = None;
 		self.handle_start_offset = None;
 		let Some(handle_end) = self.handle_end else {
@@ -860,6 +868,19 @@ impl PenToolData {
 			}
 		}
 
+		let mouse_pos = viewport_to_document.transform_point2(mouse_pos);
+		let anchor = transform.transform_point2(self.next_point);
+		let distance = (mouse_pos - anchor).length();
+
+		if self.lock_toggle && !self.modifiers.lock_angle {
+			self.lock_toggle = false;
+			self.handle_mode = HandleMode::Free;
+		}
+
+		if distance > 20. && self.handle_mode == HandleMode::Free && self.modifiers.lock_angle && !self.angle_locked {
+			self.angle_locked = true
+		}
+
 		match self.handle_mode {
 			HandleMode::ColinearLocked | HandleMode::ColinearEquidistant => {
 				self.g1_continuous = true;
@@ -871,13 +892,9 @@ impl PenToolData {
 			}
 		}
 
-		let mouse_pos = viewport_to_document.transform_point2(mouse_pos);
-		let anchor = transform.transform_point2(self.next_point);
-		let distance = (mouse_pos - anchor).length();
-
-		if distance < 20. && self.handle_mode == HandleMode::Free && self.modifiers.lock_angle {
+		if distance < 20. && self.handle_mode == HandleMode::Free && self.modifiers.lock_angle && !self.angle_locked {
 			self.set_lock_angle(&vector_data, self.end_point.unwrap(), self.end_point_segment);
-			self.handle_mode = HandleMode::Free;
+			self.lock_toggle = true;
 			let last_segment = self.end_point_segment;
 			if let Some(latest) = self.latest_point_mut() {
 				latest.in_segment = last_segment;
@@ -1076,6 +1093,7 @@ impl PenToolData {
 
 				if self.modifiers.lock_angle {
 					self.set_lock_angle(&vector_data, point, segment);
+					self.lock_toggle = true;
 				}
 			}
 			let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
@@ -1090,10 +1108,10 @@ impl PenToolData {
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
-
+			self.handle_mode = HandleMode::Free;
 			if self.modifiers.lock_angle {
-				self.handle_mode = HandleMode::Free;
 				self.set_lock_angle(&vector_data, point, segment);
+				self.lock_toggle = true;
 			}
 		}
 
@@ -1165,11 +1183,11 @@ impl PenToolData {
 		self.next_handle_start = handle_start;
 		let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 		let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
-
+		self.handle_mode = HandleMode::Free;
 		if self.modifiers.lock_angle {
 			self.set_lock_angle(&vector_data, point, segment);
+			self.lock_toggle = true;
 		}
-		self.handle_mode = HandleMode::Free;
 	}
 
 	// Stores the segment and point ID of the clicked endpoint
@@ -1241,9 +1259,11 @@ impl PenToolData {
 			}
 			(TargetHandle::EndHandle(..) | TargetHandle::PrimaryHandle(..), true) => {
 				self.angle = -(self.handle_end.unwrap() - anchor_position).angle_to(DVec2::X);
+				self.handle_mode = HandleMode::ColinearEquidistant;
 			}
 			_ => {
 				self.angle = -(self.next_handle_start - anchor_position).angle_to(DVec2::X);
+				self.handle_mode = HandleMode::ColinearEquidistant;
 			}
 		}
 
@@ -1670,9 +1690,18 @@ impl Fsm for PenToolFsmState {
 					tool_data.toggle_colinear_debounce = false;
 				}
 
+				if !tool_data.modifiers.lock_angle {
+					tool_data.angle_locked = false;
+				}
+
 				let state = tool_data
 					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input)
 					.unwrap_or(PenToolFsmState::Ready);
+
+				// To prevent showing cursor when KeyC is pressed when handles are swapped
+				if tool_data.handle_swap {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
+				}
 
 				// Auto-panning
 				let messages = [
@@ -1744,6 +1773,9 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::SwapHandles) => {
 				tool_data.swap_handles(layer, document, shape_editor, input, responses);
+				if !tool_data.handle_swap {
+					tool_data.handle_swap = true
+				};
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
