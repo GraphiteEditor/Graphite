@@ -867,11 +867,11 @@ impl ShapeState {
 	}
 
 	pub fn dissolve_segment(&self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, segment: SegmentId, points: [PointId; 2]) {
-		//take a note that which point was terminal point
+		// Checking which point is terminal point
 		let is_point1_terminal = vector_data.connected_count(points[0]) == 1;
 		let is_point2_terminal = vector_data.connected_count(points[1]) == 1;
 
-		//Delete the segment and terminal points
+		// Delete the segment and terminal points
 		let modification_type = VectorModificationType::RemoveSegment { id: segment };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		for &handles in vector_data.colinear_manipulators.iter().filter(|handles| handles.iter().any(|handle| handle.segment == segment)) {

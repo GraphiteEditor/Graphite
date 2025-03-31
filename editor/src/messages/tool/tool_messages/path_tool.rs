@@ -522,30 +522,7 @@ impl PathToolData {
 			}
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
-		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
-		// else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
-		// 	responses.add(DocumentMessage::StartTransaction);
-
-		// 	if delete_segment {
-		// 		//delete the segment
-		// 		// self.start_insertion(responses, closed_segment);
-		// 		// self.segment = Some(closed_segment);
-		// 		let segment = closed_segment.segment();
-		// 		let layer = closed_segment.layer();
-		// 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-		// 			return PathToolFsmState::Ready;
-		// 		};
-		// 		let points: [PointId; 2] = closed_segment.points();
-		// 		shape_editor.dissolve_segment(responses, layer, &vector_data, segment, points);
-		// 		responses.add(DocumentMessage::EndTransaction);
-
-		// 		return PathToolFsmState::Ready;
-		// 	} else {
-		// 		self.start_insertion(responses, closed_segment);
-		// 		self.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
-		// 	}
-		// }
-		// We didn't find a segment path, so consider selecting the nearest shape instead
+		// We didn't find a point, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
 			if extend_selection {
@@ -998,7 +975,7 @@ impl Fsm for PathToolFsmState {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
 
 						if let Some(closest_segment) = &tool_data.segment {
-							// Making a perpendicular line when in InsertPoint mode
+							// Perpendicular line when inserting a point, and a cross when deleting a segment
 							let tangent = if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
 								(handle1 - handle2).normalize()
 							} else {
@@ -1457,7 +1434,6 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
-			// (_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 				shape_editor.move_selected_points(
 					tool_data.opposing_handle_lengths.take(),
