@@ -459,6 +459,7 @@ impl PathToolData {
 
 	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
 		let mut commit_transaction = false;
+		self.delete_segment_pressed = false;
 		match self.segment.as_mut() {
 			None => {
 				warn!("Segment was `None` before `end_insertion`")
@@ -977,7 +978,7 @@ impl Fsm for PathToolFsmState {
 						if let Some(closest_segment) = &tool_data.segment {
 							// Perpendicular line when inserting a point, and a cross when deleting a segment
 							let tangent = if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
-								(handle1 - handle2).normalize()
+								(handle1 - handle2).try_normalize()
 							} else {
 								let layer = closest_segment.layer();
 								let points = closest_segment.points();
@@ -986,14 +987,15 @@ impl Fsm for PathToolFsmState {
 										ManipulatorPointId::Anchor(points[0]).get_position(&vector_data),
 										ManipulatorPointId::Anchor(points[1]).get_position(&vector_data),
 									) {
-										(pos1 - pos2).normalize()
+										(pos1 - pos2).try_normalize()
 									} else {
-										DVec2::ZERO
+										None
 									}
 								} else {
-									DVec2::ZERO
+									None
 								}
-							};
+							}
+							.unwrap_or(DVec2::ZERO);
 							let perp = tangent.perp();
 							let point = closest_segment.closest_point_to_viewport();
 							if tool_data.delete_segment_pressed {
