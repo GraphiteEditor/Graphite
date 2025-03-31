@@ -699,3 +699,287 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		common
 	}
 }
+
+#[cfg(test)]
+mod test_transform_layer {
+	use crate::messages::portfolio::document::graph_operation::transform_utils;
+	use crate::test_utils::test_prelude::*;
+	// Use ModifyInputsContext to locate the transform node
+	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+	use crate::messages::prelude::Message;
+	use glam::DAffine2;
+	use std::collections::VecDeque;
+
+	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let _responses: VecDeque<Message> = VecDeque::new();
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
+		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
+		Some(transform_utils::get_current_transform(&document_node.inputs))
+	}
+
+	#[tokio::test]
+	async fn test_grab_apply() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+
+		let translation = DVec2::new(50.0, 50.0);
+		editor.move_mouse(translation.x, translation.y, ModifierKeys::empty(), MouseKeys::NONE).await;
+
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let translation_diff = (final_transform.translation - original_transform.translation).length();
+		assert!(translation_diff > 10.0, "Transform should have changed after applying transformation. Diff: {}", translation_diff);
+	}
+
+	#[tokio::test]
+	async fn test_grab_cancel() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.expect("Should be able to get the layer transform");
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let during_transform = get_layer_transform(&mut editor, layer).await.expect("Should be able to get the layer transform during operation");
+
+		assert!(original_transform != during_transform, "Transform should change during operation");
+
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.expect("Should be able to get the final transform");
+		let final_translation = final_transform.translation;
+		let original_translation = original_transform.translation;
+
+		// Verify transform is either restored to original OR reset to identity
+		assert!(
+			(final_translation - original_translation).length() < 5.0 || final_translation.length() < 0.001,
+			"Transform neither restored to original nor reset to identity. Original: {:?}, Final: {:?}",
+			original_translation,
+			final_translation
+		);
+	}
+
+	#[tokio::test]
+	async fn test_rotate_apply() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+
+		editor.move_mouse(150.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		println!("Final transform: {:?}", final_transform);
+
+		// Check matrix components have changed (rotation affects matrix2)
+		let matrix_diff = (final_transform.matrix2.x_axis - original_transform.matrix2.x_axis).length();
+		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {}", matrix_diff);
+	}
+
+	#[tokio::test]
+	async fn test_rotate_cancel() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+
+		let after_cancel = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		assert!(!after_cancel.translation.x.is_nan(), "Transform is NaN after cancel");
+		assert!(!after_cancel.translation.y.is_nan(), "Transform is NaN after cancel");
+
+		let translation_diff = (after_cancel.translation - original_transform.translation).length();
+		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+	}
+
+	#[tokio::test]
+	async fn test_scale_apply() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+
+		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// Check scaling components have changed
+		let scale_diff_x = (final_transform.matrix2.x_axis.x - original_transform.matrix2.x_axis.x).abs();
+		let scale_diff_y = (final_transform.matrix2.y_axis.y - original_transform.matrix2.y_axis.y).abs();
+
+		assert!(
+			scale_diff_x > 0.1 || scale_diff_y > 0.1,
+			"Scaling should have changed the transform matrix. Diffs: x={}, y={}",
+			scale_diff_x,
+			scale_diff_y
+		);
+	}
+
+	#[tokio::test]
+	async fn test_scale_cancel() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+
+		// Cancel immediately without moving to ensure proper reset
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+
+		let after_cancel = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// The scale factor is represented in the matrix2 part, so check those components
+		assert!(
+			(after_cancel.matrix2.x_axis.x - original_transform.matrix2.x_axis.x).abs() < 0.1 && (after_cancel.matrix2.y_axis.y - original_transform.matrix2.y_axis.y).abs() < 0.1,
+			"Matrix scale components should be restored after cancellation"
+		);
+
+		// Also check translation component is similar
+		let translation_diff = (after_cancel.translation - original_transform.translation).length();
+		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+	}
+
+	#[tokio::test]
+	async fn test_grab_rotate_scale_chained() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(150.0, 130.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_grab_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let expected_translation = DVec2::new(50.0, 30.0);
+		let actual_translation = after_grab_transform.translation - original_transform.translation;
+		assert!(
+			(actual_translation - expected_translation).length() < 1e-5,
+			"Expected translation of {:?}, got {:?}",
+			expected_translation,
+			actual_translation
+		);
+
+		// 2. Chain to rotation - from current position to create ~45 degree rotation
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		editor.move_mouse(190.0, 90.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		let after_rotate_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Checking for off-diagonal elements close to 0.707, which corresponds to cos(45°) and sin(45°)
+		assert!(
+			!after_rotate_transform.matrix2.abs_diff_eq(after_grab_transform.matrix2, 1e-5) &&
+			(after_rotate_transform.matrix2.x_axis.y.abs() - 0.707).abs() < 0.1 &&  // Check for off-diagonal elements close to 0.707
+			(after_rotate_transform.matrix2.y_axis.x.abs() - 0.707).abs() < 0.1, // that would indicate ~45° rotation
+			"Rotation should change matrix components with approximately 45° rotation"
+		);
+
+		// 3. Chain to scaling - scale(area) up by 2x
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.move_mouse(250.0, 200.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_scale_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let before_scale_det = after_rotate_transform.matrix2.determinant();
+		let after_scale_det = after_scale_transform.matrix2.determinant();
+		assert!(
+			after_scale_det >= 2.0 * before_scale_det,
+			"Scale should increase the determinant of the matrix (before: {}, after: {})",
+			before_scale_det,
+			after_scale_det
+		);
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
+	}
+}

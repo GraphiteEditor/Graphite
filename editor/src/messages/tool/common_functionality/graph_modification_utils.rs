@@ -420,7 +420,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type();
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
 		if layer_input_type == concrete!(graphene_core::raster::image::ImageFrameTable<graphene_core::Color>)
 			|| layer_input_type == concrete!(graphene_core::application_io::TextureFrameTable)
 			|| layer_input_type == concrete!(graphene_std::RasterFrame)
