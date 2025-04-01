@@ -4,6 +4,7 @@
 import ThumbnailChangingSeasons from "@graphite-frontend/assets/images/demo-artwork/thumbnail-changing-seasons.png";
 import ThumbnailIsometricFountain from "@graphite-frontend/assets/images/demo-artwork/thumbnail-isometric-fountain.png";
 import ThumbnailPaintedDreams from "@graphite-frontend/assets/images/demo-artwork/thumbnail-painted-dreams.png";
+import ThumbnailParametricDunescape from "@graphite-frontend/assets/images/demo-artwork/thumbnail-parametric-dunescape.png";
 import ThumbnailProceduralStringLights from "@graphite-frontend/assets/images/demo-artwork/thumbnail-procedural-string-lights.png";
 import ThumbnailRedDress from "@graphite-frontend/assets/images/demo-artwork/thumbnail-red-dress.png";
 import ThumbnailValleyOfSpires from "@graphite-frontend/assets/images/demo-artwork/thumbnail-valley-of-spires.png";
@@ -12,6 +13,7 @@ const DEMO_ARTWORK = {
 	ThumbnailChangingSeasons,
 	ThumbnailIsometricFountain,
 	ThumbnailPaintedDreams,
+	ThumbnailParametricDunescape,
 	ThumbnailProceduralStringLights,
 	ThumbnailRedDress,
 	ThumbnailValleyOfSpires,
