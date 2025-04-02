@@ -90,6 +90,12 @@ Based on the experience and insight brought to the table by the student, the nat
 
 </details>
 
+### Native development
+
+#### Graphite desktop app engineering
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
 ### Rendering and graphics
 
 Several of these require a good understanding of computer graphics rendering techniques and algorithms. Experience in game development and writing your own rendering engines is a plus.
@@ -157,6 +163,7 @@ Several of these require a good understanding of computer graphics rendering tec
 - The SVG spec supports a number of filters and other raster effects, and we currently only implement a small subset.
 - Add support for the rest of the SVG spec, including filters, masks, and other raster effects.
 - Allow roundtrip import and export of SVG files with these features.
+- Import, render (through SVG and Vello), and export of [filters like these](https://codepen.io/miXTim/pen/ZErggMQ).
 
 ### Editor tooling
 

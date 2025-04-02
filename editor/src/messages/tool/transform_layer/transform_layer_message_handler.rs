@@ -705,7 +705,7 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::transform_utils;
 	use crate::test_utils::test_prelude::*;
 	// Use ModifyInputsContext to locate the transform node
-	use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::prelude::Message;
 	use glam::DAffine2;
 	use std::collections::VecDeque;
