@@ -705,7 +705,7 @@ mod test_transform_layer {
 	use crate::messages::{
 		portfolio::document::graph_operation::{
 			transform_utils,
-			utility_types::{ModifyInputsContext, TransformIn},
+			utility_types::{ModifyInputsContext},
 		},
 		prelude::Message,
 		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
@@ -1074,13 +1074,14 @@ mod test_transform_layer {
 	async fn test_grs_single_anchor() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
 		let document = editor.active_document();
 		let layer = document.metadata().all_layers().next().unwrap();
 
+		let point_id = PointId::generate();
 		let modification_type = VectorModificationType::InsertPoint {
-			id: PointId::generate(),
-			position: DVec2::ZERO,
+			id: point_id,
+			position: DVec2::new(100.0, 100.0),
 		};
 		editor.handle_message(GraphOperationMessage::Vector { layer, modification_type }).await;
 		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
@@ -1097,7 +1098,6 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await;
-		// Verifying a transform node was created
 		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
 	}
 }
