@@ -237,7 +237,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let footprint = render_config.viewport;
 	let ctx = OwnedContextImpl::default()
 		.with_footprint(footprint)
-		.with_time(render_config.time.time)
+		.with_real_time(render_config.time.time)
 		.with_animation_time(render_config.time.animation_time.as_secs_f64())
 		.into_context();
 	ctx.footprint();

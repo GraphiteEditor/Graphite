@@ -4,7 +4,9 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
 use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
-use glam::{DAffine2, DVec2};
+use core::f64;
+use core::hash::{Hash, Hasher};
+use glam::{DAffine2, DMat2, DVec2};
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -94,18 +96,26 @@ pub struct Footprint {
 
 impl Default for Footprint {
 	fn default() -> Self {
-		Self::empty()
+		Self::DEFAULT
 	}
 }
 
 impl Footprint {
-	pub const fn empty() -> Self {
-		Self {
-			transform: DAffine2::IDENTITY,
-			resolution: glam::UVec2::new(1920, 1080),
-			quality: RenderQuality::Full,
-		}
-	}
+	pub const DEFAULT: Self = Self {
+		transform: DAffine2::IDENTITY,
+		resolution: glam::UVec2::new(1920, 1080),
+		quality: RenderQuality::Full,
+	};
+
+	pub const BOUNDLESS: Self = Self {
+		transform: DAffine2 {
+			matrix2: DMat2::from_diagonal(DVec2::splat(f64::INFINITY)),
+			translation: DVec2::ZERO,
+		},
+		resolution: glam::UVec2::new(0, 0),
+		quality: RenderQuality::Full,
+	};
+
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
 		let start = inverse.transform_point2((0., 0.).into());
@@ -197,4 +207,25 @@ fn replace_transform<Data, TransformInput: Transform>(
 		*data_transform.transform = transform.transform();
 	}
 	data
+}
+
+#[node_macro::node(category("Debug"))]
+async fn boundless_footprint<T: 'n + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
+	)]
+	transform_target: impl Node<Context<'static>, Output = Instances<T>>,
+) -> Instances<T> {
+	let ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::BOUNDLESS).with_real_time(0.).erase_parent();
+
+	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	ctx.hash(&mut hasher);
+	let hash = hasher.finish();
+	debug!("The context with hash {hash} is now: {ctx:#?}");
+
+	transform_target.eval(ctx.into_context()).await
 }
