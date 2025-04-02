@@ -2,34 +2,34 @@
 title = "Graphite progress report (Q4 2024)"
 date = 2025-03-31
 [extra]
-banner = "https://files.keavon.com/-/BelatedDoubleLonghornbeetle/Dunes.png"
-banner_png = "https://files.keavon.com/-/BelatedDoubleLonghornbeetle/Dunes.png"
+banner = "https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.avif"
+banner_png = "https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.png"
 author = "Keavon Chambers & Hypercube"
-summary = "TODO: Summary and date above"
+summary = "Graphite's Q4 2024 update introduces quality of life features for its interactive and procedural editing workflows."
 css = ["/component/demo-artwork.css"]
 +++
 
-[Graphite](/), a new open source 2D procedural graphics editor, has [wrapped up 2024](../year-in-review-2024-highlights-and-a-peek-at-2025) with a fourth quarter (October-December) focused on introducing **quality of life features** for both Graphite's interactive **tools-driven and procedural editing** workflows.
-
-All Q4 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-10-01&until=2024-12-31) and all noteworthy changes are detailed below.
+[Graphite](/), a new open source 2D procedural graphics editor, has [wrapped up 2024](../year-in-review-2024-highlights-and-a-peek-at-2025) with a fourth quarter (October-December) focused on introducing **quality of life features** for both Graphite's interactive **tools-driven and procedural editing workflows**.
 
 <!-- more -->
 
+All Q4 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-10-01&until=2024-12-31) and all noteworthy changes are detailed below.
+
 This is the fourth in our 2024 series of quarterly progress reports. If you missed [the previous post](../graphite-progress-report-q3-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars on GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
 
-To showcase the newly introduced feature of converting selected nodes into conveniently reusable subgraphs, the new *Procedural Dunes* artwork is presented below. Each dune layer is controlled just by a color, height, and random seed.
+To showcase the newly introduced feature of converting selected nodes into conveniently reusable subgraphs, the new *Parametric Dunescape* artwork is presented below. Every dune layer is generated just by its custom parameters for color, height, and random seed.
 
 <div class="demo-artwork">
-	<a href="...">
-		<img src="https://files.keavon.com/-/BelatedDoubleLonghornbeetle/Dunes.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Procedural Dunes" />
+	<a href="https://editor.graphite.rs/#demo/parametric-dunescape">
+		<img src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Parametric Dunescape" />
 	</a>
 	<p>
 		<span>
-			<em>Procedural Dunes</em>
+			<em>Parametric Dunescape</em>
 		</span>
 		<br />
 		<span>
-			<a href="...">Open this artwork</a> to<br />explore it yourself.
+			<a href="https://editor.graphite.rs/#demo/parametric-dunescape">Open this artwork</a> to<br />explore it yourself.
 		</span>
 	</p>
 </div>
@@ -43,7 +43,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/ProperCoolZorilla/capture_64_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/merge-selected-nodes.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/merge-selected-nodes.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -51,35 +52,24 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/ExhaustedBrokenCalf/capture_44_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/text-area-controls.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/text-area-controls.mp4" type="video/mp4" />
   	</video>
   </div>
 
-- Pinable node sections in the Properties panel <small>([commit e6d8c47](https://github.com/GraphiteEditor/Graphite/commit/e6d8c4743d2aff15985c929df2cc7381a61908a0))</small>
+- Pinnable node sections in the Properties panel <small>([commit e6d8c47](https://github.com/GraphiteEditor/Graphite/commit/e6d8c4743d2aff15985c929df2cc7381a61908a0))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/PaleFrayedGentoopenguin/capture_47_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/pinnable-node-sections.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/pinnable-node-sections.mp4" type="video/mp4" />
   	</video>
   </div>
-- New demo artwork, *Changing Seasons*, featured in the [last blog post](../graphite-progress-report-q3-2024) <small>([commit fa6b5f2](https://github.com/GraphiteEditor/Graphite/commit/fa6b5f298adf395362e1aaa2c07be89fa89eaee2))</small>
+- New demo artwork, [*Changing Seasons*](https://editor.graphite.rs/#demo/changing-seasons), featured in the [previous progress report](../graphite-progress-report-q3-2024) <small>([commit fa6b5f2](https://github.com/GraphiteEditor/Graphite/commit/fa6b5f298adf395362e1aaa2c07be89fa89eaee2))</small>
 
-  <div class="demo-artwork" style="justify-content: left">
-  	<a href="https://editor.graphite.rs/#demo/changing-seasons">
-  		<img src="https://static.graphite.rs/content/blog/2024-10-15-graphite-progress-report-q3-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Changing Seasons" />
-  	</a>
-  	<p>
-  		<span>
-  			<em>Changing Seasons</em>
-  		</span>
-  		<br />
-  		<span>
-  			<a href="https://editor.graphite.rs/#demo/changing-seasons">Open this artwork</a> to<br />explore it yourself.
-  		</span>
-  	</p>
-  </div>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/WeePaleAmbushbug/capture_48_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/changing-seasons-demo.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/changing-seasons-demo.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -87,19 +77,21 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/FriendlyDrearyIsopod/capture_49_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/offset-path-node.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/offset-path-node.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - *Flatten Vector Elements* node that turns multiple layers of vector paths into a single combined path; and changes to the *Copy to Points*, *Repeat*, and *Circular Repeat* nodes so they output group data instead of a single vector path, allowing each separate layer to be modified by nodes which operate on groups (like *Assign Colors*), or flattened with *Flatten Vector Elements* to have the prior behavior <small>([#2011](https://github.com/GraphiteEditor/Graphite/pull/2011), [#2045](https://github.com/GraphiteEditor/Graphite/pull/2045))</small>
 
-  <img src="https://files.keavon.com/-/FemaleSafeOx/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="TODO:" />
+  <img src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/flatten-vector-elements-node.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Visual description of the change introduced by the Flatten Vector Elements node and its usage with instancing nodes" />
 
 - Support for *Fill* and *Stroke* nodes with groups, applying to each vector layer within <small>([#2046](https://github.com/GraphiteEditor/Graphite/pull/2046))</small>
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/UtterMysteriousHaddock/capture_50_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/fill-and-stroke-nodes-on-groups.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/fill-and-stroke-nodes-on-groups.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -107,7 +99,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/LimpingCadetblueFairybluebird/capture_51_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/switch-node.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/switch-node.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -115,7 +108,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/LowPointedBorer/capture_53_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/bevel-node.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/bevel-node.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -123,7 +117,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/DistinctBountifulDove/capture_54_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/jitter-points-node.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/jitter-points-node.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -131,7 +126,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/PartialAnySturgeon/capture_55_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/node-insertion-button-in-properties-panel.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/node-insertion-button-in-properties-panel.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -139,7 +135,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/WhitesmokeCanineWireworm/capture_57_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/path-tool-space-to-drag-anchor.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/path-tool-space-to-drag-anchor.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -147,7 +144,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/MisguidedNegativeGoldeneye/capture_58_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/path-tool-tab-to-swap-handle.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/path-tool-tab-to-swap-handle.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -155,7 +153,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/SkyblueBaggyWeasel/capture_60_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/pen-tool-combining-layers.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/pen-tool-combining-layers.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -163,7 +162,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/SerpentineBoringLeonberger/capture_63_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/clamp-node.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/clamp-node.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -171,25 +171,27 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 - *Dot Product* node that calculates the mathematical dot product between two numerical vectors <small>([#2126](https://github.com/GraphiteEditor/Graphite/pull/2126))</small>
 - *Math* node that calculates a custom math expression with variables "A" and "B" <small>([#2121](https://github.com/GraphiteEditor/Graphite/pull/2121))</small>
 
-  <img src="https://files.keavon.com/-/CommonBountifulIceblueredtopzebra/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="TODO:" />
+  <img src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/math-node.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Visualization of the Math node properties showing the example expression: 0.33 * A + (1 - 0.33) * B" />
 
 - Degrees/radians option in the trig-related math nodes and "Always Positive" option in the *Modulo* node for more convenient usage of the math nodes <small>([commit d649052](https://github.com/GraphiteEditor/Graphite/commit/d649052255c10c15754c3a3707f2edf996d2468d))</small>
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/DirectShyGnat/capture_76_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/modulo-and-trig-node-additions.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/modulo-and-trig-node-additions.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Node graph control bar revamp <small>([#2093](https://github.com/GraphiteEditor/Graphite/pull/2093))</small>
 
-  <img src="https://files.keavon.com/-/NewBurlywoodIrishterrier/capture.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="TODO:" />
+  <img src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/node-graph-control-bar-revamp.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="View of the control bar area of the UI in the node graph featuring new buttons" />
 
 - Freehand tool feature for drawing new subpaths on an existing vector layer by holding <kbd>Shift</kbd> <small>([commit ed119ad](https://github.com/GraphiteEditor/Graphite/commit/ed119ad3d799030dbc488ccfc8ca9ad057eeff2c))</small>
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/AlarmedEnchantedCapeghostfrog/capture_65_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/freehand-tool-draw-appended-to-layer.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/freehand-tool-draw-appended-to-layer.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -197,7 +199,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/SplendidKlutzyOtter/capture_66_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-placement-into-artboard-drawn-on.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-placement-into-artboard-drawn-on.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -205,7 +208,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/AverageMediumseagreenCat/capture_67_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-menu-bar-additions.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-menu-bar-additions.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -213,7 +217,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/ShimmeringOptimisticAtlanticsharpnosepuffer/capture_68_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/box-selection-subtraction.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/box-selection-subtraction.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -221,7 +226,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/ConfusedDazzlingPenguin/capture_69_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/path-tool-angle-locking-and-15deg-increments.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/path-tool-angle-locking-and-15deg-increments.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -229,7 +235,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/UnselfishTepidKob/capture_70_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-stack-multi-top-outputs.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-stack-multi-top-outputs.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -237,7 +244,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/MonthlyNeedyGlobefish/capture_73_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-panel-show-selected-within-collapsed.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/layer-panel-show-selected-within-collapsed.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -245,7 +253,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://files.keavon.com/-/UpsetHumiliatingSkink/capture_74_.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/quick-measurement-improvements.webm" type="video/webm" />
+		<source src="https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024/quick-measurement-improvements.mp4" type="video/mp4" />
   	</video>
   </div>
 
