@@ -39,7 +39,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				DocumentNode {
 					manual_composition: Some(concrete!(Context)),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 					..Default::default()
 				},
 				// TODO: Add conversion step
