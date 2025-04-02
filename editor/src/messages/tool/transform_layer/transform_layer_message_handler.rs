@@ -702,12 +702,17 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 #[cfg(test)]
 mod test_transform_layer {
-	use crate::messages::portfolio::document::graph_operation::transform_utils;
+	use crate::messages::{
+		portfolio::document::graph_operation::{
+			transform_utils,
+			utility_types::{ModifyInputsContext, TransformIn},
+		},
+		prelude::Message,
+		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
+	};
 	use crate::test_utils::test_prelude::*;
-	// Use ModifyInputsContext to locate the transform node
-	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-	use crate::messages::prelude::Message;
 	use glam::DAffine2;
+	use graphene_core::vector::PointId;
 	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
@@ -982,11 +987,102 @@ mod test_transform_layer {
 		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
 		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
 	}
+
+	#[tokio::test]
+	async fn test_scale_with_panned_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let pan_amount = DVec2::new(200.0, 150.0);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
+		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
+
+		assert!((scale_x - 2.0).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
+		assert!((scale_y - 2.0).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+	}
+
+	#[tokio::test]
+	async fn test_scale_with_zoomed_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
+		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
+
+		assert!((scale_x - 2.0).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
+		assert!((scale_y - 2.0).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+	}
+
+	#[tokio::test]
+	async fn test_rotate_with_rotated_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// Rotate the document view (45 degrees)
+		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let original_angle = original_transform.to_scale_angle_translation().1;
+		let final_angle = final_transform.to_scale_angle_translation().1;
+		let angle_change = (final_angle - original_angle).to_degrees();
+
+		// Normalize angle between 0 and 360
+		let angle_change = ((angle_change % 360.0) + 360.0) % 360.0;
+		assert!((angle_change - 90.0).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+	}
+
 	#[tokio::test]
 	async fn test_grs_single_anchor() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.drag_tool(ToolType::Pen, 100., 100., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let modification_type = VectorModificationType::InsertPoint {
+			id: PointId::generate(),
+			position: DVec2::ZERO,
+		};
+		editor.handle_message(GraphOperationMessage::Vector { layer, modification_type }).await;
 		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
 
 		// Testing grab operation - just checking that it doesn't crash
@@ -1000,8 +1096,6 @@ mod test_transform_layer {
 			.await;
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
-		let document = editor.active_document();
-		let layer = document.metadata().all_layers().next().unwrap();
 		let final_transform = get_layer_transform(&mut editor, layer).await;
 		// Verifying a transform node was created
 		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
