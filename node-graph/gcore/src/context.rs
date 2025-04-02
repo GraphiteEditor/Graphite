@@ -255,7 +255,7 @@ impl core::fmt::Debug for OwnedContextImpl {
 		f.debug_struct("OwnedContextImpl")
 			.field("footprint", &self.footprint)
 			.field("varargs", &self.varargs)
-			// .field("parent", &self.parent)
+			.field("parent", &self.parent.as_ref().map(|_| "<Parent>"))
 			.field("index", &self.index)
 			.field("real_time", &self.real_time)
 			.field("animation_time", &self.animation_time)
