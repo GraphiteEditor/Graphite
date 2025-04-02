@@ -249,7 +249,6 @@ pub struct OwnedContextImpl {
 	animation_time: Option<f64>,
 }
 
-// TODO: Probably delete this before committing
 impl core::fmt::Debug for OwnedContextImpl {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.debug_struct("OwnedContextImpl")
