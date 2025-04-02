@@ -5,7 +5,6 @@ use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
 use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
 use core::f64;
-use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DMat2, DVec2};
 
 pub trait Transform {
