@@ -272,11 +272,9 @@ impl Default for OwnedContextImpl {
 
 impl core::hash::Hash for OwnedContextImpl {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		debug!("Calculating hash for {:#?}", self);
 		self.footprint.hash(state);
-		// TODO: Reenable before committing
-		// self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
-		// self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+		self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
 		self.index.hash(state);
 		self.real_time.map(|x| x.to_bits()).hash(state);
 		self.animation_time.map(|x| x.to_bits()).hash(state);
@@ -290,7 +288,10 @@ impl OwnedContextImpl {
 		let index = value.try_index();
 		let time = value.try_time();
 		let frame_time = value.try_animation_time();
-		let parent = value.arc_clone();
+		let parent = match value.varargs_len() {
+			Ok(x) if x > 0 => value.arc_clone(),
+			_ => None,
+		};
 		OwnedContextImpl {
 			footprint,
 			varargs: None,

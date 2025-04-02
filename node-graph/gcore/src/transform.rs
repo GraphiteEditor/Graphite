@@ -217,15 +217,29 @@ async fn boundless_footprint<T: 'n + 'static>(
 		Context -> GraphicGroupTable,
 		Context -> ImageFrameTable<Color>,
 		Context -> TextureFrameTable,
+		Context -> String,
+		Context -> f64,
 	)]
-	transform_target: impl Node<Context<'static>, Output = Instances<T>>,
-) -> Instances<T> {
-	let ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::BOUNDLESS).with_real_time(0.).erase_parent();
+	transform_target: impl Node<Context<'static>, Output = T>,
+) -> T {
+	let ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::BOUNDLESS);
 
-	let mut hasher = std::collections::hash_map::DefaultHasher::new();
-	ctx.hash(&mut hasher);
-	let hash = hasher.finish();
-	debug!("The context with hash {hash} is now: {ctx:#?}");
+	transform_target.eval(ctx.into_context()).await
+}
+#[node_macro::node(category("Debug"))]
+async fn freeze_real_time<T: 'n + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
+		Context -> String,
+		Context -> f64,
+	)]
+	transform_target: impl Node<Context<'static>, Output = T>,
+) -> T {
+	let ctx = OwnedContextImpl::from(ctx).with_real_time(0.);
 
 	transform_target.eval(ctx.into_context()).await
 }
