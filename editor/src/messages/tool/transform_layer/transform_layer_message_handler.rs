@@ -703,10 +703,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 #[cfg(test)]
 mod test_transform_layer {
 	use crate::messages::{
-		portfolio::document::graph_operation::{
-			transform_utils,
-			utility_types::{ModifyInputsContext},
-		},
+		portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext},
 		prelude::Message,
 		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
 	};
