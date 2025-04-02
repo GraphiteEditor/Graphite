@@ -5,8 +5,11 @@ date = 2025-03-31
 banner = "https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.avif"
 banner_png = "https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.png"
 author = "Keavon Chambers & Hypercube"
-summary = "Graphite's Q4 2024 update introduces quality of life features for its interactive and procedural editing workflows."
+summary = "Graphite's Q4 2024 update introduces quality of life features across drawing tools and procedural editing."
 css = ["/component/demo-artwork.css"]
+reddit = "https://www.reddit.com/r/graphite/comments/1jpjqcs/blog_post_graphite_progress_report_q4_2024/"
+twitter = "https://x.com/GraphiteEditor/status/1907350199414206604"
+bluesky = "https://bsky.app/profile/graphiteeditor.bsky.social/post/3llsxykppjs2c"
 +++
 
 [Graphite](/), a new open source 2D procedural graphics editor, has [wrapped up 2024](../year-in-review-2024-highlights-and-a-peek-at-2025) with a fourth quarter (October-December) focused on introducing **quality of life features** for both Graphite's interactive **tools-driven and procedural editing workflows**.
@@ -16,6 +19,8 @@ css = ["/component/demo-artwork.css"]
 All Q4 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-10-01&until=2024-12-31) and all noteworthy changes are detailed below.
 
 This is the fourth in our 2024 series of quarterly progress reports. If you missed [the previous post](../graphite-progress-report-q3-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars on GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
+
+At the time of publication, there is **one week left to apply for a summer 2025 internship with us through Google Summer of Code.** [Learn more here](../internships-for-a-rust-graphics-engine-gsoc-2025) and apply before [April 8 at 18:00 UTC](https://www.wolframalpha.com/input?i=April+8%2C+18%3A00+UTC).
 
 To showcase the newly introduced feature of converting selected nodes into conveniently reusable subgraphs, the new *Parametric Dunescape* artwork is presented below. Every dune layer is generated just by its custom parameters for color, height, and random seed.
 
