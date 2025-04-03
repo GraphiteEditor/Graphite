@@ -294,6 +294,7 @@ struct PenToolData {
 	handle_end: Option<DVec2>,
 	next_point: DVec2,
 	next_handle_start: DVec2,
+	last_layer: LayerNodeIdentifier,
 
 	g1_continuous: bool,
 	toggle_colinear_debounce: bool,
@@ -921,6 +922,8 @@ impl PenToolData {
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 		self.end_point_segment = None;
 		self.draw_mode = DrawMode::ContinuePath;
+		self.last_layer = layer;
+
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
@@ -1601,6 +1604,8 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
+				let should_delete_layer = tool_data.latest_points.len() == 1;
+
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
@@ -1608,6 +1613,13 @@ impl Fsm for PenToolFsmState {
 				tool_data.draw_mode = DrawMode::BreakPath;
 				tool_data.snap_manager.cleanup(responses);
 
+				if should_delete_layer {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![tool_data.last_layer.to_node()],
+						delete_children: true,
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 				responses.add(OverlaysMessage::Draw);
 
 				PenToolFsmState::Ready
