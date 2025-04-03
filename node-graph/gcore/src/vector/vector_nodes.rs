@@ -440,7 +440,7 @@ async fn round_corners(
 			let dir1 = (curr - prev).normalize_or(DVec2::X);
 			let dir2 = (next - curr).normalize_or(DVec2::X);
 
-			let theta = dir1.angle_to(dir2).abs();
+			let theta = PI - dir1.angle_to(dir2).abs();
 
 			// Skip near-straight corners
 			if theta > PI - min_angle_threshold.to_radians() {
