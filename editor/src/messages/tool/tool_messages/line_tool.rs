@@ -421,3 +421,103 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 	document_points
 }
+
+#[cfg(test)]
+mod test_line_tool {
+	use crate::{messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer, test_utils::test_prelude::*};
+	use graph_craft::document::value::TaggedValue;
+
+	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let node_id = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.filter_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, &network_interface).find_node_inputs("Line")?;
+				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+					return None;
+				};
+				Some((start, end))
+			})
+			.next();
+		node_id
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_basicdraw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					assert!((start_input - DVec2::ZERO).length() < 1.0, "Start point should be near (0,0)");
+					assert!((end_input - DVec2::new(100.0, 100.0)).length() < 1.0, "End point should be near (100,100)");
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_ctrl_anglelock() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let line_vec = end_input - start_input;
+					let original_angle = line_vec.angle_to(DVec2::X);
+					editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
+					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
+						match (updated_start, updated_end) {
+							(updated_start, updated_end) => {
+								let updated_line_vec = updated_end - updated_start;
+								let updated_angle = updated_line_vec.angle_to(DVec2::X);
+								assert!((original_angle - updated_angle).abs() < 0.1, "Line angle should be locked when Ctrl is kept pressed");
+								assert!((updated_start - updated_end).length() > 1.0, "Line should be able to change length when Ctrl is kept pressed");
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_alt() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::ALT).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let expected_start = DVec2::new(0., 100.);
+					let expected_end = DVec2::new(200., 100.);
+					assert!((start_input - expected_start).length() < 1.0, "start point should be near (0,100)");
+					assert!((end_input - expected_end).length() < 1.0, "end point should be near (200,100)");
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_alt_shift_drag() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 150., 120., ModifierKeys::ALT | ModifierKeys::SHIFT).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let line_vec = end_input - start_input;
+					let angle_radians = line_vec.angle_to(DVec2::X);
+					let angle_degrees = angle_radians.to_degrees();
+					let nearest_angle = (angle_degrees / 15.0).round() * 15.0;
+
+					assert!((angle_degrees - nearest_angle).abs() < 1.0, "Angle should snap to the nearest 15 degrees");
+				}
+			}
+		}
+	}
+}
