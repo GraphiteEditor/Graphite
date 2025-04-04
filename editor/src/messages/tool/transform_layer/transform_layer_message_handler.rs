@@ -702,12 +702,14 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 #[cfg(test)]
 mod test_transform_layer {
-	use crate::messages::portfolio::document::graph_operation::transform_utils;
+	use crate::messages::{
+		portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext},
+		prelude::Message,
+		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
+	};
 	use crate::test_utils::test_prelude::*;
-	// Use ModifyInputsContext to locate the transform node
-	use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
-	use crate::messages::prelude::Message;
 	use glam::DAffine2;
+	use graphene_core::vector::PointId;
 	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
@@ -1063,5 +1065,36 @@ mod test_transform_layer {
 		// Normalize angle between 0 and 360
 		let angle_change = ((angle_change % 360.0) + 360.0) % 360.0;
 		assert!((angle_change - 90.0).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+	}
+
+	#[tokio::test]
+	async fn test_grs_single_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let point_id = PointId::generate();
+		let modification_type = VectorModificationType::InsertPoint {
+			id: point_id,
+			position: DVec2::new(100.0, 100.0),
+		};
+		editor.handle_message(GraphOperationMessage::Vector { layer, modification_type }).await;
+		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
+
+		// Testing grab operation - just checking that it doesn't crash.
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await;
+		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
 	}
 }
