@@ -105,8 +105,10 @@ pub(crate) enum ParsedField {
 		ty: Type,
 		exposed: bool,
 		value_source: ParsedValueSource,
-		number_min: Option<LitFloat>,
-		number_max: Option<LitFloat>,
+		number_soft_min: Option<LitFloat>,
+		number_soft_max: Option<LitFloat>,
+		number_hard_min: Option<LitFloat>,
+		number_hard_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
 		implementations: Punctuated<Type, Comma>,
 	},
@@ -230,7 +232,7 @@ impl Parse for NodeFnAttributes {
 							r#"
 							Unsupported attribute in `node`.
 							Supported attributes are 'category', 'path' and 'name'.
-							
+
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
 							"#
@@ -419,16 +421,29 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		_ => ParsedValueSource::None,
 	};
 
-	let number_min = extract_attribute(attrs, "min")
+	let number_soft_min = extract_attribute(attrs, "soft_min")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `min` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_min` value for argument '{}': {}", ident, e)))
 		})
 		.transpose()?;
-	let number_max = extract_attribute(attrs, "max")
+	let number_soft_max = extract_attribute(attrs, "soft_max")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `max` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_max` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+
+	let number_hard_min = extract_attribute(attrs, "hard_min")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+	let number_hard_max = extract_attribute(attrs, "hard_max")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{}': {}", ident, e)))
 		})
 		.transpose()?;
 
@@ -500,8 +515,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			description,
 			widget_override,
 			exposed,
-			number_min,
-			number_max,
+			number_soft_min,
+			number_soft_max,
+			number_hard_min,
+			number_hard_max,
 			number_mode_range,
 			ty,
 			value_source,
@@ -716,8 +733,10 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ParsedValueSource::None,
-				number_min: None,
-				number_max: None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -781,8 +800,10 @@ mod tests {
 					ty: parse_quote!(DVec2),
 					exposed: false,
 					value_source: ParsedValueSource::None,
-					number_min: None,
-					number_max: None,
+					number_soft_min: None,
+					number_soft_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
 				},
@@ -834,8 +855,10 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ParsedValueSource::Default(quote!(50.)),
-				number_min: None,
-				number_max: None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -885,8 +908,10 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ParsedValueSource::None,
-				number_min: None,
-				number_max: None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: {
 					let mut p = Punctuated::new();
@@ -911,8 +936,8 @@ mod tests {
 				a: f64,
 				/// b
 				#[range((0., 100.))]
-				#[min(-500.)]
-				#[max(500.)]
+				#[soft_min(-500.)]
+				#[soft_max(500.)]
 				b: f64,
 			) -> f64 {
 				a + b
@@ -948,8 +973,10 @@ mod tests {
 				ty: parse_quote!(f64),
 				exposed: false,
 				value_source: ParsedValueSource::None,
-				number_min: Some(parse_quote!(-500.)),
-				number_max: Some(parse_quote!(500.)),
+				number_soft_min: Some(parse_quote!(-500.)),
+				number_soft_max: Some(parse_quote!(500.)),
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: Some(parse_quote!((0., 100.))),
 				implementations: Punctuated::new(),
 			}],
@@ -999,8 +1026,10 @@ mod tests {
 				widget_override: ParsedWidgetOverride::None,
 				exposed: true,
 				value_source: ParsedValueSource::None,
-				number_min: None,
-				number_max: None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
