@@ -1209,14 +1209,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.children(metadata).collect();
+						let children: HashSet<_> = layer.descendants(metadata).collect();
 						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
 					} else {
 						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
 						self.collapsed.0.extend(children_to_add);
 					}
 					self.collapsed.0.push(layer);
