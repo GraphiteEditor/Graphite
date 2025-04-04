@@ -219,10 +219,33 @@ fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
-/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value.
+/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value, or the angle of a line from the origin to the specified point.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians { value.atan() } else { value.atan().to_degrees() }
+fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
+	value.atan(radians)
+}
+
+pub trait TangentInverse {
+	type Output: num_traits::float::Float;
+	fn atan(self, radians: bool) -> Self::Output;
+}
+impl TangentInverse for f32 {
+	type Output = f32;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for f64 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for glam::DVec2 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.y.atan2(self.x) } else { self.y.atan2(self.x).to_degrees() }
+	}
 }
 
 /// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
