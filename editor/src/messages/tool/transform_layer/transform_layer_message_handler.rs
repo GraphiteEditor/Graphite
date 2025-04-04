@@ -1139,7 +1139,7 @@ mod test_transform_layer {
 		let final_scale_x = final_transform.matrix2.x_axis.length();
 		let final_scale_y = final_transform.matrix2.y_axis.length();
 		assert!(final_scale_x > 1e-5, "Scale should be non-zero after rescaling.");
-		assert!(final_scale_y > 1e-5, "Scale should be non-zero after rescaling");
+		assert!(final_scale_y > 1e-5, "Scale should be non-zero after rescaling.");
 
 		let determinant = final_transform.matrix2.determinant();
 		assert!(determinant != 0.0, "Determinant should not be exactly zero");
