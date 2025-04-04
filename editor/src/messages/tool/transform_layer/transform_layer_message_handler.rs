@@ -1083,7 +1083,7 @@ mod test_transform_layer {
 		editor.handle_message(GraphOperationMessage::Vector { layer, modification_type }).await;
 		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
 
-		// Testing grab operation - just checking that it doesn't crash.
+		// Testing grab operation- just checking that it doesn't crash.
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
 		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
