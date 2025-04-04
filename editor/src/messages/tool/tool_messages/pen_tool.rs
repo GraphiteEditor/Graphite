@@ -1601,6 +1601,8 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
+				let should_delete_layer = tool_data.latest_points.len() == 1;
+
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
@@ -1608,6 +1610,13 @@ impl Fsm for PenToolFsmState {
 				tool_data.draw_mode = DrawMode::BreakPath;
 				tool_data.snap_manager.cleanup(responses);
 
+				if should_delete_layer && layer.is_some() {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![layer.unwrap().to_node()],
+						delete_children: true,
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 				responses.add(OverlaysMessage::Draw);
 
 				PenToolFsmState::Ready
