@@ -30,7 +30,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	Arc::new(editor.application_io.as_ref().unwrap().create_window())
+	return Arc::new(editor.application_io.as_ref().unwrap().create_window());
 }
 
 // #[cfg(target_arch = "wasm32")]
@@ -254,11 +254,11 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;
 
-	#[cfg(feature = "vello")]
+	#[cfg(all(feature = "vello", not(test)))]
 	let surface_handle = _surface_handle.eval(None).await;
 
 	let use_vello = editor_api.editor_preferences.use_vello();
-	#[cfg(feature = "vello")]
+	#[cfg(all(feature = "vello", not(test)))]
 	let use_vello = use_vello && surface_handle.is_some();
 
 	let mut metadata = RenderMetadata {
@@ -274,12 +274,12 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params, footprint),
 		ExportFormat::Canvas => {
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
-				#[cfg(feature = "vello")]
+				#[cfg(all(feature = "vello", not(test)))]
 				return RenderOutput {
 					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap(), render_params).await,
 					metadata,
 				};
-				#[cfg(not(feature = "vello"))]
+				#[cfg(any(not(feature = "vello"), test))]
 				render_svg(data, SvgRender::new(), render_params, footprint)
 			} else {
 				render_svg(data, SvgRender::new(), render_params, footprint)
