@@ -68,6 +68,16 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
+	#[cfg(target_arch = "wasm32")]
+	{
+		log::debug!("testing tauri");
+		if let Some(window) = web_sys::window() {
+			if let Ok(tauri) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")) {
+				log::debug!("enabling wgpu");
+				return Some(true);
+			}
+		}
+	}
 	match WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
@@ -95,6 +105,7 @@ impl WasmApplicationIo {
 		#[cfg(not(target_arch = "wasm32"))]
 		let executor = WgpuExecutor::new().await;
 		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+		// Always enable wgpu when running with tauri
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -103,10 +114,24 @@ impl WasmApplicationIo {
 			windows: Vec::new(),
 			resources: HashMap::new(),
 		};
-		if cfg!(target_arch = "wasm32") {
-			let window = io.create_window();
-			io.windows.push(WindowWrapper { window });
-		}
+		let window = io.create_window();
+		io.windows.push(WindowWrapper { window });
+
+		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+		io
+	}
+	pub async fn new_offscreen() -> Self {
+		let executor = WgpuExecutor::new().await;
+		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+		// Always enable wgpu when running with tauri
+		let mut io = Self {
+			#[cfg(target_arch = "wasm32")]
+			ids: AtomicU64::new(0),
+			#[cfg(feature = "wgpu")]
+			gpu_executor: executor,
+			windows: Vec::new(),
+			resources: HashMap::new(),
+		};
 
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
 		io
@@ -178,12 +203,13 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
-		#[cfg(feature = "wayland")]
+		#[cfg(not(test))]
 		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		#[cfg(feature = "wayland")]
+		log::error!("spawning window");
+		#[cfg(not(test))]
 		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
-		#[cfg(not(feature = "wayland"))]
+		#[cfg(test)]
 		let event_loop = winit::event_loop::EventLoop::new().unwrap();
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
@@ -291,7 +317,10 @@ impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
 			imaginate_hostname: "http://localhost:7860/".into(),
+			#[cfg(target_arch = "wasm32")]
 			use_vello: false,
+			#[cfg(not(target_arch = "wasm32"))]
+			use_vello: true,
 		}
 	}
 }

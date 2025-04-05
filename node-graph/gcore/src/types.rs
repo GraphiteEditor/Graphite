@@ -78,7 +78,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
