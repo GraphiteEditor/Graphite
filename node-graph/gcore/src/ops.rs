@@ -219,7 +219,9 @@ fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
-/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value, or the angle of a line from the origin to the specified point.
+/// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
+/// atan: the angle whose tangent is the specified scalar number.
+/// atan2: the angle of a ray from the origin to the specified vector2 point.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
 	value.atan(radians)
