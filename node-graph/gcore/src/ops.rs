@@ -248,19 +248,6 @@ impl TangentInverse for glam::DVec2 {
 	}
 }
 
-/// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
-#[node_macro::node(name("Tangent Inverse 2-Argument"), category("Math: Trig"))]
-fn tangent_inverse_2_argument<U: num_traits::float::Float>(
-	_: impl Ctx,
-	#[implementations(f64, f32)] y: U,
-	#[expose]
-	#[implementations(f64, f32)]
-	x: U,
-	radians: bool,
-) -> U {
-	if radians { y.atan2(x) } else { y.atan2(x).to_degrees() }
-}
-
 /// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
 fn random<U: num_traits::float::Float>(
