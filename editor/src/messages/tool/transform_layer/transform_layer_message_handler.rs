@@ -703,7 +703,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 #[cfg(test)]
 mod test_transform_layer {
 	use crate::messages::{
-		portfolio::document::graph_operation::{transform_utils, utility_types::{ModifyInputsContext, TransformIn}},
+		portfolio::document::graph_operation::{
+			transform_utils,
+			utility_types::{ModifyInputsContext, TransformIn},
+		},
 		prelude::Message,
 		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
 	};
@@ -1105,43 +1108,35 @@ mod test_transform_layer {
 		let document = editor.active_document();
 		let layer = document.metadata().all_layers().next().unwrap();
 
-		let near_zero_scale = DAffine2::from_scale(DVec2::new(1e-5, 1e-5));
-		editor
-			.handle_message(GraphOperationMessage::TransformSet {
-				layer,
-				transform: near_zero_scale,
-				transform_in: TransformIn::Local,
-				skip_rerender: false,
-			})
-			.await;
+		// First scale to near-zero
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDecimalPoint).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 1 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
-		let zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(zero_transform.is_finite(), "First transform should be finite");
+		let near_zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Verify scale is near zero.
+		let scale_x = near_zero_transform.matrix2.x_axis.length();
+		let scale_y = near_zero_transform.matrix2.y_axis.length();
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x > 0.0, "Scale factor X should not be exactly zero");
+		assert!(scale_y > 0.0, "Scale factor Y should not be exactly zero");
 
-		let scale_x = zero_transform.matrix2.x_axis.length();
-		let scale_y = zero_transform.matrix2.y_axis.length();
-		assert!(scale_x <= 1e-5, "X scale should be near zero");
-		assert!(scale_y <= 1e-5, "Y scale should be near zero");
-
-		let rescale = DAffine2::from_scale(DVec2::new(2.0, 2.0));
-		editor
-			.handle_message(GraphOperationMessage::TransformSet {
-				layer,
-				transform: rescale * zero_transform,
-				transform_in: TransformIn::Local,
-				skip_rerender: false,
-			})
-			.await;
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(final_transform.is_finite(), "Matrix should be finite");
+		assert!(final_transform.is_finite(), "Transform should be finite after rescaling");
 
-		let final_scale_x = final_transform.matrix2.x_axis.length();
-		let final_scale_y = final_transform.matrix2.y_axis.length();
-		assert!(final_scale_x > 1e-5, "Scale should be non-zero after rescaling.");
-		assert!(final_scale_y > 1e-5, "Scale should be non-zero after rescaling.");
-
-		let determinant = final_transform.matrix2.determinant();
-		assert!(determinant != 0.0, "Determinant should not be exactly zero");
+		let new_scale_x = final_transform.matrix2.x_axis.length();
+		let new_scale_y = final_transform.matrix2.y_axis.length();
+		assert!(new_scale_x > 0.0, "After rescaling, scale factor X should be non-zero");
+		assert!(new_scale_y > 0.0, "After rescaling, scale factor Y should be non-zero");
 	}
 }
