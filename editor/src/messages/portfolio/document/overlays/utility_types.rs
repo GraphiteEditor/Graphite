@@ -19,6 +19,16 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+// #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+// pub struct OverlaySettings {
+// 	pub overlays_artboard_name: bool,
+// 	pub overlays_compass_rose: bool,
+// 	pub overlays_transform_cage: bool,
+// 	pub overlays_pivot: bool,
+// 	pub overlays_path: bool,
+// 	pub overlays_anchors: bool,
+// 	pub overlays_handles: bool,
+// }
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
@@ -29,6 +39,7 @@ pub struct OverlayContext {
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
+	// pub overlay_settings: OverlaySettings,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {

@@ -144,6 +144,45 @@ pub enum DocumentMessage {
 	SetOverlaysVisibility {
 		visible: bool,
 	},
+	SetOverlayArtboardToolVisibility {
+		visible: bool,
+	},
+	SetOverlayEllipseToolVisibility {
+		visible: bool,
+	},
+	SetOverlayFreehandToolVisibility {
+		visible: bool,
+	},
+	SetOverlayGradientToolVisibility {
+		visible: bool,
+	},
+	SetOverlayLineToolVisibility {
+		visible: bool,
+	},
+	SetOverlayPathToolVisibility {
+		visible: bool,
+	},
+	SetOverlayPenToolVisibility {
+		visible: bool,
+	},
+	SetOverlayPolygonToolVisibility {
+		visible: bool,
+	},
+	SetOverlayRectangleToolVisibility {
+		visible: bool,
+	},
+	SetOverlaySelectToolVisibility {
+		visible: bool,
+	},
+	SetOverlaySplineToolVisibility {
+		visible: bool,
+	},
+	SetOverlayTextToolVisibility {
+		visible: bool,
+	},
+	SetOverlayTransformLayerVisibility {
+		visible: bool,
+	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
 	},

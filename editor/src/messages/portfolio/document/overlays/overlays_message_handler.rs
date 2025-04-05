@@ -1,8 +1,21 @@
 use super::utility_types::OverlayProvider;
-use crate::messages::prelude::*;
+use crate::messages::{debug, prelude::*};
 
 pub struct OverlaysMessageData<'a> {
 	pub overlays_visible: bool,
+	pub overlay_artboard_tool_visible: bool,
+	pub overlay_ellipse_tool_visible: bool,
+	pub overlay_freehand_tool_visible: bool,
+	pub overlay_gradient_tool_visible: bool,
+	pub overlay_line_tool_visible: bool,
+	pub overlay_path_tool_visible: bool,
+	pub overlay_pen_tool_visible: bool,
+	pub overlay_polygon_tool_visible: bool,
+	pub overlay_rectangle_tool_visible: bool,
+	pub overlay_select_tool_visible: bool,
+	pub overlay_spline_tool_visible: bool,
+	pub overlay_text_tool_visible: bool,
+	pub overlay_transform_layer_visible: bool,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub device_pixel_ratio: f64,
 }
@@ -16,10 +29,27 @@ pub struct OverlaysMessageHandler {
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData { overlays_visible, ipp, .. } = data;
+		let OverlaysMessageData {
+			overlays_visible,
+			overlay_artboard_tool_visible,
+			overlay_ellipse_tool_visible,
+			overlay_freehand_tool_visible,
+			overlay_gradient_tool_visible,
+			overlay_line_tool_visible,
+			overlay_path_tool_visible,
+			overlay_pen_tool_visible,
+			overlay_polygon_tool_visible,
+			overlay_rectangle_tool_visible,
+			overlay_select_tool_visible,
+			overlay_spline_tool_visible,
+			overlay_text_tool_visible,
+			overlay_transform_layer_visible,
+			ipp,
+			..
+		} = data;
 
 		match message {
-			#[cfg(target_arch = "wasm32")]
+			// #[cfg(target_arch = "wasm32")]
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
@@ -55,11 +85,82 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 						device_pixel_ratio,
 					}));
 					for provider in &self.overlay_providers {
-						responses.add(provider(OverlayContext {
+						let message = provider(OverlayContext {
 							render_context: context.clone(),
 							size: size.as_dvec2(),
 							device_pixel_ratio,
-						}));
+						});
+						debug!("OverlaysMessageHandler: {:?}", message.clone());
+						match message {
+							Message::Tool(ToolMessage::Artboard(ArtboardToolMessage::Overlays(_))) => {
+								if overlay_artboard_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Ellipse(EllipseToolMessage::Overlays(_))) => {
+								if overlay_ellipse_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Freehand(FreehandToolMessage::Overlays(_))) => {
+								if overlay_freehand_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Gradient(GradientToolMessage::Overlays(_))) => {
+								if overlay_gradient_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Line(LineToolMessage::Overlays(_))) => {
+								if overlay_line_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Path(PathToolMessage::Overlays(_))) => {
+								if overlay_path_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Pen(PenToolMessage::Overlays(_))) => {
+								if overlay_pen_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Polygon(PolygonToolMessage::Overlays(_))) => {
+								if overlay_polygon_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Rectangle(RectangleToolMessage::Overlays(_))) => {
+								if overlay_rectangle_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Spline(SplineToolMessage::Overlays(_))) => {
+								if overlay_spline_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Select(SelectToolMessage::Overlays(_))) => {
+								if overlay_select_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::Text(TextToolMessage::Overlays(_))) => {
+								if overlay_text_tool_visible {
+									responses.add(message);
+								}
+							}
+							Message::Tool(ToolMessage::TransformLayer(TransformLayerMessage::Overlays(_))) => {
+								if overlay_transform_layer_visible {
+									responses.add(message);
+								}
+							}
+							_ => {
+								responses.add(message);
+							}
+						}
 					}
 				}
 			}
