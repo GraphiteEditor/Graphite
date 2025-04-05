@@ -348,12 +348,15 @@ where
 	Instances<I>: GraphicElementRendered,
 {
 	let mut result_table = GraphicGroupTable::default();
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
+
 	// The mirror center is based on the bounding box for now
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
 	let mirror_center = (bounding_box[0] + bounding_box[1]) / 2. + center;
-	// Normalize direction vector
+
+	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
-	// Create reflection matrix
+
+	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
 		glam::DMat2::from_cols(
 			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
@@ -361,16 +364,19 @@ where
 		),
 		DVec2::ZERO,
 	);
+
 	// Apply reflection around the center point
 	let modification = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
+
 	// Add original instance depending on the keep_original flag
 	if keep_original {
-		let original_element = instance.to_graphic_element();
-		result_table.push(original_element);
+		result_table.push(instance.to_graphic_element());
 	}
+
 	// Create and add mirrored instance
 	let mut mirrored_element = instance.to_graphic_element();
 	mirrored_element.new_ids_from_hash(None);
+
 	// Apply the transformation to the mirrored instance
 	let mirrored_instance = result_table.push(mirrored_element);
 	*mirrored_instance.transform = modification;
@@ -394,6 +400,7 @@ async fn round_corners(
 	min_angle_threshold: Angle,
 ) -> VectorDataTable {
 	let source_transform = source.transform();
+	let source_transform_inverse = source_transform.inverse();
 	let source = source.one_instance().instance;
 	let upstream_graphics_group = source.upstream_graphic_group.clone();
 
@@ -405,13 +412,13 @@ async fn round_corners(
 	let mut result = VectorData::empty();
 	result.style = source.style.clone();
 
-	// grab the initial pointID as a stable starting point
-	let mut initial_point_id = source.point_domain.ids().first().cloned().unwrap_or(PointId::generate());
+	// Grab the initial point ID as a stable starting point
+	let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
 
 	for mut subpath in source.stroke_bezier_paths() {
 		subpath.apply_transform(source_transform);
 
-		// Not enough points for corner rounding
+		// End if not enough points for corner rounding
 		if subpath.manipulator_groups().len() < 3 {
 			result.append_subpath(subpath, false);
 			continue;
@@ -475,7 +482,7 @@ async fn round_corners(
 
 		// One subpath for each shape
 		let mut rounded_subpath = Subpath::new(new_groups, is_closed);
-		rounded_subpath.apply_transform(source_transform.inverse());
+		rounded_subpath.apply_transform(source_transform_inverse);
 		result.append_subpath(rounded_subpath, false);
 	}
 
