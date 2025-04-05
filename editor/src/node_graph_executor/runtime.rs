@@ -131,7 +131,10 @@ impl NodeRuntime {
 	pub async fn run(&mut self) {
 		if self.editor_api.application_io.is_none() {
 			self.editor_api = WasmEditorApi {
+				#[cfg(not(test))]
 				application_io: Some(WasmApplicationIo::new().await.into()),
+				#[cfg(test)]
+				application_io: Some(WasmApplicationIo::new_offscreen().await.into()),
 				font_cache: self.editor_api.font_cache.clone(),
 				node_graph_message_sender: Box::new(self.sender.clone()),
 				editor_preferences: Box::new(self.editor_preferences.clone()),
