@@ -1049,6 +1049,63 @@ impl Color {
 			..*self
 		}
 	}
+
+	/// Convert RGB to XYZ color space
+	fn to_xyz(&self) -> [f64; 3] {
+		let r = self.red as f64;
+		let g = self.green as f64;
+		let b = self.blue as f64;
+
+		// sRGB to XYZ conversion matrix
+		let x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375;
+		let y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750;
+		let z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041;
+
+		[x, y, z]
+	}
+
+	/// Convert XYZ to LAB color space
+	fn xyz_to_lab(xyz: [f64; 3]) -> [f64; 3] {
+		// D65 illuminant reference values
+		let xn = 0.950489;
+		let yn = 1.0;
+		let zn = 1.088840;
+
+		let x = xyz[0];
+		let y = xyz[1];
+		let z = xyz[2];
+
+		let fx = if x / xn > 0.008856 { (x / xn).powf(1.0 / 3.0) } else { (903.3 * x / xn + 16.0) / 116.0 };
+
+		let fy = if y / yn > 0.008856 { (y / yn).powf(1.0 / 3.0) } else { (903.3 * y / yn + 16.0) / 116.0 };
+
+		let fz = if z / zn > 0.008856 { (z / zn).powf(1.0 / 3.0) } else { (903.3 * z / zn + 16.0) / 116.0 };
+
+		let l = 116.0 * fy - 16.0;
+		let a = 500.0 * (fx - fy);
+		let b = 200.0 * (fy - fz);
+
+		[l, a, b]
+	}
+
+	/// Convert RGB to LAB color space
+	pub fn to_lab(&self) -> [f64; 3] {
+		Self::xyz_to_lab(self.to_xyz())
+	}
+
+	/// Calculate the distance between two colors in LAB space
+	pub fn lab_distance(&self, other: &Color) -> f64 {
+		let lab1 = self.to_lab();
+		let lab2 = other.to_lab();
+
+		// Euclidean distance in LAB space
+		((lab1[0] - lab2[0]).powi(2) + (lab1[1] - lab2[1]).powi(2) + (lab1[2] - lab2[2]).powi(2)).sqrt()
+	}
+
+	/// Check if two colors are similar within a threshold in LAB space
+	pub fn is_similar_lab(&self, other: &Color, threshold: f64) -> bool {
+		self.lab_distance(other) <= threshold && (self.alpha - other.alpha).abs() <= 0.01
+	}
 }
 
 #[test]

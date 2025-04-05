@@ -41,9 +41,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.fill_set(fill);
 				}
 			}
-			GraphOperationMessage::RasterFillSet { layer, fills, start_pos } => {
+			GraphOperationMessage::RasterFillSet {
+				layer,
+				fills,
+				start_pos,
+				similarity_threshold,
+			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.raster_fill_set(fills, start_pos);
+					modify_inputs.raster_fill_set(fills, start_pos, similarity_threshold);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {

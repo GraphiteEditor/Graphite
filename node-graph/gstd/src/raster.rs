@@ -701,8 +701,11 @@ fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 	/// The fills to paint the path with.
 	fills: Vec<F>,
 	/// The positions of the fill in image-local coordinates.
-	#[hidden]
 	positions: Vec<DVec2>,
+	/// The threshold for color similarity in LAB space.
+	#[default(1.)]
+	#[range((0., 10.))]
+	similarity_threshold: f64,
 ) -> ImageFrameTable<Color> {
 	let width = image.width();
 	let height = image.height();
@@ -727,7 +730,7 @@ fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 		let pixel_y = local_pos.y.floor() as i32;
 
 		let color = match fill {
-			Fill::Solid(color) => color,
+			Fill::Solid(color) => color.to_linear_srgb(),
 			Fill::Gradient(_) => Color::RED, // TODO: Implement raster gradient fill
 			Fill::None => Color::TRANSPARENT,
 		};
@@ -756,7 +759,7 @@ fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 			// Get current pixel
 			if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
 				// If pixel matches target color, fill it and add neighbors to stack
-				if *pixel == target_color {
+				if pixel.is_similar_lab(&target_color, similarity_threshold) {
 					*pixel = color;
 					stack.push((x + 1, y)); // Right
 					stack.push((x - 1, y)); // Left

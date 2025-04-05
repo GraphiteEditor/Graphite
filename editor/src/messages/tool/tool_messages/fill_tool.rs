@@ -82,13 +82,13 @@ struct RasterFillToolData {
 	fills: Vec<Fill>,
 	start_pos: Vec<DVec2>,
 	layer: Option<LayerNodeIdentifier>,
+	similarity_threshold: f64,
 }
 
 impl RasterFillToolData {
 	fn load_existing_fills(&mut self, document: &mut DocumentMessageHandler, layer_identifier: LayerNodeIdentifier) -> Option<LayerNodeIdentifier> {
 		let node_graph_layer = NodeGraphLayer::new(layer_identifier, &mut document.network_interface);
 		let existing_fills = node_graph_layer.find_node_inputs("Raster Fill");
-		info!("existing_fills: {:?}", existing_fills);
 		if let Some(existing_fills) = existing_fills {
 			let fills = if let Some(TaggedValue::FillCache(fills)) = existing_fills[1].as_value() {
 				fills.clone()
@@ -100,10 +100,17 @@ impl RasterFillToolData {
 			} else {
 				vec![]
 			};
+			let similarity_threshold = if let Some(TaggedValue::F64(similarity_threshold)) = existing_fills[3].as_value() {
+				*similarity_threshold
+			} else {
+				1.
+			};
 			self.fills = fills;
 			self.start_pos = start_pos;
 			self.layer = Some(layer_identifier);
+			self.similarity_threshold = similarity_threshold;
 		}
+		self.similarity_threshold = 1.;
 		None
 	}
 }
@@ -157,6 +164,7 @@ impl Fsm for FillToolFsmState {
 						layer: layer_identifier,
 						fills: tool_data.fills.clone(),
 						start_pos: tool_data.start_pos.clone(),
+						similarity_threshold: tool_data.similarity_threshold,
 					});
 				} else {
 					// For vector layers, use the existing functionality
