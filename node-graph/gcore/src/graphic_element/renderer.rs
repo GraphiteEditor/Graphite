@@ -332,7 +332,6 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 			let mut layer = false;
 			if let Some(bounds) = self.instances().filter_map(|element| element.instance.bounding_box(transform)).reduce(Quad::combine_bounds) {
-				// Always respect opacity, but use different blend modes based on view mode
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
 					_ => alpha_blending.blend_mode.into(),
@@ -466,12 +465,11 @@ impl GraphicElementRendered for VectorDataTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
-		use crate::vector::style::GradientType;
+		use crate::vector::style::{GradientType, LineCap, LineJoin};
+		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
 		for instance in self.instances() {
-			let mut layer = false;
-
 			let multiplied_transform = parent_transform * *instance.transform;
 			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -485,25 +483,33 @@ impl GraphicElementRendered for VectorDataTable {
 			for subpath in instance.instance.stroke_bezier_paths() {
 				subpath.to_vello_path(applied_stroke_transform, &mut path);
 			}
+
+			// If we're using opacity or a blend mode, we need to push a layer
+			let blend_mode = match render_params.view_mode {
+				ViewMode::Outline => peniko::Mix::Normal,
+				_ => instance.alpha_blending.blend_mode.into(),
+			};
+			let mut layer = false;
+			if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
+				layer = true;
+				scene.push_layer(
+					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
+					instance.alpha_blending.opacity,
+					kurbo::Affine::new(multiplied_transform.to_cols_array()),
+					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
+				);
+			}
+
+			// Render the path
 			match render_params.view_mode {
 				ViewMode::Outline => {
-					if instance.alpha_blending.opacity < 1. {
-						layer = true;
-						scene.push_layer(
-							peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcOver),
-							instance.alpha_blending.opacity,
-							kurbo::Affine::new(multiplied_transform.to_cols_array()),
-							&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
-						);
-					}
-
 					let outline_stroke = kurbo::Stroke {
 						width: LAYER_OUTLINE_STROKE_WEIGHT,
-						miter_limit: 4.0,
+						miter_limit: 4.,
 						join: kurbo::Join::Miter,
 						start_cap: kurbo::Cap::Butt,
 						end_cap: kurbo::Cap::Butt,
-						dash_pattern: vec![].into(),
+						dash_pattern: Default::default(),
 						dash_offset: 0.,
 					};
 					let outline_color = peniko::Color::new([
@@ -516,15 +522,6 @@ impl GraphicElementRendered for VectorDataTable {
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
 				_ => {
-					if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
-						layer = true;
-						scene.push_layer(
-							peniko::BlendMode::new(instance.alpha_blending.blend_mode.into(), peniko::Compose::SrcOver),
-							instance.alpha_blending.opacity,
-							kurbo::Affine::new(multiplied_transform.to_cols_array()),
-							&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
-						);
-					}
 					match instance.instance.style.fill() {
 						Fill::Solid(color) => {
 							let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
@@ -573,7 +570,7 @@ impl GraphicElementRendered for VectorDataTable {
 							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
 							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
 						}
-						Fill::None => (),
+						Fill::None => {}
 					};
 
 					if let Some(stroke) = instance.instance.style.stroke() {
@@ -581,8 +578,6 @@ impl GraphicElementRendered for VectorDataTable {
 							Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 							None => peniko::Color::TRANSPARENT,
 						};
-						use crate::vector::style::{LineCap, LineJoin};
-						use vello::kurbo::{Cap, Join};
 						let cap = match stroke.line_cap {
 							LineCap::Butt => Cap::Butt,
 							LineCap::Round => Cap::Round,
@@ -602,12 +597,16 @@ impl GraphicElementRendered for VectorDataTable {
 							dash_pattern: stroke.dash_lengths.into(),
 							dash_offset: stroke.dash_offset,
 						};
+
+						// Draw the stroke if it's visible
 						if stroke.width > 0. {
 							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
 						}
 					}
 				}
 			}
+
+			// If we pushed a layer for opacity or a blend mode, we need to pop it
 			if layer {
 				scene.pop_layer();
 			}

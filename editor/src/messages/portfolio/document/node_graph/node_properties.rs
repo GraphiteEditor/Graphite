@@ -2460,6 +2460,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	};
 	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
 	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
+
 	vec![
 		color,
 		LayoutGroup::Row { widgets: weight },
