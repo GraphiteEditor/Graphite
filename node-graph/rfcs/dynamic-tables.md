@@ -198,3 +198,270 @@ Note that having something written down in the future-possibilities section
 is not a reason to accept the current or a future RFC; such notes should be
 in the section on motivation or rationale in this or subsequent RFCs.
 The section merely provides additional information.
+
+
+# Implementation prototype
+```rust
+use std::{
+    any::{Any, TypeId},
+    collections::HashMap,
+    sync::Arc,
+};
+
+pub struct Transform;
+pub struct BlendMode;
+pub type VectorData = String;
+type DVec2 = ();
+type Segment = ();
+type Region = ();
+
+// T = DynamicTable<VectorData>
+pub struct TableRow<T> {
+    primary: T,
+    // Each table type will only contain one row
+    attributes: HashMap<String, Attribute>,
+}
+
+impl<U> TableRow<U> {
+    pub fn get_mut<T: 'static>(&mut self, name: &str) -> &mut Vec<T> {
+        let column = self.attributes.get_mut(name).unwrap();
+        column.downcast_mut().unwrap()
+    }
+}
+
+
+#[derive(Clone)]
+pub enum Attribute {
+    String(Vec<String>),
+    U32(Vec<u32>),
+    Segment(Vec<Segment>),
+    Region(Vec<Region>),
+    //Custom(DynAttribute),
+}
+
+impl Attribute {
+    pub fn len(&self) -> usize {
+        match self {
+            Attribute::String(items) => items.len(),
+            Attribute::U32(items) => items.len(),
+            _ => todo!(),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Attribute::String(items) => items.is_empty(),
+            Attribute::U32(items) => items.is_empty(),
+            _ => todo!(),
+        }
+    }
+    pub fn push(&mut self, value: Option<&Attribute>) {
+        match (self, value) {
+            (Attribute::String(items), None) => items.push(Default::default()),
+            (Attribute::String(items), Some(Attribute::String(value))) => {
+                items.push(value[0].clone())
+            }
+            (Attribute::U32(items), None) => items.push(Default::default()),
+            (Attribute::U32(items), Some(Attribute::U32(value))) => items.push(value[0]),
+            _ => unreachable!(),
+        }
+    }
+    pub fn append(&mut self, value: &mut Attribute) {
+        match (self, value) {
+            (Attribute::String(items), Attribute::String(value)) => items.append(value),
+            (Attribute::U32(items), Attribute::U32(value)) => items.append(value),
+            _ => unreachable!(),
+        }
+    }
+    fn our_type_id(&mut self) -> TypeId {
+        match self {
+            Attribute::String(_) => TypeId::of::<String>(),
+            Attribute::U32(_) => TypeId::of::<u32>(),
+            _ => todo!(),
+        }
+    }
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut Vec<T>> {
+        if self.our_type_id() != TypeId::of::<T>() {
+            return None;
+        }
+        match self {
+            Attribute::String(items) => Some(unsafe { &mut *(items.as_mut_ptr() as *mut Vec<T>) }),
+            Attribute::U32(items) => Some(unsafe { &mut *(items.as_mut_ptr() as *mut Vec<T>) }),
+            _ => todo!(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Table<T> {
+    // primary_name: String,
+    primary: Vec<T>,
+    // Box<Vec<U>>
+    attributes: HashMap<String, Arc<Attribute>>,
+}
+
+impl<T> Default for Table<T> {
+    fn default() -> Self {
+        Self {
+            primary: Default::default(),
+            attributes: Default::default(),
+        }
+    }
+}
+#[derive(Clone, Default)]
+pub struct LazyTable<T> {
+    previous: Option<Arc<LazyTable<T>>>,
+    start_index: usize,
+    current: Arc<Table<T>>,
+}
+
+
+impl<T: Clone + 'static> LazyTable<T> {
+    pub fn flatten(&self) -> Table<T> {
+        let Some(previous) = &self.previous else {
+            return Table::clone(self.current.as_ref());
+        };
+        let mut previous = previous.flatten();
+        // todo fix
+        previous.append(Table::clone(self.current.as_ref()));
+        previous
+    }
+    pub fn len(&self) -> usize {
+        self.start_index + self.current.primary.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn append_lazy(self: Arc<Self>, table: Table<T>) -> LazyTable<T>
+    where
+        T: Clone,
+    {
+        let mut new_attributes = HashMap::new();
+        let start_index = self.len();
+        for name in self.current.attributes.keys() {
+            let value = table.attributes.get(name).unwrap().clone();
+
+            new_attributes.insert(name.clone(), value);
+        }
+        LazyTable {
+            previous: Some(self),
+            start_index,
+            current: Arc::new(Table {
+                primary: table.primary,
+                attributes: new_attributes,
+            }),
+        }
+    }
+}
+
+impl<T> From<Table<T>> for LazyTable<T> {
+    fn from(value: Table<T>) -> Self {
+        LazyTable {
+            current: Arc::new(value),
+            ..Default::default()
+        }
+    }
+}
+
+impl<T: 'static> Table<T> {
+    pub fn get_column_mut(&mut self, name: &str) -> &mut Vec<T> {
+        let column = self.attributes.get_mut(name).unwrap();
+        Arc::make_mut(column).downcast_mut().unwrap()
+    }
+    // TODO: optimize
+    pub fn append_scalar<U>(&mut self, scalar: TableRow<Table<U>>)
+    where
+        Table<U>: Into<T>,
+    {
+        self.primary.push(scalar.primary.into());
+        for (name, value) in self.attributes.iter_mut() {
+            let old_value = scalar.attributes.get(name);
+            Arc::make_mut(value).push(old_value);
+        }
+    }
+    pub fn append(&mut self, mut table: Table<T>) {
+        self.primary.append(&mut table.primary);
+        for (name, value) in self.attributes.iter_mut() {
+            let mut old_value = table.attributes.get(name).unwrap().clone();
+
+            let old_value = Arc::make_mut(&mut old_value);
+            Arc::make_mut(value).append(old_value);
+        }
+    }
+    pub fn append_lazy(self: Arc<Self>, table: Table<T>) -> LazyTable<T>
+    where
+        T: Clone,
+    {
+        let mut new_attributes = HashMap::new();
+        for name in self.attributes.keys() {
+            let value = table.attributes.get(name).unwrap().clone();
+
+            new_attributes.insert(name.clone(), value);
+        }
+        LazyTable {
+            previous: Some(Arc::new(Table::clone(self.as_ref()).into())),
+            start_index: self.primary.len(),
+            current: Arc::new(Table {
+                primary: table.primary,
+                attributes: new_attributes,
+            }),
+        }
+    }
+}
+
+impl<T> Table<T> {
+    fn from_one(t: T) -> Self {
+        Table {
+            primary: vec![t],
+            attributes: Default::default(),
+        }
+    }
+}
+
+pub fn change_blend_mode_group(
+    mut instance: TableRow<VectorData>,
+    blend_mode: BlendMode,
+) -> TableRow<VectorData> {
+    instance.get_mut("blend_mode")[0] = blend_mode;
+    instance
+}
+
+pub fn change_fill(
+    mut instance: TableRow<Table<VectorData>>,
+    fill: String,
+) -> TableRow<Table<VectorData>> {
+    instance.primary.primary[0] = fill;
+    instance
+}
+
+pub fn merge<T: 'static + Clone, U>(table: LazyTable<T>, value: TableRow<Table<U>>) -> LazyTable<T>
+where
+    Table<U>: Into<T>,
+{
+    // todo optimize
+    let mut table = table.flatten();
+
+    table.append_scalar(value);
+    table.into()
+}
+
+pub fn vector_data_table(
+    points: LazyTable<DVec2>,
+    segments: LazyTable<Segment>,
+    regions: LazyTable<Region>,
+) -> LazyTable<DVec2> {
+    let mut attributes = HashMap::new();
+    attributes.insert(
+        "segments".into(),
+        Arc::new(Attribute::Segment(segments.flatten().primary)),
+    );
+    attributes.insert(
+        "regions".into(),
+        Arc::new(Attribute::Region(regions.flatten().primary)),
+    );
+    Table {
+        primary: points.flatten().primary,
+        attributes,
+    }
+    .into()
+}
+```
