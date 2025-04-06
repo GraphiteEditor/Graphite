@@ -1,18 +1,23 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use graphene_core::raster::{Alpha, RGB};
 use graphene_core::vector::style::Fill;
+
 #[derive(Default)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
 }
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,
+	Overlays(OverlayContext),
 
 	// Tool-specific messages
+	PointerMove,
 	PointerUp,
 	FillPrimaryColor,
 	FillSecondaryColor,
@@ -45,8 +50,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 			FillToolFsmState::Ready => actions!(FillToolMessageDiscriminant;
 				FillPrimaryColor,
 				FillSecondaryColor,
+				PointerMove,
 			),
 			FillToolFsmState::Filling => actions!(FillToolMessageDiscriminant;
+				PointerMove,
 				PointerUp,
 				Abort,
 			),
@@ -58,6 +65,7 @@ impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
+			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
 	}
@@ -82,6 +90,28 @@ impl Fsm for FillToolFsmState {
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
+			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+				// When not in Drawing State
+				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
+				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
+				if !input.keyboard.get(Key::MouseMiddle as usize) {
+					let primary_color = global_tool_data.primary_color;
+					let preview_color = primary_color.to_gamma_srgb().with_alpha(0.4).to_css();
+
+					// Get the layer the user is hovering over
+					let click = document.click(input);
+					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
+					if let Some(layer) = not_selected_click {
+						overlay_context.fill_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), preview_color.as_str());
+					}
+				}
+				self
+			}
+			(_, FillToolMessage::PointerMove) => {
+				// Generate the hover outline
+				responses.add(OverlaysMessage::Draw);
+				FillToolFsmState::Ready
+			}
 			(FillToolFsmState::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;

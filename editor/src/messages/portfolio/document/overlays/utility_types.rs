@@ -447,6 +447,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// This is used by the pen and path tool to outline the path of the shape
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -465,6 +466,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// This is used by the pen tool in order to show how the bezier curve would look like
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -493,7 +495,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -540,10 +542,48 @@ impl OverlayContext {
 			}
 		}
 
+		self.end_dpi_aware_transform();
+	}
+
+	/// This is used by the select tool to outline a path selected or hovered
+	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+		self.push_path(subpaths, transform);
+
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+	}
 
-		self.end_dpi_aware_transform();
+	/// Outline a path and draw diagonal lines inside.
+	/// This isn't used by any tool, but it's kept in case we need it in the future
+	pub fn outline_striped(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+		self.push_path(subpaths, transform);
+
+		// Canvas state must be saved before clipping
+		self.render_context.save();
+		self.render_context.clip();
+
+		// Draw the diagonal lines
+		let line_separation = 50 as f64; // in px
+		let max_dimension = if self.size.x > self.size.y { self.size.x } else { self.size.y };
+		let end = (max_dimension / line_separation * 2.0).ceil() as i32;
+		for n in 1..end {
+			let factor = n as f64;
+			self.render_context.move_to(line_separation * factor, 0.0);
+			self.render_context.line_to(0.0, line_separation * factor);
+			self.render_context.stroke();
+		}
+
+		// Undo the clipping
+		self.render_context.restore();
+	}
+
+	/// Fills the area inside the path
+	/// This is used by the fill tool to show the area to be filled and by the pen tool to show the path being closed
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {

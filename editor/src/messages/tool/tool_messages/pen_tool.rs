@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -9,11 +9,11 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-use bezier_rs::{Bezier, BezierHandles};
+use bezier_rs::{Bezier, BezierHandles, Subpath};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -1334,6 +1334,42 @@ impl Fsm for PenToolFsmState {
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
+				}
+
+				let mut vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
+
+				if tool_data.latest_point().is_some() {
+					let latest_point = tool_data.latest_point().unwrap();
+
+					let handle_start = latest_point.handle_start;
+					let handle_end = tool_data.handle_end.unwrap_or(tool_data.next_handle_start);
+					let next_point = tool_data.next_point;
+
+					// Check if the next point is close to any other point in the vector data
+					let mut end = None;
+
+					let start = tool_data.latest_point().unwrap().id;
+					for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != start) {
+						let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
+						let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
+						let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+						if transformed_distance_between_squared < snap_point_tolerance_squared {
+							end = Some(id);
+						}
+					}
+
+					// We have the point. Close the path and draw the enclosed area
+					if end.is_some() {
+						let id: SegmentId = SegmentId::generate();
+						vector_data.push(id, start, end.unwrap(), BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
+
+						let beziers: Vec<Bezier> = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect();
+						let subpath = [Subpath::from_beziers(&beziers[..], false)];
+
+						let base_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.replace("#", "").as_str()).unwrap();
+						let color = base_color.to_gamma_srgb().with_alpha(0.4);
+						overlay_context.fill_path(subpath.iter(), transform, color.to_css().as_str());
+					}
 				}
 
 				// Draw the overlays that visualize current snapping
