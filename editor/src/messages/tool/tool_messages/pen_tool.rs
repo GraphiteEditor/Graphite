@@ -1346,7 +1346,7 @@ impl Fsm for PenToolFsmState {
 					// Check if the next point is close to any other point in the vector data
 					let mut end = None;
 
-					let start = latest_point().id;
+					let start = latest_point.id;
 					if layer.is_some() {
 						let mut vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
 						for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != start) {
