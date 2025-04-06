@@ -16,11 +16,7 @@ pub struct OverlaysMessageHandler {
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData {
-			overlays_visible,
-			ipp,
-			device_pixel_ratio,
-		} = data;
+		let OverlaysMessageData { overlays_visible, ipp, .. } = data;
 
 		match message {
 			#[cfg(target_arch = "wasm32")]
@@ -29,6 +25,8 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				use super::utility_types::OverlayContext;
 				use glam::{DAffine2, DVec2};
 				use wasm_bindgen::JsCast;
+
+				let device_pixel_ratio = data.device_pixel_ratio;
 
 				let canvas = match &self.canvas {
 					Some(canvas) => canvas,
