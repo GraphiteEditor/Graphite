@@ -13,6 +13,10 @@ import {
 	TriggerUpgradeDocumentToVectorManipulationFormat,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
+	UpdateSpreadsheetState,
+	defaultWidgetLayout,
+	patchWidgetLayout,
+	UpdateSpreadsheetLayout,
 } from "@graphite/messages";
 import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
@@ -23,6 +27,9 @@ export function createPortfolioState(editor: Editor) {
 		unsaved: false,
 		documents: [] as FrontendDocumentDetails[],
 		activeDocumentIndex: 0,
+		spreadsheetOpen: false,
+		spreadsheetNode: BigInt(0) as bigint | undefined,
+		spreadsheetWidgets: defaultWidgetLayout(),
 	});
 
 	// Set up message subscriptions on creation
@@ -101,6 +108,21 @@ export function createPortfolioState(editor: Editor) {
 		// TODO: Eventually remove this document upgrade code
 		const { documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent } = triggerUpgradeDocumentToVectorManipulationFormat;
 		editor.handle.triggerUpgradeDocumentToVectorManipulationFormat(documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent);
+	});
+
+	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetState, async (updateSpreadsheetState) => {
+		update((state) => {
+			state.spreadsheetOpen = updateSpreadsheetState.open;
+			state.spreadsheetNode = updateSpreadsheetState.node;
+			return state;
+		});
+	});
+
+	editor.subscriptions.subscribeJsMessage(UpdateSpreadsheetLayout, (updateSpreadsheetLayout) => {
+		update((state) => {
+			patchWidgetLayout(state.spreadsheetWidgets, updateSpreadsheetLayout);
+			return state;
+		});
 	});
 
 	return {

@@ -3,7 +3,7 @@ use crate::raster::Pixel;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
-use crate::vector::{InstanceId, VectorDataTable};
+use crate::vector::VectorDataTable;
 use crate::{AlphaBlending, GraphicElement, RasterFrame};
 use dyn_any::StaticType;
 use glam::DAffine2;
@@ -11,7 +11,6 @@ use std::hash::Hash;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Instances<T> {
-	id: Vec<InstanceId>,
 	#[serde(alias = "instances")]
 	instance: Vec<T>,
 	#[serde(default = "one_daffine2_default")]
@@ -25,7 +24,6 @@ pub struct Instances<T> {
 impl<T> Instances<T> {
 	pub fn new(instance: T) -> Self {
 		Self {
-			id: vec![InstanceId::generate()],
 			instance: vec![instance],
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
@@ -35,7 +33,6 @@ impl<T> Instances<T> {
 
 	pub fn empty() -> Self {
 		Self {
-			id: Vec::new(),
 			instance: Vec::new(),
 			transform: Vec::new(),
 			alpha_blending: Vec::new(),
@@ -44,14 +41,12 @@ impl<T> Instances<T> {
 	}
 
 	pub fn push(&mut self, instance: T) -> InstanceMut<T> {
-		self.id.push(InstanceId::generate());
 		self.instance.push(instance);
 		self.transform.push(DAffine2::IDENTITY);
 		self.alpha_blending.push(AlphaBlending::default());
 		self.source_node_id.push(None);
 
 		InstanceMut {
-			id: self.id.last_mut().expect("Shouldn't be empty"),
 			instance: self.instance.last_mut().expect("Shouldn't be empty"),
 			transform: self.transform.last_mut().expect("Shouldn't be empty"),
 			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
@@ -63,14 +58,12 @@ impl<T> Instances<T> {
 	where
 		T: Clone,
 	{
-		self.id.push(*instance.id);
 		self.instance.push(instance.instance.clone());
 		self.transform.push(*instance.transform);
 		self.alpha_blending.push(*instance.alpha_blending);
 		self.source_node_id.push(*instance.source_node_id);
 
 		InstanceMut {
-			id: self.id.last_mut().expect("Shouldn't be empty"),
 			instance: self.instance.last_mut().expect("Shouldn't be empty"),
 			transform: self.transform.last_mut().expect("Shouldn't be empty"),
 			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
@@ -80,7 +73,6 @@ impl<T> Instances<T> {
 
 	pub fn one_instance(&self) -> Instance<T> {
 		Instance {
-			id: self.id.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			instance: self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			transform: self.transform.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			alpha_blending: self.alpha_blending.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
@@ -92,7 +84,6 @@ impl<T> Instances<T> {
 		let length = self.instance.len();
 
 		InstanceMut {
-			id: self.id.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			instance: self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			transform: self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
 			alpha_blending: self.alpha_blending.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
@@ -101,14 +92,12 @@ impl<T> Instances<T> {
 	}
 
 	pub fn instances(&self) -> impl DoubleEndedIterator<Item = Instance<T>> {
-		self.id
+		self.instance
 			.iter()
-			.zip(self.instance.iter())
 			.zip(self.transform.iter())
 			.zip(self.alpha_blending.iter())
 			.zip(self.source_node_id.iter())
-			.map(|((((id, instance), transform), alpha_blending), source_node_id)| Instance {
-				id,
+			.map(|(((instance, transform), alpha_blending), source_node_id)| Instance {
 				instance,
 				transform,
 				alpha_blending,
@@ -117,19 +106,51 @@ impl<T> Instances<T> {
 	}
 
 	pub fn instances_mut(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<T>> {
-		self.id
+		self.instance
 			.iter_mut()
-			.zip(self.instance.iter_mut())
 			.zip(self.transform.iter_mut())
 			.zip(self.alpha_blending.iter_mut())
 			.zip(self.source_node_id.iter_mut())
-			.map(|((((id, instance), transform), alpha_blending), source_node_id)| InstanceMut {
-				id,
+			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceMut {
 				instance,
 				transform,
 				alpha_blending,
 				source_node_id,
 			})
+	}
+
+	pub fn get(&self, index: usize) -> Option<Instance<T>> {
+		if index >= self.instance.len() {
+			return None;
+		}
+
+		Some(Instance {
+			instance: &self.instance[index],
+			transform: &self.transform[index],
+			alpha_blending: &self.alpha_blending[index],
+			source_node_id: &self.source_node_id[index],
+		})
+	}
+
+	pub fn get_mut(&mut self, index: usize) -> Option<InstanceMut<T>> {
+		if index >= self.instance.len() {
+			return None;
+		}
+
+		Some(InstanceMut {
+			instance: &mut self.instance[index],
+			transform: &mut self.transform[index],
+			alpha_blending: &mut self.alpha_blending[index],
+			source_node_id: &mut self.source_node_id[index],
+		})
+	}
+
+	pub fn len(&self) -> usize {
+		self.instance.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.instance.is_empty()
 	}
 }
 
@@ -150,7 +171,6 @@ impl<T: Default + Hash + 'static> Default for Instances<T> {
 
 impl<T: Hash> core::hash::Hash for Instances<T> {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.id.hash(state);
 		for instance in &self.instance {
 			instance.hash(state);
 		}
@@ -159,7 +179,7 @@ impl<T: Hash> core::hash::Hash for Instances<T> {
 
 impl<T: PartialEq> PartialEq for Instances<T> {
 	fn eq(&self, other: &Self) -> bool {
-		self.id == other.id && self.instance.len() == other.instance.len() && { self.instance.iter().zip(other.instance.iter()).all(|(a, b)| a == b) }
+		self.instance.len() == other.instance.len() && { self.instance.iter().zip(other.instance.iter()).all(|(a, b)| a == b) }
 	}
 }
 
@@ -180,7 +200,6 @@ fn one_source_node_id_default() -> Vec<Option<NodeId>> {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Instance<'a, T> {
-	pub id: &'a InstanceId,
 	pub instance: &'a T,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
@@ -188,7 +207,6 @@ pub struct Instance<'a, T> {
 }
 #[derive(Debug)]
 pub struct InstanceMut<'a, T> {
-	pub id: &'a mut InstanceId,
 	pub instance: &'a mut T,
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,

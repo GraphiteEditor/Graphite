@@ -1,6 +1,10 @@
 use crate::consts::FILE_SAVE_SUFFIX;
+use crate::messages::animation::TimingInformation;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, TaggedValue};
@@ -41,6 +45,9 @@ pub struct NodeRuntime {
 	node_graph_errors: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
+	/// Which node is inspected and which monitor node is used (if any) for the current execution
+	inspect_state: Option<InspectState>,
+
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
@@ -49,7 +56,7 @@ pub struct NodeRuntime {
 
 /// Messages passed from the editor thread to the node runtime thread.
 pub enum NodeRuntimeMessage {
-	GraphUpdate(NodeNetwork),
+	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	FontCacheUpdate(FontCache),
 	EditorPreferencesUpdate(EditorPreferences),
@@ -65,6 +72,12 @@ pub struct ExportConfig {
 	pub size: DVec2,
 }
 
+pub struct GraphUpdate {
+	network: NodeNetwork,
+	/// The node that should be temporary inspected during execution
+	inspect_node: Option<NodeId>,
+}
+
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
@@ -76,6 +89,8 @@ pub struct ExecutionResponse {
 	responses: VecDeque<FrontendMessage>,
 	transform: DAffine2,
 	vector_modify: HashMap<NodeId, VectorData>,
+	/// The resulting value from the temporary inspected during execution
+	inspect_result: Option<InspectResult>,
 }
 
 pub struct CompilationResponse {
@@ -131,6 +146,8 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
+
+			inspect_state: None,
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
@@ -191,10 +208,13 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				NodeRuntimeMessage::GraphUpdate(graph) => {
-					self.old_graph = Some(graph.clone());
+				NodeRuntimeMessage::GraphUpdate(GraphUpdate { mut network, inspect_node }) => {
+					// Insert the monitor node to manage the inspection
+					self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
+
+					self.old_graph = Some(network.clone());
 					self.node_graph_errors.clear();
-					let result = self.update_network(graph).await;
+					let result = self.update_network(network).await;
 					self.update_thumbnails = true;
 					self.sender.send_generation_response(CompilationResponse {
 						result,
@@ -210,12 +230,16 @@ impl NodeRuntime {
 					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
 					self.update_thumbnails = false;
 
+					// Resolve the result from the inspection by accessing the monitor node
+					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
+
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
 						responses,
 						transform,
 						vector_modify: self.vector_modify.clone(),
+						inspect_result,
 					});
 				}
 			}
@@ -269,6 +293,10 @@ impl NodeRuntime {
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
 
 		for monitor_node_path in &self.monitor_nodes {
+			// Skip the inspect monitor node
+			if self.inspect_state.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node)) {
+				continue;
+			}
 			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
 			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
 				warn!("Monitor node has invalid node id");
@@ -371,6 +399,70 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	futures: HashMap<u64, ExecutionContext>,
 	node_graph_hash: u64,
+	old_inspect_node: Option<NodeId>,
+}
+
+/// Which node is inspected and which monitor node is used (if any) for the current execution
+#[derive(Debug, Clone, Copy)]
+struct InspectState {
+	inspect_node: NodeId,
+	monitor_node: NodeId,
+}
+
+/// The resulting value from the temporary inspected during execution
+#[derive(Clone, Debug, Default)]
+pub struct InspectResult {
+	pub introspected_data: Option<Arc<dyn std::any::Any + Send + Sync + 'static>>,
+	pub inspect_node: NodeId,
+}
+
+// This is very ugly but is required to be inside a message
+impl PartialEq for InspectResult {
+	fn eq(&self, other: &Self) -> bool {
+		self.inspect_node == other.inspect_node
+	}
+}
+
+impl InspectState {
+	/// Insert the monitor node to manage the inspection
+	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_node: NodeId) -> Self {
+		let monitor_id = NodeId::new();
+
+		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
+		for input in network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut network.exports) {
+			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
+			// We only care about the primary output of our inspect node
+			if *output_index != 0 || *node_id != inspect_node {
+				continue;
+			}
+
+			*node_id = monitor_id;
+		}
+
+		let monitor_node = DocumentNode {
+			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
+			implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+			manual_composition: Some(graph_craft::generic!(T)),
+			skip_deduplication: true,
+			..Default::default()
+		};
+		network.nodes.insert(monitor_id, monitor_node);
+
+		Self {
+			inspect_node,
+			monitor_node: monitor_id,
+		}
+	}
+
+	/// Resolve the result from the inspection by accessing the monitor node
+	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
+		let introspected_data = executor.introspect(&[self.monitor_node]).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
+
+		Some(InspectResult {
+			inspect_node: self.inspect_node,
+			introspected_data,
+		})
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -389,6 +481,7 @@ impl Default for NodeGraphExecutor {
 			sender: request_sender,
 			receiver: response_receiver,
 			node_graph_hash: 0,
+			old_inspect_node: None,
 		}
 	}
 }
@@ -406,6 +499,7 @@ impl NodeGraphExecutor {
 			sender: request_sender,
 			receiver: response_receiver,
 			node_graph_hash: 0,
+			old_inspect_node: None,
 		};
 		(node_runtime, node_executor)
 	}
@@ -461,30 +555,35 @@ impl NodeGraphExecutor {
 		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
-		self.sender.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
+		self.sender
+			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
 
 	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, ignore_hash: bool) -> Result<(), String> {
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, inspect_node: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.document_network().current_hash();
-		if network_hash != self.node_graph_hash || ignore_hash {
+		// Refresh the graph when it changes or the inspect node changes
+		if network_hash != self.node_graph_hash || self.old_inspect_node != inspect_node || ignore_hash {
+			let network = document.network_interface.document_network().clone();
+			self.old_inspect_node = inspect_node;
 			self.node_graph_hash = network_hash;
-			self.sender
-				.send(NodeRuntimeMessage::GraphUpdate(document.network_interface.document_network().clone()))
-				.map_err(|e| e.to_string())?;
+
+			self.sender.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node })).map_err(|e| e.to_string())?;
 		}
 		Ok(())
 	}
 
 	/// Adds an evaluate request for whatever current network is cached.
-	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
+	pub(crate) fn submit_current_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, time: TimingInformation) -> Result<(), String> {
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: document.metadata().document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},
+			time,
 			#[cfg(any(feature = "resvg", feature = "vello"))]
 			export_format: graphene_core::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
@@ -502,9 +601,16 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, ignore_hash: bool) -> Result<(), String> {
-		self.update_node_graph(document, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, viewport_resolution)?;
+	pub fn submit_node_graph_evaluation(
+		&mut self,
+		document: &mut DocumentMessageHandler,
+		viewport_resolution: UVec2,
+		time: TimingInformation,
+		inspect_node: Option<NodeId>,
+		ignore_hash: bool,
+	) -> Result<(), String> {
+		self.update_node_graph(document, inspect_node, ignore_hash)?;
+		self.submit_current_node_graph_evaluation(document, viewport_resolution, time)?;
 
 		Ok(())
 	}
@@ -529,6 +635,7 @@ impl NodeGraphExecutor {
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
+			time: Default::default(),
 			export_format: graphene_core::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
@@ -537,7 +644,9 @@ impl NodeGraphExecutor {
 		export_config.size = size;
 
 		// Execute the node graph
-		self.sender.send(NodeRuntimeMessage::GraphUpdate(network)).map_err(|e| e.to_string())?;
+		self.sender
+			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		let execution_context = ExecutionContext { export_config: Some(export_config) };
 		self.futures.insert(execution_id, execution_context);
@@ -589,6 +698,7 @@ impl NodeGraphExecutor {
 						responses: existing_responses,
 						transform,
 						vector_modify,
+						inspect_result,
 					} = execution_response;
 
 					responses.add(OverlaysMessage::Draw);
@@ -612,6 +722,13 @@ impl NodeGraphExecutor {
 						self.export(node_graph_output, export_config, responses)?
 					} else {
 						self.process_node_graph_output(node_graph_output, transform, responses)?
+					}
+
+					// Update the spreadsheet on the frontend using the value of the inspect result.
+					if self.old_inspect_node.is_some() {
+						if let Some(inspect_result) = inspect_result {
+							responses.add(SpreadsheetMessage::UpdateLayout { inspect_result });
+						}
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
@@ -805,5 +922,14 @@ impl Instrumented {
 		let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
 		Self::downcast::<Input>(dynamic)
+	}
+
+	pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
+	where
+		Input::Result: Send + Sync + Clone + 'static,
+	{
+		let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+		let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
+		self.grab_protonode_input::<Input>(&vec![node], runtime)
 	}
 }

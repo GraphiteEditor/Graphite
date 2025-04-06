@@ -25,6 +25,7 @@ where
 		let mut hasher = DefaultHasher::new();
 		input.hash(&mut hasher);
 		let hash = hasher.finish();
+
 		if let Some(data) = self.cache.lock().as_ref().unwrap().as_ref().and_then(|data| (data.0 == hash).then_some(data.1.clone())) {
 			Box::pin(async move { data })
 		} else {
