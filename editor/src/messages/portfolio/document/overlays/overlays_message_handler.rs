@@ -66,7 +66,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
 				warn!(
-					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {device_pixel_ratio} {ipp:?} {:?} {:?}",
+					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?} {:?} {:?}",
 					self.canvas, self.context
 				);
 			}
