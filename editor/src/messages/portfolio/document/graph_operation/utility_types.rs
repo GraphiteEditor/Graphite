@@ -292,7 +292,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(GraphicGroupTable) {
 				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
 					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
