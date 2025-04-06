@@ -1,8 +1,9 @@
 use super::utility_types::OverlayProvider;
+use super::utility_types::OverlaysVisibilitySettings;
 use crate::messages::prelude::*;
 
 pub struct OverlaysMessageData<'a> {
-	pub overlays_visible: bool,
+	pub overlays_visibility_settings: OverlaysVisibilitySettings,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub device_pixel_ratio: f64,
 }
@@ -18,7 +19,9 @@ pub struct OverlaysMessageHandler {
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData { overlays_visible, ipp, .. } = data;
+		let OverlaysMessageData {
+			overlays_visibility_settings, ipp, ..
+		} = data;
 
 		match message {
 			#[cfg(target_arch = "wasm32")]
@@ -50,24 +53,31 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
 				let _ = context.reset_transform();
 
-				if overlays_visible {
+				if overlays_visibility_settings.all {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
 						render_context: context.clone(),
 						size: size.as_dvec2(),
 						device_pixel_ratio,
+						overlays_visibility_settings: overlays_visibility_settings.clone(),
 					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: context.clone(),
 							size: size.as_dvec2(),
 							device_pixel_ratio,
-						}));
+							overlays_visibility_settings: overlays_visibility_settings.clone(),
+						});
+						// debug!("OverlaysMessageHandler: {:?}", message.clone());
+						responses.add(message);
 					}
 				}
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?}",);
+				warn!(
+					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visibility_settings:?} {ipp:?} {:?} {:?}",
+					self.canvas, self.context
+				);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

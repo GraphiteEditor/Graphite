@@ -575,6 +575,10 @@ impl BoundingBoxManager {
 
 	/// Update the position of the bounding box and transform handles
 	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext, render_quad: bool) {
+		if !overlay_context.overlays_visibility_settings.transform_cage {
+			return;
+		}
+
 		let quad = self.transform * Quad::from_box(self.bounds);
 		let category = self.overlay_display_category();
 
