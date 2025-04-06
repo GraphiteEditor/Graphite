@@ -1326,7 +1326,11 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::Dragging { .. },
+				SelectToolFsmState::ResizingBounds
+				| SelectToolFsmState::SkewingBounds { .. }
+				| SelectToolFsmState::RotatingBounds
+				| SelectToolFsmState::Dragging { .. }
+				| SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
