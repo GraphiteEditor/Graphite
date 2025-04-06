@@ -20,6 +20,7 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
+use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
@@ -165,6 +166,7 @@ pub(crate) fn property_from_type(
 							last.clone()
 						}
 						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
@@ -778,6 +780,40 @@ pub fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
+pub fn real_time_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::RealTimeMode(mode)) = input.as_non_exposed_value() {
+		let calculation_modes = [
+			RealTimeMode::Utc,
+			RealTimeMode::Year,
+			RealTimeMode::Hour,
+			RealTimeMode::Minute,
+			RealTimeMode::Second,
+			RealTimeMode::Millisecond,
+		];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::RealTimeMode(method), node_id, index))
+					.on_commit(commit_value),
+			);
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Real Time Mode")
+}
+
 pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	let Some(input) = document_node.inputs.get(index) else {
@@ -1087,7 +1123,10 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		return LayoutGroup::Row { widgets };
 	};
 
+	// Add a separator
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	// Add the color input
 	match &**tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_button

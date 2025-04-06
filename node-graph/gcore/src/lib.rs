@@ -13,6 +13,7 @@ pub use crate as graphene_core;
 #[cfg(feature = "reflections")]
 pub use ctor;
 
+pub mod animation;
 pub mod consts;
 pub mod context;
 pub mod generic;

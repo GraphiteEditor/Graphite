@@ -18,4 +18,12 @@ pub fn load_from_name(name: &str) -> NodeNetwork {
 	load_network(content)
 }
 
-pub static DEMO_ART: [&str; 6] = ["changing-seasons", "painted-dreams", "red-dress", "valley-of-spires", "isometric-fountain", "procedural-string-lights"];
+pub static DEMO_ART: [&str; 7] = [
+	"changing-seasons",
+	"painted-dreams",
+	"red-dress",
+	"valley-of-spires",
+	"isometric-fountain",
+	"procedural-string-lights",
+	"parametric-dunescape",
+];
