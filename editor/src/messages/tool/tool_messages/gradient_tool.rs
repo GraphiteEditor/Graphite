@@ -519,3 +519,130 @@ impl Fsm for GradientToolFsmState {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 	}
 }
+
+#[cfg(test)]
+mod test_gradient {
+	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
+	pub use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graphene_core::vector::fill;
+	use graphene_std::vector::style::Fill;
+
+	use super::gradient_space_transform;
+
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<(Fill, DAffine2)> {
+		let instrumented = editor.eval_graph().await;
+
+		let document = editor.active_document();
+		let layers = document.metadata().all_layers();
+		layers
+			.filter_map(|layer| {
+				let fill = instrumented.grab_input_from_layer::<fill::FillInput<Fill>>(layer, &document.network_interface, &editor.runtime)?;
+				let transform = gradient_space_transform(layer, document);
+				Some((fill, transform))
+			})
+			.collect()
+	}
+
+	#[tokio::test]
+	async fn ignore_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor).await.is_empty());
+	}
+
+	#[tokio::test]
+	// TODO: remove once https://github.com/GraphiteEditor/Graphite/issues/2444 is fixed
+	#[should_panic]
+	async fn ignore_raster() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
+		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor).await.is_empty());
+	}
+
+	#[tokio::test]
+	async fn simple_draw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_secondary_color(Color::BLUE).await;
+		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		let (fill, transform) = fills.first().unwrap();
+		let gradient = fill.as_gradient().unwrap();
+		// Gradient goes from secondary colour to primary colour
+		let stops = gradient.stops.iter().map(|stop| (stop.0, stop.1.to_rgba8_srgb())).collect::<Vec<_>>();
+		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+	}
+
+	#[tokio::test]
+	async fn snap_simple_draw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_8,
+			})
+			.await;
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(24., 4.);
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, start.x, start.y, end.x, end.y, ModifierKeys::SHIFT).await;
+		let fills = get_fills(&mut editor).await;
+		let (fill, transform) = fills.first().unwrap();
+		let gradient = fill.as_gradient().unwrap();
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(start, 1e-10));
+
+		// 15 degrees from horizontal
+		let angle = f64::to_radians(15.);
+		let direction = DVec2::new(angle.cos(), angle.sin());
+		let expected = start + direction * (end - start).length();
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(expected, 1e-10));
+	}
+
+	#[tokio::test]
+	async fn transformed_draw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_8,
+			})
+			.await;
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		// Group rectangle
+		let group_folder_type = GroupFolderType::Layer;
+		editor.handle_message(DocumentMessage::GroupSelectedLayers { group_folder_type }).await;
+		let metadata = editor.active_document().metadata();
+		let mut layers = metadata.all_layers();
+		let folder = layers.next().unwrap();
+		let rectangle = layers.next().unwrap();
+		assert_eq!(rectangle.parent(metadata), Some(folder));
+		// Transform the group
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: folder,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1., 2.), 0., -DVec2::X * 10.),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		let (fill, transform) = fills.first().unwrap();
+		let gradient = fill.as_gradient().unwrap();
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+	}
+}
