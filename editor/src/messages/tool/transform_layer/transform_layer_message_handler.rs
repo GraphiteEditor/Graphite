@@ -703,7 +703,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 #[cfg(test)]
 mod test_transform_layer {
 	use crate::messages::{
-		portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext},
+		portfolio::document::graph_operation::{
+			transform_utils,
+			utility_types::{ModifyInputsContext, TransformIn},
+		},
 		prelude::Message,
 		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
 	};
@@ -1096,5 +1099,44 @@ mod test_transform_layer {
 
 		let final_transform = get_layer_transform(&mut editor, layer).await;
 		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
+	}
+	#[tokio::test]
+	async fn test_scale_to_zero_then_rescale() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		// First scale to near-zero
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDecimalPoint).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 1 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let near_zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Verify scale is near zero.
+		let scale_x = near_zero_transform.matrix2.x_axis.length();
+		let scale_y = near_zero_transform.matrix2.y_axis.length();
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x > 0.0, "Scale factor X should not be exactly zero");
+		assert!(scale_y > 0.0, "Scale factor Y should not be exactly zero");
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(final_transform.is_finite(), "Transform should be finite after rescaling");
+
+		let new_scale_x = final_transform.matrix2.x_axis.length();
+		let new_scale_y = final_transform.matrix2.y_axis.length();
+		assert!(new_scale_x > 0.0, "After rescaling, scale factor X should be non-zero");
+		assert!(new_scale_y > 0.0, "After rescaling, scale factor Y should be non-zero");
 	}
 }
