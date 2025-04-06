@@ -1335,7 +1335,7 @@ impl Fsm for PenToolFsmState {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
 				}
-				
+
 				if tool_data.latest_point().is_some() {
 					let latest_point = tool_data.latest_point().unwrap();
 

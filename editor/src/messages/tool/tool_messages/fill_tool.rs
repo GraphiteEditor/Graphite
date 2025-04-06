@@ -1,7 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use graphene_core::raster::{Alpha, RGB};
 use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
@@ -100,8 +99,7 @@ impl Fsm for FillToolFsmState {
 
 					// Get the layer the user is hovering over
 					let click = document.click(input);
-					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
-					if let Some(layer) = not_selected_click {
+					if let Some(layer) = click {
 						overlay_context.fill_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), preview_color.as_str());
 					}
 				}
