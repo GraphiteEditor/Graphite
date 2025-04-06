@@ -1357,19 +1357,19 @@ impl Fsm for PenToolFsmState {
 								end = Some(id);
 							}
 						}
-					}
 
-					// We have the point. Close the path and draw the enclosed area
-					if end.is_some() {
-						let id: SegmentId = SegmentId::generate();
-						vector_data.push(id, start, end.unwrap(), BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
+						// We have the point. Close the path and draw the enclosed area
+						if end.is_some() {
+							let id: SegmentId = SegmentId::generate();
+							vector_data.push(id, start, end.unwrap(), BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
 
-						let beziers: Vec<Bezier> = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect();
-						let subpath = [Subpath::from_beziers(&beziers[..], false)];
+							let beziers: Vec<Bezier> = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect();
+							let subpath = [Subpath::from_beziers(&beziers[..], false)];
 
-						let base_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.replace("#", "").as_str()).unwrap();
-						let color = base_color.to_gamma_srgb().with_alpha(0.4);
-						overlay_context.fill_path(subpath.iter(), transform, color.to_css().as_str());
+							let base_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.replace("#", "").as_str()).unwrap();
+							let color = base_color.to_gamma_srgb().with_alpha(0.4);
+							overlay_context.fill_path(subpath.iter(), transform, color.to_css().as_str());
+						}
 					}
 				}
 
