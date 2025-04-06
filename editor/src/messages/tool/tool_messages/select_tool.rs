@@ -581,8 +581,10 @@ impl Fsm for SelectToolFsmState {
 
 							// Use the viewport-aligned AABBs for measurement
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
-								// Since we're already in viewport space, use identity transform
-								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
+								if overlay_context.overlays_visibility_settings.measurement {
+									// Since we're already in viewport space, use identity transform
+									measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
+								}
 							}
 						}
 					}
@@ -664,7 +666,9 @@ impl Fsm for SelectToolFsmState {
 				if !matches!(self, Self::Dragging { .. }) {
 					tool_data.line_center = compass_center;
 				}
-				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
+				if overlay_context.overlays_visibility_settings.compass_rose {
+					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
+				}
 
 				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
 					Some((axis, false))

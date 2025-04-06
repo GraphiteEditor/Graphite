@@ -12,6 +12,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
+use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
@@ -84,20 +85,7 @@ pub struct DocumentMessageHandler {
 	pub view_mode: ViewMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	pub overlays_visible: bool,
-	pub overlay_artboard_tool_visible: bool,
-	pub overlay_ellipse_tool_visible: bool,
-	pub overlay_freehand_tool_visible: bool,
-	pub overlay_gradient_tool_visible: bool,
-	pub overlay_line_tool_visible: bool,
-	pub overlay_path_tool_visible: bool,
-	pub overlay_pen_tool_visible: bool,
-	pub overlay_polygon_tool_visible: bool,
-	pub overlay_rectangle_tool_visible: bool,
-	pub overlay_select_tool_visible: bool,
-	pub overlay_spline_tool_visible: bool,
-	pub overlay_text_tool_visible: bool,
-	pub overlay_transform_layer_visible: bool,
+	pub overlays_visibility_settings: OverlaysVisibilitySettings,
 	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 	pub rulers_visible: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
@@ -158,20 +146,7 @@ impl Default for DocumentMessageHandler {
 			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			overlays_visible: true,
-			overlay_artboard_tool_visible: true,
-			overlay_ellipse_tool_visible: true,
-			overlay_freehand_tool_visible: true,
-			overlay_gradient_tool_visible: true,
-			overlay_line_tool_visible: true,
-			overlay_path_tool_visible: true,
-			overlay_pen_tool_visible: true,
-			overlay_polygon_tool_visible: true,
-			overlay_rectangle_tool_visible: true,
-			overlay_select_tool_visible: true,
-			overlay_spline_tool_visible: true,
-			overlay_text_tool_visible: true,
-			overlay_transform_layer_visible: true,
+			overlays_visibility_settings: OverlaysVisibilitySettings::default(),
 			rulers_visible: true,
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
@@ -224,40 +199,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.navigation_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::Overlays(message) => {
-				let overlays_visible = self.overlays_visible;
-				let overlay_artboard_tool_visible = self.overlay_artboard_tool_visible;
-				let overlay_freehand_tool_visible = self.overlay_freehand_tool_visible;
-				let overlay_ellipse_tool_visible = self.overlay_ellipse_tool_visible;
-				let overlay_gradient_tool_visible = self.overlay_gradient_tool_visible;
-				let overlay_line_tool_visible = self.overlay_line_tool_visible;
-				let overlay_path_tool_visible = self.overlay_path_tool_visible;
-				let overlay_pen_tool_visible = self.overlay_pen_tool_visible;
-				let overlay_polygon_tool_visible = self.overlay_polygon_tool_visible;
-				let overlay_rectangle_tool_visible = self.overlay_rectangle_tool_visible;
-				let overlay_select_tool_visible = self.overlay_select_tool_visible;
-				let overlay_spline_tool_visible = self.overlay_spline_tool_visible;
-				let overlay_text_tool_visible = self.overlay_text_tool_visible;
-				let overlay_transform_layer_visible = self.overlay_transform_layer_visible;
+				let overlays_visibility_settings = self.overlays_visibility_settings;
 
 				// Send the overlays message to the overlays message handler
 				self.overlays_message_handler.process_message(
 					message,
 					responses,
 					OverlaysMessageData {
-						overlays_visible,
-						overlay_artboard_tool_visible,
-						overlay_freehand_tool_visible,
-						overlay_ellipse_tool_visible,
-						overlay_gradient_tool_visible,
-						overlay_line_tool_visible,
-						overlay_path_tool_visible,
-						overlay_pen_tool_visible,
-						overlay_polygon_tool_visible,
-						overlay_rectangle_tool_visible,
-						overlay_select_tool_visible,
-						overlay_spline_tool_visible,
-						overlay_text_tool_visible,
-						overlay_transform_layer_visible,
+						overlays_visibility_settings,
 						ipp,
 						device_pixel_ratio,
 					},
@@ -400,6 +349,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+				if !overlay_context.overlays_visibility_settings.artboard_name {
+					return;
+				}
+
 				for layer in self.metadata().all_layers() {
 					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -1185,73 +1138,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
-			DocumentMessage::SetOverlaysVisibility { visible } => {
-				self.overlays_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayArtboardToolVisibility { visible } => {
-				self.overlay_artboard_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayEllipseToolVisibility { visible } => {
-				self.overlay_ellipse_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayFreehandToolVisibility { visible } => {
-				self.overlay_freehand_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayGradientToolVisibility { visible } => {
-				self.overlay_gradient_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayLineToolVisibility { visible } => {
-				self.overlay_line_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayPathToolVisibility { visible } => {
-				self.overlay_path_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayPenToolVisibility { visible } => {
-				self.overlay_pen_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayPolygonToolVisibility { visible } => {
-				self.overlay_polygon_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayRectangleToolVisibility { visible } => {
-				self.overlay_rectangle_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlaySelectToolVisibility { visible } => {
-				self.overlay_select_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlaySplineToolVisibility { visible } => {
-				self.overlay_spline_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayTextToolVisibility { visible } => {
-				self.overlay_text_tool_visible = visible;
-				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::SetOverlayTransformLayerVisibility { visible } => {
-				self.overlay_transform_layer_visible = visible;
+			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
+				match overlays_type {
+					OverlaysType::All => self.overlays_visibility_settings.all = visible,
+					OverlaysType::ArtboardName => self.overlays_visibility_settings.artboard_name = visible,
+					OverlaysType::CompassRose => self.overlays_visibility_settings.compass_rose = visible,
+					OverlaysType::Measurement => self.overlays_visibility_settings.measurement = visible,
+					OverlaysType::TransformCage => self.overlays_visibility_settings.transform_cage = visible,
+					OverlaysType::Pivot => self.overlays_visibility_settings.pivot = visible,
+					OverlaysType::Path => self.overlays_visibility_settings.path = visible,
+					OverlaysType::Anchors => self.overlays_visibility_settings.anchors = visible,
+					OverlaysType::Handles => self.overlays_visibility_settings.handles = visible,
+				}
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -1352,8 +1250,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
+			// TODO: ToggleOverlaysVisibility does not reflect as a good name for Overlays::All
 			DocumentMessage::ToggleOverlaysVisibility => {
-				self.overlays_visible = !self.overlays_visible;
+				self.overlays_visibility_settings.all = !self.overlays_visibility_settings.all;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -1794,7 +1693,7 @@ impl DocumentMessageHandler {
 					pub view_mode: ViewMode,
 					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-					pub overlays_visible: bool,
+					pub overlays_visibility_settings: OverlaysVisibilitySettings,
 					/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 					pub rulers_visible: bool,
 					/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
@@ -1810,7 +1709,7 @@ impl DocumentMessageHandler {
 					document_ptz: old_message_handler.document_ptz,
 					document_mode: old_message_handler.document_mode,
 					view_mode: old_message_handler.view_mode,
-					overlays_visible: old_message_handler.overlays_visible,
+					overlays_visibility_settings: old_message_handler.overlays_visibility_settings,
 					rulers_visible: old_message_handler.rulers_visible,
 					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
 					snapping_state: old_message_handler.snapping_state,
@@ -2168,144 +2067,81 @@ impl DocumentMessageHandler {
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(self.overlays_visible)
+			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
 				.tooltip("Overlays")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.on_update(|optional_input: &CheckboxInput| {
+					DocumentMessage::SetOverlaysVisibility {
+						visible: optional_input.checked,
+						overlays_type: OverlaysType::All,
+					}
+					.into()
+				})
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
 					LayoutGroup::Row {
 						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
 					},
-					// LayoutGroup::Row {
-					// 	widgets: vec![TextLabel::new("Granular settings in this menu are coming soon").widget_holder()],
-					// },
-					// LayoutGroup::Row {
-					// 	widgets: vec![
-					// 		CheckboxInput::new(false)
-					// 			.tooltip("Enable or disable the hover overlay")
-					// 			// .on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
-					// 			.widget_holder(),
-					// 		TextLabel::new("Hover Overlay".to_string()).widget_holder(),
-					// 	],
-					// },
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlay_artboard_tool_visible)
-								.tooltip("Enable or disable the artboard tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayArtboardToolVisibility { visible: optional_input.checked }.into())
+							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
+								.tooltip("Enable or disable the artboard names overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::ArtboardName,
+									}
+									.into()
+								})
 								.widget_holder(),
-							TextLabel::new("Artboard Tool Overlay".to_string()).widget_holder(),
+							TextLabel::new("Artboard Name".to_string()).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlay_ellipse_tool_visible)
-								.tooltip("Enable or disable the ellipse tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayEllipseToolVisibility { visible: optional_input.checked }.into())
+							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
+								.tooltip("Enable or disable the compass rose overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::CompassRose,
+									}
+									.into()
+								})
 								.widget_holder(),
-							TextLabel::new("Ellipse Tool Overlay".to_string()).widget_holder(),
+							TextLabel::new("Compass Rose".to_string()).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlay_freehand_tool_visible)
-								.tooltip("Enable or disable the freehand tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayFreehandToolVisibility { visible: optional_input.checked }.into())
+							CheckboxInput::new(self.overlays_visibility_settings.measurement)
+								.tooltip("Enable or disable the measurement overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::Measurement,
+									}
+									.into()
+								})
 								.widget_holder(),
-							TextLabel::new("Freehand Tool Overlay".to_string()).widget_holder(),
+							TextLabel::new("Measurement".to_string()).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlay_gradient_tool_visible)
-								.tooltip("Enable or disable the gradient tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayGradientToolVisibility { visible: optional_input.checked }.into())
+							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
+								.tooltip("Enable or disable the transform cage overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::TransformCage,
+									}
+									.into()
+								})
 								.widget_holder(),
-							TextLabel::new("Gradient Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_line_tool_visible)
-								.tooltip("Enable or disable the line tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayLineToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Line Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_path_tool_visible)
-								.tooltip("Enable or disable the path tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayPathToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Path Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_pen_tool_visible)
-								.tooltip("Enable or disable the pen tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayPenToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Pen Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_polygon_tool_visible)
-								.tooltip("Enable or disable the polygon tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayPolygonToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Polygon Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_rectangle_tool_visible)
-								.tooltip("Enable or disable the rectangle tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayRectangleToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Rectangle Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_select_tool_visible)
-								.tooltip("Enable or disable the select tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaySelectToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Select Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_spline_tool_visible)
-								.tooltip("Enable or disable the spline tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaySplineToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Spline Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_text_tool_visible)
-								.tooltip("Enable or disable the text tool overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayTextToolVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Text Tool Overlay".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlay_transform_layer_visible)
-								.tooltip("Enable or disable the transform layer overlay")
-								.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlayTransformLayerVisibility { visible: optional_input.checked }.into())
-								.widget_holder(),
-							TextLabel::new("Transform Layer Overlay".to_string()).widget_holder(),
+							TextLabel::new("Transform Cage".to_string()).widget_holder(),
 						],
 					},
 				])
