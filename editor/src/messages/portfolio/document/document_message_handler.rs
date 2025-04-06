@@ -42,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub device_pixel_ratio: f64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -173,6 +174,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			executor,
 			current_tool,
 			preferences,
+			device_pixel_ratio,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -197,7 +199,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::Overlays(message) => {
 				let overlays_visible = self.overlays_visible;
-				self.overlays_message_handler.process_message(message, responses, OverlaysMessageData { overlays_visible, ipp });
+				self.overlays_message_handler.process_message(
+					message,
+					responses,
+					OverlaysMessageData {
+						overlays_visible,
+						ipp,
+						device_pixel_ratio,
+					},
+				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
@@ -1199,14 +1209,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.children(metadata).collect();
+						let children: HashSet<_> = layer.descendants(metadata).collect();
 						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
 					} else {
 						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
 						self.collapsed.0.extend(children_to_add);
 					}
 					self.collapsed.0.push(layer);

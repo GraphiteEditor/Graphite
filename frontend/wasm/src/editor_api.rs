@@ -352,7 +352,7 @@ impl EditorHandle {
 	/// Inform the overlays system of the current device pixel ratio
 	#[wasm_bindgen(js_name = setDevicePixelRatio)]
 	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
+		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
