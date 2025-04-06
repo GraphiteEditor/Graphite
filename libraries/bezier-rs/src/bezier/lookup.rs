@@ -4,6 +4,21 @@ use crate::utils::{TValue, TValueType};
 /// Functionality relating to looking up properties of the `Bezier` or points along the `Bezier`.
 impl Bezier {
 	/// Convert a euclidean distance ratio along the `Bezier` curve to a parametric `t`-value.
+	/// Converts a Euclidean (x, y) coordinate to a parametric representation along a curve segment.
+	/// This function is useful for geometric computations involving curves, where transforming
+	/// coordinates into a curve’s parametric space allows for more consistent interpolation
+	/// and manipulation.
+	/// Similar in structure to [`crate::lookup::euclidean_to_parametric`].
+	/// For more details on point-in-polygon logic and related geometry algorithms, see:
+	/// <https://wrfranklin.org/Research/Short_Notes/pnpoly.html>
+	/// Arguments
+	/// `x` - The x-coordinate in Euclidean space.
+	/// `y` - The y-coordinate in Euclidean space.
+	/// Returns
+	/// A tuple representing the parametric values corresponding to the provided `(x, y)` point.
+	/// Example
+	/// let (u, v) = crate::lookup::euclidean_to_parametric(1.0, 2.0);
+	/// println!("Parametric coordinates: ({}, {})", u, v);
 	pub fn euclidean_to_parametric(&self, ratio: f64, error: f64) -> f64 {
 		let total_length = self.length(None);
 		self.euclidean_to_parametric_with_total_length(ratio, error, total_length)
