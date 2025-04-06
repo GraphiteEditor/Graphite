@@ -1335,9 +1335,7 @@ impl Fsm for PenToolFsmState {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
 				}
-
-				let mut vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
-
+				
 				if tool_data.latest_point().is_some() {
 					let latest_point = tool_data.latest_point().unwrap();
 
@@ -1348,13 +1346,16 @@ impl Fsm for PenToolFsmState {
 					// Check if the next point is close to any other point in the vector data
 					let mut end = None;
 
-					let start = tool_data.latest_point().unwrap().id;
-					for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != start) {
-						let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
-						let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
-						let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-						if transformed_distance_between_squared < snap_point_tolerance_squared {
-							end = Some(id);
+					let start = latest_point().id;
+					if layer.is_some() {
+						let mut vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
+						for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != start) {
+							let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
+							let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
+							let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+							if transformed_distance_between_squared < snap_point_tolerance_squared {
+								end = Some(id);
+							}
 						}
 					}
 
