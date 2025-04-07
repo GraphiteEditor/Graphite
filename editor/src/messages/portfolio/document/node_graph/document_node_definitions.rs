@@ -2,8 +2,8 @@ use super::node_properties;
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTemplate,
-	NodeTypePersistentMetadata, NumberInputSettings, PropertiesRow, Vec2InputSettings, WidgetOverride,
+	DocumentNodeMetadata, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkMetadata, NodeNetworkPersistentMetadata, NodeTemplate, NodeTypePersistentMetadata, NumberInputSettings,
+	PropertiesRow, Vec2InputSettings, WidgetOverride,
 };
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
@@ -809,6 +809,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 					],
+					manual_composition: Some(generic!(T)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {

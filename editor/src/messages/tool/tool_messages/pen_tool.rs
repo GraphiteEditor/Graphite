@@ -330,6 +330,7 @@ struct PenToolData {
 
 	snap_cache: SnapCache,
 }
+
 impl PenToolData {
 	fn latest_point(&self) -> Option<&LastPoint> {
 		self.latest_points.get(self.point_index)
@@ -1856,6 +1857,13 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
+				let should_delete_layer = if layer.is_some() {
+					let vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
+					vector_data.point_domain.ids().len() == 1
+				} else {
+					false
+				};
+
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
@@ -1863,6 +1871,13 @@ impl Fsm for PenToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
+				if should_delete_layer {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![layer.unwrap().to_node()],
+						delete_children: true,
+					});
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 				responses.add(OverlaysMessage::Draw);
 
 				PenToolFsmState::Ready
