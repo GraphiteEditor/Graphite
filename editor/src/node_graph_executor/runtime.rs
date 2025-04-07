@@ -20,7 +20,7 @@ use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, R
 use interpreted_executor::util::wrap_network_in_scope;
 
 use super::*;
-use glam::{DAffine2, DVec2, UVec2};
+use glam::{DAffine2, DVec2};
 use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::Arc;

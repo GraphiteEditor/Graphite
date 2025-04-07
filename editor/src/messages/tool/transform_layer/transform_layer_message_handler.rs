@@ -715,10 +715,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 mod test_transform_layer {
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::{
-		portfolio::document::graph_operation::{
-			transform_utils,
-			utility_types::{ModifyInputsContext, TransformIn},
-		},
+		portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext},
 		prelude::Message,
 		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
 	};

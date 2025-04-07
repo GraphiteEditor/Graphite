@@ -14,9 +14,10 @@ extern "C" {
 /// Handles communication with the NodeRuntime, either locally or via Tauri
 #[derive(Debug)]
 pub struct NodeRuntimeIO {
-	#[cfg(not(feature = "tauri"))]
+	// Send to
+	#[cfg(any(not(feature = "tauri"), test))]
 	sender: Sender<NodeRuntimeMessage>,
-	#[cfg(feature = "tauri")]
+	#[cfg(all(feature = "tauri", not(test)))]
 	sender: Sender<NodeGraphUpdate>,
 	receiver: Receiver<NodeGraphUpdate>,
 }
@@ -30,7 +31,7 @@ impl Default for NodeRuntimeIO {
 impl NodeRuntimeIO {
 	/// Creates a new NodeRuntimeIO instance
 	pub fn new() -> Self {
-		#[cfg(not(feature = "tauri"))]
+		#[cfg(any(not(feature = "tauri"), test))]
 		{
 			let (response_sender, response_receiver) = std::sync::mpsc::channel();
 			let (request_sender, request_receiver) = std::sync::mpsc::channel();
@@ -42,7 +43,7 @@ impl NodeRuntimeIO {
 			}
 		}
 
-		#[cfg(feature = "tauri")]
+		#[cfg(all(feature = "tauri", not(test)))]
 		{
 			let (response_sender, response_receiver) = std::sync::mpsc::channel();
 			Self {
@@ -51,19 +52,19 @@ impl NodeRuntimeIO {
 			}
 		}
 	}
-	#[cfg(not(feature = "tauri"))]
+	#[cfg(test)]
 	pub fn with_channels(sender: Sender<NodeRuntimeMessage>, receiver: Receiver<NodeGraphUpdate>) -> Self {
 		Self { sender, receiver }
 	}
 
 	/// Sends a message to the NodeRuntime
 	pub fn send(&self, message: NodeRuntimeMessage) -> Result<(), String> {
-		#[cfg(not(feature = "tauri"))]
+		#[cfg(any(not(feature = "tauri"), test))]
 		{
 			self.sender.send(message).map_err(|e| e.to_string())
 		}
 
-		#[cfg(feature = "tauri")]
+		#[cfg(all(feature = "tauri", not(test)))]
 		{
 			let serialized = ron::to_string(&message).map_err(|e| e.to_string()).unwrap();
 			wasm_bindgen_futures::spawn_local(async move {
@@ -77,7 +78,7 @@ impl NodeRuntimeIO {
 	/// Receives any pending updates from the NodeRuntime
 	pub fn receive(&self) -> impl Iterator<Item = NodeGraphUpdate> + use<'_> {
 		// TODO: This introduces extra latency
-		#[cfg(feature = "tauri")]
+		#[cfg(all(feature = "tauri", not(test)))]
 		{
 			let sender = self.sender.clone();
 			// In the Tauri case, responses are handled separately via poll_node_runtime_updates
