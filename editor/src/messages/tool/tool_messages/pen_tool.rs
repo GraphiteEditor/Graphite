@@ -285,12 +285,18 @@ enum HandleMode {
 /// The type of handle which is dragged by the cursor (under the cursor)
 #[derive(Clone, Debug, Default, PartialEq, Copy)]
 enum TargetHandle {
-	HandleEnd,
-	HandleStart,
-	PrimaryHandle(SegmentId),
-	EndHandle(SegmentId),
 	#[default]
 	None,
+	/// The handle that is drawn when an anchor is placed and dragging begins usually `next__handle-_start`,
+	/// lasting until `Tab` is pressed to swap the handles.
+	HandleStart,
+	/// The opposite handle that is drawn after placing an anchor and starting to drag
+	/// the "next handle start", continuing until `Tab` is pressed to swap the handles.
+	HandleEnd,
+	/// In the bent handle case,or starting to drag handle from a different segment,the endpoint might be having handle a to it.
+	/// if the endpoint is a startpoint it would have ManipulatorPointId::PrimaryHandle attached to it if not then ManipulatorPointId::EndHandle
+	PrimaryHandle(SegmentId),
+	EndHandle(SegmentId),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -316,8 +322,14 @@ struct PenToolData {
 	colinear: bool,
 	alt_press: bool,
 	space_press: bool,
-	lock_toggle: bool,
+	/// Tracks whether to switch from `HandleMode::ColinearEquidistant` to `HandleMode::Free`
+	/// after releasing Ctrl, specifically when Ctrl was held before the handle was dragged from the anchor.
+	switch_to_free_on_ctrl_release: bool,
+	///// To prevent showing cursor when KeyC is pressed when handles are swapped
 	handle_swap: bool,
+	/// Prevents conflicts when the handle's angle is already locked and it passes near the anchor,
+	/// avoiding unintended direction changes. Specifically handles the case where a handle is being dragged,
+	/// and Ctrl is pressed near the anchor to make it colinear with its opposite handle.
 	angle_locked: bool,
 	close_path: bool,
 
@@ -515,7 +527,7 @@ impl PenToolData {
 				let last_segment = self.end_point_segment;
 				let Some(point) = self.latest_point_mut() else { return };
 				point.in_segment = last_segment;
-				self.lock_toggle = true;
+				self.switch_to_free_on_ctrl_release = true;
 				return;
 			}
 
@@ -538,7 +550,7 @@ impl PenToolData {
 				self.handle_mode = HandleMode::Free;
 				if self.modifiers.lock_angle {
 					self.set_lock_angle(&vector_data, self.end_point.unwrap(), self.end_point_segment);
-					self.lock_toggle = true;
+					self.switch_to_free_on_ctrl_release = true;
 				}
 			}
 		}
@@ -749,9 +761,11 @@ impl PenToolData {
 			let opposite_type = self.get_opposite_handle_type(self.handle_type, &vector_data);
 			// Update offset
 			let Some(handle_pos) = self.target_handle_position(opposite_type, &vector_data) else {
+				self.handle_swap = false;
 				return;
 			};
 			if (handle_pos - self.next_point).length() < 1e-6 {
+				self.handle_swap = false;
 				return;
 			}
 			self.handle_end_offset = Some(viewport.transform_point2(handle_pos) - input.mouse.position);
@@ -873,8 +887,8 @@ impl PenToolData {
 		let anchor = transform.transform_point2(self.next_point);
 		let distance = (mouse_pos - anchor).length();
 
-		if self.lock_toggle && !self.modifiers.lock_angle {
-			self.lock_toggle = false;
+		if self.switch_to_free_on_ctrl_release && !self.modifiers.lock_angle {
+			self.switch_to_free_on_ctrl_release = false;
 			self.handle_mode = HandleMode::Free;
 		}
 
@@ -895,7 +909,7 @@ impl PenToolData {
 
 		if distance < 20. && self.handle_mode == HandleMode::Free && self.modifiers.lock_angle && !self.angle_locked {
 			self.set_lock_angle(&vector_data, self.end_point.unwrap(), self.end_point_segment);
-			self.lock_toggle = true;
+			self.switch_to_free_on_ctrl_release = true;
 			let last_segment = self.end_point_segment;
 			if let Some(latest) = self.latest_point_mut() {
 				latest.in_segment = last_segment;
@@ -948,6 +962,10 @@ impl PenToolData {
 		let Some(handle) = self.target_handle_position(self.handle_type, vector_data) else {
 			return;
 		};
+
+		if (anchor_pos - handle).length() < 1e-6 {
+			return;
+		}
 
 		let Some(direction) = (anchor_pos - handle).try_normalize() else {
 			log::trace!("Skipping colinear adjustment: handle_start and anchor_point are too close!");
@@ -1094,7 +1112,7 @@ impl PenToolData {
 
 				if self.modifiers.lock_angle {
 					self.set_lock_angle(&vector_data, point, segment);
-					self.lock_toggle = true;
+					self.switch_to_free_on_ctrl_release = true;
 				}
 			}
 			let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
@@ -1112,7 +1130,7 @@ impl PenToolData {
 			self.handle_mode = HandleMode::Free;
 			if self.modifiers.lock_angle {
 				self.set_lock_angle(&vector_data, point, segment);
-				self.lock_toggle = true;
+				self.switch_to_free_on_ctrl_release = true;
 			}
 		}
 
@@ -1187,7 +1205,7 @@ impl PenToolData {
 		self.handle_mode = HandleMode::Free;
 		if self.modifiers.lock_angle {
 			self.set_lock_angle(&vector_data, point, segment);
-			self.lock_toggle = true;
+			self.switch_to_free_on_ctrl_release = true;
 		}
 	}
 
@@ -1354,7 +1372,7 @@ impl Fsm for PenToolFsmState {
 				let handle2 = opposite_handle_pos - latest_pos;
 				let pi = std::f64::consts::PI;
 				let angle = handle1.angle_to(handle2);
-				tool_data.colinear = angle.abs() < 1e-6 || (angle % pi).abs() < 1e-6;
+				tool_data.colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
 				PenToolFsmState::GRSHandle
 			}
 			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_position }) => {
@@ -1699,7 +1717,6 @@ impl Fsm for PenToolFsmState {
 					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input)
 					.unwrap_or(PenToolFsmState::Ready);
 
-				// To prevent showing cursor when KeyC is pressed when handles are swapped
 				if tool_data.handle_swap {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
 				}
@@ -1773,10 +1790,10 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::SwapHandles) => {
-				tool_data.swap_handles(layer, document, shape_editor, input, responses);
 				if !tool_data.handle_swap {
 					tool_data.handle_swap = true
 				};
+				tool_data.swap_handles(layer, document, shape_editor, input, responses);
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
