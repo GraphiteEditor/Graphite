@@ -22,6 +22,16 @@ members = [
 	"website/other/bezier-rs-demos/wasm",
 ]
 exclude = ["node-graph/gpu-compiler"]
+default-members = [
+	"editor",
+	"frontend/wasm",
+	"node-graph/gcore",
+	"node-graph/gstd",
+	"node-graph/graph-craft",
+	"node-graph/graphene-cli",
+	"node-graph/interpreted-executor",
+	"node-graph/node-macro",
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -54,7 +64,6 @@ tempfile = "3.6"
 thiserror = "2"
 anyhow = "1.0"
 proc-macro2 = "1"
-postcard = "1.1"
 quote = "1.0"
 axum = "0.8"
 chrono = "0.4"

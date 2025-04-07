@@ -1,9 +1,6 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, generate_uuid};
 use graph_craft::proto::GraphErrors;
@@ -14,12 +11,10 @@ use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_core::text::FontCache;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::Context;
 use graphene_std::application_io::TimingInformation;
-use graphene_std::memo::IORecord;
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::vector::VectorData;
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::dynamic_executor::{IntrospectError, ResolvedDocumentNodeTypesDelta};
 
 use glam::{DAffine2, DVec2, UVec2};
 use std::sync::Arc;
@@ -427,109 +422,127 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 }
-
-/// Stores all of the monitor nodes that have been attached to a graph
-#[derive(Default)]
-pub struct Instrumented {
-	protonodes_by_name: HashMap<String, Vec<Vec<Vec<NodeId>>>>,
-	protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
-}
+#[cfg(test)]
+pub use test::Instrumented;
 
 #[cfg(test)]
-impl Instrumented {
-	/// Adds montior nodes to the network
-	fn add(&mut self, network: &mut NodeNetwork, path: &mut Vec<NodeId>) {
-		// Required to do seperately to satiate the borrow checker.
-		let mut monitor_nodes = Vec::new();
-		for (id, node) in network.nodes.iter_mut() {
-			// Recursively instrument
-			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				path.push(*id);
-				self.add(nested, path);
-				path.pop();
+mod test {
+	use graphene_std::{Context, memo::IORecord};
+
+	use crate::{
+		messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface,
+		test_utils::test_prelude::{self, NodeGraphLayer},
+	};
+
+	use super::*;
+
+	/// Stores all of the monitor nodes that have been attached to a graph
+	#[derive(Default)]
+	pub struct Instrumented {
+		protonodes_by_name: HashMap<String, Vec<Vec<Vec<NodeId>>>>,
+		protonodes_by_path: HashMap<Vec<NodeId>, Vec<Vec<NodeId>>>,
+	}
+
+	impl Instrumented {
+		/// Adds montior nodes to the network
+		fn add(&mut self, network: &mut NodeNetwork, path: &mut Vec<NodeId>) {
+			// Required to do seperately to satiate the borrow checker.
+			let mut monitor_nodes = Vec::new();
+			for (id, node) in network.nodes.iter_mut() {
+				// Recursively instrument
+				if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+					path.push(*id);
+					self.add(nested, path);
+					path.pop();
+				}
+				let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
+				for input in &mut node.inputs {
+					let node_id = NodeId::new();
+					let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
+					monitor_nodes.push((old_input, node_id));
+					path.push(node_id);
+					monitor_node_ids.push(path.clone());
+					path.pop();
+				}
+				if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
+					path.push(*id);
+					self.protonodes_by_name.entry(identifier.name.to_string()).or_default().push(monitor_node_ids.clone());
+					self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
+					path.pop();
+				}
 			}
-			let mut monitor_node_ids = Vec::with_capacity(node.inputs.len());
-			for input in &mut node.inputs {
-				let node_id = NodeId::new();
-				let old_input = std::mem::replace(input, NodeInput::node(node_id, 0));
-				monitor_nodes.push((old_input, node_id));
-				path.push(node_id);
-				monitor_node_ids.push(path.clone());
-				path.pop();
-			}
-			if let DocumentNodeImplementation::ProtoNode(identifier) = &mut node.implementation {
-				path.push(*id);
-				self.protonodes_by_name.entry(identifier.name.to_string()).or_default().push(monitor_node_ids.clone());
-				self.protonodes_by_path.insert(path.clone(), monitor_node_ids);
-				path.pop();
+			for (input, monitor_id) in monitor_nodes {
+				let monitor_node = DocumentNode {
+					inputs: vec![input],
+					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+					manual_composition: Some(graph_craft::generic!(T)),
+					skip_deduplication: true,
+					..Default::default()
+				};
+				network.nodes.insert(monitor_id, monitor_node);
 			}
 		}
-		for (input, monitor_id) in monitor_nodes {
-			let monitor_node = DocumentNode {
-				inputs: vec![input],
-				implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-				manual_composition: Some(graph_craft::generic!(T)),
-				skip_deduplication: true,
-				..Default::default()
-			};
-			network.nodes.insert(monitor_id, monitor_node);
+
+		/// Instrument a graph and return a new [Instrumented] state.
+		pub fn new(network: &mut NodeNetwork) -> Self {
+			let mut instrumented = Self::default();
+			instrumented.add(network, &mut Vec::new());
+			instrumented
 		}
-	}
 
-	/// Instrument a graph and return a new [Instrumented] state.
-	pub fn new(network: &mut NodeNetwork) -> Self {
-		let mut instrumented = Self::default();
-		instrumented.add(network, &mut Vec::new());
-		instrumented
-	}
-
-	fn downcast<Input: graphene_std::NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		// This is quite inflexible since it only allows the footprint as inputs.
-		if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
-			Some(x.output.clone())
-		} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
-			Some(x.output.clone())
-		} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
-			Some(x.output.clone())
-		} else {
-			panic!("cannot downcast type for introspection");
+		fn downcast<Input: graphene_std::NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
+		where
+			Input::Result: Send + Sync + Clone + 'static,
+		{
+			// This is quite inflexible since it only allows the footprint as inputs.
+			if let Some(x) = dynamic.downcast_ref::<IORecord<(), Input::Result>>() {
+				Some(x.output.clone())
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Input::Result>>() {
+				Some(x.output.clone())
+			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
+				Some(x.output.clone())
+			} else {
+				panic!("cannot downcast type for introspection");
+			}
 		}
-	}
 
-	/// Grab all of the values of the input every time it occurs in the graph.
-	pub fn grab_all_input<'a, Input: graphene_std::NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		self.protonodes_by_name
-			.get(Input::identifier())
-			.map_or([].as_slice(), |x| x.as_slice())
-			.iter()
-			.filter_map(|inputs| inputs.get(Input::INDEX))
-			.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-			.filter_map(Instrumented::downcast::<Input>)
-	}
+		/// Grab all of the values of the input every time it occurs in the graph.
+		pub fn grab_all_input<'a, Input: graphene_std::NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
+		where
+			Input::Result: Send + Sync + Clone + 'static,
+		{
+			self.protonodes_by_name
+				.get(Input::identifier())
+				.map_or([].as_slice(), |x| x.as_slice())
+				.iter()
+				.filter_map(|inputs| inputs.get(Input::INDEX))
+				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
+				.filter_map(Instrumented::downcast::<Input>)
+		}
 
-	pub fn grab_protonode_input<Input: graphene_std::NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
+		pub fn grab_protonode_input<Input: graphene_std::NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
+		where
+			Input::Result: Send + Sync + Clone + 'static,
+		{
+			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
 
-		let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
+			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
-		Self::downcast::<Input>(dynamic)
-	}
+			Self::downcast::<Input>(dynamic)
+		}
 
-	pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
-	where
-		Input::Result: Send + Sync + Clone + 'static,
-	{
-		let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
-		let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
-		self.grab_protonode_input::<Input>(&vec![node], runtime)
+		pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(
+			&self,
+			layer: test_prelude::LayerNodeIdentifier,
+			network_interface: &NodeNetworkInterface,
+			runtime: &NodeRuntime,
+		) -> Option<Input::Result>
+		where
+			Input::Result: Send + Sync + Clone + 'static,
+		{
+			let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+			let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
+			self.grab_protonode_input::<Input>(&vec![node], runtime)
+		}
 	}
 }

@@ -16,6 +16,7 @@
   description = "Development environment and build configuration";
 
   inputs = {
+    # This url should be changed to match your system packages if you work on tauri because you need to use the same graphics library versions as the ones used by your system
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
@@ -46,26 +47,11 @@
           # System libraries
           openssl
           vulkan-loader
-          libxkbcommon
-          llvmPackages.libcxxStdenv
-          gcc-unwrapped.lib
-          llvm
-          # libgbm
           mesa
           libraw
 
-          # Graphics and GPU support
-          mesa
-          mesa.drivers
-          xorg.libX11
-          xorg.libXcursor
-          xorg.libXrandr
-          xorg.libXi
-          libglvnd
-          libdrm
-          wayland
 
-          # Tauri dependencies
+          # Tauri dependencies: keep in sync with https://v2.tauri.app/start/prerequisites/
           at-spi2-atk
           atkmm
           cairo
@@ -83,7 +69,6 @@
         # Development tools that don't need to be in LD_LIBRARY_PATH
         buildTools =  [
           rustc-wasm
-          pkgs.cargo
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
@@ -117,7 +102,6 @@
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
           GIO_MODULE_DIR="${pkgs.glib-networking}/lib/gio/modules/";
-          # WEBKIT_DISABLE_DMABUF_RENDERER = 1;
           XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
           
 
