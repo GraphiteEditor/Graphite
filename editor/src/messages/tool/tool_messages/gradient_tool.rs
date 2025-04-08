@@ -184,11 +184,11 @@ impl SelectedGradient {
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
-				self.gradient.stops.0[s].0 = clamped;
-				let new_pos = self.gradient.stops.0[s];
+				self.gradient.stops.get_mut(s).unwrap().0 = clamped;
+				let new_pos = self.gradient.stops[s];
 
-				self.gradient.stops.0.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-				self.dragging = GradientDragTarget::Step(self.gradient.stops.0.iter().position(|x| *x == new_pos).unwrap());
+				self.gradient.stops.sort();
+				self.dragging = GradientDragTarget::Step(self.gradient.stops.iter().position(|x| *x == new_pos).unwrap());
 			}
 		}
 		self.render_gradient(responses);
@@ -255,11 +255,11 @@ impl Fsm for GradientToolFsmState {
 					let Gradient { start, end, stops, .. } = gradient;
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
-					overlay_context.line(start, end, None);
+					overlay_context.line(start, end, None, None);
 					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
 					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
 
-					for (index, (position, _)) in stops.0.into_iter().enumerate() {
+					for (index, (position, _)) in stops.into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
@@ -276,7 +276,7 @@ impl Fsm for GradientToolFsmState {
 				};
 
 				// Skip if invalid gradient
-				if selected_gradient.gradient.stops.0.len() < 2 {
+				if selected_gradient.gradient.stops.len() < 2 {
 					return self;
 				}
 
@@ -284,25 +284,31 @@ impl Fsm for GradientToolFsmState {
 
 				// Remove the selected point
 				match selected_gradient.dragging {
-					GradientDragTarget::Start => selected_gradient.gradient.stops.0.remove(0),
-					GradientDragTarget::End => selected_gradient.gradient.stops.0.pop().unwrap(),
-					GradientDragTarget::Step(index) => selected_gradient.gradient.stops.0.remove(index),
+					GradientDragTarget::Start => {
+						selected_gradient.gradient.stops.remove(0);
+					}
+					GradientDragTarget::End => {
+						let _ = selected_gradient.gradient.stops.pop();
+					}
+					GradientDragTarget::Step(index) => {
+						selected_gradient.gradient.stops.remove(index);
+					}
 				};
 
 				// The gradient has only one point and so should become a fill
-				if selected_gradient.gradient.stops.0.len() == 1 {
+				if selected_gradient.gradient.stops.len() == 1 {
 					if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
 							layer,
-							fill: Fill::Solid(selected_gradient.gradient.stops.0[0].1),
+							fill: Fill::Solid(selected_gradient.gradient.stops[0].1),
 						});
 					}
 					return self;
 				}
 
 				// Find the minimum and maximum positions
-				let min_position = selected_gradient.gradient.stops.0.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
-				let max_position = selected_gradient.gradient.stops.0.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
+				let min_position = selected_gradient.gradient.stops.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
+				let max_position = selected_gradient.gradient.stops.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
 
 				// Recompute the start and end position of the gradient (in viewport transform)
 				let transform = selected_gradient.transform;
@@ -312,7 +318,7 @@ impl Fsm for GradientToolFsmState {
 				selected_gradient.gradient.end = transform.inverse().transform_point2(new_end);
 
 				// Remap the positions
-				for (position, _) in selected_gradient.gradient.stops.0.iter_mut() {
+				for (position, _) in selected_gradient.gradient.stops.iter_mut() {
 					*position = (*position - min_position) / (max_position - min_position);
 				}
 
@@ -365,7 +371,7 @@ impl Fsm for GradientToolFsmState {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					// Check for dragging step
-					for (index, (pos, _)) in gradient.stops.0.iter().enumerate() {
+					for (index, (pos, _)) in gradient.stops.iter().enumerate() {
 						let pos = transform.transform_point2(gradient.start.lerp(gradient.end, *pos));
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
@@ -470,12 +476,15 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
 				tool_data.snap_manager.cleanup(responses);
-				if let Some(selected_layer) = document.click(input) {
-					if let Some(gradient) = get_gradient(selected_layer, &document.network_interface) {
-						tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
+				let was_dragging = tool_data.selected_gradient.is_some();
+
+				if !was_dragging {
+					if let Some(selected_layer) = document.click(input) {
+						if let Some(gradient) = get_gradient(selected_layer, &document.network_interface) {
+							tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
+						}
 					}
 				}
-
 				GradientToolFsmState::Ready
 			}
 
@@ -508,5 +517,132 @@ impl Fsm for GradientToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+	}
+}
+
+#[cfg(test)]
+mod test_gradient {
+	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
+	pub use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graphene_core::vector::fill;
+	use graphene_std::vector::style::Fill;
+
+	use super::gradient_space_transform;
+
+	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<(Fill, DAffine2)> {
+		let instrumented = editor.eval_graph().await;
+
+		let document = editor.active_document();
+		let layers = document.metadata().all_layers();
+		layers
+			.filter_map(|layer| {
+				let fill = instrumented.grab_input_from_layer::<fill::FillInput<Fill>>(layer, &document.network_interface, &editor.runtime)?;
+				let transform = gradient_space_transform(layer, document);
+				Some((fill, transform))
+			})
+			.collect()
+	}
+
+	#[tokio::test]
+	async fn ignore_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor).await.is_empty());
+	}
+
+	#[tokio::test]
+	// TODO: remove once https://github.com/GraphiteEditor/Graphite/issues/2444 is fixed
+	#[should_panic]
+	async fn ignore_raster() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
+		editor.drag_tool(ToolType::Gradient, 2., 2., 4., 4., ModifierKeys::empty()).await;
+		assert!(get_fills(&mut editor).await.is_empty());
+	}
+
+	#[tokio::test]
+	async fn simple_draw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_secondary_color(Color::BLUE).await;
+		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		let (fill, transform) = fills.first().unwrap();
+		let gradient = fill.as_gradient().unwrap();
+		// Gradient goes from secondary colour to primary colour
+		let stops = gradient.stops.iter().map(|stop| (stop.0, stop.1.to_rgba8_srgb())).collect::<Vec<_>>();
+		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+	}
+
+	#[tokio::test]
+	async fn snap_simple_draw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_8,
+			})
+			.await;
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(24., 4.);
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, start.x, start.y, end.x, end.y, ModifierKeys::SHIFT).await;
+		let fills = get_fills(&mut editor).await;
+		let (fill, transform) = fills.first().unwrap();
+		let gradient = fill.as_gradient().unwrap();
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(start, 1e-10));
+
+		// 15 degrees from horizontal
+		let angle = f64::to_radians(15.);
+		let direction = DVec2::new(angle.cos(), angle.sin());
+		let expected = start + direction * (end - start).length();
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(expected, 1e-10));
+	}
+
+	#[tokio::test]
+	async fn transformed_draw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: f64::consts::FRAC_PI_8,
+			})
+			.await;
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		// Group rectangle
+		let group_folder_type = GroupFolderType::Layer;
+		editor.handle_message(DocumentMessage::GroupSelectedLayers { group_folder_type }).await;
+		let metadata = editor.active_document().metadata();
+		let mut layers = metadata.all_layers();
+		let folder = layers.next().unwrap();
+		let rectangle = layers.next().unwrap();
+		assert_eq!(rectangle.parent(metadata), Some(folder));
+		// Transform the group
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: folder,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1., 2.), 0., -DVec2::X * 10.),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		let (fill, transform) = fills.first().unwrap();
+		let gradient = fill.as_gradient().unwrap();
+		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
+		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
 	}
 }

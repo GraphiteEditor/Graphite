@@ -5,7 +5,6 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysMessage {
 	Draw,
-	SetDevicePixelRatio { ratio: f64 },
 	// Serde functionality isn't used but is required by the message system macros
 	AddProvider(#[serde(skip, default = "empty_provider")] OverlayProvider),
 	RemoveProvider(#[serde(skip, default = "empty_provider")] OverlayProvider),

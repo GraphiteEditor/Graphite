@@ -15,6 +15,8 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
 	DocumentPassMessage {
@@ -103,6 +105,9 @@ pub enum PortfolioMessage {
 	SetActivePanel {
 		panel: PanelType,
 	},
+	SetDevicePixelRatio {
+		ratio: f64,
+	},
 	SelectDocument {
 		document_id: DocumentId,
 	},
@@ -113,6 +118,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		transparent_background: bool,
 	},
+	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
 		ignore_hash: bool,

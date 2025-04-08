@@ -614,21 +614,21 @@ impl Blend<Color> for ImageFrameTable<Color> {
 }
 impl Blend<Color> for GradientStops {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+		let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
 		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
 		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
 		let stops = combined_stops
 			.into_iter()
 			.map(|&position| {
-				let over_color = self.evalute(position);
-				let under_color = under.evalute(position);
+				let over_color = self.evaluate(position);
+				let under_color = under.evaluate(position);
 				let color = blend_fn(over_color, under_color);
 				(position, color)
 			})
 			.collect::<Vec<_>>();
 
-		GradientStops(stops)
+		GradientStops::new(stops)
 	}
 }
 
@@ -721,7 +721,7 @@ impl Adjust<Color> for Option<Color> {
 }
 impl Adjust<Color> for GradientStops {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for (_pos, c) in self.0.iter_mut() {
+		for (_pos, c) in self.iter_mut() {
 			*c = map_fn(c);
 		}
 	}
@@ -770,7 +770,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evalute(intensity as f64)
+		gradient.evaluate(intensity as f64)
 	});
 
 	image

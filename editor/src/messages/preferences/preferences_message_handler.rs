@@ -1,3 +1,4 @@
+use crate::consts::VIEWPORT_ZOOM_WHEEL_RATE;
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -13,6 +14,7 @@ pub struct PreferencesMessageHandler {
 	pub use_vello: bool,
 	pub vector_meshes: bool,
 	pub graph_wire_style: GraphWireStyle,
+	pub viewport_zoom_wheel_rate: f64,
 }
 
 impl PreferencesMessageHandler {
@@ -47,6 +49,7 @@ impl Default for PreferencesMessageHandler {
 			use_vello,
 			vector_meshes: false,
 			graph_wire_style: GraphWireStyle::default(),
+			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 		}
 	}
 }
@@ -89,10 +92,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
 
-				let variant = match zoom_with_scroll {
-					false => MappingVariant::Default,
-					true => MappingVariant::ZoomWithScroll,
-				};
+				let variant = if zoom_with_scroll { MappingVariant::ZoomWithScroll } else { MappingVariant::Default };
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
@@ -101,6 +101,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::GraphWireStyle { style } => {
 				self.graph_wire_style = style;
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			PreferencesMessage::ViewportZoomWheelRate { rate } => {
+				self.viewport_zoom_wheel_rate = rate;
 			}
 		}
 		// TODO: Reenable when Imaginate is restored (and move back up one line since the auto-formatter doesn't like it in that block)

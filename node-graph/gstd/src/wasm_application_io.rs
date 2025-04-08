@@ -116,7 +116,13 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutputType {
+async fn render_canvas(
+	render_config: RenderConfig,
+	data: impl GraphicElementRendered,
+	editor: &WasmEditorApi,
+	surface_handle: wgpu_executor::WgpuSurface,
+	render_params: RenderParams,
+) -> RenderOutputType {
 	use graphene_core::SurfaceFrame;
 
 	let footprint = render_config.viewport;
@@ -129,9 +135,9 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	let mut child = Scene::new();
 
 	let mut context = wgpu_executor::RenderContext::default();
-	data.render_to_vello(&mut child, Default::default(), &mut context);
+	data.render_to_vello(&mut child, Default::default(), &mut context, &render_params);
 
-	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
+	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(n) cost
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
 	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
@@ -235,17 +241,21 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
-	let ctx = OwnedContextImpl::default().with_footprint(footprint).into_context();
+	let ctx = OwnedContextImpl::default()
+		.with_footprint(footprint)
+		.with_real_time(render_config.time.time)
+		.with_animation_time(render_config.time.animation_time.as_secs_f64())
+		.into_context();
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
 	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export);
 
 	let data = data.eval(ctx.clone()).await;
-	let editor_api = editor_api.eval(ctx.clone()).await;
+	let editor_api = editor_api.eval(None).await;
 
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = _surface_handle.eval(ctx.clone()).await;
+	let surface_handle = _surface_handle.eval(None).await;
 
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
@@ -266,7 +276,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 				return RenderOutput {
-					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap()).await,
+					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap(), render_params).await,
 					metadata,
 				};
 				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]

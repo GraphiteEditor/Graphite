@@ -60,14 +60,14 @@ impl ToolColorOptions {
 
 	pub fn apply_fill(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		if let Some(color) = self.active_color() {
-			let fill = graphene_core::vector::style::Fill::solid(color);
+			let fill = graphene_core::vector::style::Fill::solid(color.to_gamma_srgb());
 			responses.add(GraphOperationMessage::FillSet { layer, fill });
 		}
 	}
 
 	pub fn apply_stroke(&self, weight: f64, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		if let Some(color) = self.active_color() {
-			let stroke = graphene_core::vector::style::Stroke::new(Some(color), weight);
+			let stroke = graphene_core::vector::style::Stroke::new(Some(color.to_gamma_srgb()), weight);
 			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 		}
 	}
@@ -111,9 +111,11 @@ impl ToolColorOptions {
 		widgets.push(radio);
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
-		let color_button = ColorInput::new(FillChoice::from_optional_color(self.active_color()))
-			.allow_none(color_allow_none)
-			.on_update(color_callback);
+		let fill_choice = match self.active_color() {
+			Some(color) => FillChoice::Solid(color.to_gamma_srgb()),
+			None => FillChoice::None,
+		};
+		let color_button = ColorInput::new(fill_choice).allow_none(color_allow_none).on_update(color_callback);
 		widgets.push(color_button.widget_holder());
 
 		widgets

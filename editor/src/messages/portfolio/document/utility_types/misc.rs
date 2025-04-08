@@ -217,10 +217,7 @@ impl Default for GridSnapping {
 		Self {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
-			grid_color: COLOR_OVERLAY_GRAY
-				.strip_prefix('#')
-				.and_then(Color::from_rgb_str)
-				.expect("Should create Color from prefixed hex string"),
+			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
 			dot_display: false,
 		}
 	}

@@ -138,19 +138,18 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
+			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
-						let micros: f64 = timestamp * 1000.;
-						let timestamp = Duration::from_micros(micros.round() as u64);
-
-						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
+							timestamp: js_sys::Date::now() as u64,
+						}) {
 							handle.send_frontend_message_to_js(message);
 						}
 
-						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
 					});
@@ -353,7 +352,7 @@ impl EditorHandle {
 	/// Inform the overlays system of the current device pixel ratio
 	#[wasm_bindgen(js_name = setDevicePixelRatio)]
 	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
+		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -481,12 +480,13 @@ impl EditorHandle {
 	/// Update primary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
 	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let primary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
-			Some(color) => color,
-			None => return Err(Error::new("Invalid color").into()),
+		let Some(primary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectPrimaryColor { color: primary_color };
+		let message = ToolMessage::SelectPrimaryColor {
+			color: primary_color.to_linear_srgb(),
+		};
 		self.dispatch(message);
 
 		Ok(())
@@ -495,12 +495,13 @@ impl EditorHandle {
 	/// Update secondary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updateSecondaryColor)]
 	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let secondary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
-			Some(color) => color,
-			None => return Err(Error::new("Invalid color").into()),
+		let Some(secondary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectSecondaryColor { color: secondary_color };
+		let message = ToolMessage::SelectSecondaryColor {
+			color: secondary_color.to_linear_srgb(),
+		};
 		self.dispatch(message);
 
 		Ok(())
@@ -777,7 +778,10 @@ impl EditorHandle {
 			to_front: false,
 		});
 
-		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+		let Some(document) = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut() else {
+			warn!("Document wasn't loaded");
+			return;
+		};
 		for node in document
 			.network_interface
 			.document_network_metadata()
@@ -821,7 +825,13 @@ impl EditorHandle {
 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, true)
+			.submit_node_graph_evaluation(
+				portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(),
+				glam::UVec2::ONE,
+				Default::default(),
+				None,
+				true,
+			)
 			.unwrap();
 		editor::node_graph_executor::run_node_graph().await;
 
