@@ -2480,6 +2480,7 @@ impl DocumentMessageHandler {
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
+
 	pub fn graph_view_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
 	}
