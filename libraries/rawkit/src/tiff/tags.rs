@@ -1,6 +1,5 @@
 use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeOrientation, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
 use super::{Ifd, TagId, TiffError, TiffRead};
-
 use std::io::{Read, Seek};
 
 pub trait SimpleTag {

@@ -8,12 +8,12 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
-
+use glam::DVec2;
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
-use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
@@ -22,12 +22,10 @@ use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
-#[cfg(feature = "gpu")]
-use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
-
-use glam::DVec2;
 use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet, VecDeque};
+#[cfg(feature = "gpu")]
+use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
@@ -52,10 +50,9 @@ impl NodePropertiesContext<'_> {
 						log::error!("Could not get input properties row in call_widget_override");
 						return Vec::new();
 					};
-					if let Some(tooltip) = &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
-						layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>()
-					} else {
-						layout_group
+					match &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
+						Some(tooltip) => layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>(),
+						_ => layout_group,
 					}
 				})
 				.map_err(|error| {
@@ -812,6 +809,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 					],
+					manual_composition: Some(generic!(T)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -2089,7 +2087,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Text",
-			category: "Vector",
+			category: "Text",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::text::TextNode"),
@@ -2255,7 +2253,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override("Skew", WidgetOverride::Hidden),
+						PropertiesRow::with_override("Skew", WidgetOverride::Custom("transform_skew".to_string())),
 						PropertiesRow::with_override("Pivot", WidgetOverride::Hidden),
 					],
 					output_names: vec!["Data".to_string()],
@@ -2666,6 +2664,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
 		use graphene_core::registry::*;
+		let id = id.clone();
 
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
@@ -2676,7 +2675,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -2688,12 +2687,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description,
 			properties,
 		} = metadata;
-		let Some(implementations) = &node_registry.get(id) else { continue };
+		let Some(implementations) = &node_registry.get(&id) else { continue };
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut input_type = &first_node_io.call_argument;
 		if valid_inputs.len() > 1 {
-			input_type = &const { generic!(T) };
+			input_type = &const { generic!(D) };
 		}
 		let output_type = &first_node_io.return_value;
 
@@ -2743,6 +2742,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
+
 					..Default::default()
 				},
 			},
@@ -3344,6 +3344,52 @@ fn static_input_properties() -> InputProperties {
 						.range_max(Some(180.))
 						.on_update(node_properties::update_value(
 							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+				]);
+			}
+
+			Ok(vec![LayoutGroup::Row { widgets }])
+		}),
+	);
+	// Skew has a custom override that maps to degrees
+	map.insert(
+		"transform_skew".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+
+			let mut widgets = node_properties::start_widgets(document_node, node_id, index, input_name, super::utility_types::FrontendGraphDataType::Number, true);
+
+			let Some(input) = document_node.inputs.get(index) else {
+				return Err("Input not found in transform skew input override".to_string());
+			};
+			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
+				let to_skew = |input: &NumberInput| input.value.unwrap().to_radians().tan();
+				widgets.extend_from_slice(&[
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(val.x.atan().to_degrees()))
+						.label("X")
+						.unit("°")
+						.min(-89.9)
+						.max(89.9)
+						.on_update(node_properties::update_value(
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(to_skew(input), val.y)),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(val.y.atan().to_degrees()))
+						.label("Y")
+						.unit("°")
+						.min(-89.9)
+						.max(89.9)
+						.on_update(node_properties::update_value(
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, to_skew(input))),
 							node_id,
 							index,
 						))

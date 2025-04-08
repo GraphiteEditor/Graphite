@@ -6,7 +6,6 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::prelude::*;
-
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -40,6 +39,8 @@ pub enum LayoutTarget {
 	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesSections,
+	/// The spredsheet panel allows for the visualisation of data in the graph.
+	Spreadsheet,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
@@ -167,14 +168,14 @@ impl WidgetLayout {
 	pub fn iter(&self) -> WidgetIter<'_> {
 		WidgetIter {
 			stack: self.layout.iter().collect(),
-			current_slice: None,
+			..Default::default()
 		}
 	}
 
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
 		WidgetIterMut {
 			stack: self.layout.iter_mut().collect(),
-			current_slice: None,
+			..Default::default()
 		}
 	}
 
@@ -206,6 +207,7 @@ impl WidgetLayout {
 #[derive(Debug, Default)]
 pub struct WidgetIter<'a> {
 	pub stack: Vec<&'a LayoutGroup>,
+	pub table: Vec<&'a WidgetHolder>,
 	pub current_slice: Option<&'a [WidgetHolder]>,
 }
 
@@ -213,9 +215,13 @@ impl<'a> Iterator for WidgetIter<'a> {
 	type Item = &'a WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(item) = self.current_slice.and_then(|slice| slice.first()) {
-			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
+		let widget = self.table.pop().or_else(|| {
+			let (first, rest) = self.current_slice.take()?.split_first()?;
+			self.current_slice = Some(rest);
+			Some(first)
+		});
 
+		if let Some(item) = widget {
 			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = item {
 				self.stack.extend(p.popover_layout.iter());
 				return self.next();
@@ -233,6 +239,10 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
+			Some(LayoutGroup::Table { rows }) => {
+				self.table.extend(rows.iter().flatten().rev());
+				self.next()
+			}
 			Some(LayoutGroup::Section { layout, .. }) => {
 				for layout_row in layout {
 					self.stack.push(layout_row);
@@ -247,6 +257,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 #[derive(Debug, Default)]
 pub struct WidgetIterMut<'a> {
 	pub stack: Vec<&'a mut LayoutGroup>,
+	pub table: Vec<&'a mut WidgetHolder>,
 	pub current_slice: Option<&'a mut [WidgetHolder]>,
 }
 
@@ -254,16 +265,20 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	type Item = &'a mut WidgetHolder;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some((first, rest)) = self.current_slice.take().and_then(|slice| slice.split_first_mut()) {
+		let widget = self.table.pop().or_else(|| {
+			let (first, rest) = self.current_slice.take()?.split_first_mut()?;
 			self.current_slice = Some(rest);
+			Some(first)
+		});
 
-			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = first {
+		if let Some(widget) = widget {
+			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = widget {
 				self.stack.extend(p.popover_layout.iter_mut());
 				return self.next();
 			}
 
-			return Some(first);
-		};
+			return Some(widget);
+		}
 
 		match self.stack.pop() {
 			Some(LayoutGroup::Column { widgets }) => {
@@ -272,6 +287,10 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 			}
 			Some(LayoutGroup::Row { widgets }) => {
 				self.current_slice = Some(widgets);
+				self.next()
+			}
+			Some(LayoutGroup::Table { rows }) => {
+				self.table.extend(rows.iter_mut().flatten().rev());
 				self.next()
 			}
 			Some(LayoutGroup::Section { layout, .. }) => {
@@ -298,6 +317,11 @@ pub enum LayoutGroup {
 	Row {
 		#[serde(rename = "rowWidgets")]
 		widgets: Vec<WidgetHolder>,
+	},
+	#[serde(rename = "table")]
+	Table {
+		#[serde(rename = "tableWidgets")]
+		rows: Vec<Vec<WidgetHolder>>,
 	},
 	// TODO: Move this from being a child of `enum LayoutGroup` to being a child of `enum Layout`
 	#[serde(rename = "section")]
@@ -348,11 +372,7 @@ impl LayoutGroup {
 				val.clone_from(&tooltip);
 			}
 		}
-		if is_col {
-			Self::Column { widgets }
-		} else {
-			Self::Row { widgets }
-		}
+		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
@@ -437,7 +457,7 @@ impl LayoutGroup {
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
 		WidgetIterMut {
 			stack: vec![self],
-			current_slice: None,
+			..Default::default()
 		}
 	}
 }

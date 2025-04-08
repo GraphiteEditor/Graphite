@@ -4,14 +4,12 @@ use crate::consts::{
 	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
-
 use bezier_rs::{Bezier, Subpath};
-use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
-
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
@@ -129,11 +127,12 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
-		self.dashed_line(start, end, color, None, None, None)
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
+		self.dashed_line(start, end, color, thickness, None, None, None)
 	}
 
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	#[allow(clippy::too_many_arguments)]
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		self.start_dpi_aware_transform();
 
 		// Set the dash pattern
@@ -161,8 +160,10 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
+		self.render_context.set_line_width(thickness.unwrap_or(1.));
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
+		self.render_context.set_line_width(1.);
 
 		// Reset the dash pattern back to solid
 		if dash_width.is_some() {
@@ -311,8 +312,8 @@ impl OverlayContext {
 
 		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
 		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
-		self.line(pivot, end_point1, Some(color_line));
-		self.line(pivot, end_point2, Some(color_line));
+		self.line(pivot, end_point1, Some(color_line), None);
+		self.line(pivot, end_point2, Some(color_line), None);
 
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
@@ -322,10 +323,10 @@ impl OverlayContext {
 		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
-			.rgba_hex();
+			.to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
-		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
+		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None, None);
 		self.circle(start, radius, fill_color, None);
 		self.circle(start, radius * scale.abs(), fill_color, None);
 		self.text(
@@ -359,7 +360,10 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
+			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+				.unwrap()
+				.with_alpha(0.5)
+				.to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);

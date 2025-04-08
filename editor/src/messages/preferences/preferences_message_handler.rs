@@ -3,7 +3,6 @@ use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-
 use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -93,10 +92,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
 
-				let variant = match zoom_with_scroll {
-					false => MappingVariant::Default,
-					true => MappingVariant::ZoomWithScroll,
-				};
+				let variant = if zoom_with_scroll { MappingVariant::ZoomWithScroll } else { MappingVariant::Default };
 				responses.add(KeyMappingMessage::ModifyMapping(variant));
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {

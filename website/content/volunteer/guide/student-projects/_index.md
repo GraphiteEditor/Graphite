@@ -17,8 +17,8 @@ Use this [contributor guide](..) to start out with the code. Then when you're re
 
 GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
 
-Graphite [participated in GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and we anticipate doing so again in 2025 if our organization's application is accepted. Getting involved early is a great way to have a head start and stand out in your application.
-<!-- The proposal formulation period is open now until the April 2 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)). -->
+<!-- Graphite [participated in GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and we anticipate doing so again in 2025 if our organization's application is accepted. Getting involved early is a great way to have a head start and stand out in your application. -->
+Graphite is [participating again in GSoC 2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite). Getting involved early is a great way to have a head start and stand out in your application. The proposal formulation period is open now until the April 8 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)).
 
 ### Writing a proposal
 
@@ -35,21 +35,33 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 
 ## Project idea list
 
-### Marquee selection masking
+### Compilers, graphics, and theory
 
-*Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
+These projects are more advanced but are highest priority for Graphite's development. We will be aiming to find standout candidates for at least one of these projects this year. If your background suits the projects listed in this section, you are likely to have better odds applying to these compared to the more general projects further below.
 
-- **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube)
-- **Needed Skills:** Rust, computer graphics
-- **Project Size:** Large *(GSoC: 350 hours)*
-- **Difficulty:** Medium
-- **Expected Outcomes:** Complete implementation of Mask mode and its marquee selection. Marching ants visualization shader effect. Integration of selection mask with the node graph and raster editing tools. Useful raster editing workflow.
+#### Graphene language/compiler development
 
-A central part of the workflow in raster image editors is the selection of portions of the image to constrain manipulations just to the masked areas. Tools such as the circular and rectangular marquee, lasso, and magic wand are used to create masks. Instead of using dedicated tools, Graphite's design reuses the existing vector and raster drawing tools (like Rectangle, Ellipse, Pen, and Fill) to create masks in a dedicated Mask mode. Returning from Mask mode reveals the marching ants selection that constrains further editing operations.
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
 
-This is a key feature in Graphite's evolution to a fully-featured raster editor.
+- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2350)
+- Best for someone with an aptitude or focus on programming languages, compilers, and type system theory.
 
-### Machine learning architecture
+#### GPU-accelerated rendering pipeline within the compiler/runtime/engine
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- Build out infrastructure in the language/compiler/runtime/engine using [rust-gpu](https://github.com/Rust-GPU/rust-gpu) and/or [CubeCL](https://github.com/tracel-ai/cubecl).
+- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2168)
+- Best for someone with both an aptitude for low-level graphics programming (experience in one of WGPU, Vulkan, OpenGL, etc.) and an interest in compilers and programming languages.
+
+#### Node equivalence rewriting
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2021)
+- Best for someone with an interest towards graph theory and compiler optimization topics like [E-graphs](https://en.wikipedia.org/wiki/E-graph).
+
+#### Machine learning architecture
 
 *Generative AI and vision ML models will need to run in Graphite's node graph with a Rust-centric, modular, portable, deployable, scalable environment.*
 
@@ -78,7 +90,116 @@ Based on the experience and insight brought to the table by the student, the nat
 
 </details>
 
-### Complex widget layout system
+### Native development
+
+#### Graphite desktop app engineering
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+### Rendering and graphics
+
+Several of these require a good understanding of computer graphics rendering techniques and algorithms. Experience in game development and writing your own rendering engines is a plus.
+
+#### Mesh vector rendering
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- See the GitHub issues: [fills](https://github.com/GraphiteEditor/Graphite/issues/2309) and [strokes](https://github.com/GraphiteEditor/Graphite/issues/2310).
+
+#### Support paints for strokes and fills
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- Refactor and upgrade our renderer to cleanly handle paints for fills and strokes.
+- This includes [gradient rendering](https://github.com/GraphiteEditor/Graphite/issues/2304) polyfills
+- May include other rendering features like [stroke alignment](https://github.com/GraphiteEditor/Graphite/issues/2268) polyfills
+
+#### Advanced text layout and typography
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/1105)
+
+#### PDF and/or DXF import/export
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- Scope and viability depends on the state of available libraries.
+
+#### Traditional brush engine
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/1297)
+
+#### Procedural brush engine
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- [Read this thesis for background](https://digitalcommons.calpoly.edu/theses/2653/), chapter 3 onwards.
+
+#### Advanced color management
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- Add support for HDR/WCG and/or CMYK and alternate color spaces/models
+- Requires an experienced understanding of color science
+
+#### Image processing algorithms for photography
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+#### New graphics nodes
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- Research and implement image processing (raster) or geometry (vector) nodes that you propose or we suggest in our discussions with you.
+- Example of one such node: [Text on path](https://github.com/GraphiteEditor/Graphite/issues/978).
+
+#### SVG with raster effects
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- The SVG spec supports a number of filters and other raster effects, and we currently only implement a small subset.
+- Add support for the rest of the SVG spec, including filters, masks, and other raster effects.
+- Allow roundtrip import and export of SVG files with these features.
+- Import, render (through SVG and Vello), and export of [filters like these](https://codepen.io/miXTim/pen/ZErggMQ).
+
+### Editor tooling
+
+#### Snapping system overhaul
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2352)
+
+#### Advanced vector editing tool modes
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+- Add modes for segment editing, mesh vector, and more. Discuss with us on Discord to decide on the scope of the project.
+
+#### Tooling polishing and gizmo additions
+
+*Check back shortly for a full project description, or ask on Discord right now for more details.*
+
+#### Marquee selection masking
+
+*Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
+
+- **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube)
+- **Needed Skills:** Rust, computer graphics
+- **Project Size:** Large *(GSoC: 350 hours)*
+- **Difficulty:** Medium
+- **Expected Outcomes:** Complete implementation of Mask mode and its marquee selection. Marching ants visualization shader effect. Integration of selection mask with the node graph and raster editing tools. Useful raster editing workflow.
+
+A central part of the workflow in raster image editors is the selection of portions of the image to constrain manipulations just to the masked areas. Tools such as the circular and rectangular marquee, lasso, and magic wand are used to create masks. Instead of using dedicated tools, Graphite's design reuses the existing vector and raster drawing tools (like Rectangle, Ellipse, Pen, and Fill) to create masks in a dedicated Mask mode. Returning from Mask mode reveals the marching ants selection that constrains further editing operations.
+
+This is a key feature in Graphite's evolution to a fully-featured raster editor.
+
+### Refactors and infrastructure
+
+#### Complex widget layout system
 
 *Graphite's UI needs an upgraded layout system to support more complex and dynamic widget arrangements defined from the backend.*
 
@@ -99,39 +220,7 @@ The present system is very row-centric, which makes it challenging to create mul
 
 </details>
 
-### Node data table editor
-
-*The node graph data model for procedural content generation can be thought of as a spreadsheet, which needs a dedicated viewer/editor panel.*
-
-- **Possible Mentors:** [Keavon](/about#keavon)
-- **Needed Skills:** Rust, web (Svelte, TypeScript)
-- **Project Size:** Medium *(GSoC: 175 hours)*
-- **Difficulty:** Easy-to-medium
-- **Expected Outcomes:** A functional panel in the editor that displays the selected node output data as a spreadsheet across multiple domains. Connection to the graph engine to read and edit the data. Virtual scrolling and efficient transfer of data to the frontend.
-
-The node graph is a powerful tool for procedural content generation, but it can be difficult to understand the data that flows through it. Node data can be represented as a spreadsheet, where each row presents an instance type (e.g., a point, segment, face, or element) and each column displays an attribute (like position, color, or radius).
-
-This project involves implementing the frontend as a cleanly-written Svelte component that can display the data in a tabular format, where virtual scrolling lets it efficiently process only the visible portion of the full data table. Help will be provided in building the frontend component and especially its CSS styling, but the student should be familiar with efficient TypeScript and Rust programming to handle both frontend and backend challenges while maintaining a focus on performance. The backend portion will need to integrate with the node engine and surrounding tooling to query the data coming from the selected node.
-
-A larger-scoped version of the project can expand this to focus also on displaying thumbnail previews of data coming from each node's output.
-
-### Animation system
-
-*Adding a timeline-based animation system to Graphite would begin realizing the vision as a versatile content creation suite supporting motion graphics.*
-
-- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis)
-- **Needed Skills:** Rust, web (Svelte, CSS, SVG, TypeScript)
-- **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
-- **Difficulty:** Easy-to-medium
-- **Expected Outcomes:** A timeline panel in the editor that can create and edit keyframes and timing curves for animating data channels used by nodes. Ergonomic experience for keyframing properties. Efficient curve interpolation. Rendering optimizations for relatively smooth animation playback.
-
-A powerful outcome of Graphite's node-driven architecture is the relatively simple ability to vary data parameters over time.
-
-In the frontend, the student will be responsible for hooking up useful animation features into the existing editor UI (like exposing node parameters to the timeline) and building the new timeline panel with both simplified keyframe indicators and editable curves. A scrubbable playhead, playback controls, and other common timeline features should be included.
-
-In the backend, the animation curves need to be evaluated at the playhead position for each animation channel, then fed into the compiled graph. The node graph system (Graphene) needs to be updated so it can accept these time-varying parameters and route them to the appropriate nodes without requiring a full recompilation of the graph each frame. Any other rendering bottlenecks should also be found and optimized, where feasible and reasonably within scope.
-
-### Testing and performance instrumentation infrastructure
+#### Testing and performance instrumentation
 
 *Graphite has many areas that could benefit from better automated testing for bugs and performance regressions.*
 
@@ -143,7 +232,7 @@ In the backend, the animation curves need to be evaluated at the playhead positi
 
 Graphite could benefit from better testing coverage in a number of areas, especially end-to-end testing in the tool, document, and node graph systems. This project is about identifying and addressing areas that are lacking and most vulnerable to suffering from regressions. The student will be responsible for identifying areas that could benefit from better testing.
 
-### Architecture visualization
+#### Architecture visualization
 
 *Infrastructure to generate visualizations of Graphite's system architecture would be a valuable addition to the project's documentation and debugging tools.*
 
@@ -164,7 +253,9 @@ If proposed as part of the project's scope, a runtime component could be added a
 
 </details>
 
-### Your own idea
+### Other
+
+#### Your own idea
 
 *If you have an idea for a project that you think would be a good fit, we'd love to hear it!*
 
@@ -177,21 +268,6 @@ If proposed as part of the project's scope, a runtime component could be added a
 If none of the projects above suit your interests or experience, we are very open to discussing your own project ideas that could benefit Graphite. You may consult our [task board](https://github.com/orgs/GraphiteEditor/projects/1/views/1) and [roadmap](/features#roadmap) to get a feel for what our current priorities are.
 
 As is the case with all projects, please discuss this with us on Discord to flesh out your idea. Unsolicited proposals that have not been discussed with us will almost certainly be rejected.
-
-### More ideas
-
-In addition to the detailed projects above, here are some loose ideas that may be expanded into full project proposals by means of discussion with the core team:
-
-- Sophisticated text layout and advanced typography features
-- PDF import/export? (scope and viability depends on the state of available libraries)
-- Traditional brush engine
-- [Procedural brush engine](https://github.com/Keavon/Brush-Nodes)
-- Color management for HDR/WCG (requires good understanding of color science)
-- Image processing algorithms for photography
-- [Node equivalence rewriting](https://github.com/GraphiteEditor/Graphite/issues/2021)
-- Snapping system overhaul
-- Advanced vector editing tool modes (segment editing, mesh vector, and more)
-- Meticulous tooling polishing and gizmo additions
 
 ## Successful past projects
 

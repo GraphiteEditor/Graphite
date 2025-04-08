@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 pub use graphene_core::value::*;
 use graphene_core::Node;
-
 use dyn_any::DynAny;
 
 pub struct AnyRefNode<'n, N: Node<'n>>(N, PhantomData<&'n ()>);

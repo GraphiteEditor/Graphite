@@ -1,18 +1,17 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::graph_operation::transform_utils;
+use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
-
+use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
 use graphene_core::vector::VectorModificationType;
 use graphene_std::vector::{HandleId, PointId};
-
-use glam::{DAffine2, DMat2, DVec2};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
@@ -54,9 +53,15 @@ impl OriginalTransforms {
 		}
 	}
 
-	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
-		let document_metadata = network_interface.document_metadata();
+	/// Gets the transform from the most downstream transform node
+	fn get_layer_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DAffine2> {
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
 
+		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
+		Some(transform_utils::get_current_transform(&document_node.inputs))
+	}
+
+	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
@@ -64,7 +69,8 @@ impl OriginalTransforms {
 					if layer == LayerNodeIdentifier::ROOT_PARENT {
 						continue;
 					}
-					layer_map.entry(layer).or_insert_with(|| document_metadata.upstream_transform(layer.to_node()));
+
+					layer_map.entry(layer).or_insert_with(|| Self::get_layer_transform(layer, network_interface).unwrap_or_default());
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -128,11 +134,7 @@ impl Axis {
 			return (target, false);
 		}
 
-		if local {
-			(Axis::Both, false)
-		} else {
-			(self, true)
-		}
+		if local { (Axis::Both, false) } else { (self, true) }
 	}
 }
 
@@ -159,11 +161,7 @@ impl Translation {
 			}
 		};
 		let displacement = transform.inverse().transform_vector2(displacement);
-		if increment_mode {
-			displacement.round()
-		} else {
-			displacement
-		}
+		if increment_mode { displacement.round() } else { displacement }
 	}
 
 	#[must_use]
@@ -251,11 +249,7 @@ impl Default for Scale {
 impl Scale {
 	pub fn to_f64(self, increment: bool) -> f64 {
 		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
-		if increment {
-			(factor / SCALE_INCREMENT).round() * SCALE_INCREMENT
-		} else {
-			factor
-		}
+		if increment { (factor / SCALE_INCREMENT).round() * SCALE_INCREMENT } else { factor }
 	}
 
 	pub fn to_dvec(self, increment_mode: bool) -> DVec2 {
@@ -303,6 +297,22 @@ pub enum TransformOperation {
 	Grabbing(Translation),
 	Rotating(Rotation),
 	Scaling(Scale),
+}
+
+#[derive(Debug, Clone, PartialEq, Copy, serde::Serialize, serde::Deserialize)]
+pub enum TransformType {
+	Grab,
+	Rotate,
+	Scale,
+}
+
+impl TransformType {
+	pub fn equivalent_to(&self, operation: TransformOperation) -> bool {
+		matches!(
+			(operation, self),
+			(TransformOperation::Scaling(_), TransformType::Scale) | (TransformOperation::Grabbing(_), TransformType::Grab) | (TransformOperation::Rotating(_), TransformType::Rotate)
+		)
+	}
 }
 
 impl TransformOperation {
@@ -550,7 +560,7 @@ impl<'a> Selected<'a> {
 			.unwrap_or(DAffine2::IDENTITY);
 
 		if transform.matrix2.determinant().abs() <= f64::EPSILON {
-			transform.matrix2 += DMat2::IDENTITY * 1e-4;
+			transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 		}
 
 		let bounds = self

@@ -1,15 +1,14 @@
 // Only compile this file if the feature "rawkit-tests" is enabled
 #![cfg(feature = "rawkit-tests")]
 
-use rawkit::RawImage;
-
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::{ColorType, ImageEncoder};
 use libraw::Processor;
+use rawkit::RawImage;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::fs::{create_dir, metadata, read_dir, File};
+use std::fs::{File, create_dir, metadata, read_dir};
 use std::io::{BufWriter, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -338,10 +337,10 @@ fn extract_data_from_dng_images() {
 }
 
 fn extract_data_from_dng_image(path: &Path) {
+	use rawkit::tiff::Ifd;
 	use rawkit::tiff::file::TiffRead;
 	use rawkit::tiff::tags::{ColorMatrix2, Make, Model};
 	use rawkit::tiff::values::ToFloat;
-	use rawkit::tiff::Ifd;
 	use std::io::{BufReader, Write};
 
 	let reader = BufReader::new(File::open(path).unwrap());

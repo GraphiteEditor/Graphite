@@ -1,17 +1,18 @@
 mod attributes;
+mod indexed;
 mod modification;
-pub use attributes::*;
-pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
-
+pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
-use dyn_any::DynAny;
-
 use core::borrow::Borrow;
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+pub use indexed::VectorDataIndex;
+pub use modification::*;
+use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
@@ -69,6 +70,8 @@ pub type VectorDataTable = Instances<VectorData>;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
+///
+/// Segments are connected if they share endpoints.
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
@@ -266,6 +269,11 @@ impl VectorData {
 		index.flat_map(|index| self.segment_domain.connected_points(index).map(|index| self.point_domain.ids()[index]))
 	}
 
+	/// Get an array slice of all segment IDs.
+	pub fn segment_ids(&self) -> &[SegmentId] {
+		self.segment_domain.ids()
+	}
+
 	/// Enumerate all segments that start at the point.
 	pub fn start_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
 		let index = [self.point_domain.resolve_id(point)].into_iter().flatten();
@@ -326,17 +334,67 @@ impl VectorData {
 				let (start_point_id, _, _) = self.segment_points_from_id(*segment_id)?;
 				let start_index = self.point_domain.resolve_id(start_point_id)?;
 
-				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id))
+				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id)).or(self
+					.segment_domain
+					.start_connected(start_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (start_point_id, id)))
 			}
 			ManipulatorPointId::EndHandle(segment_id) => {
 				// For end handle, find segments starting at our end point
 				let (_, end_point_id, _) = self.segment_points_from_id(*segment_id)?;
 				let end_index = self.point_domain.resolve_id(end_point_id)?;
 
-				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id))
+				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id)).or(self
+					.segment_domain
+					.end_connected(end_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (end_point_id, id)))
 			}
 			ManipulatorPointId::Anchor(_) => None,
 		}
+	}
+
+	pub fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64) {
+		let point_map = other
+			.point_domain
+			.ids()
+			.iter()
+			.filter(|id| self.point_domain.ids().contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.collect::<HashMap<_, _>>();
+
+		let segment_map = other
+			.segment_domain
+			.ids()
+			.iter()
+			.filter(|id| self.segment_domain.ids().contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.collect::<HashMap<_, _>>();
+
+		let region_map = other
+			.region_domain
+			.ids()
+			.iter()
+			.filter(|id| self.region_domain.ids().contains(id))
+			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.collect::<HashMap<_, _>>();
+
+		let id_map = IdMap {
+			point_offset: self.point_domain.ids().len(),
+			point_map,
+			segment_map,
+			region_map,
+		};
+
+		self.point_domain.concat(&other.point_domain, transform, &id_map);
+		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
+		self.region_domain.concat(&other.region_domain, transform, &id_map);
+
+		// TODO: properly deal with fills such as gradients
+		self.style = other.style.clone();
+
+		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
 	}
 }
 
@@ -469,7 +527,10 @@ impl HandleId {
 
 	/// Calculate the magnitude of the handle from the anchor.
 	pub fn length(self, vector_data: &VectorData) -> f64 {
-		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector_data) else {
+			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
+			return 0.;
+		};
 		let handle_position = self.to_manipulator_point().get_position(vector_data);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}

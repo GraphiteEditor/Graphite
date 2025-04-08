@@ -1,10 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
+use crate::Ctx;
+use crate::GraphicGroupTable;
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
-use crate::Ctx;
-use crate::GraphicGroupTable;
-
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::DVec2;
@@ -22,6 +21,7 @@ pub mod color;
 #[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
+
 pub use adjustments::*;
 
 pub trait Linear {
@@ -95,11 +95,7 @@ impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
 		let x = linear.to_f32();
-		if x <= 0.0031308 {
-			Self(x * 12.92)
-		} else {
-			Self(1.055 * x.powf(1. / 2.4) - 0.055)
-		}
+		if x <= 0.0031308 { Self(x * 12.92) } else { Self(1.055 * x.powf(1. / 2.4) - 0.055) }
 	}
 }
 pub trait RGBPrimaries {
@@ -335,6 +331,7 @@ fn blend_mode<T: SetBlendMode>(
 	mut value: T,
 	blend_mode: BlendMode,
 ) -> T {
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.set_blend_mode(blend_mode);
 	value
 }
@@ -350,7 +347,7 @@ fn opacity<T: MultiplyAlpha>(
 	mut value: T,
 	#[default(100.)] factor: Percentage,
 ) -> T {
-	let opacity_multiplier = factor / 100.;
-	value.multiply_alpha(opacity_multiplier);
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	value.multiply_alpha(factor / 100.);
 	value
 }

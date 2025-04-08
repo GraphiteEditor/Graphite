@@ -5,10 +5,12 @@ pub use graph_craft::wasm_application_io::*;
 use graphene_core::application_io::SurfaceHandle;
 use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
+use graphene_core::instances::Instances;
+#[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::renderer::RenderMetadata;
-use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::transform::TransformMut;
@@ -114,7 +116,13 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 
 #[cfg(feature = "vello")]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRendered, editor: &WasmEditorApi, surface_handle: wgpu_executor::WgpuSurface) -> RenderOutputType {
+async fn render_canvas(
+	render_config: RenderConfig,
+	data: impl GraphicElementRendered,
+	editor: &WasmEditorApi,
+	surface_handle: wgpu_executor::WgpuSurface,
+	render_params: RenderParams,
+) -> RenderOutputType {
 	use graphene_core::SurfaceFrame;
 
 	let footprint = render_config.viewport;
@@ -127,9 +135,9 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	let mut child = Scene::new();
 
 	let mut context = wgpu_executor::RenderContext::default();
-	data.render_to_vello(&mut child, Default::default(), &mut context);
+	data.render_to_vello(&mut child, Default::default(), &mut context, &render_params);
 
-	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(Nr cost
+	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(n) cost
 	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
 
 	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
@@ -149,19 +157,22 @@ async fn render_canvas(render_config: RenderConfig, data: impl GraphicElementRen
 	RenderOutputType::CanvasFrame(frame)
 }
 
-#[node_macro::node(category(""))]
 #[cfg(target_arch = "wasm32")]
-async fn rasterize<T: GraphicElementRendered + graphene_core::transform::TransformMut + WasmNotSend + 'n>(
+#[node_macro::node(category(""))]
+async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
 		ImageFrameTable<Color>,
 		GraphicGroupTable,
 	)]
-	mut data: T,
+	mut data: Instances<T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> ImageFrameTable<Color> {
+) -> ImageFrameTable<Color>
+where
+	Instances<T>: GraphicElementRendered,
+{
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrameTable::empty();
@@ -176,7 +187,9 @@ async fn rasterize<T: GraphicElementRendered + graphene_core::transform::Transfo
 		..Default::default()
 	};
 
-	*data.transform_mut() = DAffine2::from_translation(-aabb.start) * data.transform();
+	for instance in data.instances_mut() {
+		*instance.transform = DAffine2::from_translation(-aabb.start) * *instance.transform;
+	}
 	data.render_svg(&mut render, &render_params);
 	render.format_svg(glam::DVec2::ZERO, size);
 	let svg_string = render.svg.to_svg_string();
@@ -228,24 +241,29 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
-	let ctx = OwnedContextImpl::default().with_footprint(footprint).into_context();
+	let ctx = OwnedContextImpl::default()
+		.with_footprint(footprint)
+		.with_real_time(render_config.time.time)
+		.with_animation_time(render_config.time.animation_time.as_secs_f64())
+		.into_context();
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
-	let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export);
 
 	let data = data.eval(ctx.clone()).await;
-	let editor_api = editor_api.eval(ctx.clone()).await;
+	let editor_api = editor_api.eval(None).await;
 
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
-	let surface_handle = _surface_handle.eval(ctx.clone()).await;
+	let surface_handle = _surface_handle.eval(None).await;
 
 	let use_vello = editor_api.editor_preferences.use_vello();
 	#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 	let use_vello = use_vello && surface_handle.is_some();
 
 	let mut metadata = RenderMetadata {
-		footprints: HashMap::new(),
+		upstream_footprints: HashMap::new(),
+		local_transforms: HashMap::new(),
 		click_targets: HashMap::new(),
 		clip_targets: HashSet::new(),
 	};
@@ -258,7 +276,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
 				#[cfg(all(feature = "vello", target_arch = "wasm32"))]
 				return RenderOutput {
-					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap()).await,
+					data: render_canvas(render_config, data, editor_api, surface_handle.unwrap(), render_params).await,
 					metadata,
 				};
 				#[cfg(not(all(feature = "vello", target_arch = "wasm32")))]

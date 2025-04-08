@@ -29,7 +29,7 @@ macro_rules! concrete {
 
 #[macro_export]
 macro_rules! concrete_with_name {
-	($type:ty, $name:expr) => {
+	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
@@ -42,16 +42,12 @@ macro_rules! concrete_with_name {
 
 #[macro_export]
 macro_rules! generic {
-	($type:ty) => {{
-		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
 #[macro_export]
 macro_rules! future {
-	($type:ty) => {{
-		$crate::Type::Future(Box::new(concrete!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
 	($type:ty, $name:ty) => {
 		$crate::Type::Future(Box::new(concrete!($type, $name)))
 	};
@@ -297,12 +293,24 @@ impl Type {
 		}
 	}
 
-	pub fn nested_type(self) -> Type {
+	pub fn nested_type(&self) -> &Type {
 		match self {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+		}
+	}
+
+	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
+		if let Some(replacement) = f(self) {
+			return Some(std::mem::replace(self, replacement));
+		}
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(_) => None,
+			Self::Fn(_, output) => output.replace_nested(f),
+			Self::Future(output) => output.replace_nested(f),
 		}
 	}
 }

@@ -6,15 +6,13 @@ use crate::raster::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
-use crate::vector::style::GradientStops;
 use crate::vector::VectorDataTable;
+use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
-
-use dyn_any::DynAny;
-
 use core::cmp::Ordering;
 use core::fmt::Debug;
+use dyn_any::DynAny;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -574,11 +572,7 @@ async fn threshold<T: Adjust<Color>>(
 			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 		};
 
-		if luminance >= min_luminance && luminance <= max_luminance {
-			Color::WHITE
-		} else {
-			Color::BLACK
-		}
+		if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK }
 	});
 	image
 }
@@ -620,21 +614,21 @@ impl Blend<Color> for ImageFrameTable<Color> {
 }
 impl Blend<Color> for GradientStops {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+		let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
 		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
 		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
 		let stops = combined_stops
 			.into_iter()
 			.map(|&position| {
-				let over_color = self.evalute(position);
-				let under_color = under.evalute(position);
+				let over_color = self.evaluate(position);
+				let under_color = under.evaluate(position);
 				let color = blend_fn(over_color, under_color);
 				(position, color)
 			})
 			.collect::<Vec<_>>();
 
-		GradientStops(stops)
+		GradientStops::new(stops)
 	}
 }
 
@@ -720,14 +714,14 @@ impl Adjust<Color> for Color {
 }
 impl Adjust<Color> for Option<Color> {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		if let Some(ref mut v) = self {
+		if let Some(v) = self {
 			*v = map_fn(v)
 		}
 	}
 }
 impl Adjust<Color> for GradientStops {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for (_pos, c) in self.0.iter_mut() {
+		for (_pos, c) in self.iter_mut() {
 			*c = map_fn(c);
 		}
 	}
@@ -776,7 +770,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evalute(intensity as f64)
+		gradient.evaluate(intensity as f64)
 	});
 
 	image
@@ -1583,7 +1577,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.one_instance().instance;
+		let result = result.instances().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

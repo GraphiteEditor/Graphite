@@ -1,6 +1,5 @@
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::prelude::*;
-
 use bitflags::bitflags;
 use glam::DVec2;
 use std::collections::VecDeque;
@@ -89,10 +88,9 @@ pub struct MouseState {
 
 impl MouseState {
 	pub fn finish_transaction(&self, drag_start: DVec2, responses: &mut VecDeque<Message>) {
-		match drag_start.distance(self.position) <= DRAG_THRESHOLD {
-			true => responses.add(DocumentMessage::AbortTransaction),
-			false => responses.add(DocumentMessage::EndTransaction),
-		}
+		let drag_too_small = drag_start.distance(self.position) <= DRAG_THRESHOLD;
+		let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+		responses.add(response);
 	}
 }
 
