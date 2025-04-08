@@ -1998,7 +1998,7 @@ impl Fsm for PenToolFsmState {
 						vec![HintInfo::keys([Key::KeyC], "Break Colinear Handles")]
 					}
 				};
-				toggle_group.push(HintInfo::keys([Key::Tab], "Swap Selected Handles"));
+				toggle_group.push(HintInfo::keys([Key::Tab], "Swap Dragged Handle"));
 
 				let mut common_hints = vec![HintInfo::keys([Key::Shift], "15° Increments"), HintInfo::keys([Key::Control], "Lock Angle")];
 				let mut hold_group = match mode {
