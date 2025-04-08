@@ -283,21 +283,26 @@ enum HandleMode {
 }
 
 /// The type of handle which is dragged by the cursor (under the cursor).
+///
+/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
 #[derive(Clone, Debug, Default, PartialEq, Copy)]
 enum TargetHandle {
 	#[default]
 	None,
-	/// This is the handle being dragged and represents the primary handle
-	/// of the next segment that will be placed after the current handle and next anchor are placed.
-	/// Its position is stored in `tool_data.next_handle_start`.
+	/// This is the handle being dragged and represents the out handle of the next preview segment that will be placed
+	/// after the current preview segment is finalized. Its position is stored in `tool_data.next_handle_start`.
 	///
-	/// Pressing Tab swaps to the opposite handle type. The swapped handle can be either `PreviewInHandle` or,
-	/// in the case of a bent segment, [`ManipulatorPointId::EndHandle`] or [`ManipulatorPointId::PrimaryHandle`].
+	/// Pressing Tab swaps to the opposite handle type. The swapped handle can be either [`ManipulatorPointId::PreviewInHandle`]
+	/// or, in the case of a bent segment, [`ManipulatorPointId::EndHandle`] or [`ManipulatorPointId::PrimaryHandle`].
 	///
 	/// When closing a path, the handle being dragged becomes the end handle of the currently placed anchor.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
 	FuturePreviewOutHandle,
-	/// The opposite handle that is drawn after placing an anchor and starting to drag
-	/// the "next handle start", continuing until Tab is pressed to swap the handles.
+	/// The opposite handle that is drawn after placing an anchor and starting to drag the "next handle start",
+	/// continuing until Tab is pressed to swap the handles.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
 	PreviewInHandle,
 	/// This is the primary handle of the segment from whose endpoint a new handle is being drawn.
 	/// When closing the path, the handle being dragged will be the [`TargetHandle::PreviewInHandle`] (see its documentation);
@@ -305,10 +310,14 @@ enum TargetHandle {
 	///
 	/// If a handle is dragged from a different endpoint within the same layer, the opposite handle will be
 	/// `ManipulatorPoint::Primary` if that point is the starting point of its path.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
 	PriorOutHandle(SegmentId),
 	/// This is the end handle of the segment from whose endpoint a new handle is being drawn (same cases apply
 	/// as mentioned in [`TargetHandle::PriorOutHandle`]). If a handle is dragged from a different endpoint within the same
 	/// layer, the opposite handle will be `ManipulatorPoint::EndHandle` if that point is the end point of its path.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
 	PriorInHandle(SegmentId),
 }
 
@@ -401,7 +410,6 @@ impl PenToolData {
 		match handle_type {
 			TargetHandle::FuturePreviewOutHandle => self.check_end_handle_type(vector_data),
 			TargetHandle::PreviewInHandle => match (self.path_closed, self.prior_segment_endpoint, self.prior_segment) {
-				(false, _, _) => TargetHandle::FuturePreviewOutHandle,
 				(true, Some(point), Some(segment)) => {
 					if vector_data.segment_start_from_id(segment) == Some(point) {
 						TargetHandle::PriorOutHandle(segment)
@@ -409,6 +417,7 @@ impl PenToolData {
 						TargetHandle::PriorInHandle(segment)
 					}
 				}
+				(false, _, _) => TargetHandle::FuturePreviewOutHandle,
 				_ => TargetHandle::None,
 			},
 			_ => {
