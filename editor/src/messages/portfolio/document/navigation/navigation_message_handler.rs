@@ -230,7 +230,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::CanvasZoomMouseWheel => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				log::info!("nagivationMessage rate: {}", preferences.viewport_zoom_wheel_rate);
 				let mut zoom_factor = 1. + scroll.abs() * preferences.viewport_zoom_wheel_rate;
 				if ipp.mouse.scroll_delta.y > 0. {
 					zoom_factor = 1. / zoom_factor

@@ -16,7 +16,7 @@ pub const VIEWPORT_ZOOM_LEVELS: [f64; 74] = [
 	0.04, 0.05, 0.06, 0.08, 0.1, 0.125, 0.15, 0.2, 0.25, 0.33333333, 0.4, 0.5, 0.66666666, 0.8, 1., 1.25, 1.6, 2., 2.5, 3.2, 4., 5., 6.4, 8., 10., 12.5, 16., 20., 25., 32., 40., 50., 64., 80., 100.,
 	128., 160., 200., 256., 320., 400., 512., 640., 800., 1024., 1280., 1600., 2048., 2560.,
 ];
-// Higher values create a steeper curve (faster rate change)
+/// Higher values create a steeper curve (a faster zoom rate change)
 pub const VIEWPORT_ZOOM_WHEEL_RATE_CHANGE: f64 = 3.;
 
 /// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function.
