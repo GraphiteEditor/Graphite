@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use bezier_rs::{Bezier, BezierHandles};
@@ -88,6 +89,7 @@ pub enum PenToolMessage {
 	FinalPosition {
 		final_position: DVec2,
 	},
+	SwapHandles,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -189,6 +191,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
 			return;
 		};
+
 		match action {
 			PenOptionsUpdate::OverlayModeType(overlay_mode_type) => {
 				self.options.pen_overlay_mode = overlay_mode_type;
@@ -235,6 +238,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				Abort,
 				RemovePreviousHandle,
 				GRS,
+				SwapHandles
 			),
 		}
 	}
@@ -266,14 +270,6 @@ struct LastPoint {
 	in_segment: Option<SegmentId>,
 	handle_start: DVec2,
 }
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-enum DrawMode {
-	#[default]
-	/// Modifies the clicked endpoint segment, once you go to the ready mode you need to modify the handles of the next clicked endpoint segment
-	BreakPath,
-	/// Modifies the handle_end
-	ContinuePath,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum HandleMode {
@@ -286,6 +282,45 @@ enum HandleMode {
 	ColinearEquidistant,
 }
 
+/// The type of handle which is dragged by the cursor (under the cursor).
+///
+/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
+#[derive(Clone, Debug, Default, PartialEq, Copy)]
+enum TargetHandle {
+	#[default]
+	None,
+	/// This is the handle being dragged and represents the out handle of the next preview segment that will be placed
+	/// after the current preview segment is finalized. Its position is stored in `tool_data.next_handle_start`.
+	///
+	/// Pressing Tab swaps to the opposite handle type. The swapped handle can be either [`ManipulatorPointId::PreviewInHandle`]
+	/// or, in the case of a bent segment, [`ManipulatorPointId::EndHandle`] or [`ManipulatorPointId::PrimaryHandle`].
+	///
+	/// When closing a path, the handle being dragged becomes the end handle of the currently placed anchor.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
+	FuturePreviewOutHandle,
+	/// The opposite handle that is drawn after placing an anchor and starting to drag the "next handle start",
+	/// continuing until Tab is pressed to swap the handles.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
+	PreviewInHandle,
+	/// This is the primary handle of the segment from whose endpoint a new handle is being drawn.
+	/// When closing the path, the handle being dragged will be the [`TargetHandle::PreviewInHandle`] (see its documentation);
+	/// otherwise, it will be [`TargetHandle::FuturePreviewOutHandle`].
+	///
+	/// If a handle is dragged from a different endpoint within the same layer, the opposite handle will be
+	/// `ManipulatorPoint::Primary` if that point is the starting point of its path.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
+	PriorOutHandle(SegmentId),
+	/// This is the end handle of the segment from whose endpoint a new handle is being drawn (same cases apply
+	/// as mentioned in [`TargetHandle::PriorOutHandle`]). If a handle is dragged from a different endpoint within the same
+	/// layer, the opposite handle will be `ManipulatorPoint::EndHandle` if that point is the end point of its path.
+	///
+	/// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
+	PriorInHandle(SegmentId),
+}
+
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
 	snap_manager: SnapManager,
@@ -296,7 +331,6 @@ struct PenToolData {
 	next_handle_start: DVec2,
 
 	g1_continuous: bool,
-	toggle_colinear_debounce: bool,
 
 	angle: f64,
 	auto_panning: AutoPanning,
@@ -306,16 +340,31 @@ struct PenToolData {
 
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
-	alt_press: bool,
+	toggle_colinear_debounce: bool,
+	colinear: bool,
+	alt_pressed: bool,
+	space_pressed: bool,
+	/// Tracks whether to switch from `HandleMode::ColinearEquidistant` to `HandleMode::Free`
+	/// after releasing Ctrl, specifically when Ctrl was held before the handle was dragged from the anchor.
+	switch_to_free_on_ctrl_release: bool,
+	/// To prevent showing cursor when `KeyC` is pressed when handles are swapped.
+	handle_swapped: bool,
+	/// Prevents conflicts when the handle's angle is already locked and it passes near the anchor,
+	/// avoiding unintended direction changes. Specifically handles the case where a handle is being dragged,
+	/// and Ctrl is pressed near the anchor to make it colinear with its opposite handle.
+	angle_locked: bool,
+	path_closed: bool,
 
 	handle_mode: HandleMode,
-	/// The point that is being dragged
-	end_point: Option<PointId>,
-	end_point_segment: Option<SegmentId>,
-	draw_mode: DrawMode,
+	prior_segment_endpoint: Option<PointId>,
+	prior_segment: Option<SegmentId>,
+	handle_type: TargetHandle,
+	handle_start_offset: Option<DVec2>,
+	handle_end_offset: Option<DVec2>,
 
 	snap_cache: SnapCache,
 }
+
 impl PenToolData {
 	fn latest_point(&self) -> Option<&LastPoint> {
 		self.latest_points.get(self.point_index)
@@ -329,6 +378,125 @@ impl PenToolData {
 		self.point_index = (self.point_index + 1).min(self.latest_points.len());
 		self.latest_points.truncate(self.point_index);
 		self.latest_points.push(point);
+	}
+
+	/// Check whether target handle is primary, end, or `self.handle_end`
+	fn check_end_handle_type(&self, vector_data: &VectorData) -> TargetHandle {
+		match (self.handle_end, self.prior_segment_endpoint, self.prior_segment, self.path_closed) {
+			(Some(_), _, _, false) => TargetHandle::PreviewInHandle,
+			(None, Some(point), Some(segment), false) | (Some(_), Some(point), Some(segment), true) => {
+				if vector_data.segment_start_from_id(segment) == Some(point) {
+					TargetHandle::PriorOutHandle(segment)
+				} else {
+					TargetHandle::PriorInHandle(segment)
+				}
+			}
+			_ => TargetHandle::None,
+		}
+	}
+
+	fn check_grs_end_handle(&self, vector_data: &VectorData) -> TargetHandle {
+		let Some(point) = self.latest_point().map(|point| point.id) else { return TargetHandle::None };
+		let Some(segment) = self.prior_segment else { return TargetHandle::None };
+
+		if vector_data.segment_start_from_id(segment) == Some(point) {
+			TargetHandle::PriorOutHandle(segment)
+		} else {
+			TargetHandle::PriorInHandle(segment)
+		}
+	}
+
+	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector_data: &VectorData) -> TargetHandle {
+		match handle_type {
+			TargetHandle::FuturePreviewOutHandle => self.check_end_handle_type(vector_data),
+			TargetHandle::PreviewInHandle => match (self.path_closed, self.prior_segment_endpoint, self.prior_segment) {
+				(true, Some(point), Some(segment)) => {
+					if vector_data.segment_start_from_id(segment) == Some(point) {
+						TargetHandle::PriorOutHandle(segment)
+					} else {
+						TargetHandle::PriorInHandle(segment)
+					}
+				}
+				(false, _, _) => TargetHandle::FuturePreviewOutHandle,
+				_ => TargetHandle::None,
+			},
+			_ => {
+				if self.path_closed {
+					TargetHandle::PreviewInHandle
+				} else {
+					TargetHandle::FuturePreviewOutHandle
+				}
+			}
+		}
+	}
+
+	fn update_handle_type(&mut self, handle_type: TargetHandle) {
+		self.handle_type = handle_type;
+	}
+
+	fn update_target_handle_pos(&mut self, handle_type: TargetHandle, anchor_pos: DVec2, responses: &mut VecDeque<Message>, delta: DVec2, layer: LayerNodeIdentifier) {
+		match handle_type {
+			TargetHandle::FuturePreviewOutHandle => {
+				self.next_handle_start = delta;
+			}
+			TargetHandle::PreviewInHandle => {
+				if let Some(handle) = self.handle_end.as_mut() {
+					*handle = delta;
+				}
+			}
+			TargetHandle::PriorInHandle(segment) => {
+				let relative_position = delta - anchor_pos;
+				let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+			TargetHandle::PriorOutHandle(segment) => {
+				let relative_position = delta - anchor_pos;
+				let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+			TargetHandle::None => {}
+		}
+	}
+
+	fn target_handle_position(&self, handle_type: TargetHandle, vector_data: &VectorData) -> Option<DVec2> {
+		match handle_type {
+			TargetHandle::PriorOutHandle(segment) => ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data),
+			TargetHandle::PriorInHandle(segment) => ManipulatorPointId::EndHandle(segment).get_position(vector_data),
+			TargetHandle::PreviewInHandle => self.handle_end,
+			TargetHandle::FuturePreviewOutHandle => Some(self.next_handle_start),
+			TargetHandle::None => None,
+		}
+	}
+
+	/// Remove the handles selected when swapping handles
+	fn cleanup_target_selections(&self, shape_editor: &mut ShapeState, layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let Some(shape_state) = layer.and_then(|layer| shape_editor.selected_shape_state.get_mut(&layer)) else {
+			return;
+		};
+
+		let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) else {
+			return;
+		};
+
+		match self.check_end_handle_type(&vector_data) {
+			TargetHandle::PriorInHandle(segment) => shape_state.deselect_point(ManipulatorPointId::EndHandle(segment)),
+			TargetHandle::PriorOutHandle(segment) => shape_state.deselect_point(ManipulatorPointId::PrimaryHandle(segment)),
+			_ => {}
+		}
+		responses.add(OverlaysMessage::Draw);
+	}
+
+	/// Selects the handle which is currently dragged by the user.
+	fn add_target_selections(&self, shape_editor: &mut ShapeState, layer: Option<LayerNodeIdentifier>) {
+		let Some(shape_state) = layer.and_then(|layer| shape_editor.selected_shape_state.get_mut(&layer)) else {
+			return;
+		};
+
+		match self.handle_type {
+			TargetHandle::PriorInHandle(segment) => shape_state.select_point(ManipulatorPointId::EndHandle(segment)),
+			TargetHandle::PriorOutHandle(segment) => shape_state.select_point(ManipulatorPointId::PrimaryHandle(segment)),
+			_ => {}
+		}
 	}
 
 	/// Check whether moving the initially created point.
@@ -360,6 +528,8 @@ impl PenToolData {
 		let document = snap_data.document;
 		self.next_handle_start = self.next_point;
 		let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+		self.update_handle_type(TargetHandle::FuturePreviewOutHandle);
+		self.handle_mode = HandleMode::ColinearLocked;
 
 		// Break the control
 		let Some((last_pos, id)) = self.latest_point().map(|point| (point.pos, point.id)) else { return };
@@ -370,19 +540,39 @@ impl PenToolData {
 			self.handle_end = None;
 			self.handle_mode = HandleMode::Free;
 
-			// Update `end_point_segment` that was clicked on
 			self.store_clicked_endpoint(document, &transform, snap_data.input, preferences);
 
 			if self.modifiers.lock_angle {
-				self.set_lock_angle(&vector_data, id, self.end_point_segment);
-				let last_segment = self.end_point_segment;
+				self.set_lock_angle(&vector_data, id, self.prior_segment);
+				let last_segment = self.prior_segment;
 				let Some(point) = self.latest_point_mut() else { return };
 				point.in_segment = last_segment;
+				self.switch_to_free_on_ctrl_release = true;
 				return;
 			}
 
 			if let Some(point) = self.latest_point_mut() {
 				point.in_segment = None;
+			}
+		}
+
+		// Closing path
+		for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != id) {
+			let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
+			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
+			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+
+			if transformed_distance_between_squared < snap_point_tolerance_squared {
+				self.update_handle_type(TargetHandle::PreviewInHandle);
+				self.handle_end_offset = None;
+				self.path_closed = true;
+				self.next_handle_start = self.next_point;
+				self.store_clicked_endpoint(document, &transform, snap_data.input, preferences);
+				self.handle_mode = HandleMode::Free;
+				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
+					self.set_lock_angle(&vector_data, prior_endpoint, self.prior_segment);
+					self.switch_to_free_on_ctrl_release = true;
+				}
 			}
 		}
 	}
@@ -392,6 +582,9 @@ impl PenToolData {
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
 		let mouse = snap_data.input.mouse.position;
+		self.handle_swapped = false;
+		self.handle_end_offset = None;
+		self.handle_start_offset = None;
 		let Some(handle_end) = self.handle_end else {
 			responses.add(DocumentMessage::EndTransaction);
 			self.handle_end = Some(next_handle_start);
@@ -432,21 +625,54 @@ impl PenToolData {
 
 		// Store the segment
 		let id = SegmentId::generate();
-		self.end_point_segment = Some(id);
+		if self.path_closed {
+			if let Some((handles, handle1_pos)) = match self.get_opposite_handle_type(TargetHandle::PreviewInHandle, &vector_data) {
+				TargetHandle::PriorOutHandle(segment) => {
+					let handles = [HandleId::end(id), HandleId::primary(segment)];
+					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector_data);
+					handle1_pos.map(|pos| (handles, pos))
+				}
+				TargetHandle::PriorInHandle(segment) => {
+					let handles = [HandleId::end(id), HandleId::end(segment)];
+					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector_data);
+					handle1_pos.map(|pos| (handles, pos))
+				}
+				_ => None,
+			} {
+				let angle = (handle_end - next_point).angle_to(handle1_pos - next_point);
+				let pi = std::f64::consts::PI;
+				let colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
+				});
+			}
+		}
+
+		self.prior_segment = Some(id);
 
 		let points = [start, end];
 		let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		// Mirror
-		if let Some(last_segment) = self.latest_point().and_then(|point| point.in_segment) {
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetG1Continuous {
-					handles: [HandleId::end(last_segment), HandleId::primary(id)],
-					enabled: true,
-				},
-			});
+		if let Some((last_segment, last_point)) = self.latest_point().and_then(|point| point.in_segment).zip(self.latest_point()) {
+			let end = vector_data.segment_end_from_id(last_segment) == Some(last_point.id);
+			let handles = if end {
+				[HandleId::end(last_segment), HandleId::primary(id)]
+			} else {
+				[HandleId::primary(last_segment), HandleId::primary(id)]
+			};
+
+			if let Some(h1) = handles[0].to_manipulator_point().get_position(&vector_data) {
+				let angle = (h1 - last_point.pos).angle_to(last_point.handle_start - last_point.pos);
+				let pi = std::f64::consts::PI;
+				let colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
+				});
+			}
 		}
 		if !close_subpath {
 			self.add_point(LastPoint {
@@ -456,6 +682,8 @@ impl PenToolData {
 				handle_start: next_handle_start,
 			});
 		}
+		self.path_closed = false;
+		self.prior_segment_endpoint = None;
 		responses.add(DocumentMessage::EndTransaction);
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
@@ -470,56 +698,41 @@ impl PenToolData {
 		mouse: &DVec2,
 		vector_data: &VectorData,
 		input: &InputPreprocessorMessageHandler,
-		is_start: bool,
 	) -> Option<DVec2> {
+		let reference_handle = if self.path_closed { TargetHandle::PreviewInHandle } else { TargetHandle::FuturePreviewOutHandle };
+		let end_handle = self.get_opposite_handle_type(reference_handle, vector_data);
+		let end_handle_pos = self.target_handle_position(end_handle, vector_data);
+		let ref_pos = self.target_handle_position(reference_handle, vector_data)?;
 		let snap = &mut self.snap_manager;
 		let snap_data = SnapData::new_snap_cache(snap_data.document, input, &self.snap_cache);
 
-		let document_pos = viewport_to_document.transform_point2(*mouse);
+		let handle_start_offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
+		let document_pos = viewport_to_document.transform_point2(*mouse + handle_start_offset);
 
-		let offset = transform.transform_point2(self.next_point - self.next_handle_start);
+		let anchor_offset = transform.transform_point2(self.next_point - ref_pos);
 
 		let handle_start = SnapCandidatePoint::handle(document_pos);
-		let anchor = SnapCandidatePoint::handle(document_pos + offset);
+		let anchor = SnapCandidatePoint::handle(document_pos + anchor_offset);
 
 		let snapped_near_handle_start = snap.free_snap(&snap_data, &handle_start, SnapTypeConfiguration::default());
 		let snapped_anchor = snap.free_snap(&snap_data, &anchor, SnapTypeConfiguration::default());
 
-		let handle_snap_option = if let Some(handle_end) = self.handle_end {
-			let handle_offset = transform.transform_point2(handle_end - self.next_handle_start);
-			let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
-			Some((handle_end, handle_snap))
-		} else {
-			// Otherwise use either primary or end handle based on is_start flag
-			if is_start {
-				let primary_handle_id = ManipulatorPointId::PrimaryHandle(self.end_point_segment.unwrap());
-				match primary_handle_id.get_position(vector_data) {
-					Some(primary_handle) => {
-						let handle_offset = transform.transform_point2(primary_handle - self.next_handle_start);
-						let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
-						Some((primary_handle, handle_snap))
-					}
-					None => None,
-				}
-			} else {
-				let end_handle = self.end_point_segment.and_then(|handle| ManipulatorPointId::EndHandle(handle).get_position(vector_data));
-				match end_handle {
-					Some(end_handle) => {
-						let handle_offset = transform.transform_point2(end_handle - self.next_handle_start);
-						let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
-						Some((end_handle, handle_snap))
-					}
-					None => None,
-				}
+		let handle_snap_option = end_handle_pos.and_then(|handle| match end_handle {
+			TargetHandle::None => None,
+			TargetHandle::FuturePreviewOutHandle => None,
+			_ => {
+				let handle_offset = transform.transform_point2(handle - ref_pos);
+				let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
+				Some((handle, handle_snap))
 			}
-		};
+		});
 
 		let mut delta: DVec2;
 		let best_snapped = if snapped_near_handle_start.other_snap_better(&snapped_anchor) {
 			delta = snapped_anchor.snapped_point_document - transform.transform_point2(self.next_point);
 			snapped_anchor
 		} else {
-			delta = snapped_near_handle_start.snapped_point_document - transform.transform_point2(self.next_handle_start);
+			delta = snapped_near_handle_start.snapped_point_document - transform.transform_point2(ref_pos);
 			snapped_near_handle_start
 		};
 
@@ -541,6 +754,65 @@ impl PenToolData {
 		Some(transform.inverse().transform_vector2(delta))
 	}
 
+	/// Calculates the offset from the mouse when swapping handles, and swaps the handles.
+	fn swap_handles(
+		&mut self,
+		layer: Option<LayerNodeIdentifier>,
+		document: &DocumentMessageHandler,
+		shape_editor: &mut ShapeState,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
+		// Validate necessary data exists
+		let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) else {
+			return;
+		};
+
+		let Some(viewport) = layer.map(|layer| document.metadata().transform_to_viewport(layer)) else {
+			return;
+		};
+
+		// Determine if we need to swap to opposite handle
+		let should_swap_to_opposite = self.path_closed && matches!(self.handle_type, TargetHandle::PreviewInHandle | TargetHandle::PriorOutHandle(..) | TargetHandle::PriorInHandle(..))
+			|| !self.path_closed && matches!(self.handle_type, TargetHandle::FuturePreviewOutHandle);
+
+		// Determine if we need to swap to start handle
+		let should_swap_to_start = !self.path_closed && !matches!(self.handle_type, TargetHandle::None | TargetHandle::FuturePreviewOutHandle);
+
+		if should_swap_to_opposite {
+			let opposite_type = self.get_opposite_handle_type(self.handle_type, &vector_data);
+			// Update offset
+			let Some(handle_pos) = self.target_handle_position(opposite_type, &vector_data) else {
+				self.handle_swapped = false;
+				return;
+			};
+			if (handle_pos - self.next_point).length() < 1e-6 {
+				self.handle_swapped = false;
+				return;
+			}
+			self.handle_end_offset = Some(viewport.transform_point2(handle_pos) - input.mouse.position);
+
+			// Update selections if in closed path mode
+			if self.path_closed {
+				self.cleanup_target_selections(shape_editor, layer, document, responses);
+			}
+			self.update_handle_type(opposite_type);
+			self.add_target_selections(shape_editor, layer);
+		} else if should_swap_to_start {
+			self.cleanup_target_selections(shape_editor, layer, document, responses);
+
+			// Calculate offset from mouse position to next handle start
+			if let Some(layer_id) = layer {
+				let transform = document.metadata().transform_to_viewport(layer_id);
+				self.handle_start_offset = Some(transform.transform_point2(self.next_handle_start) - input.mouse.position);
+			}
+
+			self.update_handle_type(TargetHandle::FuturePreviewOutHandle);
+		}
+
+		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
+	}
+
 	/// Handles moving the initially created point
 	fn handle_single_point_path_drag(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		self.next_handle_start += delta;
@@ -560,43 +832,31 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle(self.handle_mode))
 	}
 
-	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, is_start: bool, vector_data: &VectorData) {
-		if let Some(latest_pt) = self.latest_point_mut() {
-			latest_pt.pos += delta;
+	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector_data: &VectorData) {
+		if self.handle_end.is_none() {
+			if let Some(latest_pt) = self.latest_point_mut() {
+				latest_pt.pos += delta;
+			}
 		}
 
-		let Some(end_point) = self.end_point else { return };
+		let Some(end_point) = self.prior_segment_endpoint else { return };
 
-		// Move anchor point
 		let modification_type_anchor = VectorModificationType::ApplyPointDelta { point: end_point, delta };
-
 		responses.add(GraphOperationMessage::Vector {
 			layer,
 			modification_type: modification_type_anchor,
 		});
 
-		// Check if the opposite handle exist and move it
-		let Some(segment) = self.end_point_segment else { return };
-		// Get handle positions
-		let handle_end = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
-		let handle_start = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data);
+		let reference_handle = if self.path_closed { TargetHandle::PreviewInHandle } else { TargetHandle::FuturePreviewOutHandle };
 
-		let handle_modification_type: Option<VectorModificationType> = if is_start {
-			let Some(handle_start) = handle_start else { return };
-			Some(VectorModificationType::SetPrimaryHandle {
-				segment,
-				relative_position: handle_start + delta - self.next_point,
-			})
-		} else {
-			let Some(handle_end) = handle_end else { return };
-			Some(VectorModificationType::SetEndHandle {
-				segment,
-				relative_position: handle_end + delta - self.next_point,
-			})
-		};
-
-		if let Some(modification_type) = handle_modification_type {
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		// Move the end handle
+		let end_handle_type = self.get_opposite_handle_type(reference_handle, vector_data);
+		match end_handle_type {
+			TargetHandle::PriorInHandle(..) | TargetHandle::PriorOutHandle(..) => {
+				let Some(handle_pos) = self.target_handle_position(end_handle_type, vector_data) else { return };
+				self.update_target_handle_pos(end_handle_type, self.next_point, responses, handle_pos + delta, layer);
+			}
+			_ => {}
 		}
 	}
 
@@ -614,15 +874,11 @@ impl PenToolData {
 		let Some(layer) = layer else { return Some(PenToolFsmState::DraggingHandle(self.handle_mode)) };
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let viewport_to_document = document.metadata().document_to_viewport.inverse();
+		let mut mouse_pos = mouse;
 
-		// Check if the handle is the start of the segment
-		let mut is_start = false;
-		if let Some((anchor, segment)) = self.end_point.zip(self.end_point_segment) {
-			is_start = vector_data.segment_start_from_id(segment) == Some(anchor);
-		}
-
+		// Handles pressing Space to drag anchor and its handles
 		if self.modifiers.move_anchor_with_handles {
-			let Some(delta) = self.space_anchor_handle_snap(&viewport_to_document, &transform, &snap_data, &mouse, &vector_data, input, is_start) else {
+			let Some(delta) = self.space_anchor_handle_snap(&viewport_to_document, &transform, &snap_data, &mouse, &vector_data, input) else {
 				return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
 			};
 
@@ -635,23 +891,64 @@ impl PenToolData {
 
 			if let Some(handle) = self.handle_end.as_mut() {
 				*handle += delta;
-			} else {
-				self.move_anchor_and_handles(delta, layer, responses, is_start, &vector_data);
+				if !self.path_closed {
+					responses.add(OverlaysMessage::Draw);
+					return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
+				};
 			}
+
+			self.move_anchor_and_handles(delta, layer, responses, &vector_data);
+
 			responses.add(OverlaysMessage::Draw);
 			return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
 		}
 
-		self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse, Some(self.next_point), false);
+		match self.handle_type {
+			TargetHandle::FuturePreviewOutHandle => {
+				let offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
+				mouse_pos += offset;
+				self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_pos, Some(self.next_point), false);
+			}
+			_ => {
+				mouse_pos += self.handle_end_offset.unwrap_or(DVec2::ZERO);
+				let mouse_pos = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_pos, Some(self.next_point), false);
+				self.update_target_handle_pos(self.handle_type, self.next_point, responses, mouse_pos, layer);
+			}
+		}
+
+		let mouse_pos = viewport_to_document.transform_point2(mouse_pos);
+		let anchor = transform.transform_point2(self.next_point);
+		let distance = (mouse_pos - anchor).length();
+
+		if self.switch_to_free_on_ctrl_release && !self.modifiers.lock_angle {
+			self.switch_to_free_on_ctrl_release = false;
+			self.handle_mode = HandleMode::Free;
+		}
+
+		if distance > 20. && self.handle_mode == HandleMode::Free && self.modifiers.lock_angle && !self.angle_locked {
+			self.angle_locked = true
+		}
 
 		match self.handle_mode {
 			HandleMode::ColinearLocked | HandleMode::ColinearEquidistant => {
 				self.g1_continuous = true;
-				self.colinear(responses, layer, &vector_data, is_start);
-				self.adjust_handle_length(responses, layer, &vector_data, is_start);
+				self.apply_colinear_constraint(responses, layer, self.next_point, &vector_data);
+				self.adjust_handle_length(responses, layer, &vector_data);
 			}
 			HandleMode::Free => {
 				self.g1_continuous = false;
+			}
+		}
+
+		if distance < 20. && self.handle_mode == HandleMode::Free && self.modifiers.lock_angle && !self.angle_locked {
+			let Some(endpoint) = self.prior_segment_endpoint else {
+				return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
+			};
+			self.set_lock_angle(&vector_data, endpoint, self.prior_segment);
+			self.switch_to_free_on_ctrl_release = true;
+			let last_segment = self.prior_segment;
+			if let Some(latest) = self.latest_point_mut() {
+				latest.in_segment = last_segment;
 			}
 		}
 
@@ -661,111 +958,67 @@ impl PenToolData {
 	}
 
 	/// Makes the opposite handle equidistant or locks its length.
-	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, is_start: bool) {
+	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) {
+		let opposite_handle_type = self.get_opposite_handle_type(self.handle_type, vector_data);
 		match self.handle_mode {
-			HandleMode::ColinearEquidistant => self.adjust_equidistant_handle(responses, layer, vector_data, is_start),
-			HandleMode::ColinearLocked => self.adjust_locked_length_handle(responses, layer, is_start),
-			HandleMode::Free => {} // No adjustments needed in free mode
+			HandleMode::ColinearEquidistant => {
+				if self.modifiers.break_handle {
+					// Store handle for later restoration only when Alt is first pressed
+					if !self.alt_pressed {
+						self.previous_handle_end_pos = self.target_handle_position(opposite_handle_type, vector_data);
+						self.alt_pressed = true;
+					}
+
+					// Set handle to opposite position of the other handle
+					let Some(new_position) = self.target_handle_position(self.handle_type, vector_data).map(|handle| self.next_point * 2. - handle) else {
+						return;
+					};
+					self.update_target_handle_pos(opposite_handle_type, self.next_point, responses, new_position, layer);
+				} else if self.alt_pressed {
+					// Restore the previous handle position when Alt is released
+					if let Some(previous_handle) = self.previous_handle_end_pos {
+						self.update_target_handle_pos(opposite_handle_type, self.next_point, responses, previous_handle, layer);
+					}
+					self.alt_pressed = false;
+					self.previous_handle_end_pos = None;
+				}
+			}
+			HandleMode::ColinearLocked => {
+				if !self.modifiers.break_handle {
+					let Some(new_position) = self.target_handle_position(self.handle_type, vector_data).map(|handle| self.next_point * 2. - handle) else {
+						return;
+					};
+					self.update_target_handle_pos(opposite_handle_type, self.next_point, responses, new_position, layer);
+				}
+			}
+			HandleMode::Free => {}
 		}
 	}
 
-	fn colinear(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, is_start: bool) {
-		let Some(direction) = (self.next_point - self.next_handle_start).try_normalize() else {
-			log::trace!("Skipping colinear adjustment: handle_start and anchor_point are too close!");
+	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector_data: &VectorData) {
+		let Some(handle) = self.target_handle_position(self.handle_type, vector_data) else {
 			return;
 		};
 
-		let Some(handle_offset) = self.get_handle_offset(vector_data, is_start) else {
+		if (anchor_pos - handle).length() < 1e-6 && self.modifiers.lock_angle {
+			return;
+		}
+
+		let Some(direction) = (anchor_pos - handle).try_normalize() else {
 			return;
 		};
-		let new_handle_position = self.next_point + handle_offset * direction;
-
-		self.update_handle_position(new_handle_position, responses, layer, is_start);
-	}
-
-	fn get_handle_offset(&self, vector_data: &VectorData, is_start: bool) -> Option<f64> {
-		if is_start {
-			let segment = self.end_point_segment?;
-			let handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data)?;
-			return Some((handle - self.next_point).length());
-		}
-
-		self.handle_end.map(|handle| (handle - self.next_point).length()).or_else(|| {
-			self.end_point_segment
-				.and_then(|segment| Some((ManipulatorPointId::EndHandle(segment).get_position(vector_data)? - self.next_point).length()))
-		})
-	}
-
-	fn adjust_equidistant_handle(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, is_start: bool) {
-		if self.modifiers.break_handle {
-			self.store_handle(vector_data, is_start);
-			self.alt_press = true;
-			let new_position = self.next_point * 2. - self.next_handle_start;
-			self.update_handle_position(new_position, responses, layer, is_start);
-		} else {
-			self.restore_previous_handle(responses, layer, is_start);
-		}
-	}
-
-	fn adjust_locked_length_handle(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, is_start: bool) {
-		if !self.modifiers.break_handle {
-			let new_position = self.next_point * 2. - self.next_handle_start;
-			self.update_handle_position(new_position, responses, layer, is_start);
-		}
-	}
-
-	/// Temporarily stores the opposite handle position to revert back when Alt is released in equidistant mode.
-	fn store_handle(&mut self, vector_data: &VectorData, is_start: bool) {
-		if !self.alt_press {
-			self.previous_handle_end_pos = if is_start {
-				let Some(segment) = self.end_point_segment else { return };
-				ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data)
-			} else {
-				self.handle_end.or_else(|| {
-					let segment = self.end_point_segment?;
-					ManipulatorPointId::EndHandle(segment).get_position(vector_data)
-				})
-			}
-		}
-	}
-
-	fn restore_previous_handle(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, is_start: bool) {
-		if self.alt_press {
-			self.alt_press = false;
-			if let Some(previous_handle) = self.previous_handle_end_pos {
-				self.update_handle_position(previous_handle, responses, layer, is_start);
-			}
-			self.previous_handle_end_pos = None; // Reset storage
-		}
-	}
-
-	fn update_handle_position(&mut self, new_position: DVec2, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, is_start: bool) {
-		let relative_position = new_position - self.next_point;
-
-		if is_start {
-			let modification_type = VectorModificationType::SetPrimaryHandle {
-				segment: self
-					.end_point_segment
-					.expect("In update_handle_position(), if `is_start` is true then `end_point_segment` should exist"),
-				relative_position,
-			};
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		let opposite_handle = self.get_opposite_handle_type(self.handle_type, vector_data);
+		let Some(handle_offset) = self.target_handle_position(opposite_handle, vector_data).map(|handle| (handle - anchor_pos).length()) else {
 			return;
-		}
-
-		if let Some(handle) = self.handle_end.as_mut() {
-			*handle = new_position;
-		} else {
-			let Some(segment) = self.end_point_segment else { return };
-			let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-		}
+		};
+		let new_handle_position = anchor_pos + handle_offset * direction;
+		self.update_target_handle_pos(opposite_handle, self.next_point, responses, new_handle_position, layer);
 	}
 
 	fn place_anchor(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
 
-		let relative = self.latest_point().map(|point| point.pos);
+		let relative = if self.path_closed { None } else { self.latest_point().map(|point| point.pos) };
 		self.next_point = self.compute_snapped_angle(snap_data, transform, false, mouse, relative, true);
 
 		let selected_nodes = document.network_interface.selected_nodes();
@@ -871,6 +1124,7 @@ impl PenToolData {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+		self.handle_type = TargetHandle::FuturePreviewOutHandle;
 
 		let selected_nodes = document.network_interface.selected_nodes();
 		self.handle_end = None;
@@ -889,9 +1143,9 @@ impl PenToolData {
 
 				if self.modifiers.lock_angle {
 					self.set_lock_angle(&vector_data, point, segment);
+					self.switch_to_free_on_ctrl_release = true;
 				}
 			}
-			self.end_point_segment = None;
 			let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
 			let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 			if let Some(layer) = existing_layer {
@@ -904,10 +1158,10 @@ impl PenToolData {
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
-
+			self.handle_mode = HandleMode::Free;
 			if self.modifiers.lock_angle {
 				self.set_lock_angle(&vector_data, point, segment);
-				self.handle_mode = HandleMode::Free;
+				self.switch_to_free_on_ctrl_release = true;
 			}
 		}
 
@@ -919,8 +1173,7 @@ impl PenToolData {
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
-		self.end_point_segment = None;
-		self.draw_mode = DrawMode::ContinuePath;
+		self.prior_segment = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
@@ -965,7 +1218,7 @@ impl PenToolData {
 			(position, None)
 		};
 
-		let in_segment = if self.modifiers.lock_angle { self.end_point_segment } else { in_segment };
+		let in_segment = if self.modifiers.lock_angle { self.prior_segment } else { in_segment };
 
 		self.add_point(LastPoint {
 			id: point,
@@ -980,11 +1233,12 @@ impl PenToolData {
 		self.next_handle_start = handle_start;
 		let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 		let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
+		self.handle_mode = HandleMode::Free;
 
 		if self.modifiers.lock_angle {
 			self.set_lock_angle(&vector_data, point, segment);
+			self.switch_to_free_on_ctrl_release = true;
 		}
-		self.handle_mode = HandleMode::Free;
 	}
 
 	// Stores the segment and point ID of the clicked endpoint
@@ -1001,10 +1255,10 @@ impl PenToolData {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
-			self.end_point = Some(point);
+			self.prior_segment_endpoint = Some(point);
 			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
-			self.end_point_segment = segment;
+			self.prior_segment = segment;
 			layer_manipulators.insert(point);
 			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
 				if id == point {
@@ -1025,34 +1279,47 @@ impl PenToolData {
 			return;
 		};
 
-		// Closure to check if a point is the start or end of a segment
-		let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
+		match (self.handle_type, self.path_closed) {
+			(TargetHandle::FuturePreviewOutHandle, _) | (TargetHandle::PreviewInHandle, true) => {
+				let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
 
-		let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
-		let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data);
+				let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
+				let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data);
 
-		let start_point = if is_start(anchor, segment) {
-			vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-		} else {
-			vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-		};
+				let start_point = if is_start(anchor, segment) {
+					vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
+				} else {
+					vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
+				};
 
-		let required_handle = if is_start(anchor, segment) {
-			start_handle
-				.filter(|&handle| handle != anchor_position)
-				.or(end_handle.filter(|&handle| Some(handle) != start_point))
-				.or(start_point)
-		} else {
-			end_handle
-				.filter(|&handle| handle != anchor_position)
-				.or(start_handle.filter(|&handle| Some(handle) != start_point))
-				.or(start_point)
-		};
+				let required_handle = if is_start(anchor, segment) {
+					start_handle
+						.filter(|&handle| handle != anchor_position)
+						.or(end_handle.filter(|&handle| Some(handle) != start_point))
+						.or(start_point)
+				} else {
+					end_handle
+						.filter(|&handle| handle != anchor_position)
+						.or(start_handle.filter(|&handle| Some(handle) != start_point))
+						.or(start_point)
+				};
 
-		if let Some(required_handle) = required_handle {
-			self.angle = -(required_handle - anchor_position).angle_to(DVec2::X);
-			self.handle_mode = HandleMode::ColinearEquidistant;
+				if let Some(required_handle) = required_handle {
+					self.angle = -(required_handle - anchor_position).angle_to(DVec2::X);
+					self.handle_mode = HandleMode::ColinearEquidistant;
+				}
+			}
+			(TargetHandle::PriorInHandle(..) | TargetHandle::PriorOutHandle(..), true) => {
+				self.angle = -(self.handle_end.unwrap() - anchor_position).angle_to(DVec2::X);
+				self.handle_mode = HandleMode::ColinearEquidistant;
+			}
+			_ => {
+				self.angle = -(self.next_handle_start - anchor_position).angle_to(DVec2::X);
+				self.handle_mode = HandleMode::ColinearEquidistant;
+			}
 		}
+
+		// Closure to check if a point is the start or end of a segment
 	}
 
 	fn add_point_layer_position(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, viewport: DVec2) {
@@ -1112,6 +1379,9 @@ impl Fsm for PenToolFsmState {
 					return PenToolFsmState::PlacingAnchor;
 				}
 
+				let latest_pos = latest.pos;
+				let latest_handle_start = latest.handle_start;
+
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let last_point = viewport.transform_point2(latest.pos);
 				let handle = viewport.transform_point2(latest.handle_start);
@@ -1124,14 +1394,18 @@ impl Fsm for PenToolFsmState {
 					responses.add(TransformLayerMessage::BeginScalePen { last_point, handle });
 				}
 
+				let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 				tool_data.previous_handle_start_pos = latest.handle_start;
-
-				// Store the handle_end position
-				let segment = tool_data.end_point_segment;
-				if let Some(segment) = segment {
-					let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-					tool_data.previous_handle_end_pos = ManipulatorPointId::EndHandle(segment).get_position(&vector_data);
-				}
+				let opposite_handle = tool_data.check_grs_end_handle(&vector_data);
+				tool_data.previous_handle_end_pos = tool_data.target_handle_position(opposite_handle, &vector_data);
+				let handle1 = latest_handle_start - latest_pos;
+				let Some(opposite_handle_pos) = tool_data.target_handle_position(opposite_handle, &vector_data) else {
+					return PenToolFsmState::GRSHandle;
+				};
+				let handle2 = opposite_handle_pos - latest_pos;
+				let pi = std::f64::consts::PI;
+				let angle = handle1.angle_to(handle2);
+				tool_data.colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
 				PenToolFsmState::GRSHandle
 			}
 			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_position }) => {
@@ -1146,38 +1420,25 @@ impl Fsm for PenToolFsmState {
 				}
 
 				responses.add(OverlaysMessage::Draw);
+				let Some(latest) = tool_data.latest_point() else {
+					return PenToolFsmState::GRSHandle;
+				};
+				let opposite_handle = tool_data.check_grs_end_handle(&vector_data);
+				let Some(opposite_handle_pos) = tool_data.target_handle_position(opposite_handle, &vector_data) else {
+					return PenToolFsmState::GRSHandle;
+				};
 
-				// Making the end handle colinear
-				match tool_data.handle_mode {
-					HandleMode::Free => {}
-					HandleMode::ColinearEquidistant | HandleMode::ColinearLocked => {
-						if let Some((latest, segment)) = tool_data.latest_point().zip(tool_data.end_point_segment) {
-							let Some(direction) = (latest.pos - latest.handle_start).try_normalize() else {
-								return PenToolFsmState::GRSHandle;
-							};
+				if tool_data.colinear {
+					let Some(direction) = (latest.pos - latest.handle_start).try_normalize() else {
+						return PenToolFsmState::GRSHandle;
+					};
 
-							if (latest.pos - latest.handle_start).length_squared() < f64::EPSILON {
-								return PenToolFsmState::GRSHandle;
-							}
-
-							let is_start = vector_data.segment_start_from_id(segment) == Some(latest.id);
-
-							let handle = if is_start {
-								ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data)
-							} else {
-								ManipulatorPointId::EndHandle(segment).get_position(&vector_data)
-							};
-							let Some(handle) = handle else { return PenToolFsmState::GRSHandle };
-							let relative_distance = (handle - latest.pos).length();
-							let relative_position = relative_distance * direction;
-							let modification_type = if is_start {
-								VectorModificationType::SetPrimaryHandle { segment, relative_position }
-							} else {
-								VectorModificationType::SetEndHandle { segment, relative_position }
-							};
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-						}
+					if (latest.pos - latest.handle_start).length_squared() < f64::EPSILON {
+						return PenToolFsmState::GRSHandle;
 					}
+					let relative_distance = (opposite_handle_pos - latest.pos).length();
+					let relative_position = relative_distance * direction + latest.pos;
+					tool_data.update_target_handle_pos(opposite_handle, latest.pos, responses, relative_position, layer);
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -1204,10 +1465,14 @@ impl Fsm for PenToolFsmState {
 				tool_data.next_handle_start = input.mouse.position;
 
 				let Some(layer) = layer else { return PenToolFsmState::GRSHandle };
+				let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+				let opposite_handle = tool_data.check_grs_end_handle(&vector_data);
 
 				let previous = tool_data.previous_handle_start_pos;
 				if let Some(latest) = tool_data.latest_point_mut() {
 					latest.handle_start = previous;
+				} else {
+					return PenToolFsmState::PlacingAnchor;
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -1219,12 +1484,10 @@ impl Fsm for PenToolFsmState {
 					move_anchor_with_handles: Key::Space,
 				});
 
-				// Set the handle-end back to original position
-				if let Some(((latest, segment), handle_end)) = tool_data.latest_point().zip(tool_data.end_point_segment).zip(tool_data.previous_handle_end_pos) {
-					let relative = handle_end - latest.pos;
-					let modification_type = VectorModificationType::SetEndHandle { segment, relative_position: relative };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
-				}
+				let Some((previous_pos, latest)) = tool_data.previous_handle_end_pos.zip(tool_data.latest_point()) else {
+					return PenToolFsmState::PlacingAnchor;
+				};
+				tool_data.update_target_handle_pos(opposite_handle, latest.pos, responses, previous_pos, layer);
 
 				PenToolFsmState::PlacingAnchor
 			}
@@ -1279,7 +1542,7 @@ impl Fsm for PenToolFsmState {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
 					}
 					PenOverlayMode::FrontierHandles => {
-						if let Some(latest_segment) = tool_data.end_point_segment {
+						if let Some(latest_segment) = tool_data.prior_segment {
 							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
 						} else {
 							path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
@@ -1306,7 +1569,8 @@ impl Fsm for PenToolFsmState {
 
 					if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, handle_end) {
 						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
-						overlay_context.manipulator_handle(handle_end, false, None);
+						let selected = tool_data.handle_type == TargetHandle::PreviewInHandle;
+						overlay_context.manipulator_handle(handle_end, selected, None);
 					}
 
 					if valid(anchor_start, handle_start) {
@@ -1327,7 +1591,8 @@ impl Fsm for PenToolFsmState {
 
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, next_handle_start) {
 					// Draw the handle circle for the currently-being-dragged-out outgoing handle (the one currently being dragged out, under the user's cursor)
-					overlay_context.manipulator_handle(next_handle_start, false, None);
+					let selected = tool_data.handle_type == TargetHandle::FuturePreviewOutHandle;
+					overlay_context.manipulator_handle(next_handle_start, selected, None);
 				}
 
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) {
@@ -1416,8 +1681,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
-				tool_data.end_point = None;
-				tool_data.draw_mode = DrawMode::ContinuePath;
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 				tool_data
 					.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
 					.unwrap_or(PenToolFsmState::PlacingAnchor)
@@ -1439,22 +1703,61 @@ impl Fsm for PenToolFsmState {
 					colinear: input.keyboard.key(colinear),
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
+
 				let snap_data = SnapData::new(document, input);
 				if tool_data.modifiers.colinear && !tool_data.toggle_colinear_debounce {
 					tool_data.handle_mode = match tool_data.handle_mode {
-						HandleMode::Free => HandleMode::ColinearEquidistant,
+						HandleMode::Free => {
+							let last_segment = tool_data.prior_segment;
+							if let Some(latest) = tool_data.latest_point_mut() {
+								latest.in_segment = last_segment;
+							}
+							HandleMode::ColinearEquidistant
+						}
 						HandleMode::ColinearEquidistant | HandleMode::ColinearLocked => HandleMode::Free,
 					};
 					tool_data.toggle_colinear_debounce = true;
+				}
+
+				let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) else {
+					return self;
+				};
+
+				if tool_data.modifiers.move_anchor_with_handles && !tool_data.space_pressed {
+					let reference_handle = if tool_data.path_closed {
+						TargetHandle::PreviewInHandle
+					} else {
+						TargetHandle::FuturePreviewOutHandle
+					};
+					let handle_start = layer.map(|layer| {
+						document
+							.metadata()
+							.transform_to_viewport(layer)
+							.transform_point2(tool_data.target_handle_position(reference_handle, &vector_data).unwrap())
+					});
+					tool_data.handle_start_offset = handle_start.map(|start| start - input.mouse.position);
+					tool_data.space_pressed = true;
+				}
+
+				if !tool_data.modifiers.move_anchor_with_handles {
+					tool_data.space_pressed = false;
 				}
 
 				if !tool_data.modifiers.colinear {
 					tool_data.toggle_colinear_debounce = false;
 				}
 
+				if !tool_data.modifiers.lock_angle {
+					tool_data.angle_locked = false;
+				}
+
 				let state = tool_data
 					.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input)
 					.unwrap_or(PenToolFsmState::Ready);
+
+				if tool_data.handle_swapped {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
+				}
 
 				// Auto-panning
 				let messages = [
@@ -1489,7 +1792,8 @@ impl Fsm for PenToolFsmState {
 					move_anchor_with_handles,
 				},
 			) => {
-				tool_data.alt_press = false;
+				tool_data.switch_to_free_on_ctrl_release = false;
+				tool_data.alt_pressed = false;
 				tool_data.modifiers = ModifierState {
 					snap_angle: input.keyboard.key(snap_angle),
 					lock_angle: input.keyboard.key(lock_angle),
@@ -1523,6 +1827,14 @@ impl Fsm for PenToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				state
+			}
+			(PenToolFsmState::DraggingHandle(_), PenToolMessage::SwapHandles) => {
+				if !tool_data.handle_swapped {
+					tool_data.handle_swapped = true
+				}
+				tool_data.swap_handles(layer, document, shape_editor, input, responses);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(
 				PenToolFsmState::Ready,
@@ -1593,24 +1905,29 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.handle_end = None;
-				tool_data.draw_mode = DrawMode::BreakPath;
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
-				let should_delete_layer = tool_data.latest_points.len() == 1;
+				let should_delete_layer = if layer.is_some() {
+					let vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
+					vector_data.point_domain.ids().len() == 1
+				} else {
+					false
+				};
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
 				tool_data.point_index = 0;
-				tool_data.draw_mode = DrawMode::BreakPath;
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
-				if should_delete_layer && layer.is_some() {
+				if should_delete_layer {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![layer.unwrap().to_node()],
 						delete_children: true,
@@ -1659,7 +1976,11 @@ impl Fsm for PenToolFsmState {
 				]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments"), HintInfo::keys([Key::Control], "Lock Angle")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Sharp Point"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Smooth Point")]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, ""), HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash()]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, ""),
+					HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash(),
+					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
+				]),
 			]),
 			PenToolFsmState::DraggingHandle(mode) => {
 				let mut dragging_hint_data = HintData(Vec::new());
@@ -1669,7 +1990,7 @@ impl Fsm for PenToolFsmState {
 					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
 				]));
 
-				let toggle_group = match mode {
+				let mut toggle_group = match mode {
 					HandleMode::Free => {
 						vec![HintInfo::keys([Key::KeyC], "Make Handles Colinear")]
 					}
@@ -1677,9 +1998,10 @@ impl Fsm for PenToolFsmState {
 						vec![HintInfo::keys([Key::KeyC], "Break Colinear Handles")]
 					}
 				};
+				toggle_group.push(HintInfo::keys([Key::Tab], "Swap Dragged Handle"));
 
 				let mut common_hints = vec![HintInfo::keys([Key::Shift], "15° Increments"), HintInfo::keys([Key::Control], "Lock Angle")];
-				let hold_group = match mode {
+				let mut hold_group = match mode {
 					HandleMode::Free => common_hints,
 					HandleMode::ColinearLocked => {
 						common_hints.push(HintInfo::keys([Key::Alt], "Non-Equidistant Handles"));
@@ -1690,6 +2012,7 @@ impl Fsm for PenToolFsmState {
 						common_hints
 					}
 				};
+				hold_group.push(HintInfo::keys([Key::Space], "Drag Anchor"));
 
 				dragging_hint_data.0.push(HintGroup(toggle_group));
 				dragging_hint_data.0.push(HintGroup(hold_group));
