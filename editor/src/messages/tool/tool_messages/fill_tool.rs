@@ -252,11 +252,10 @@ mod test_fill {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let color = Color::YELLOW;
-		editor.handle_message(ToolMessage::SelectSecondaryColor { color }).await;
+		editor.select_secondary_color(Color::YELLOW).await;
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), color.to_rgba8_srgb());
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::YELLOW.to_rgba8_srgb());
 	}
 }
