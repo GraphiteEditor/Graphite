@@ -396,11 +396,14 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Node id of a protonode if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: &'static str) -> Option<NodeId> {
-		self.horizontal_layer_flow().find(move |node_id| {
-			self.network_interface
-				.implementation(node_id, &[])
-				.is_some_and(move |implementation| *implementation == graph_craft::document::DocumentNodeImplementation::proto(protonode_identifier))
-		})
+		self.horizontal_layer_flow()
+			// Take until a different layer is reached
+			.take_while(|&node_id| node_id == self.layer_node || !self.network_interface.is_layer(&node_id, &[]))
+			.find(move |node_id| {
+				self.network_interface
+					.implementation(node_id, &[])
+					.is_some_and(move |implementation| *implementation == graph_craft::document::DocumentNodeImplementation::proto(protonode_identifier))
+			})
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
