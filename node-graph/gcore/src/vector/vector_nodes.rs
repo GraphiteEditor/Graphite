@@ -183,6 +183,7 @@ where
 		line_join,
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
+		non_scaling: false,
 	};
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();
