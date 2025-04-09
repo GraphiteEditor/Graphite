@@ -10,7 +10,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-use bezier_rs::{Bezier, BezierHandles, Subpath};
+use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
@@ -1622,17 +1622,34 @@ impl Fsm for PenToolFsmState {
 							}
 						}
 
-						// We have the point. Close the path and draw the enclosed area
+						// We have the point. Join the 2 vertices and check if any path is closed
 						if end.is_some() {
 							let id: SegmentId = SegmentId::generate();
 							vector_data.push(id, start, end.unwrap(), BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
 
-							let beziers: Vec<Bezier> = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect();
-							let subpath = [Subpath::from_beziers(&beziers[..], false)];
+							let grouped_segments = vector_data.auto_join_paths();
+
+							// Find the closed paths with the last added segment
+							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(id));
+
+							// Get the bezier curves of the closed path
+							let subpaths: Vec<_> = closed_paths
+								.filter_map(|path| {
+									let segments = path.edges.iter().filter_map(|edge| {
+										vector_data
+											.segment_domain
+											.iter()
+											.find(|(id, _, _, _)| id == &edge.id)
+											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+									});
+									vector_data.subpath_from_segments_ignore_discontinuities(segments)
+								})
+								.collect();
 
 							let base_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.replace("#", "").as_str()).unwrap();
 							let color = base_color.to_gamma_srgb().with_alpha(0.4);
-							overlay_context.fill_path(subpath.iter(), transform, color.to_css().as_str());
+
+							overlay_context.fill_path(subpaths.iter(), transform, color.to_css().as_str());
 						}
 					}
 				}
