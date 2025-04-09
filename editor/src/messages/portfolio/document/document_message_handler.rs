@@ -508,6 +508,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}
@@ -2478,6 +2479,10 @@ impl DocumentMessageHandler {
 		// If moving down, insert below this layer. If moving up, insert above this layer.
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
+	}
+
+	pub fn graph_view_overlay_open(&self) -> bool {
+		self.graph_view_overlay_open
 	}
 }
 
