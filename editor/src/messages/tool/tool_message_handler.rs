@@ -263,6 +263,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let tool_data = &mut self.tool_state.tool_data;
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+					let graph_view_overlay_open = document.graph_view_overlay_open();
+
 					if tool_type == tool_data.active_tool_type {
 						let mut data = ToolActionHandlerData {
 							document,
@@ -275,7 +277,10 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							preferences,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
-							if self.transform_layer_handler.is_transforming() {
+							if graph_view_overlay_open {
+								// When graph view is open, forward the hint update to the node graph handler
+								responses.add(NodeGraphMessage::UpdateHints);
+							} else if self.transform_layer_handler.is_transforming() {
 								self.transform_layer_handler.hints(responses);
 							} else {
 								tool.process_message(ToolMessage::UpdateHints, responses, &mut data)

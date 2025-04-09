@@ -151,6 +151,9 @@ enum LineEnd {
 
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
+	drag_begin: DVec2,
+	drag_start_shifted: DVec2,
+	drag_current_shifted: DVec2,
 	drag_start: DVec2,
 	drag_current: DVec2,
 	angle: f64,
@@ -188,7 +191,7 @@ impl Fsm for LineToolFsmState {
 						};
 
 						let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
-						if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
+						if !start.abs_diff_eq(end, f64::EPSILON * 1000.) {
 							overlay_context.line(viewport_start, viewport_end, None, None);
 							overlay_context.square(viewport_start, Some(6.), None, None);
 							overlay_context.square(viewport_end, Some(6.), None, None);
@@ -204,6 +207,7 @@ impl Fsm for LineToolFsmState {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
+				tool_data.drag_begin = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start);
 
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -256,7 +260,9 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
 				let Some(layer) = tool_data.editing_layer else { return LineToolFsmState::Ready };
 
-				tool_data.drag_current = document.metadata().transform_to_viewport(layer).inverse().transform_point2(input.mouse.position);
+				tool_data.drag_current_shifted = document.metadata().transform_to_viewport(layer).inverse().transform_point2(input.mouse.position);
+				tool_data.drag_current = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				tool_data.drag_start_shifted = document.metadata().transform_to_viewport(layer).inverse().transform_point2(tool_data.drag_begin);
 
 				let keyboard = &input.keyboard;
 				let ignore = vec![layer];
@@ -361,6 +367,7 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
+	let shift = tool_data.drag_current_shifted - tool_data.drag_current;
 	let mut document_points = [tool_data.drag_start, tool_data.drag_current];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
@@ -419,7 +426,8 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 		snap.update_indicator(snapped);
 	}
 
-	document_points
+	// Snapping happens in other space, while document graph renders in another.
+	document_points.map(|vector| vector + shift)
 }
 
 #[cfg(test)]

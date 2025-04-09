@@ -806,6 +806,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 					}
 
+					// Upgrade the Mirror node to add the `keep_original` boolean input
+					if reference == "Mirror" && inputs_count == 3 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					}
+
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" && upgrade_from_before_returning_nested_click_targets {
 						let label = document.network_interface.frontend_display_name(node_id, network_path);

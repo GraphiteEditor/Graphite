@@ -386,6 +386,7 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 			},
 			line_join_miter_limit: stroke.miterlimit().get() as f64,
 			transform,
+			non_scaling: false,
 		})
 	}
 }

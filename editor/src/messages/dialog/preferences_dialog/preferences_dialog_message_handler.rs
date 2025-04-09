@@ -1,3 +1,4 @@
+use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -38,6 +39,32 @@ impl PreferencesDialogMessageHandler {
 		// ==========
 
 		let navigation_header = vec![TextLabel::new("Navigation").italic(true).widget_holder()];
+
+		let zoom_rate_tooltip = "Adjust how fast zooming occurs when using the scroll wheel or pinch gesture (relative to a default of 50)";
+		let zoom_rate_label = vec![
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Zoom Rate").tooltip(zoom_rate_tooltip).widget_holder(),
+		];
+		let zoom_rate = vec![
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(map_zoom_rate_to_display(preferences.viewport_zoom_wheel_rate)))
+				.tooltip(zoom_rate_tooltip)
+				.mode_range()
+				.int()
+				.min(1.)
+				.max(100.)
+				.on_update(|number_input: &NumberInput| {
+					if let Some(display_value) = number_input.value {
+						let actual_rate = map_display_to_zoom_rate(display_value);
+						PreferencesMessage::ViewportZoomWheelRate { rate: actual_rate }.into()
+					} else {
+						PreferencesMessage::ViewportZoomWheelRate { rate: VIEWPORT_ZOOM_WHEEL_RATE }.into()
+					}
+				})
+				.widget_holder(),
+		];
 
 		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
 		let zoom_with_scroll = vec![
@@ -184,6 +211,8 @@ impl PreferencesDialogMessageHandler {
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row { widgets: navigation_header },
+			LayoutGroup::Row { widgets: zoom_rate_label },
+			LayoutGroup::Row { widgets: zoom_rate },
 			LayoutGroup::Row { widgets: zoom_with_scroll },
 			LayoutGroup::Row { widgets: editing_header },
 			LayoutGroup::Row { widgets: selection_label },
@@ -249,4 +278,21 @@ impl PreferencesDialogMessageHandler {
 			title: Self::TITLE.into(),
 		});
 	}
+}
+
+/// Maps display values (1-100) to actual zoom rates.
+fn map_display_to_zoom_rate(display: f64) -> f64 {
+	// Calculate the relative distance from the reference point (50)
+	let distance_from_reference = display - 50.;
+	let scaling_factor = (VIEWPORT_ZOOM_WHEEL_RATE_CHANGE * distance_from_reference / 50.).exp();
+	VIEWPORT_ZOOM_WHEEL_RATE * scaling_factor
+}
+
+/// Maps actual zoom rates back to display values (1-100).
+fn map_zoom_rate_to_display(rate: f64) -> f64 {
+	// Calculate the scaling factor from the reference rate
+	let scaling_factor = rate / VIEWPORT_ZOOM_WHEEL_RATE;
+	let distance_from_reference = 50. * scaling_factor.ln() / VIEWPORT_ZOOM_WHEEL_RATE_CHANGE;
+	let display = 50. + distance_from_reference;
+	display.clamp(1., 100.).round()
 }
