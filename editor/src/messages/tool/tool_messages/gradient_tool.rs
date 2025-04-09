@@ -476,12 +476,15 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
 				tool_data.snap_manager.cleanup(responses);
-				if let Some(selected_layer) = document.click(input) {
-					if let Some(gradient) = get_gradient(selected_layer, &document.network_interface) {
-						tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
+				let was_dragging = tool_data.selected_gradient.is_some();
+
+				if !was_dragging {
+					if let Some(selected_layer) = document.click(input) {
+						if let Some(gradient) = get_gradient(selected_layer, &document.network_interface) {
+							tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
+						}
 					}
 				}
-
 				GradientToolFsmState::Ready
 			}
 
