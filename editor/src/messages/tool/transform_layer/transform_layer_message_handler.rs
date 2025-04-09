@@ -298,15 +298,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let radius = start_mouse.distance(pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
 							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
-							let angle_in_degrees = angle.to_degrees();
-							let display_angle = if angle_in_degrees.is_sign_positive() {
-								angle_in_degrees - (angle_in_degrees / 360.).floor() * 360.
-							} else if angle_in_degrees.is_sign_negative() {
-								angle_in_degrees - ((angle_in_degrees / 360.).floor() + 1.) * 360.
-							} else {
-								angle_in_degrees
-							};
-							let text = format!("{}°", format_rounded(display_angle, 2));
+							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
 							let text_texture_width = overlay_context.get_width(&text) / 2.;
 							let text_texture_height = 12.;
 							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
@@ -1226,5 +1218,35 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
 		assert!(!final_group_transform.abs_diff_eq(original_group_transform, 1e-5), "Transform should change for group");
+
+		// Test 4: Transform layers inside transformed group
+		let child_layer_id = {
+			let mut document = editor.active_document_mut();
+			let group_children = document.network_interface.downstream_layers(&group_layer.to_node(), &[]);
+			if !group_children.is_empty() {
+				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface, &[]))
+			} else {
+				None
+			}
+		};
+		assert!(child_layer_id.is_some(), "Group should have child layers");
+		let child_layer_id = child_layer_id.unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![child_layer_id.to_node()],
+			})
+			.await;
+		let original_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(30.0, 30.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
+		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
 	}
 }
