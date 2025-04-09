@@ -37,7 +37,7 @@ js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
-futures.workspace = true
+futures = { workspace = true }
 math-parser = { workspace = true }
 wgpu = { workspace = true, features = [
 	"fragile-send-sync-non-atomic-wasm",
@@ -78,4 +78,6 @@ demangle-name-section = true
 dwarf-debug-info = true
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+	'cfg(wasm_bindgen_unstable_test_coverage)',
+] }

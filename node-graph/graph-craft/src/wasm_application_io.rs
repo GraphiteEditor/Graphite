@@ -68,16 +68,14 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
+	// Always enable wgpu when running with Tauri
 	#[cfg(target_arch = "wasm32")]
-	{
-		log::debug!("testing tauri");
-		if let Some(window) = web_sys::window() {
-			if let Ok(tauri) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")) {
-				log::debug!("enabling wgpu");
-				return Some(true);
-			}
+	if let Some(window) = web_sys::window() {
+		if let Ok(tauri) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")) {
+			return Some(true);
 		}
 	}
+
 	match WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
@@ -102,10 +100,11 @@ impl WasmApplicationIo {
 		} else {
 			None
 		};
+
 		#[cfg(not(target_arch = "wasm32"))]
 		let executor = WgpuExecutor::new().await;
 		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
-		// Always enable wgpu when running with tauri
+
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -116,14 +115,17 @@ impl WasmApplicationIo {
 		};
 		let window = io.create_window();
 		io.windows.push(WindowWrapper { window });
-
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+
 		io
 	}
+
 	pub async fn new_offscreen() -> Self {
 		let executor = WgpuExecutor::new().await;
+
 		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
-		// Always enable wgpu when running with tauri
+
+		// Always enable wgpu when running with Tauri
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -134,6 +136,7 @@ impl WasmApplicationIo {
 		};
 
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+
 		io
 	}
 }
@@ -203,12 +206,14 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
+		log::trace!("Spawning window");
+
 		#[cfg(not(test))]
 		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		log::error!("spawning window");
 		#[cfg(not(test))]
 		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
+
 		#[cfg(test)]
 		let event_loop = winit::event_loop::EventLoop::new().unwrap();
 		let window = winit::window::WindowBuilder::new()
@@ -216,7 +221,7 @@ impl ApplicationIo for WasmApplicationIo {
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
 			.build(&event_loop)
 			.unwrap();
-		// self.windows.lock().as_mut().unwrap().push(window.clone());
+
 		SurfaceHandle {
 			window_id: SurfaceId(window.id().into()),
 			surface: Arc::new(window),

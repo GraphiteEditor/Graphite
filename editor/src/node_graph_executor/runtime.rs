@@ -1,6 +1,6 @@
+use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::prelude::*;
-
+use glam::{DAffine2, DVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -18,15 +18,12 @@ use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
-
-use super::*;
-use glam::{DAffine2, DVec2};
 use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
-/// Persistent data between graph executions. It's updated via message passing from the editor thread with [`NodeRuntimeMessage`]`.
+/// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
 /// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
 /// Once the implementation is finished, this will live in a separate thread. Right now it's part of the main JS thread, but its own separate JS stack frame independent from the editor.
 pub struct NodeRuntime {
@@ -34,7 +31,7 @@ pub struct NodeRuntime {
 	pub(super) executor: DynamicExecutor,
 	#[cfg(not(test))]
 	executor: DynamicExecutor,
-	receiver: Receiver<NodeRuntimeMessage>,
+	receiver: Receiver<GraphRuntimeRequest>,
 	sender: InternalNodeGraphUpdateSender,
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
@@ -55,7 +52,7 @@ pub struct NodeRuntime {
 
 /// Messages passed from the editor thread to the node runtime thread.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub enum NodeRuntimeMessage {
+pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	FontCacheUpdate(FontCache),
@@ -101,7 +98,7 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
-	pub fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
+	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
@@ -148,17 +145,17 @@ impl NodeRuntime {
 		let mut execution = None;
 		for request in self.receiver.try_iter() {
 			match request {
-				NodeRuntimeMessage::GraphUpdate(_) => graph = Some(request),
-				NodeRuntimeMessage::ExecutionRequest(_) => execution = Some(request),
-				NodeRuntimeMessage::FontCacheUpdate(_) => font = Some(request),
-				NodeRuntimeMessage::EditorPreferencesUpdate(_) => preferences = Some(request),
+				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
+				GraphRuntimeRequest::ExecutionRequest(_) => execution = Some(request),
+				GraphRuntimeRequest::FontCacheUpdate(_) => font = Some(request),
+				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}
 		}
 		let requests = [font, preferences, graph, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
-				NodeRuntimeMessage::FontCacheUpdate(font_cache) => {
+				GraphRuntimeRequest::FontCacheUpdate(font_cache) => {
 					self.editor_api = WasmEditorApi {
 						font_cache,
 						application_io: self.editor_api.application_io.clone(),
@@ -171,7 +168,7 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				NodeRuntimeMessage::EditorPreferencesUpdate(preferences) => {
+				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = WasmEditorApi {
 						font_cache: self.editor_api.font_cache.clone(),
@@ -185,7 +182,7 @@ impl NodeRuntime {
 						let _ = self.update_network(graph).await;
 					}
 				}
-				NodeRuntimeMessage::GraphUpdate(GraphUpdate { mut network, inspect_node }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate { mut network, inspect_node }) => {
 					// Insert the monitor node to manage the inspection
 					self.inspect_state = inspect_node.map(|inspect| InspectState::monitor_inspect_node(&mut network, inspect));
 
@@ -198,7 +195,7 @@ impl NodeRuntime {
 						node_graph_errors: self.node_graph_errors.clone(),
 					});
 				}
-				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
+				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
 					let transform = render_config.viewport.transform;
 
 					let result = self.execute_network(render_config).await;

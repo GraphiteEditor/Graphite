@@ -1,6 +1,7 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, generate_uuid};
 use graph_craft::proto::GraphErrors;
@@ -15,8 +16,6 @@ use graphene_std::application_io::TimingInformation;
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::vector::VectorData;
 use interpreted_executor::dynamic_executor::{IntrospectError, ResolvedDocumentNodeTypesDelta};
-
-use glam::{DAffine2, DVec2, UVec2};
 use std::sync::Arc;
 
 mod runtime_io;
@@ -99,7 +98,7 @@ impl NodeGraphExecutor {
 	fn queue_execution(&self, render_config: RenderConfig) -> u64 {
 		let execution_id = generate_uuid();
 		let request = ExecutionRequest { execution_id, render_config };
-		self.runtime_io.send(NodeRuntimeMessage::ExecutionRequest(request)).expect("Failed to send generation request");
+		self.runtime_io.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
 	}
@@ -109,12 +108,12 @@ impl NodeGraphExecutor {
 	}
 
 	pub fn update_font_cache(&self, font_cache: FontCache) {
-		self.runtime_io.send(NodeRuntimeMessage::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
+		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
 
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
 		self.runtime_io
-			.send(NodeRuntimeMessage::EditorPreferencesUpdate(editor_preferences))
+			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
 			.expect("Failed to send editor preferences");
 	}
 
@@ -147,7 +146,7 @@ impl NodeGraphExecutor {
 		let instrumented = Instrumented::new(&mut network);
 
 		self.runtime_io
-			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node: None }))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
 	}
@@ -162,7 +161,7 @@ impl NodeGraphExecutor {
 			self.node_graph_hash = network_hash;
 
 			self.runtime_io
-				.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node }))
 				.map_err(|e| e.to_string())?;
 		}
 		Ok(())
@@ -239,7 +238,7 @@ impl NodeGraphExecutor {
 
 		// Execute the node graph
 		self.runtime_io
-			.send(NodeRuntimeMessage::GraphUpdate(GraphUpdate { network, inspect_node: None }))
+			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, inspect_node: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
 		let execution_context = ExecutionContext { export_config: Some(export_config) };
@@ -422,19 +421,20 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 }
+
+// Re-export for usage by tests in other modules
 #[cfg(test)]
 pub use test::Instrumented;
 
 #[cfg(test)]
 mod test {
-	use graphene_std::{Context, memo::IORecord};
-
-	use crate::{
-		messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface,
-		test_utils::test_prelude::{self, NodeGraphLayer},
-	};
-
 	use super::*;
+	use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
+	use graphene_std::Context;
+	use graphene_std::NodeInputDecleration;
+	use graphene_std::memo::IORecord;
+	use test_prelude::LayerNodeIdentifier;
 
 	/// Stores all of the monitor nodes that have been attached to a graph
 	#[derive(Default)]
@@ -490,7 +490,7 @@ mod test {
 			instrumented
 		}
 
-		fn downcast<Input: graphene_std::NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
+		fn downcast<Input: NodeInputDecleration>(dynamic: Arc<dyn std::any::Any + Send + Sync>) -> Option<Input::Result>
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
@@ -507,7 +507,7 @@ mod test {
 		}
 
 		/// Grab all of the values of the input every time it occurs in the graph.
-		pub fn grab_all_input<'a, Input: graphene_std::NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
+		pub fn grab_all_input<'a, Input: NodeInputDecleration + 'a>(&'a self, runtime: &'a NodeRuntime) -> impl Iterator<Item = Input::Result> + 'a
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
@@ -520,7 +520,7 @@ mod test {
 				.filter_map(Instrumented::downcast::<Input>)
 		}
 
-		pub fn grab_protonode_input<Input: graphene_std::NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
+		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
@@ -531,12 +531,7 @@ mod test {
 			Self::downcast::<Input>(dynamic)
 		}
 
-		pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(
-			&self,
-			layer: test_prelude::LayerNodeIdentifier,
-			network_interface: &NodeNetworkInterface,
-			runtime: &NodeRuntime,
-		) -> Option<Input::Result>
+		pub fn grab_input_from_layer<Input: NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{

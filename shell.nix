@@ -50,7 +50,6 @@ in
       vulkan-loader
       libxkbcommon
       pkg-config
-
       # used for profiling
       gnuplot
       samply
