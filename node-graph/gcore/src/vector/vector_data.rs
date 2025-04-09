@@ -334,14 +334,22 @@ impl VectorData {
 				let (start_point_id, _, _) = self.segment_points_from_id(*segment_id)?;
 				let start_index = self.point_domain.resolve_id(start_point_id)?;
 
-				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id))
+				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id)).or(self
+					.segment_domain
+					.start_connected(start_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (start_point_id, id)))
 			}
 			ManipulatorPointId::EndHandle(segment_id) => {
 				// For end handle, find segments starting at our end point
 				let (_, end_point_id, _) = self.segment_points_from_id(*segment_id)?;
 				let end_index = self.point_domain.resolve_id(end_point_id)?;
 
-				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id))
+				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id)).or(self
+					.segment_domain
+					.end_connected(end_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (end_point_id, id)))
 			}
 			ManipulatorPointId::Anchor(_) => None,
 		}

@@ -1497,11 +1497,10 @@ impl Fsm for SelectToolFsmState {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
-					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup({
-						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()];
+						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()];
 						if *selection == NestedSelectionBehavior::Shallowest {
-							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen Selection")]);
+							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen")]);
 						}
 						hints
 					}),
@@ -1511,6 +1510,8 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 						HintInfo::keys([Key::Control], "Lasso").prepend_plus(),
 					]),
+					// TODO: Make all the following hints only appear if there is at least one selected layer
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
@@ -1546,7 +1547,7 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
 					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
-					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
+					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend")])
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
