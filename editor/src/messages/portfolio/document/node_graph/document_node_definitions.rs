@@ -3457,38 +3457,34 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.collect();
 	let mut extracted_node_types = Vec::new();
 
-	{
-		let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-		let node_metadata = graphene_core::registry::NODE_METADATA.lock().unwrap();
+	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
+	let node_metadata = graphene_core::registry::NODE_METADATA.lock().unwrap();
+	for (id, metadata) in node_metadata.iter() {
+		if let Some(implementations) = node_registry.get(id) {
+			let identifier = match id_to_identifier_map.get(id) {
+				Some(&id) => id.to_string(),
+				None => continue,
+			};
 
-		for (id, metadata) in node_metadata.iter() {
-			if let Some(implementations) = node_registry.get(id) {
-				let identifier = match id_to_identifier_map.get(id) {
-					Some(&id) => id.to_string(),
-					None => {
-						continue;
-					}
-				};
+			// Extract category from metadata (already creates an owned String)
+			let category = metadata.category.unwrap_or_default().to_string();
 
-				// Extract category from metadata (already creates an owned String)
-				let category = metadata.category.unwrap_or("").to_string();
+			// Extract input types (already creates owned Strings)
+			let input_types = implementations
+				.iter()
+				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
+				.collect::<HashSet<String>>()
+				.into_iter()
+				.collect::<Vec<String>>();
 
-				// Extract input types (already creates owned Strings)
-				let input_types = implementations
-					.iter()
-					.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
-					.collect::<HashSet<String>>()
-					.into_iter()
-					.collect::<Vec<String>>();
+			// Create a FrontendNodeType
+			let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier, category, input_types);
 
-				// Create a FrontendNodeType
-				let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier, category, input_types);
-
-				// Store the created node_type
-				extracted_node_types.push(node_type);
-			}
+			// Store the created node_type
+			extracted_node_types.push(node_type);
 		}
 	}
+
 	let node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|definition| !definition.category.is_empty())
@@ -3498,13 +3494,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				.document_node
 				.inputs
 				.iter()
-				.filter_map(|node_input| {
-					if let Some(node_value) = node_input.as_value() {
-						Some(node_value.ty().nested_type().to_string())
-					} else {
-						None
-					}
-				})
+				.filter_map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()))
 				.collect::<Vec<String>>();
 
 			FrontendNodeType::with_input_types(definition.identifier, definition.category, input_types)
@@ -3515,7 +3505,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	for extracted_node in &mut extracted_node_types {
 		if extracted_node.category.is_empty() {
 			// Find matching node in node_types and update category if found
-			if let Some(matching_node) = node_types.iter().find(|nt| nt.name == extracted_node.name) {
+			if let Some(matching_node) = node_types.iter().find(|node_type| node_type.name == extracted_node.name) {
 				extracted_node.category = matching_node.category.clone();
 			}
 		}

@@ -127,6 +127,7 @@ impl FrontendNodeType {
 			input_types: Some(input_types),
 		}
 	}
+
 	pub fn with_owned_strings_and_input_types(name: String, category: String, input_types: Vec<String>) -> Self {
 		Self {
 			name,

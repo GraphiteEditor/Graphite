@@ -303,7 +303,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-					log::error!("Could not get network metadata in EnterNestedNetwork");
+					log::error!("Could not get network metadata in NodeGraphMessage::EnterNestedNetwork");
 					return;
 				};
 
@@ -1037,8 +1037,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							return;
 						};
 						// Get the compatible type from the output connector
-						let compatible_type = if let Some(output_connector) = &output_connector {
-							if let Some(node_id) = output_connector.node_id() {
+						let compatible_type = output_connector.and_then(|output_connector| {
+							output_connector.node_id().and_then(|node_id| {
 								let output_index = output_connector.index();
 								// Get the output types from the network interface
 								let output_types = network_interface.output_types(&node_id, selection_network_path);
@@ -1048,12 +1048,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									// Create a search term based on the type
 									format!("type:{}", output_type.clone().nested_type())
 								})
-							} else {
-								None
-							}
-						} else {
-							None
-						};
+							})
+						});
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;

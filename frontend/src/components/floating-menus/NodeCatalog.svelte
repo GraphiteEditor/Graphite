@@ -12,7 +12,6 @@
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	export let disabled = false;
-	// Add prop for initial search term from compatible type
 	export let initialSearchTerm = "";
 
 	let nodeSearchInput: TextInput | undefined = undefined;
@@ -29,7 +28,7 @@
 		const categories = new Map<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
-		let remainingSearchTerms = [];
+		let remainingSearchTerms = [searchTerm.toLowerCase()];
 
 		if (isTypeSearch) {
 			// Extract the first word after "type:" as the type search
@@ -37,8 +36,6 @@
 			typeSearchTerm = searchParts[0].toLowerCase();
 
 			remainingSearchTerms = searchParts.slice(1).map((term) => term.toLowerCase());
-		} else {
-			remainingSearchTerms = [searchTerm.toLowerCase()];
 		}
 
 		nodeTypes.forEach((node) => {
@@ -113,7 +110,7 @@
 </script>
 
 <div class="node-catalog">
-	<TextInput placeholder="Search Nodes... (or type:InputType)" value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
