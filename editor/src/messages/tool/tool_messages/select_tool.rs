@@ -661,72 +661,73 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
 
 				// Update compass rose
-				tool_data.compass_rose.refresh_position(document);
-				let compass_center = tool_data.compass_rose.compass_rose_position();
-				if !matches!(self, Self::Dragging { .. }) {
-					tool_data.line_center = compass_center;
-				}
 				if overlay_context.overlays_visibility_settings.compass_rose {
+					tool_data.compass_rose.refresh_position(document);
+					let compass_center = tool_data.compass_rose.compass_rose_position();
+					if !matches!(self, Self::Dragging { .. }) {
+						tool_data.line_center = compass_center;
+					}
+
 					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
-				}
 
-				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
+					let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
 					Some((axis, false))
-				} else {
-					compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
-				};
+					} else {
+						compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
+					};
 
-				if show_compass_with_ring.is_some() {
-					if let Some((axis, hover)) = axis_state {
-						if axis.is_constraint() {
-							let e0 = tool_data
-								.bounding_box_manager
-								.as_ref()
-								.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
-								.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
+					if show_compass_with_ring.is_some() {
+						if let Some((axis, hover)) = axis_state {
+							if axis.is_constraint() {
+								let e0 = tool_data
+									.bounding_box_manager
+									.as_ref()
+									.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
+									.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-							let (direction, color) = match axis {
-								Axis::X => (e0, COLOR_OVERLAY_RED),
-								Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
-								_ => unreachable!(),
-							};
+								let (direction, color) = match axis {
+									Axis::X => (e0, COLOR_OVERLAY_RED),
+									Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+									_ => unreachable!(),
+								};
 
-							let viewport_diagonal = input.viewport_bounds.size().length();
+								let viewport_diagonal = input.viewport_bounds.size().length();
 
-							let color = if !hover {
-								color
-							} else {
-								let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-								&format!("#{}", color_string)
-							};
-							let line_center = tool_data.line_center;
-							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
+								let color = if !hover {
+									color
+								} else {
+									let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+									&format!("#{}", color_string)
+								};
+								let line_center = tool_data.line_center;
+								overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
+							}
 						}
 					}
-				}
 
-				if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
-					let mouse_position = mouse_position - tool_data.drag_start;
-					let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-					let angle = -mouse_position.angle_to(DVec2::X);
-					let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
+						let mouse_position = mouse_position - tool_data.drag_start;
+						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+						let angle = -mouse_position.angle_to(DVec2::X);
+						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-					let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-						.unwrap()
-						.with_alpha(0.25)
-						.to_rgba_hex_srgb();
-					other.insert(0, '#');
-					let other = other.as_str();
+						let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+							.unwrap()
+							.with_alpha(0.25)
+							.to_rgba_hex_srgb();
+						other.insert(0, '#');
+						let other = other.as_str();
 
-					let extension = tool_data.drag_current - tool_data.drag_start;
-					let origin = compass_center - extension;
-					let viewport_diagonal = input.viewport_bounds.size().length();
+						let extension = tool_data.drag_current - tool_data.drag_start;
+						let origin = compass_center - extension;
+						let viewport_diagonal = input.viewport_bounds.size().length();
 
-					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
-					let perp = edge.perp();
+						let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
+						let perp = edge.perp();
 
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other), None);
+						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+						overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other), None);
+					}
 				}
 
 				// Check if the tool is in selection mode
