@@ -1468,7 +1468,7 @@ impl Fsm for PathToolFsmState {
 				let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
 				let toggle_group = match dragging_state.point_select_state {
 					PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
-						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Selected Handles")];
+						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
 						hints.push(HintInfo::keys(
 							[Key::KeyC],
 							if colinear == ManipulatorAngle::Colinear {
