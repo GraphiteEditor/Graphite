@@ -420,7 +420,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.node_graph_handler
 					.context_menu
 					.as_ref()
-					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
 				{
 					// Close the context menu
 					self.node_graph_handler.context_menu = None;
