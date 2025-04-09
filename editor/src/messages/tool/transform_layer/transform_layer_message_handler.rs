@@ -1152,7 +1152,7 @@ mod test_transform_layer {
 		let document = editor.active_document();
 		let layers: Vec<LayerNodeIdentifier> = document.metadata().all_layers().collect();
 
-		assert!(layers.len() >= 4);
+		assert!(layers.len() == 4);
 
 		// Creating a group with two rectangles
 		editor
@@ -1183,7 +1183,7 @@ mod test_transform_layer {
 			.await;
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
-		assert!(final_transform != original_transform, "Transform should change for single layer");
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Transform should change for single layer");
 
 		// Test 2: Transform multiple layers
 		editor
@@ -1204,8 +1204,11 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_transform_1 = get_layer_transform(&mut editor, layers[0]).await.unwrap();
 		let final_transform_2 = get_layer_transform(&mut editor, layers[1]).await.unwrap();
-		assert!(final_transform_1 != original_transform_1, "Transform should change for first layer in multi-selection");
-		assert!(final_transform_2 != original_transform_2, "Transform should change for second layer in multi-selection");
+		assert!(!final_transform_1.abs_diff_eq(original_transform_1, 1e-5), "Transform should change for first layer in multi-selection");
+		assert!(
+			!final_transform_2.abs_diff_eq(original_transform_2, 1e-5),
+			"Transform should change for second layer in multi-selection"
+		);
 
 		// Test 3: Transform group
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![group_layer.to_node()] }).await;
@@ -1214,6 +1217,6 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
-		assert!(final_group_transform != original_group_transform, "Transform should change for group");
+		assert!(!final_group_transform.abs_diff_eq(original_group_transform, 1e-5), "Transform should change for group");
 	}
 }
