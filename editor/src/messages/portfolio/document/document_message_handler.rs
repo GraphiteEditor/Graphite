@@ -2146,6 +2146,66 @@ impl DocumentMessageHandler {
 							TextLabel::new("Transform Cage".to_string()).widget_holder(),
 						],
 					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.pivot)
+								.tooltip("Enable or disable the pivot overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::Pivot,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Pivot".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.path)
+								.tooltip("Enable or disable the path overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::Path,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Path".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.anchors)
+								.tooltip("Enable or disable the anchors overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::Anchors,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Anchors".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.handles)
+								.tooltip("Enable or disable the handles overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::Handles,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Handles".to_string()).widget_holder(),
+						],
+					},
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
