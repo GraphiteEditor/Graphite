@@ -403,7 +403,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let handle1_length = handle1.length(&vector_data);
 							let handle2_length = handle2.length(&vector_data);
 
-							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
 								selected.original_transforms.clear();
 								return;
 							}
