@@ -174,7 +174,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 }
 
 pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
-	if !overlay_context.overlays_visibility_settings.path {
+	if !overlay_context.overlays_visibility_settings.anchors {
 		return;
 	}
 

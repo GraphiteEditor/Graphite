@@ -1521,6 +1521,9 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
+				let display_anchors = overlay_context.overlays_visibility_settings.anchors;
+				let display_handles = overlay_context.overlays_visibility_settings.handles;
+
 				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 
 				let transform = document.metadata().document_to_viewport * transform;
@@ -1580,13 +1583,13 @@ impl Fsm for PenToolFsmState {
 						overlay_context.dashed_line(anchor_start, next_anchor, None, None, Some(4.), Some(4.), Some(0.5));
 					}
 
-					if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, handle_end) {
+					if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, handle_end) && display_handles {
 						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
 						let selected = tool_data.handle_type == TargetHandle::PreviewInHandle;
 						overlay_context.manipulator_handle(handle_end, selected, None);
 					}
 
-					if valid(anchor_start, handle_start) {
+					if valid(anchor_start, handle_start) && display_handles {
 						// Draw the handle circle for the most recently placed anchor's outgoing handle (which is currently influencing the currently-being-placed segment)
 						overlay_context.manipulator_handle(handle_start, false, None);
 					}
@@ -1602,13 +1605,13 @@ impl Fsm for PenToolFsmState {
 					}
 				}
 
-				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, next_handle_start) {
+				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, next_handle_start) && display_handles {
 					// Draw the handle circle for the currently-being-dragged-out outgoing handle (the one currently being dragged out, under the user's cursor)
 					let selected = tool_data.handle_type == TargetHandle::FuturePreviewOutHandle;
 					overlay_context.manipulator_handle(next_handle_start, selected, None);
 				}
 
-				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) {
+				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && display_anchors {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
 				}
