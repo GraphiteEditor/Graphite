@@ -64,7 +64,6 @@ impl EditorHandle {
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
-		log::debug!("message");
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
 			log::error!("Attempted to initialize the editor handle more than once");
 		}
@@ -77,7 +76,6 @@ impl EditorHandle {
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
-		// log::debug!("message");
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
 		let frontend_messages = editor(|editor| editor.handle_message(message.into()));

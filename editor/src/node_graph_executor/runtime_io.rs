@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
-	// invoke with arguments (default)
+	// Invoke with arguments (default)
 	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
 	async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 	#[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name="invoke")]
@@ -16,7 +16,7 @@ extern "C" {
 pub struct NodeRuntimeIO {
 	// Send to
 	#[cfg(any(not(feature = "tauri"), test))]
-	sender: Sender<NodeRuntimeMessage>,
+	sender: Sender<GraphRuntimeRequest>,
 	#[cfg(all(feature = "tauri", not(test)))]
 	sender: Sender<NodeGraphUpdate>,
 	receiver: Receiver<NodeGraphUpdate>,
@@ -53,12 +53,12 @@ impl NodeRuntimeIO {
 		}
 	}
 	#[cfg(test)]
-	pub fn with_channels(sender: Sender<NodeRuntimeMessage>, receiver: Receiver<NodeGraphUpdate>) -> Self {
+	pub fn with_channels(sender: Sender<GraphRuntimeRequest>, receiver: Receiver<NodeGraphUpdate>) -> Self {
 		Self { sender, receiver }
 	}
 
 	/// Sends a message to the NodeRuntime
-	pub fn send(&self, message: NodeRuntimeMessage) -> Result<(), String> {
+	pub fn send(&self, message: GraphRuntimeRequest) -> Result<(), String> {
 		#[cfg(any(not(feature = "tauri"), test))]
 		{
 			self.sender.send(message).map_err(|e| e.to_string())

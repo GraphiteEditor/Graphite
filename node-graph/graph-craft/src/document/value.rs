@@ -103,8 +103,6 @@ macro_rules! tagged_value {
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
 					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(graphene_core::SurfaceFrame::clone(input.downcast_ref().unwrap()))),
-
-
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}

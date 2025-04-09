@@ -690,8 +690,8 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	pub exports: Vec<NodeInput>,
 	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,

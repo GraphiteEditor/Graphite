@@ -1,38 +1,16 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
-use graphite_editor::messages::prelude::*;
-use graphite_editor::node_graph_executor::NODE_RUNTIME;
-use graphite_editor::node_graph_executor::*;
-use graphite_editor::{application::Editor, node_graph_executor::NodeRuntimeMessage};
-
-// use axum::body::StreamBody;
-// use axum::extract::Path;
-// use axum::http;
-// use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
-// use http::{Response, StatusCode};
+use graphite_editor::application::Editor;
+use graphite_editor::messages::prelude::*;
+use graphite_editor::node_graph_executor::GraphRuntimeRequest;
+use graphite_editor::node_graph_executor::NODE_RUNTIME;
+use graphite_editor::node_graph_executor::*;
 use std::sync::Mutex;
-// use std::collections::HashMap;
-// use std::sync::Arc;
-// use std::sync::Mutex;
 
-// static EDITOR: Mutex<Option<Editor>> = const { Mutex::new(None) };
 static NODE_RUNTIME_IO: Mutex<Option<NodeRuntimeIO>> = const { Mutex::new(None) };
-
-// async fn respond_to(id: Path<String>) -> impl IntoResponse {
-// 	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
-
-// 	let guard = IMAGES.lock().unwrap();
-// 	let images = guard;
-// 	let image = images.as_ref().unwrap().get(&id.0).unwrap();
-
-// 	println!("image: {:#?}", image.path);
-// 	let result: Result<Vec<u8>, &str> = Ok((*image.image_data).clone());
-// 	let stream = futures::stream::once(async move { result });
-// 	builder.body(StreamBody::new(stream)).unwrap()
-// }
 
 #[tokio::main]
 async fn main() {
@@ -62,20 +40,17 @@ async fn main() {
 
 	std::thread::spawn(|| loop {
 		futures::executor::block_on(graphite_editor::node_graph_executor::run_node_graph());
-
 		std::thread::sleep(std::time::Duration::from_millis(16))
 	});
-
 	graphite_editor::application::set_uuid_seed(0);
-	// let mut editor_lock = EDITOR.lock().unwrap();
-	// *editor_lock = Some(Editor::new());
-	// drop(editor_lock);
+
 	let mut runtime_lock = NODE_RUNTIME_IO.lock().unwrap();
 	*runtime_lock = Some(NodeRuntimeIO::new());
 	drop(runtime_lock);
-	let app = Router::new().route("/", get(|| async { "Hello, World!" }))/*.route("/image/:id", get(respond_to))*/;
 
-	// run it with hyper on localhost:3000
+	let app = Router::new().route("/", get(|| async { "Hello, World!" }));
+
+	// Run it with hyper on localhost:3000
 	tauri::async_runtime::spawn(async {
 		let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 		axum::serve(listener, app).await.unwrap();
