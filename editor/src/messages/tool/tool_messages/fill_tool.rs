@@ -227,12 +227,27 @@ mod test_fill {
 	}
 
 	#[tokio::test]
-	async fn ignore_raster() {
+	async fn primary_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
+		editor.select_primary_color(Color::GREEN).await;
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
-		assert!(get_fills(&mut editor,).await.is_empty());
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+	}
+
+	#[tokio::test]
+	async fn secondary_raster() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
+		editor.select_secondary_color(Color::YELLOW).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::YELLOW.to_rgba8_srgb());
 	}
 
 	#[tokio::test]
