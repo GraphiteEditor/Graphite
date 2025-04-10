@@ -14,7 +14,7 @@ use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{self, HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -378,6 +378,13 @@ impl PenToolData {
 		self.point_index = (self.point_index + 1).min(self.latest_points.len());
 		self.latest_points.truncate(self.point_index);
 		self.latest_points.push(point);
+	}
+
+	fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.handle_end = None;
+		self.latest_points.clear();
+		self.point_index = 0;
+		self.snap_manager.cleanup(responses);
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
@@ -1902,7 +1909,39 @@ impl Fsm for PenToolFsmState {
 
 				state
 			}
-			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
+			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Confirm) => {
+				// Confirm to end path
+				if let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
+					let single_point_in_layer = vector_data.point_domain.ids().len() == 1;
+					tool_data.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses);
+					let latest_pts = tool_data.latest_points.len();
+
+					if latest_pts == 1 && single_point_in_layer {
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![layer.unwrap().to_node()],
+							delete_children: true,
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					} else if latest_pts == 1 {
+						let vector_modification = VectorModificationType::RemovePoint {
+							id: tool_data.latest_point().unwrap().id,
+						};
+						responses.add(GraphOperationMessage::Vector {
+							layer: layer.unwrap(),
+							modification_type: vector_modification,
+						});
+						responses.add(PenToolMessage::Abort);
+					} else {
+						responses.add(DocumentMessage::EndTransaction);
+					}
+				}
+
+				tool_data.cleanup(responses);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+				responses.add(OverlaysMessage::Draw);
+				PenToolFsmState::Ready
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();
