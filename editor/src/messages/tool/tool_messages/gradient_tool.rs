@@ -565,8 +565,6 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	// TODO: remove once https://github.com/GraphiteEditor/Graphite/issues/2444 is fixed
-	#[should_panic]
 	async fn ignore_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
