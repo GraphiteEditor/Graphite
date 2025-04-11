@@ -193,6 +193,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
+					preferences,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -419,7 +420,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.node_graph_handler
 					.context_menu
 					.as_ref()
-					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
 				{
 					// Close the context menu
 					self.node_graph_handler.context_menu = None;
@@ -507,6 +508,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}
@@ -1209,14 +1211,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.children(metadata).collect();
+						let children: HashSet<_> = layer.descendants(metadata).collect();
 						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
 					} else {
 						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
 						self.collapsed.0.extend(children_to_add);
 					}
 					self.collapsed.0.push(layer);
@@ -2477,6 +2479,10 @@ impl DocumentMessageHandler {
 		// If moving down, insert below this layer. If moving up, insert above this layer.
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
+	}
+
+	pub fn graph_view_overlay_open(&self) -> bool {
+		self.graph_view_overlay_open
 	}
 }
 
