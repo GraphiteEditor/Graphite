@@ -357,4 +357,8 @@ impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
 		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
 	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
+	}
 }
