@@ -206,6 +206,7 @@ tagged_value! {
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
+	FillCache(Vec<Fill>),
 	DocumentNode(DocumentNode),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
@@ -425,6 +426,12 @@ mod fake_hash {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.0.to_bits().hash(state);
 			self.1.hash(state)
+		}
+	}
+	impl<T: FakeHash, U: FakeHash> FakeHash for (T, U) {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.0.hash(state);
+			self.1.hash(state);
 		}
 	}
 }

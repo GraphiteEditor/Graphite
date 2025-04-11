@@ -7,6 +7,7 @@ use graphene_core::raster::{
 	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
 };
 use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::vector::style::{Fill, Gradient};
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -682,6 +683,94 @@ fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 		}
 	}
 	max_iter
+}
+
+#[node_macro::node(category("Raster"))]
+fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
+	_: impl Ctx,
+	#[implementations(ImageFrameTable<Color>)]
+	/// The raster elements to apply the fill to.
+	mut image: ImageFrameTable<Color>,
+	#[implementations(
+		Vec<Fill>,
+		Vec<Option<Color>>,
+		Vec<Color>,
+		Vec<Gradient>
+	)]
+	#[default(Vec<Color::BLACK>)]
+	/// The fills to paint the path with.
+	fills: Vec<F>,
+	/// The positions of the fill in image-local coordinates.
+	positions: Vec<DVec2>,
+	/// The threshold for color similarity in LAB space.
+	#[default(1.)]
+	#[range((0., 10.))]
+	similarity_threshold: f64,
+) -> ImageFrameTable<Color> {
+	let width = image.width();
+	let height = image.height();
+	if width == 0 || height == 0 || fills.is_empty() || positions.is_empty() {
+		return image;
+	}
+
+	// Process the minimum number of fill and position pairs
+	let fill_count = fills.len().min(positions.len());
+
+	for i in 0..fill_count {
+		// Get the fill and position for this iteration
+		let fill = fills[i].clone().into();
+		let position = positions[i];
+
+		// Scale position to pixel coordinates
+		let image_size = DVec2::new(width as f64, height as f64);
+		let local_pos = position * image_size;
+
+		// Convert to pixel coordinates
+		let pixel_x = local_pos.x.floor() as i32;
+		let pixel_y = local_pos.y.floor() as i32;
+
+		let color = match fill {
+			Fill::Solid(color) => color.to_linear_srgb(),
+			Fill::Gradient(_) => Color::RED, // TODO: Implement raster gradient fill
+			Fill::None => Color::TRANSPARENT,
+		};
+
+		// Get the target color at the clicked position
+		let target_color = match image.get_pixel(pixel_x as u32, pixel_y as u32) {
+			Some(pixel) => pixel.clone(),
+			None => continue,
+		};
+
+		// If the target color is the same as the fill color, no need to fill
+		if target_color == color {
+			continue;
+		}
+
+		// Flood fill algorithm using a stack
+		let mut stack = Vec::new();
+		stack.push((pixel_x, pixel_y));
+
+		while let Some((x, y)) = stack.pop() {
+			// Check bounds
+			if x < 0 || y < 0 || x >= width as i32 || y >= height as i32 {
+				continue;
+			}
+
+			// Get current pixel
+			if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
+				// If pixel matches target color, fill it and add neighbors to stack
+				if pixel.is_similar_lab(&target_color, similarity_threshold) {
+					*pixel = color;
+					stack.push((x + 1, y)); // Right
+					stack.push((x - 1, y)); // Left
+					stack.push((x, y + 1)); // Down
+					stack.push((x, y - 1)); // Up
+				}
+			}
+		}
+	}
+
+	image
 }
 
 fn map_color(iter: usize, max_iter: usize) -> Color {

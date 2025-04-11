@@ -21,6 +21,12 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
+	RasterFillSet {
+		layer: LayerNodeIdentifier,
+		fills: Vec<Fill>,
+		start_pos: Vec<DVec2>,
+		similarity_threshold: f64,
+	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,
