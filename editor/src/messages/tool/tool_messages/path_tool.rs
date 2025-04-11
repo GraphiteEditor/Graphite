@@ -27,12 +27,21 @@ pub struct PathTool {
 	options: PathToolOptions,
 }
 
-#[derive(Default)]
 pub struct PathToolOptions {
 	path_overlay_mode: PathOverlayMode,
 	proportional_editing_enabled: bool,
 	proportional_falloff_type: ProportionalFalloffType,
 	proportional_radius: i32,
+}
+impl Default for PathToolOptions {
+	fn default() -> Self {
+		Self {
+			path_overlay_mode: PathOverlayMode::default(),
+			proportional_editing_enabled: false,
+			proportional_falloff_type: ProportionalFalloffType::default(),
+			proportional_radius: 100,
+		}
+	}
 }
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ProportionalFalloffType {
@@ -113,7 +122,6 @@ pub enum PathToolMessage {
 	UpdateOptions(PathOptionsUpdate),
 	ToggleProportionalEditing,
 	AdjustProportionalRadius,
-	UpdateProportionalFalloff(ProportionalFalloffType),
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -227,85 +235,79 @@ impl LayoutHolder for PathTool {
 		])
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
-		let proportional_editing_label = TextLabel::new("Proportional Edit").table_align(true).min_width(100).widget_holder();
+
+		let proportional_editing_label = TextLabel::new("Proportional Edit").disabled(!self.options.proportional_editing_enabled).widget_holder();
 		let proportional_checkbox = CheckboxInput::new(self.options.proportional_editing_enabled)
 			.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
 			.tooltip("Proportional Editing (Alt+P)")
 			.widget_holder();
 
-		let falloff_label = TextLabel::new("Falloff").table_align(true).min_width(100).widget_holder();
+		let falloff_label = TextLabel::new("Falloff").disabled(!self.options.proportional_editing_enabled).widget_holder();
 
 		let falloff_entries = vec![
 			MenuListEntry::new("Constant")
 				.label("Constant")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Constant).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Constant)).into()),
 			MenuListEntry::new("Linear")
 				.label("Linear")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Linear).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Linear)).into()),
 			MenuListEntry::new("Sharp")
 				.label("Sharp")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Sharp).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sharp)).into()),
 			MenuListEntry::new("Root")
 				.label("Root")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Root).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Root)).into()),
 			MenuListEntry::new("Sphere")
 				.label("Sphere")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Sphere).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sphere)).into()),
 			MenuListEntry::new("Smooth")
 				.label("Smooth")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Smooth).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Smooth)).into()),
 			MenuListEntry::new("Random")
 				.label("Random")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Random).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
 			MenuListEntry::new("Inverse Square")
 				.label("Inverse Square")
-				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::InverseSquare).into()),
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::InverseSquare)).into()),
 		];
 
 		let falloff_dropdown = DropdownInput::new(vec![falloff_entries])
 			.selected_index(Some(self.options.proportional_falloff_type as u32))
 			.disabled(!self.options.proportional_editing_enabled)
 			.widget_holder();
-		let radius_label = TextLabel::new("Radius").table_align(true).min_width(100).widget_holder();
+		let radius_label = TextLabel::new("Radius").disabled(!self.options.proportional_editing_enabled).widget_holder();
 		let radius_input = NumberInput::new(Some(self.options.proportional_radius as f64))
 			.unit(" px")
 			.min(1.0)
-			.max(1000.0)
 			.disabled(!self.options.proportional_editing_enabled)
 			.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
 			.widget_holder();
-		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutGroup::Row {
-				widgets: vec![
-					x_location,
-					related_seperator.clone(),
-					y_location,
-					unrelated_seperator.clone(),
-					colinear_handle_checkbox,
-					related_seperator.clone(),
-					colinear_handles_label,
-					unrelated_seperator.clone(),
-					path_overlay_mode_widget,
-					unrelated_seperator.clone(),
-				],
-			},
-			LayoutGroup::Row {
-				widgets: vec![
-					proportional_editing_label,
-					related_seperator.clone(),
-					proportional_checkbox,
-					related_seperator.clone(),
-					falloff_label,
-					related_seperator.clone(),
-					falloff_dropdown,
-					related_seperator.clone(),
-					radius_label,
-					related_seperator,
-					radius_input,
-					unrelated_seperator,
-				],
-			},
-		]))
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+			widgets: vec![
+				x_location,
+				related_seperator.clone(),
+				y_location,
+				unrelated_seperator.clone(),
+				colinear_handle_checkbox,
+				related_seperator.clone(),
+				colinear_handles_label,
+				unrelated_seperator.clone(),
+				path_overlay_mode_widget,
+				unrelated_seperator.clone(),
+				proportional_editing_label,
+				related_seperator.clone(),
+				proportional_checkbox,
+				unrelated_seperator.clone(),
+				falloff_label,
+				related_seperator.clone(),
+				falloff_dropdown,
+				unrelated_seperator.clone(),
+				radius_label,
+				related_seperator,
+				radius_input,
+				unrelated_seperator,
+			],
+		}]))
 	}
 }
 
@@ -321,24 +323,29 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				}
 				PathOptionsUpdate::ProportionalEditingEnabled(enabled) => {
 					self.options.proportional_editing_enabled = enabled;
+
 					responses.add(OverlaysMessage::Draw);
 				}
 				PathOptionsUpdate::ProportionalFalloffType(falloff_type) => {
-					self.options.proportional_falloff_type = falloff_type;
+					self.options.proportional_falloff_type = falloff_type.clone();
+
 					responses.add(OverlaysMessage::Draw);
 				}
 				PathOptionsUpdate::ProportionalRadius(radius) => {
 					self.options.proportional_radius = radius.max(1).min(1000);
+
 					responses.add(OverlaysMessage::Draw);
 				}
 			},
 			ToolMessage::Path(PathToolMessage::ToggleProportionalEditing) => {
 				self.options.proportional_editing_enabled ^= true;
+
 				responses.add(OverlaysMessage::Draw);
 			}
 			ToolMessage::Path(PathToolMessage::AdjustProportionalRadius) => {
 				if self.options.proportional_editing_enabled {
-					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32)).clamp(1, 1000);
+					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32)).max(1);
+
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
@@ -381,7 +388,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				ClosePath,
 				ToggleProportionalEditing,
-				AdjustProportionalRadius
+				AdjustProportionalRadius,
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -393,7 +400,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
-				AdjustProportionalRadius
+				AdjustProportionalRadius,
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
