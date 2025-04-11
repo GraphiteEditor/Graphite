@@ -1,7 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE,
+	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -16,9 +17,9 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId};
+use graphene_core::{ChaCha20Rng, Rng, SeedableRng};
 use graphene_std::vector::{NoHashBuilder, SegmentId};
 use std::vec;
-
 #[derive(Default)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
@@ -29,6 +30,21 @@ pub struct PathTool {
 #[derive(Default)]
 pub struct PathToolOptions {
 	path_overlay_mode: PathOverlayMode,
+	proportional_editing_enabled: bool,
+	proportional_falloff_type: ProportionalFalloffType,
+	proportional_radius: i32,
+}
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ProportionalFalloffType {
+	#[default]
+	Constant = 0,
+	Linear = 1,
+	Sharp = 2,
+	Root = 3,
+	Sphere = 4,
+	Smooth = 5,
+	Random = 6,
+	InverseSquare = 7,
 }
 
 #[impl_message(Message, ToolMessage, Path)]
@@ -95,6 +111,9 @@ pub enum PathToolMessage {
 	},
 	SwapSelectedHandles,
 	UpdateOptions(PathOptionsUpdate),
+	ToggleProportionalEditing,
+	AdjustProportionalRadius,
+	UpdateProportionalFalloff(ProportionalFalloffType),
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -108,6 +127,9 @@ pub enum PathOverlayMode {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
+	ProportionalEditingEnabled(bool),
+	ProportionalFalloffType(ProportionalFalloffType),
+	ProportionalRadius(i32),
 }
 
 impl ToolMetadata for PathTool {
@@ -205,20 +227,85 @@ impl LayoutHolder for PathTool {
 		])
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
+		let proportional_editing_label = TextLabel::new("Proportional Edit").table_align(true).min_width(100).widget_holder();
+		let proportional_checkbox = CheckboxInput::new(self.options.proportional_editing_enabled)
+			.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
+			.tooltip("Proportional Editing (Alt+P)")
+			.widget_holder();
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				x_location,
-				related_seperator.clone(),
-				y_location,
-				unrelated_seperator.clone(),
-				colinear_handle_checkbox,
-				related_seperator,
-				colinear_handles_label,
-				unrelated_seperator,
-				path_overlay_mode_widget,
-			],
-		}]))
+		let falloff_label = TextLabel::new("Falloff").table_align(true).min_width(100).widget_holder();
+
+		let falloff_entries = vec![
+			MenuListEntry::new("Constant")
+				.label("Constant")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Constant).into()),
+			MenuListEntry::new("Linear")
+				.label("Linear")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Linear).into()),
+			MenuListEntry::new("Sharp")
+				.label("Sharp")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Sharp).into()),
+			MenuListEntry::new("Root")
+				.label("Root")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Root).into()),
+			MenuListEntry::new("Sphere")
+				.label("Sphere")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Sphere).into()),
+			MenuListEntry::new("Smooth")
+				.label("Smooth")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Smooth).into()),
+			MenuListEntry::new("Random")
+				.label("Random")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::Random).into()),
+			MenuListEntry::new("Inverse Square")
+				.label("Inverse Square")
+				.on_commit(|_| PathToolMessage::UpdateProportionalFalloff(ProportionalFalloffType::InverseSquare).into()),
+		];
+
+		let falloff_dropdown = DropdownInput::new(vec![falloff_entries])
+			.selected_index(Some(self.options.proportional_falloff_type as u32))
+			.disabled(!self.options.proportional_editing_enabled)
+			.widget_holder();
+		let radius_label = TextLabel::new("Radius").table_align(true).min_width(100).widget_holder();
+		let radius_input = NumberInput::new(Some(self.options.proportional_radius as f64))
+			.unit(" px")
+			.min(1.0)
+			.max(1000.0)
+			.disabled(!self.options.proportional_editing_enabled)
+			.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
+			.widget_holder();
+		Layout::WidgetLayout(WidgetLayout::new(vec![
+			LayoutGroup::Row {
+				widgets: vec![
+					x_location,
+					related_seperator.clone(),
+					y_location,
+					unrelated_seperator.clone(),
+					colinear_handle_checkbox,
+					related_seperator.clone(),
+					colinear_handles_label,
+					unrelated_seperator.clone(),
+					path_overlay_mode_widget,
+					unrelated_seperator.clone(),
+				],
+			},
+			LayoutGroup::Row {
+				widgets: vec![
+					proportional_editing_label,
+					related_seperator.clone(),
+					proportional_checkbox,
+					related_seperator.clone(),
+					falloff_label,
+					related_seperator.clone(),
+					falloff_dropdown,
+					related_seperator.clone(),
+					radius_label,
+					related_seperator,
+					radius_input,
+					unrelated_seperator,
+				],
+			},
+		]))
 	}
 }
 
@@ -232,7 +319,29 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.path_overlay_mode = overlay_mode_type;
 					responses.add(OverlaysMessage::Draw);
 				}
+				PathOptionsUpdate::ProportionalEditingEnabled(enabled) => {
+					self.options.proportional_editing_enabled = enabled;
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::ProportionalFalloffType(falloff_type) => {
+					self.options.proportional_falloff_type = falloff_type;
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::ProportionalRadius(radius) => {
+					self.options.proportional_radius = radius.max(1).min(1000);
+					responses.add(OverlaysMessage::Draw);
+				}
 			},
+			ToolMessage::Path(PathToolMessage::ToggleProportionalEditing) => {
+				self.options.proportional_editing_enabled ^= true;
+				responses.add(OverlaysMessage::Draw);
+			}
+			ToolMessage::Path(PathToolMessage::AdjustProportionalRadius) => {
+				if self.options.proportional_editing_enabled {
+					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32)).clamp(1, 1000);
+					responses.add(OverlaysMessage::Draw);
+				}
+			}
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
 				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
@@ -271,6 +380,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				ClosePath,
+				ToggleProportionalEditing,
+				AdjustProportionalRadius
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -282,6 +393,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
+				AdjustProportionalRadius
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -293,6 +405,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				AdjustProportionalRadius,
 			),
 			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -792,6 +905,7 @@ impl PathToolData {
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
+		tool_options: &PathToolOptions,
 	) {
 		// First check if selection is not just a single handle point
 		let selected_points = shape_editor.selected_points();
@@ -843,7 +957,58 @@ impl PathToolData {
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
+		let proportional_enabled = tool_options.proportional_editing_enabled;
+		let radius = tool_options.proportional_radius as f64;
+		let falloff_type = tool_options.proportional_falloff_type;
+		if proportional_enabled {
+			// Calculate selection center
+			let selection_center = shape_editor
+				.selection_center(document)
+				.unwrap_or_else(|| document_to_viewport.inverse().transform_point2(current_mouse));
 
+			// Process each layer with selected points
+			for (&layer, _) in &shape_editor.selected_shape_state {
+				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+					let transform = document.metadata().transform_to_document(layer);
+					let inverse_transform = transform.inverse();
+
+					// Get selected point IDs
+					let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+					// Process non-selected points
+					for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+						if !selected_points.contains(&point_id) {
+							let position = vector_data.point_domain.positions()[i];
+							let world_pos = transform.transform_point2(position);
+
+							// Calculate distance to selection center
+							let distance = world_pos.distance(selection_center);
+
+							if distance <= radius {
+								// Calculate falloff factor
+								let factor = self.calculate_falloff_factor(distance, radius, falloff_type);
+
+								// Apply scaled delta
+								let scaled_delta = snapped_delta * factor;
+
+								// Convert viewport delta to document space
+								let document_delta = document_to_viewport.inverse().transform_vector2(scaled_delta);
+
+								// Apply delta using shape_editor's move_anchor method
+								shape_editor.move_anchor(
+									point_id,
+									&vector_data,
+									inverse_transform.transform_vector2(document_delta),
+									layer,
+									None, // No selected state for non-selected points
+									responses,
+								);
+							}
+						}
+					}
+				}
+			}
+		}
 		if snap_angle && self.snapping_axis.is_some() {
 			let Some(current_axis) = self.snapping_axis else { return };
 			let total_delta = self.drag_start_pos - input.mouse.position;
@@ -852,6 +1017,33 @@ impl PathToolData {
 				self.stop_snap_along_axis(shape_editor, document, input, responses);
 				self.start_snap_along_axis(shape_editor, document, input, responses);
 			}
+		}
+	}
+	fn calculate_falloff_factor(&self, distance: f64, radius: f64, falloff_type: ProportionalFalloffType) -> f64 {
+		// Handle edge cases
+		if distance >= radius {
+			return 0.0;
+		}
+		if distance <= 0.001 {
+			return 1.0;
+		}
+
+		let normalized_distance = distance / radius;
+
+		match falloff_type {
+			ProportionalFalloffType::Constant => 1.0,
+			ProportionalFalloffType::Linear => 1.0 - normalized_distance,
+			ProportionalFalloffType::Sharp => (1.0 - normalized_distance).powi(2),
+			ProportionalFalloffType::Root => (1.0 - normalized_distance).sqrt(),
+			ProportionalFalloffType::Sphere => (1.0 - normalized_distance.powi(2)).sqrt(),
+			ProportionalFalloffType::Smooth => 3.0 * normalized_distance.powi(2) - 2.0 * normalized_distance.powi(3),
+			ProportionalFalloffType::Random => {
+				// Seed RNG with position-based value for consistency
+				let seed = (distance * 1000.0) as u64;
+				let mut rng = ChaCha20Rng::seed_from_u64(seed);
+				rng.random_range(0.0..1.0) * (1.0 - normalized_distance)
+			}
+			ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 10.0 + 0.1),
 		}
 	}
 }
@@ -876,7 +1068,14 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				// TODO: find the segment ids of which the selected points are a part of
+				if tool_options.proportional_editing_enabled {
+					if let Some(center) = shape_editor.selection_center(document) {
+						let viewport_center = document.metadata().document_to_viewport.transform_point2(center);
+						let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * tool_options.proportional_radius as f64).x;
 
+						overlay_context.circle(viewport_center, radius_viewport, Some(COLOR_OVERLAY_TRANSPARENT), Some(COLOR_OVERLAY_BLUE));
+					}
+				}
 				match tool_options.path_overlay_mode {
 					PathOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1138,6 +1337,7 @@ impl Fsm for PathToolFsmState {
 						tool_action_data.document,
 						input,
 						responses,
+						tool_options,
 					);
 				}
 
