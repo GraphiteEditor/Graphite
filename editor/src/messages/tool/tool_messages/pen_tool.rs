@@ -358,6 +358,7 @@ struct PenToolData {
 	path_closed: bool,
 
 	handle_mode: HandleMode,
+	prior_segment_layer: Option<LayerNodeIdentifier>,
 	prior_segment_endpoint: Option<PointId>,
 	prior_segment: Option<SegmentId>,
 	handle_type: TargetHandle,
@@ -1264,9 +1265,11 @@ impl PenToolData {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		self.prior_segment = None;
 		self.prior_segment_endpoint = None;
+		self.prior_segment_layer = None;
 
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			self.prior_segment_endpoint = Some(point);
+			self.prior_segment_layer = Some(layer);
 			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
 			self.prior_segment = segment;
@@ -1918,15 +1921,15 @@ impl Fsm for PenToolFsmState {
 				if let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
 					let single_point_in_layer = vector_data.point_domain.ids().len() == 1;
 					tool_data.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses);
-					let latest_pts = tool_data.latest_points.len();
+					let latest_pts = tool_data.latest_points.len() == 1;
 
-					if latest_pts == 1 && single_point_in_layer {
+					if latest_pts && single_point_in_layer {
 						responses.add(NodeGraphMessage::DeleteNodes {
 							node_ids: vec![layer.unwrap().to_node()],
 							delete_children: true,
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-					} else if latest_pts == 1 && tool_data.prior_segment_endpoint.is_none() {
+					} else if (latest_pts && tool_data.prior_segment_endpoint.is_none()) || (tool_data.prior_segment_endpoint.is_some() && tool_data.prior_segment_layer != layer && latest_pts) {
 						let vector_modification = VectorModificationType::RemovePoint {
 							id: tool_data.latest_point().unwrap().id,
 						};
