@@ -82,6 +82,10 @@ impl Pivot {
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
+		if !overlay_context.overlays_visibility_settings.pivot {
+			return;
+		}
+
 		self.recalculate_pivot(document);
 		if let (Some(pivot), Some(data)) = (self.pivot, draw_data) {
 			overlay_context.pivot(pivot, data.0);

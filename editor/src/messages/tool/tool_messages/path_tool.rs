@@ -983,13 +983,20 @@ impl Fsm for PathToolFsmState {
 					Self::InsertPoint => {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
 
+						let display_anchors = overlay_context.overlays_visibility_settings.anchors;
+						let display_handles = overlay_context.overlays_visibility_settings.handles;
+
 						if let Some(closest_segment) = &tool_data.segment {
-							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
+							if display_anchors {
+								overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));	
+							}
 							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
 								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);
 								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
-								overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+								if display_handles {
+									overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
+									overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+								}
 							}
 						}
 

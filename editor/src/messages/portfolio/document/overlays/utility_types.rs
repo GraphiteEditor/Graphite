@@ -19,6 +19,49 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OverlaysType {
+	All,
+	ArtboardName,
+	CompassRose,
+	Measurement,
+	TransformCage,
+	Pivot,
+	Path,
+	Anchors,
+	Handles,
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct OverlaysVisibilitySettings {
+	pub all: bool,
+	pub artboard_name: bool,
+	pub compass_rose: bool,
+	pub measurement: bool,
+	pub transform_cage: bool,
+	pub pivot: bool,
+	pub path: bool,
+	pub anchors: bool,
+	pub handles: bool,
+}
+
+impl Default for OverlaysVisibilitySettings {
+	fn default() -> Self {
+		Self {
+			all: true,
+			artboard_name: true,
+			compass_rose: true,
+			measurement: true,
+			transform_cage: true,
+			pivot: true,
+			path: true,
+			anchors: true,
+			handles: true,
+		}
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
@@ -29,6 +72,7 @@ pub struct OverlayContext {
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
+	pub overlays_visibility_settings: OverlaysVisibilitySettings,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
