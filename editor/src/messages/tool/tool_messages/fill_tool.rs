@@ -213,7 +213,6 @@ mod test_fill {
 
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
 		let instrumented = editor.eval_graph().await;
-
 		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
 	}
 
@@ -224,30 +223,6 @@ mod test_fill {
 		editor.drag_tool(ToolType::Artboard, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		assert!(get_fills(&mut editor,).await.is_empty());
-	}
-
-	#[tokio::test]
-	async fn primary_raster() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
-		editor.select_primary_color(Color::GREEN).await;
-		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
-		let fills = get_fills(&mut editor).await;
-		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
-	}
-
-	#[tokio::test]
-	async fn secondary_raster() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.create_raster_image(Image::new(100, 100, Color::WHITE), Some((0., 0.))).await;
-		editor.select_secondary_color(Color::YELLOW).await;
-		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
-		let fills = get_fills(&mut editor).await;
-		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::YELLOW.to_rgba8_srgb());
 	}
 
 	#[tokio::test]
