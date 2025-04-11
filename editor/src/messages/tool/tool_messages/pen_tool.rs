@@ -14,7 +14,7 @@ use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_std::vector::{self, HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -1260,6 +1260,8 @@ impl PenToolData {
 		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+		self.prior_segment = None;
+		self.prior_segment_endpoint = None;
 
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			self.prior_segment_endpoint = Some(point);
@@ -1922,7 +1924,7 @@ impl Fsm for PenToolFsmState {
 							delete_children: true,
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-					} else if latest_pts == 1 {
+					} else if latest_pts == 1 && tool_data.prior_segment_endpoint.is_none() {
 						let vector_modification = VectorModificationType::RemovePoint {
 							id: tool_data.latest_point().unwrap().id,
 						};
@@ -1943,13 +1945,22 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
-				tool_data.handle_end = None;
-				tool_data.latest_points.clear();
-				tool_data.point_index = 0;
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				PenToolFsmState::Ready
+			}
+			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Abort) => {
+				if tool_data.handle_end.is_none() {
+					responses.add(DocumentMessage::AbortTransaction);
+					tool_data.cleanup(responses);
+					tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+					PenToolFsmState::Ready
+				} else {
+					tool_data
+						.place_anchor(SnapData::new(document, input), transform, input.mouse.position, preferences, responses)
+						.unwrap_or(PenToolFsmState::Ready)
+				}
 			}
 			(_, PenToolMessage::Abort) => {
 				let should_delete_layer = if layer.is_some() {
@@ -1960,10 +1971,7 @@ impl Fsm for PenToolFsmState {
 				};
 
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.handle_end = None;
-				tool_data.latest_points.clear();
-				tool_data.point_index = 0;
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				if should_delete_layer {
