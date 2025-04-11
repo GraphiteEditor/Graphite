@@ -10,7 +10,9 @@ pub struct OverlaysMessageData<'a> {
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
+	#[cfg(target_arch = "wasm32")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
+	#[cfg(target_arch = "wasm32")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
@@ -65,10 +67,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!(
-					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?} {:?} {:?}",
-					self.canvas, self.context
-				);
+				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?}",);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

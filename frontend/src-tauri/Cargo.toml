@@ -10,37 +10,38 @@ edition = "2021"
 rust-version = "1.79"
 
 [features]
-# by default Tauri runs in production mode
-# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
-default = ["custom-protocol"]
-# this feature is used for production builds where `devPath` points to the filesystem
+# By default Tauri runs in production mode when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+default = ["custom-protocol", "gpu"]
+# This feature is used for production builds where `devPath` points to the filesystem
 # DO NOT remove this
 custom-protocol = ["tauri/custom-protocol"]
 gpu = ["graphite-editor/gpu"]
 
 [dependencies]
 # Local dependencies
-graphite-editor = { path = "../../editor" }
+graphite-editor = { path = "../../editor", features = [
+	"gpu",
+	"ron",
+	"vello",
+	"decouple-execution",
+] }
 
 # Workspace dependencies
 serde_json = { workspace = true }
 serde = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 ron = { workspace = true }
 log = { workspace = true }
 fern = { workspace = true }
 futures = { workspace = true }
 
 # Required dependencies
-tauri = { version = "1.5", features = [
-	"api-all",
-	"devtools",
-	"linux-protocol-headers",
-	"wry",
-] }
+tauri = { version = "2", features = ["devtools", "wry"] }
+tauri-plugin-shell = "2"
+tauri-plugin-http = "2"
 
 [build-dependencies]
 # Required dependencies
-tauri-build = { version = "1.2", features = [] }
+tauri-build = { version = "2", features = [] }

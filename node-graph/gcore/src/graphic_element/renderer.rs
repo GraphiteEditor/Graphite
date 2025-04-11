@@ -1,6 +1,7 @@
 mod quad;
 mod rect;
 
+#[cfg(feature = "vello")]
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
