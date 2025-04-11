@@ -183,6 +183,7 @@ where
 		line_join,
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
+		non_scaling: false,
 	};
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();
@@ -342,17 +343,21 @@ async fn mirror<I: 'n + Send>(
 	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
 	#[default(0., 0.)] center: DVec2,
 	#[range((-90., 90.))] angle: Angle,
+	#[default(true)] keep_original: bool,
 ) -> GraphicGroupTable
 where
 	Instances<I>: GraphicElementRendered,
 {
 	let mut result_table = GraphicGroupTable::default();
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
+
 	// The mirror center is based on the bounding box for now
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
 	let mirror_center = (bounding_box[0] + bounding_box[1]) / 2. + center;
-	// Normalize direction vector
+
+	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
-	// Create reflection matrix
+
+	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
 		glam::DMat2::from_cols(
 			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
@@ -360,15 +365,20 @@ where
 		),
 		DVec2::ZERO,
 	);
+
 	// Apply reflection around the center point
 	let modification = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
-	// Add original instance to result
-	let original_element = instance.to_graphic_element().clone();
-	result_table.push(original_element);
+
+	// Add original instance depending on the keep_original flag
+	if keep_original {
+		result_table.push(instance.to_graphic_element());
+	}
+
 	// Create and add mirrored instance
-	let mut mirrored_element = instance.to_graphic_element().clone();
+	let mut mirrored_element = instance.to_graphic_element();
 	mirrored_element.new_ids_from_hash(None);
-	// Finally, apply the transformation to the mirrored instance
+
+	// Apply the transformation to the mirrored instance
 	let mirrored_instance = result_table.push(mirrored_element);
 	*mirrored_instance.transform = modification;
 
@@ -393,6 +403,7 @@ async fn round_corners(
 	let source_transform = source.transform();
 	let source_transform_inverse = source_transform.inverse();
 	let source = source.one_instance().instance;
+	let upstream_graphics_group = source.upstream_graphic_group.clone();
 
 	// Flip the roundness to help with user intuition
 	let roundness = 1. - roundness;
@@ -402,11 +413,14 @@ async fn round_corners(
 	let mut result = VectorData::empty();
 	result.style = source.style.clone();
 
+	// Grab the initial point ID as a stable starting point
+	let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
+
 	for mut subpath in source.stroke_bezier_paths() {
 		subpath.apply_transform(source_transform);
 
+		// End if not enough points for corner rounding
 		if subpath.manipulator_groups().len() < 3 {
-			// Not enough points for corner rounding
 			result.append_subpath(subpath, false);
 			continue;
 		}
@@ -450,28 +464,30 @@ async fn round_corners(
 			let p1 = curr - dir1 * distance_along_edge;
 			let p2 = curr + dir2 * distance_along_edge;
 
-			// Add first point with out handle
+			// Add first point (coming into the rounded corner)
 			new_groups.push(ManipulatorGroup {
 				anchor: p1,
 				in_handle: None,
 				out_handle: Some(curr - dir1 * distance_along_edge * roundness),
-				id: PointId::generate(),
+				id: initial_point_id.next_id(),
 			});
 
-			// Add second point with in handle
+			// Add second point (coming out of the rounded corner)
 			new_groups.push(ManipulatorGroup {
 				anchor: p2,
 				in_handle: Some(curr + dir2 * distance_along_edge * roundness),
 				out_handle: None,
-				id: PointId::generate(),
+				id: initial_point_id.next_id(),
 			});
 		}
 
+		// One subpath for each shape
 		let mut rounded_subpath = Subpath::new(new_groups, is_closed);
 		rounded_subpath.apply_transform(source_transform_inverse);
 		result.append_subpath(rounded_subpath, false);
 	}
 
+	result.upstream_graphic_group = upstream_graphics_group;
 	let mut result_table = VectorDataTable::new(result);
 	*result_table.transform_mut() = source_transform;
 	result_table
@@ -926,8 +942,10 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let bounding_box = vector_data.bounding_box_with_transform(vector_data_transform).unwrap();
-	let mut result = VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]));
+	let mut result = vector_data
+		.bounding_box_with_transform(vector_data_transform)
+		.map(|bounding_box| VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1])))
+		.unwrap_or_default();
 	result.style = vector_data.style.clone();
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
