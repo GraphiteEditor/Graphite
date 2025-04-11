@@ -613,11 +613,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let currently_is_node = !network_interface.is_layer(&node_id, selection_network_path);
 						ContextMenuData::ToggleLayer { node_id, currently_is_node }
 					} else {
-						ContextMenuData::CreateNode
+						ContextMenuData::CreateNode { compatible_type: None }
 					};
 
 					// TODO: Create function
-					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
+					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode { compatible_type: None }) {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
@@ -1012,14 +1012,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							warn!("No network_metadata");
 							return;
 						};
+						// Get the compatible type from the output connector
+						let compatible_type = output_connector.and_then(|output_connector| {
+							output_connector.node_id().and_then(|node_id| {
+								let output_index = output_connector.index();
+								// Get the output types from the network interface
+								let output_types = network_interface.output_types(&node_id, selection_network_path);
 
+								// Extract the type if available
+								output_types.get(output_index).and_then(|type_option| type_option.as_ref()).map(|(output_type, _)| {
+									// Create a search term based on the type
+									format!("type:{}", output_type.clone().nested_type())
+								})
+							})
+						});
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
-							context_menu_data: ContextMenuData::CreateNode,
+							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
 						responses.add(FrontendMessage::UpdateContextMenuInformation {
