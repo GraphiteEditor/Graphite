@@ -1,3 +1,5 @@
+use std::vec;
+
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
@@ -2033,8 +2035,8 @@ impl Fsm for PenToolFsmState {
 				let mut dragging_hint_data = HintData(Vec::new());
 				dragging_hint_data.0.push(HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
-					HintInfo::keys([Key::Escape], "").prepend_slash(),
-					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
+					HintInfo::keys([Key::Escape], "Cancel Placement").prepend_slash(),
+					HintInfo::keys([Key::Enter], "End Path"),
 				]));
 
 				let mut toggle_group = match mode {
