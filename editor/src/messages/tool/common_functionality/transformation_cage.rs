@@ -794,7 +794,7 @@ impl BoundingBoxManager {
 		}
 
 		match edges {
-			Some((top, bottom, left, right)) if !self.is_bounds_flat() => match (top, bottom, left, right) {
+			Some((top, bottom, left, right)) => match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
 				(false, false, true, _) | (false, false, _, true) => MouseCursorIcon::EWResize,
 				(true, _, true, _) | (_, true, _, true) => MouseCursorIcon::NWSEResize,
