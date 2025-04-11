@@ -3,6 +3,7 @@ use bezier_rs::BezierHandles;
 use core::iter::zip;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use kurbo::{CubicBez, Line, PathSeg, QuadBez};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -581,6 +582,26 @@ impl VectorData {
 			.zip(self.segment_domain.start_point())
 			.zip(self.segment_domain.end_point())
 			.map(to_bezier)
+	}
+
+	/// Iterator over all of the [`kurbo::PathSeg`] following the order that they are stored in the segment domain, skipping invalid segments.
+	pub fn path_segment_iter(&self) -> impl Iterator<Item = PathSeg> {
+		self.segment_domain
+			.handles
+			.iter()
+			.zip(self.segment_domain.start_point())
+			.zip(self.segment_domain.end_point())
+			.map(|((&handle, &start), &end)| {
+				let start = self.point_domain.positions()[start];
+				let end = self.point_domain.positions()[end];
+				match handle {
+					BezierHandles::Linear => PathSeg::Line(Line::new((start.x, start.y), (end.x, end.y))),
+					BezierHandles::Quadratic { handle } => PathSeg::Quad(QuadBez::new((start.x, start.y), (handle.x, handle.y), (end.x, end.y))),
+					BezierHandles::Cubic { handle_start, handle_end } => {
+						PathSeg::Cubic(CubicBez::new((start.x, start.y), (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), (end.x, end.y)))
+					}
+				}
+			})
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the segments are not continuous.
