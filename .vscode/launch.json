@@ -32,6 +32,8 @@
 			"cargo": {
 				"args": [
 					"test",
+					"--features",
+					"gpu",
 					"--no-run",
 					"--bin=graphite",
 					"--package=graphite",
