@@ -1169,7 +1169,7 @@ impl NodeNetworkInterface {
 			if is_layer && *reference == Some("Merge".to_string()) {
 				"Untitled Layer".to_string()
 			} else {
-				reference.clone().unwrap_or("Untitled node".to_string())
+				reference.clone().unwrap_or("Untitled Node".to_string())
 			}
 		} else {
 			self.display_name(node_id, network_path)

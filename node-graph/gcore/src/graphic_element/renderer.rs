@@ -1,7 +1,6 @@
 mod quad;
 mod rect;
 
-use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
@@ -465,6 +464,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 		use crate::vector::style::{GradientType, LineCap, LineJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
