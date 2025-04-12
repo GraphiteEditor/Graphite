@@ -1,5 +1,3 @@
-use std::vec;
-
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
@@ -1918,23 +1916,25 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Confirm) => {
 				// Confirm to end path
-				if let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
+				if let Some((vector_data, layer)) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)).zip(layer) {
 					let single_point_in_layer = vector_data.point_domain.ids().len() == 1;
 					tool_data.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses);
-					let latest_pts = tool_data.latest_points.len() == 1;
+					let latest_points = tool_data.latest_points.len() == 1;
 
-					if latest_pts && single_point_in_layer {
+					if latest_points && single_point_in_layer {
 						responses.add(NodeGraphMessage::DeleteNodes {
-							node_ids: vec![layer.unwrap().to_node()],
+							node_ids: vec![layer.to_node()],
 							delete_children: true,
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-					} else if (latest_pts && tool_data.prior_segment_endpoint.is_none()) || (tool_data.prior_segment_endpoint.is_some() && tool_data.prior_segment_layer != layer && latest_pts) {
+					} else if (latest_points && tool_data.prior_segment_endpoint.is_none())
+						|| (tool_data.prior_segment_endpoint.is_some() && tool_data.prior_segment_layer != Some(layer) && latest_points)
+					{
 						let vector_modification = VectorModificationType::RemovePoint {
 							id: tool_data.latest_point().unwrap().id,
 						};
 						responses.add(GraphOperationMessage::Vector {
-							layer: layer.unwrap(),
+							layer,
 							modification_type: vector_modification,
 						});
 						responses.add(PenToolMessage::Abort);
@@ -1945,7 +1945,9 @@ impl Fsm for PenToolFsmState {
 
 				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+
 				responses.add(OverlaysMessage::Draw);
+
 				PenToolFsmState::Ready
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
@@ -1960,6 +1962,7 @@ impl Fsm for PenToolFsmState {
 					responses.add(DocumentMessage::AbortTransaction);
 					tool_data.cleanup(responses);
 					tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+
 					PenToolFsmState::Ready
 				} else {
 					tool_data
@@ -2038,7 +2041,7 @@ impl Fsm for PenToolFsmState {
 				let mut dragging_hint_data = HintData(Vec::new());
 				dragging_hint_data.0.push(HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
-					HintInfo::keys([Key::Escape], "Cancel Placement").prepend_slash(),
+					HintInfo::keys([Key::Escape], "Cancel Segment").prepend_slash(),
 					HintInfo::keys([Key::Enter], "End Path"),
 				]));
 
