@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::tool_messages::path_tool::ProportionalEditData;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
@@ -49,6 +50,9 @@ pub struct TransformLayerMessageHandler {
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
+
+	// Path tool ( proportional edit )
+	proportional_edit_data: Option<ProportionalEditData>,
 }
 
 impl TransformLayerMessageHandler {
@@ -347,6 +351,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				if final_transform {
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
+				self.proportional_edit_data = None;
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
@@ -382,7 +387,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGRS { transform_type } => {
+			TransformLayerMessage::BeginGRS {
+				transform_type,
+				proportional_edit_data,
+			} => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				if (using_path_tool && selected_points.is_empty())
 					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
@@ -391,12 +399,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				{
 					return;
 				}
-
 				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
 					selected.original_transforms.clear();
 					return;
 				};
-
+				self.proportional_edit_data = proportional_edit_data;
 				if let [point] = selected_points.as_slice() {
 					if matches!(point, ManipulatorPointId::Anchor(_)) {
 						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
@@ -473,7 +480,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.operation_count = 0;
 					responses.add(ToolMessage::UpdateHints);
 				}
-
+				self.proportional_edit_data = None;
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => {
@@ -536,8 +543,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let new_increments = input.keyboard.get(increments_key as usize);
 				if new_increments != self.increments {
 					self.increments = new_increments;
-					self.transform_operation
-						.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
+					self.transform_operation.apply_transform_operation(
+						&mut selected,
+						self.increments,
+						self.local,
+						self.layer_bounding_box,
+						document_to_viewport,
+						pivot,
+						self.initial_transform,
+						self.proportional_edit_data.as_ref(),
+					);
 				}
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
@@ -556,6 +571,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								document_to_viewport,
 								pivot,
 								self.initial_transform,
+								self.proportional_edit_data.as_ref(),
 							);
 						}
 						TransformOperation::Rotating(rotation) => {
@@ -574,6 +590,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								document_to_viewport,
 								pivot,
 								self.initial_transform,
+								self.proportional_edit_data.as_ref(),
 							);
 						}
 						TransformOperation::Scaling(mut scale) => {
@@ -605,6 +622,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								document_to_viewport,
 								pivot,
 								self.initial_transform,
+								self.proportional_edit_data.as_ref(),
 							);
 						}
 					};

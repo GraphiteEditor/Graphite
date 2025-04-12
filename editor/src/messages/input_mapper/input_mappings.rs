@@ -377,9 +377,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0., resize: Alt, resize_opposite_corner: Control }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Grab }),
-		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Rotate }),
-		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Scale }),
+		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Grab, proportional_edit_data: None}),
+		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Rotate, proportional_edit_data: None}),
+		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Scale, proportional_edit_data: None}),
 		entry!(KeyDown(Digit0); action_dispatch=TransformLayerMessage::TypeDigit { digit: 0 }),
 		entry!(KeyDown(Digit1); action_dispatch=TransformLayerMessage::TypeDigit { digit: 1 }),
 		entry!(KeyDown(Digit2); action_dispatch=TransformLayerMessage::TypeDigit { digit: 2 }),

@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::tool_messages::path_tool::ProportionalEditData;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_core::renderer::Quad;
@@ -317,7 +318,17 @@ impl TransformType {
 
 impl TransformOperation {
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
+	pub fn apply_transform_operation(
+		&self,
+		selected: &mut Selected,
+		increment_mode: bool,
+		local: bool,
+		quad: Quad,
+		transform: DAffine2,
+		pivot: DVec2,
+		local_transform: DAffine2,
+		proportional_edit_data: Option<&ProportionalEditData>,
+	) {
 		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
 		if self != &TransformOperation::None {
 			let transformation = match self {
@@ -345,7 +356,7 @@ impl TransformOperation {
 				TransformOperation::None => unreachable!(),
 			};
 
-			selected.update_transforms(transformation, Some(pivot), Some(*self));
+			selected.update_transforms(transformation, Some(pivot), Some(*self), proportional_edit_data);
 			self.hints(selected.responses, local);
 		}
 	}
@@ -375,7 +386,7 @@ impl TransformOperation {
 			}
 			_ => (*self, false),
 		};
-		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform, None);
 		local
 	}
 
@@ -388,7 +399,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
+		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform, None);
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
@@ -479,7 +490,7 @@ impl TransformOperation {
 				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
+			self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform, None);
 		}
 	}
 }
@@ -652,12 +663,49 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>, transform_operation: Option<TransformOperation>) {
+	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>, transform_operation: Option<TransformOperation>, proportional_edit_data: Option<&ProportionalEditData>) {
 		let pivot = DAffine2::from_translation(pivot.unwrap_or(*self.pivot));
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),
-			_ => self.apply_transformation(transformation, transform_operation),
+			_ => {
+				self.apply_transformation(transformation, transform_operation);
+				if let Some(proportional_data) = proportional_edit_data {
+					self.apply_proportional_transformation(transformation, proportional_data);
+				}
+			}
+		}
+	}
+	pub fn apply_proportional_transformation(&mut self, transformation: DAffine2, proportional_data: &ProportionalEditData) {
+		for (layer, affected_points) in &proportional_data.affected_points {
+			let Some(vector_data) = self.network_interface.compute_modified_vector(*layer) else { continue };
+
+			for &(point_id, factor) in affected_points {
+				// Get the current position of the point
+				let Some(point_position) = vector_data.point_domain.position_from_id(point_id) else { continue };
+
+				// Scale the transformation based on the influence factor
+				let scaled_transform = if factor == 1.0 {
+					transformation
+				} else {
+					// For translation: scale the translation component
+					// For rotation/scaling: interpolate between identity and full transform
+					let (scale, angle, translation) = transformation.to_scale_angle_translation();
+					let scaled_translation = translation * factor;
+					let scaled_angle = angle * factor;
+					let scaled_scale = DVec2::ONE + (scale - DVec2::ONE) * factor;
+
+					DAffine2::from_scale_angle_translation(scaled_scale, scaled_angle, scaled_translation)
+				};
+
+				// Apply the transformation to the point
+				let new_position = scaled_transform.transform_point2(point_position);
+				let delta = new_position - point_position;
+
+				let modification_type = VectorModificationType::ApplyPointDelta { point: point_id, delta };
+
+				self.responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+			}
 		}
 	}
 

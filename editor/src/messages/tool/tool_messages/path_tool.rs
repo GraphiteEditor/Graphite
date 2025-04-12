@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::overlays::utility_functions::{path_ove
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::document::utility_types::transformation::Axis;
+use crate::messages::portfolio::document::utility_types::transformation::{Axis, TransformType};
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
@@ -54,6 +54,13 @@ pub enum ProportionalFalloffType {
 	Smooth = 5,
 	Random = 6,
 	InverseSquare = 7,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ProportionalEditData {
+	pub center: DVec2,
+	pub affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
+	pub falloff_type: ProportionalFalloffType,
+	pub radius: i32,
 }
 
 #[impl_message(Message, ToolMessage, Path)]
@@ -392,6 +399,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				ClosePath,
 				ToggleProportionalEditing,
 				AdjustProportionalRadius,
+				GRS
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -404,6 +412,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
 				AdjustProportionalRadius,
+				GRS
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -1240,7 +1249,33 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
-			(Self::InsertPoint, PathToolMessage::GRS { key: _ }) => PathToolFsmState::InsertPoint,
+			(_, PathToolMessage::GRS { key }) => {
+				// Calculate proportional editing center and affected points
+				tool_data.proportional_edit_center = shape_editor.selection_center(document);
+				tool_data.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
+
+				// Create proportional data to pass to transform layer
+				let mut proportional_data = Some(ProportionalEditData {
+					center: tool_data.proportional_edit_center.unwrap_or_default(),
+					affected_points: tool_data.proportional_affected_points.clone(),
+					falloff_type: tool_options.proportional_falloff_type,
+					radius: tool_options.proportional_radius,
+				});
+				if !tool_options.proportional_editing_enabled {
+					proportional_data = None;
+				}
+				// Dispatch transform operation with proportional data
+				responses.add(TransformLayerMessage::BeginGRS {
+					transform_type: match key {
+						Key::KeyG => TransformType::Grab,
+						Key::KeyR => TransformType::Rotate,
+						Key::KeyS => TransformType::Scale,
+						_ => TransformType::Grab,
+					},
+					proportional_edit_data: proportional_data,
+				});
+				self
+			}
 			// Mouse down
 			(
 				_,
