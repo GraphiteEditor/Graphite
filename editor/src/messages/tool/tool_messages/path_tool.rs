@@ -1172,7 +1172,7 @@ impl Fsm for PathToolFsmState {
 					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 						if tool_options.proportional_editing_enabled {
-							if let Some(center) = shape_editor.selection_center(document) {
+							if let Some(center) = tool_data.proportional_edit_center {
 								let viewport_center = document.metadata().document_to_viewport.transform_point2(center);
 								let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * tool_options.proportional_radius as f64).x;
 
