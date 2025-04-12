@@ -11,10 +11,8 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 		_ => return Err(syn::Error::new(Span::call_site(), "Tried to derive HierarchicalTree for non-enum")),
 	};
 
-	let variant_prints = data.variants.iter().enumerate().map(|(index, variant)| {
+	let build_message_tree = data.variants.iter().map(|variant| {
 		let variant_type = &variant.ident;
-		let is_last = index == data.variants.len() - 1;
-		let tree_symbol = if is_last { "└──" } else { "├──" };
 
 		let has_child = variant
 			.attrs
@@ -25,32 +23,35 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 			if let Fields::Unnamed(fields) = &variant.fields {
 				let field_type = &fields.unnamed.first().unwrap().ty;
 				quote! {
-					tree.push(format!("{}{}{}", "│   ".repeat(depth), #tree_symbol, stringify!(#variant_type)));
-					<#field_type>::generate_enum_variants(depth + 1, tree);
+					{
+						let mut variant_tree = DebugMessageTree::new(stringify!(#variant_type));
+						let field_name = stringify!(#field_type);
+						if "Message" == &field_name[field_name.len().saturating_sub(7)..] {
+							// The field is a Message type, recursively build its tree
+							let sub_tree = #field_type::build_message_tree();
+							variant_tree.add_variant(sub_tree);
+						}
+						message_tree.add_variant(variant_tree);
+					}
 				}
 			} else {
 				quote! {
-					tree.push(format!("{}{}{}", "│   ".repeat(depth), #tree_symbol, stringify!(#variant_type)));
+					message_tree.add_variant(DebugMessageTree::new(stringify!(#variant_type)));
 				}
 			}
 		} else {
 			quote! {
-				tree.push(format!("{}{}{}", "│   ".repeat(depth), #tree_symbol, stringify!(#variant_type)));
+				message_tree.add_variant(DebugMessageTree::new(stringify!(#variant_type)));
 			}
 		}
 	});
 
 	let res = quote! {
 		impl HierarchicalTree for #input_type {
-			fn generate_hierarchical_tree() -> Vec<String> {
-				let mut hierarchical_tree = Vec::new();
-				hierarchical_tree.push(format!("{}", stringify!(#input_type)));
-				Self::generate_enum_variants(0, &mut hierarchical_tree);
-				hierarchical_tree
-			}
-
-			fn generate_enum_variants(depth: usize, tree: &mut Vec<String>) {
-				#(#variant_prints)*
+			fn build_message_tree() -> DebugMessageTree {
+				let mut message_tree = DebugMessageTree::new(stringify!(#input_type));
+				#(#build_message_tree)*
+				message_tree
 			}
 		}
 	};

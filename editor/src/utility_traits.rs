@@ -47,6 +47,5 @@ pub trait Hint {
 }
 
 pub trait HierarchicalTree {
-	fn generate_hierarchical_tree() -> Vec<String>;
-	fn generate_enum_variants(depth: usize, tree: &mut Vec<String>);
+	fn build_message_tree() -> DebugMessageTree;
 }
