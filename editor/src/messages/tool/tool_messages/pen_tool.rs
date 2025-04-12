@@ -356,6 +356,7 @@ struct PenToolData {
 	path_closed: bool,
 
 	handle_mode: HandleMode,
+	prior_segment_layer: Option<LayerNodeIdentifier>,
 	prior_segment_endpoint: Option<PointId>,
 	prior_segment: Option<SegmentId>,
 	handle_type: TargetHandle,
@@ -378,6 +379,13 @@ impl PenToolData {
 		self.point_index = (self.point_index + 1).min(self.latest_points.len());
 		self.latest_points.truncate(self.point_index);
 		self.latest_points.push(point);
+	}
+
+	fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.handle_end = None;
+		self.latest_points.clear();
+		self.point_index = 0;
+		self.snap_manager.cleanup(responses);
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
@@ -1253,9 +1261,13 @@ impl PenToolData {
 		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+		self.prior_segment = None;
+		self.prior_segment_endpoint = None;
+		self.prior_segment_layer = None;
 
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			self.prior_segment_endpoint = Some(point);
+			self.prior_segment_layer = Some(layer);
 			let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector_data.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
 			self.prior_segment = segment;
@@ -1902,15 +1914,61 @@ impl Fsm for PenToolFsmState {
 
 				state
 			}
-			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
+			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Confirm) => {
+				// Confirm to end path
+				if let Some((vector_data, layer)) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)).zip(layer) {
+					let single_point_in_layer = vector_data.point_domain.ids().len() == 1;
+					tool_data.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses);
+					let latest_points = tool_data.latest_points.len() == 1;
+
+					if latest_points && single_point_in_layer {
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![layer.to_node()],
+							delete_children: true,
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					} else if (latest_points && tool_data.prior_segment_endpoint.is_none())
+						|| (tool_data.prior_segment_endpoint.is_some() && tool_data.prior_segment_layer != Some(layer) && latest_points)
+					{
+						let vector_modification = VectorModificationType::RemovePoint {
+							id: tool_data.latest_point().unwrap().id,
+						};
+						responses.add(GraphOperationMessage::Vector {
+							layer,
+							modification_type: vector_modification,
+						});
+						responses.add(PenToolMessage::Abort);
+					} else {
+						responses.add(DocumentMessage::EndTransaction);
+					}
+				}
+
+				tool_data.cleanup(responses);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+
+				responses.add(OverlaysMessage::Draw);
+
+				PenToolFsmState::Ready
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
-				tool_data.handle_end = None;
-				tool_data.latest_points.clear();
-				tool_data.point_index = 0;
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				PenToolFsmState::Ready
+			}
+			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Abort) => {
+				if tool_data.handle_end.is_none() {
+					responses.add(DocumentMessage::AbortTransaction);
+					tool_data.cleanup(responses);
+					tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+
+					PenToolFsmState::Ready
+				} else {
+					tool_data
+						.place_anchor(SnapData::new(document, input), transform, input.mouse.position, preferences, responses)
+						.unwrap_or(PenToolFsmState::Ready)
+				}
 			}
 			(_, PenToolMessage::Abort) => {
 				let should_delete_layer = if layer.is_some() {
@@ -1921,10 +1979,7 @@ impl Fsm for PenToolFsmState {
 				};
 
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.handle_end = None;
-				tool_data.latest_points.clear();
-				tool_data.point_index = 0;
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				if should_delete_layer {
@@ -1986,8 +2041,8 @@ impl Fsm for PenToolFsmState {
 				let mut dragging_hint_data = HintData(Vec::new());
 				dragging_hint_data.0.push(HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
-					HintInfo::keys([Key::Escape], "").prepend_slash(),
-					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
+					HintInfo::keys([Key::Escape], "Cancel Segment").prepend_slash(),
+					HintInfo::keys([Key::Enter], "End Path"),
 				]));
 
 				let mut toggle_group = match mode {
