@@ -127,7 +127,7 @@ pub(crate) fn property_from_type(
 				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), true).into(),
 				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit(" px"), true).into(),
 				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), true).into(),
-				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).max(max(1.)), true).into(),
+				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(0.)).max(max(1.)), true).into(),
 				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), true).into(),
 				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
 				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", " px", Some(64.), add_blank_assist),

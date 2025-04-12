@@ -18,11 +18,14 @@ Use this [contributor guide](..) to start out with the code. Then when you're re
 GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
 
 <!-- Graphite [participated in GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and we anticipate doing so again in 2025 if our organization's application is accepted. Getting involved early is a great way to have a head start and stand out in your application. -->
-Graphite is [participating again in GSoC 2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite). Getting involved early is a great way to have a head start and stand out in your application. The proposal formulation period is open now until the April 8 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)).
+Graphite is [participating again in GSoC 2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite). Applications closed [April 8](https://developers.google.com/open-source/gsoc/timeline). We accept year-round contributions; getting involved early is a great way to have a head start and stand out in your application in next year's program.
 
 ### Writing a proposal
 
-Writing a good proposal is an important first step that demonstrates your understanding of the project and your ability to plan and execute it. A well-defined proposal will set you up for success throughout the rest of the program.
+Writing a good proposal is an important step that demonstrates your understanding of the project and your ability to think ahead and execute it. A well-defined plan will set you up for success throughout the rest of the program.
+
+<details>
+<summary>For proposal writing guidelines and requirements: click here</summary>
 
 You are encouraged to reference the project idea list below to find several potential projects suited to your experience, interest, and choice of scope. Then, you must reach out to a [core team member](/about#core-team) through Discord to discuss your plan in detail before writing a proposal. This will help you understand the project's scope and requirements and develop a detailed timeline for your expected summer-long work schedule. Importantly, it will also help us understand your background and capabilities to offer you feedback and suggestions for the best outcome in the competitive applicant selection process.
 
@@ -33,6 +36,8 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 - **Work timeline:** Your goal is to write a proposal that inspires confidence in your ability to successfully complete the project, which means understanding in detail what's involved at a technical level and how you plan to tackle it. A detailed work timeline is the most important written part of your proposal. It should be broken into weekly or bi-weekly milestones with a couple sentences of technical detail. The summary in the project idea list below doesn't give enough information to develop a timeline, so you'll need to discuss this with the core team on Discord.
 - **Prior PRs:** The largest factor in our selection decision will be the quality and extent of your prior contributions to Graphite made during the proposal formulation period (or before, if applicable). Include a link to `https://github.com/GraphiteEditor/Graphite/commits?author=YOUR_GITHUB_USERNAME` in your proposal and feel free to write up a summary of what you've contributed and learned from the process. You may also keep contributing during the month after applications close, before we've finalized our selections, for those additional PRs to be considered.
 
+</details>
+
 ## Project idea list
 
 ### Compilers, graphics, and theory
@@ -41,14 +46,14 @@ These projects are more advanced but are highest priority for Graphite's develop
 
 #### Graphene language/compiler development
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2350)
 - Best for someone with an aptitude or focus on programming languages, compilers, and type system theory.
 
 #### GPU-accelerated rendering pipeline within the compiler/runtime/engine
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Build out infrastructure in the language/compiler/runtime/engine using [rust-gpu](https://github.com/Rust-GPU/rust-gpu) and/or [CubeCL](https://github.com/tracel-ai/cubecl).
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2168)
@@ -56,7 +61,7 @@ These projects are more advanced but are highest priority for Graphite's develop
 
 #### Node equivalence rewriting
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2021)
 - Best for someone with an interest towards graph theory and compiler optimization topics like [E-graphs](https://en.wikipedia.org/wiki/E-graph).
@@ -94,7 +99,7 @@ Based on the experience and insight brought to the table by the student, the nat
 
 #### Graphite desktop app engineering
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 ### Rendering and graphics
 
@@ -102,13 +107,13 @@ Several of these require a good understanding of computer graphics rendering tec
 
 #### Mesh vector rendering
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - See the GitHub issues: [fills](https://github.com/GraphiteEditor/Graphite/issues/2309) and [strokes](https://github.com/GraphiteEditor/Graphite/issues/2310).
 
 #### Support paints for strokes and fills
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Refactor and upgrade our renderer to cleanly handle paints for fills and strokes.
 - This includes [gradient rendering](https://github.com/GraphiteEditor/Graphite/issues/2304) polyfills
@@ -116,49 +121,49 @@ Several of these require a good understanding of computer graphics rendering tec
 
 #### Advanced text layout and typography
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/1105)
 
 #### PDF and/or DXF import/export
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Scope and viability depends on the state of available libraries.
 
 #### Traditional brush engine
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/1297)
 
 #### Procedural brush engine
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [Read this thesis for background](https://digitalcommons.calpoly.edu/theses/2653/), chapter 3 onwards.
 
 #### Advanced color management
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Add support for HDR/WCG and/or CMYK and alternate color spaces/models
 - Requires an experienced understanding of color science
 
 #### Image processing algorithms for photography
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 #### New graphics nodes
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Research and implement image processing (raster) or geometry (vector) nodes that you propose or we suggest in our discussions with you.
 - Example of one such node: [Text on path](https://github.com/GraphiteEditor/Graphite/issues/978).
 
 #### SVG with raster effects
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - The SVG spec supports a number of filters and other raster effects, and we currently only implement a small subset.
 - Add support for the rest of the SVG spec, including filters, masks, and other raster effects.
@@ -169,19 +174,19 @@ Several of these require a good understanding of computer graphics rendering tec
 
 #### Snapping system overhaul
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2352)
 
 #### Advanced vector editing tool modes
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Add modes for segment editing, mesh vector, and more. Discuss with us on Discord to decide on the scope of the project.
 
 #### Tooling polishing and gizmo additions
 
-*Check back shortly for a full project description, or ask on Discord right now for more details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 #### Marquee selection masking
 
