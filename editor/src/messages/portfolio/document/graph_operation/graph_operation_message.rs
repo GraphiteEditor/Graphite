@@ -17,15 +17,15 @@ use graphene_core::{Artboard, Color};
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
-	FillSet {
-		layer: LayerNodeIdentifier,
-		fill: Fill,
-	},
-	RasterFillSet {
+	FillRaster {
 		layer: LayerNodeIdentifier,
 		fills: Vec<Fill>,
 		start_pos: Vec<DVec2>,
-		similarity_threshold: f64,
+		tolerance: f64,
+	},
+	FillSet {
+		layer: LayerNodeIdentifier,
+		fill: Fill,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

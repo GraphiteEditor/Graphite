@@ -686,10 +686,10 @@ fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 }
 
 #[node_macro::node(category("Raster"))]
-fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
+fn flood_fill<F: Into<Fill> + 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(ImageFrameTable<Color>)]
-	/// The raster elements to apply the fill to.
+	/// The raster content to apply the flood fill to.
 	mut image: ImageFrameTable<Color>,
 	#[implementations(
 		Vec<Fill>,
@@ -697,15 +697,16 @@ fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 		Vec<Color>,
 		Vec<Gradient>
 	)]
-	#[default(Vec<Color::BLACK>)]
 	/// The fills to paint the path with.
+	#[default(Vec<Color::BLACK>)]
 	fills: Vec<F>,
-	/// The positions of the fill in image-local coordinates.
+	/// The starting positions of the flood fill points in the layer's local coordinates.
 	positions: Vec<DVec2>,
+	// TODO: What is the range? I'd expect 0-255, but we should also rescale that to 0-1. But this crashes at larger values approaching 100. And tolerance should be per-position not global to the node.
 	/// The threshold for color similarity in LAB space.
 	#[default(1.)]
-	#[range((0., 10.))]
-	similarity_threshold: f64,
+	#[range((0., 50.))]
+	tolerance: f64,
 ) -> ImageFrameTable<Color> {
 	let width = image.width();
 	let height = image.height();
@@ -736,10 +737,7 @@ fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 		};
 
 		// Get the target color at the clicked position
-		let target_color = match image.get_pixel(pixel_x as u32, pixel_y as u32) {
-			Some(pixel) => pixel.clone(),
-			None => continue,
-		};
+		let Some(target_color) = image.get_pixel(pixel_x as u32, pixel_y as u32) else { continue };
 
 		// If the target color is the same as the fill color, no need to fill
 		if target_color == color {
@@ -759,7 +757,7 @@ fn raster_fill<F: Into<Fill> + 'n + Send + Clone>(
 			// Get current pixel
 			if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
 				// If pixel matches target color, fill it and add neighbors to stack
-				if pixel.is_similar_lab(&target_color, similarity_threshold) {
+				if pixel.is_similar_lab(&target_color, tolerance) {
 					*pixel = color;
 					stack.push((x + 1, y)); // Right
 					stack.push((x - 1, y)); // Left

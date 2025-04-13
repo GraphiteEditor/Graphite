@@ -1,10 +1,9 @@
-use graph_craft::document::value::TaggedValue;
-use graphene_std::vector::style::Fill;
-
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::graph_operation::transform_utils::get_current_transform;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::style::Fill;
 
 #[derive(Default)]
 pub struct FillTool {
@@ -17,7 +16,7 @@ pub enum FillToolMessage {
 	// Standard messages
 	Abort,
 
-	// Tool-specific messagesty-dlp
+	// Tool-specific messages
 	PointerUp,
 	FillPrimaryColor,
 	FillSecondaryColor,
@@ -43,8 +42,8 @@ impl LayoutHolder for FillTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let tool_datas = &mut RasterFillToolData::default();
-		self.fsm_state.process_event(message, tool_datas, tool_data, &(), responses, true);
+		let raster_fill_tool_data = &mut FillToolData::default();
+		self.fsm_state.process_event(message, raster_fill_tool_data, tool_data, &(), responses, true);
 	}
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
@@ -78,45 +77,46 @@ enum FillToolFsmState {
 }
 
 #[derive(Clone, Debug, Default)]
-struct RasterFillToolData {
+struct FillToolData {
 	fills: Vec<Fill>,
 	start_pos: Vec<DVec2>,
-	layer: Option<LayerNodeIdentifier>,
-	similarity_threshold: f64,
+	tolerance: f64,
 }
 
-impl RasterFillToolData {
+impl FillToolData {
 	fn load_existing_fills(&mut self, document: &mut DocumentMessageHandler, layer_identifier: LayerNodeIdentifier) -> Option<LayerNodeIdentifier> {
-		let node_graph_layer = NodeGraphLayer::new(layer_identifier, &mut document.network_interface);
-		let existing_fills = node_graph_layer.find_node_inputs("Raster Fill");
+		let node_graph_layer = NodeGraphLayer::new(layer_identifier, &document.network_interface);
+		let existing_fills = node_graph_layer.find_node_inputs("Flood Fill");
+
 		if let Some(existing_fills) = existing_fills {
-			let fills = if let Some(TaggedValue::FillCache(fills)) = existing_fills[1].as_value() {
-				fills.clone()
+			let fills = if let Some(TaggedValue::VecFill(fills)) = existing_fills[1].as_value().cloned() {
+				fills
 			} else {
-				vec![]
+				Vec::new()
 			};
-			let start_pos = if let Some(TaggedValue::VecDVec2(start_pos)) = existing_fills[2].as_value() {
-				start_pos.clone()
+			let start_pos = if let Some(TaggedValue::VecDVec2(start_pos)) = existing_fills[2].as_value().cloned() {
+				start_pos
 			} else {
-				vec![]
+				Vec::new()
 			};
-			let similarity_threshold = if let Some(TaggedValue::F64(similarity_threshold)) = existing_fills[3].as_value() {
-				*similarity_threshold
+			let tolerance = if let Some(TaggedValue::F64(tolerance)) = existing_fills[3].as_value().cloned() {
+				tolerance
 			} else {
 				1.
 			};
-			self.fills = fills;
-			self.start_pos = start_pos;
-			self.layer = Some(layer_identifier);
-			self.similarity_threshold = similarity_threshold;
+
+			*self = Self { fills, start_pos, tolerance };
 		}
-		self.similarity_threshold = 1.;
+
+		// TODO: Why do we overwrite the tolerance that we just set a couple lines above?
+		self.tolerance = 1.;
+
 		None
 	}
 }
 
 impl Fsm for FillToolFsmState {
-	type ToolData = RasterFillToolData;
+	type ToolData = FillToolData;
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, handler_data: &mut ToolActionHandlerData, _tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
@@ -127,9 +127,7 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(FillToolFsmState::Ready, color_event) => {
-				let Some(layer_identifier) = document.click(input) else {
-					return self;
-				};
+				let Some(layer_identifier) = document.click(input) else { return self };
 				let fill = match color_event {
 					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
 					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
@@ -137,7 +135,8 @@ impl Fsm for FillToolFsmState {
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
-				// If the layer is a raster layer, use the raster fill functionality
+
+				// If the layer is a raster layer, we perform a flood fill
 				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
 					// Try to load existing fills for this layer
 					tool_data.load_existing_fills(document, layer_identifier);
@@ -150,33 +149,36 @@ impl Fsm for FillToolFsmState {
 						.inverse()
 						.transform_point2(input.mouse.position);
 
-					let node_graph_layer = NodeGraphLayer::new(layer_identifier, &mut document.network_interface);
+					let node_graph_layer = NodeGraphLayer::new(layer_identifier, &document.network_interface);
 					if let Some(transform_inputs) = node_graph_layer.find_node_inputs("Transform") {
 						let image_transform = get_current_transform(transform_inputs);
 						let image_local_pos = image_transform.inverse().transform_point2(layer_pos);
+
 						// Store the fill in our tool data with its position
 						tool_data.fills.push(fill.clone());
 						tool_data.start_pos.push(image_local_pos);
 					}
 
 					// Send the fill operation message
-					responses.add(GraphOperationMessage::RasterFillSet {
+					responses.add(GraphOperationMessage::FillRaster {
 						layer: layer_identifier,
 						fills: tool_data.fills.clone(),
 						start_pos: tool_data.start_pos.clone(),
-						similarity_threshold: tool_data.similarity_threshold,
+						tolerance: tool_data.tolerance,
 					});
-				} else {
-					// For vector layers, use the existing functionality
+				}
+				// Otherwise the layer is assumed to be a vector layer, so we apply a vector fill
+				else {
 					responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
 				}
 
 				FillToolFsmState::Filling
 			}
 			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => {
-				// Clear the fills data when we're done
+				// Clear the `fills` and `start_pos` data when we're done
 				tool_data.fills.clear();
 				tool_data.start_pos.clear();
+
 				FillToolFsmState::Ready
 			}
 			(FillToolFsmState::Filling, FillToolMessage::Abort) => {

@@ -347,11 +347,11 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
-	pub fn raster_fill_set(&mut self, fills: Vec<Fill>, start_pos: Vec<DVec2>, similarity_threshold: f64) {
-		let Some(raster_fill_node_id) = self.existing_node_id("Raster Fill", true) else { return };
-		self.set_input_with_refresh(InputConnector::node(raster_fill_node_id, 1), NodeInput::value(TaggedValue::FillCache(fills), false), false);
+	pub fn fill_raster(&mut self, fills: Vec<Fill>, start_pos: Vec<DVec2>, tolerance: f64) {
+		let Some(raster_fill_node_id) = self.existing_node_id("Flood Fill", true) else { return };
+		self.set_input_with_refresh(InputConnector::node(raster_fill_node_id, 1), NodeInput::value(TaggedValue::VecFill(fills), false), false);
 		self.set_input_with_refresh(InputConnector::node(raster_fill_node_id, 2), NodeInput::value(TaggedValue::VecDVec2(start_pos), false), false);
-		self.set_input_with_refresh(InputConnector::node(raster_fill_node_id, 3), NodeInput::value(TaggedValue::F64(similarity_threshold), false), false);
+		self.set_input_with_refresh(InputConnector::node(raster_fill_node_id, 3), NodeInput::value(TaggedValue::F64(tolerance), false), false);
 	}
 
 	pub fn stroke_set(&mut self, stroke: Stroke) {

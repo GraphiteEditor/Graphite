@@ -132,7 +132,7 @@ fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy
 	#[default(2.)]
 	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
 	modulus: T,
-	always_positive: bool,
+	#[default(true)] always_positive: bool,
 ) -> <U as Rem<T>>::Output {
 	if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus }
 }

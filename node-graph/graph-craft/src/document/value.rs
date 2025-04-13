@@ -172,6 +172,7 @@ tagged_value! {
 	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	// ImaginateController(ImaginateController),
 	Fill(graphene_core::vector::style::Fill),
+	VecFill(Vec<graphene_core::vector::style::Fill>),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),
 	// TODO: Eventually remove this alias document upgrade code
@@ -205,7 +206,6 @@ tagged_value! {
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
-	FillCache(Vec<Fill>),
 	DocumentNode(DocumentNode),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),

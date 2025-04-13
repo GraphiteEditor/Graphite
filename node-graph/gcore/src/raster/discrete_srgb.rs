@@ -165,7 +165,7 @@ mod tests {
 			let float_val = srgb_u8_to_float(u);
 			let ref_val = srgb_u8_to_float_ref(u);
 			// Allow for a small epsilon difference due to floating-point precision
-			assert!((float_val - ref_val).abs() < 1e-5,);
+			assert!((float_val - ref_val).abs() < 1e-5);
 		}
 	}
 
