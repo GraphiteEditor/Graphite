@@ -731,6 +731,9 @@ impl NodeGraphExecutor {
 						}
 					}
 				}
+				// NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
+				// 	responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
+				// }
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
@@ -758,9 +761,6 @@ impl NodeGraphExecutor {
 						node_graph_errors,
 					});
 					responses.add(NodeGraphMessage::SendGraph);
-				}
-				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
-					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
 				}
 			}
 		}

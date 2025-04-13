@@ -7,8 +7,8 @@ use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PreferencesMessageHandler {
-	pub imaginate_server_hostname: String,
-	pub imaginate_refresh_frequency: f64,
+	// pub imaginate_server_hostname: String,
+	// pub imaginate_refresh_frequency: f64,
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
@@ -24,7 +24,7 @@ impl PreferencesMessageHandler {
 
 	pub fn editor_preferences(&self) -> EditorPreferences {
 		EditorPreferences {
-			imaginate_hostname: self.imaginate_server_hostname.clone(),
+			// imaginate_hostname: self.imaginate_server_hostname.clone(),
 			use_vello: self.use_vello && self.supports_wgpu(),
 		}
 	}
@@ -36,17 +36,12 @@ impl PreferencesMessageHandler {
 
 impl Default for PreferencesMessageHandler {
 	fn default() -> Self {
-		let EditorPreferences {
-			imaginate_hostname: host_name,
-			use_vello,
-		} = Default::default();
-
 		Self {
-			imaginate_server_hostname: host_name,
-			imaginate_refresh_frequency: 1.,
+			// imaginate_server_hostname: EditorPreferences::default().imaginate_hostname,
+			// imaginate_refresh_frequency: 1.,
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
-			use_vello,
+			use_vello: EditorPreferences::default().use_vello,
 			vector_meshes: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,

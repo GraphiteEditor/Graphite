@@ -1388,15 +1388,7 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn morph(
-	_: impl Ctx,
-	source: VectorDataTable,
-	#[expose] target: VectorDataTable,
-	#[range((0., 1.))]
-	#[default(0.5)]
-	time: Fraction,
-	#[min(0.)] start_index: IntegerCount,
-) -> VectorDataTable {
+async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> VectorDataTable {
 	let time = time.clamp(0., 1.);
 
 	let source_alpha_blending = source.one_instance().alpha_blending;
