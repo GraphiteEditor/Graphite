@@ -1,7 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SEGMENT_INSERTION_TOLERANCE,
+	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -1002,10 +1003,10 @@ impl Fsm for PathToolFsmState {
 								let degrees: f64 = 45.0;
 								let tilted_line = DVec2::from_angle(degrees.to_radians()).rotate(tangent);
 								let tilted_perp = tilted_line.perp();
-								overlay_context.line(point - tilted_line * 10., point + tilted_line * 10., Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.line(point - tilted_perp * 10., point + tilted_perp * 10., Some(COLOR_OVERLAY_BLUE), None);
+								overlay_context.line(point - tilted_line * SEGMENT_OVERLAY_SIZE, point + tilted_line * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+								overlay_context.line(point - tilted_perp * SEGMENT_OVERLAY_SIZE, point + tilted_perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 							} else {
-								overlay_context.line(point - perp * 10., point + perp * 10., Some(COLOR_OVERLAY_BLUE), None);
+								overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 							}
 						}
 
@@ -1212,7 +1213,7 @@ impl Fsm for PathToolFsmState {
 					self
 				}
 				// Check for a segment nearby, if present then enter into insert point mode else go for ready
-				else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE) {
+				else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_TOLERANCE) {
 					let lock_angle_state = input.keyboard.get(lock_angle as usize);
 					if lock_angle_state {
 						tool_data.delete_segment_pressed = true;
