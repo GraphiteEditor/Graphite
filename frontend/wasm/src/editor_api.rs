@@ -152,6 +152,11 @@ impl EditorHandle {
 						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
+
+						// Currently needed for auto panning to work. Maybe there's a better way to do this
+						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+							handle.send_frontend_message_to_js(message);
+						}
 					});
 				}
 

@@ -4,6 +4,7 @@ use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use glam::DVec2;
+use std::time::Duration;
 
 pub struct InputPreprocessorMessageData {
 	pub keyboard_platform: KeyboardPlatformLayout,
@@ -97,6 +98,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
 				responses.add(AnimationMessage::SetTime(timestamp as f64));
 				self.time = timestamp;
+				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

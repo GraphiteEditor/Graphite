@@ -174,6 +174,7 @@ impl ActionKeys {
 	}
 }
 
+// This is only used for the `AnimationFrame` event. Should we remove it?
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrameTimeInfo {
 	timestamp: Duration,
