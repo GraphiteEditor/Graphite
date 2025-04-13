@@ -35,7 +35,7 @@ impl Default for Pivot {
 impl Pivot {
 	/// Calculates the transform that gets from normalized pivot to viewspace.
 	fn get_layer_pivot_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-		let [min, max] = document.metadata().nonzero_bounding_box(layer);
+		let [min, max] = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap_or_default();
 
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		let layer_transform = document.metadata().transform_to_viewport(layer);
