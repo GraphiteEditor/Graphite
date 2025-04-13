@@ -10,7 +10,6 @@ use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graphene_core::raster::curve::Curve;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{
@@ -215,38 +214,38 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![
-							DropdownInput::new(
-								ImaginateSamplingMethod::list()
-									.into_iter()
-									.map(|method| {
-										vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateSamplingMethod(method),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder(),
-						]
-						.into(),
-						Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![
-							DropdownInput::new(
-								ImaginateMaskStartingFill::list()
-									.into_iter()
-									.map(|fill| {
-										vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateMaskStartingFill(fill),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder(),
-						]
-						.into(),
+						// Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![
+						// 	DropdownInput::new(
+						// 		ImaginateSamplingMethod::list()
+						// 			.into_iter()
+						// 			.map(|method| {
+						// 				vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
+						// 					move |_| TaggedValue::ImaginateSamplingMethod(method),
+						// 					node_id,
+						// 					index,
+						// 				))]
+						// 			})
+						// 			.collect(),
+						// 	)
+						// 	.widget_holder(),
+						// ]
+						// .into(),
+						// Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![
+						// 	DropdownInput::new(
+						// 		ImaginateMaskStartingFill::list()
+						// 			.into_iter()
+						// 			.map(|fill| {
+						// 				vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
+						// 					move |_| TaggedValue::ImaginateMaskStartingFill(fill),
+						// 					node_id,
+						// 					index,
+						// 				))]
+						// 			})
+						// 			.collect(),
+						// 	)
+						// 	.widget_holder(),
+						// ]
+						// .into(),
 						_ => {
 							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, true);
 							widgets.extend_from_slice(&[

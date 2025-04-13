@@ -13,7 +13,6 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{Color, RedGreenBlue, RedGreenBlueAlpha};
@@ -21,8 +20,6 @@ use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
-use graphene_std::wasm_application_io::WasmEditorApi;
-use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
@@ -2713,127 +2710,127 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	custom
 }
 
-pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
-	identifier: "Imaginate",
-	category: "Raster",
-	node_template: NodeTemplate {
-		document_node: DocumentNode {
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(1), 0)],
-				nodes: [
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
-						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-						manual_composition: Some(concrete!(Context)),
-						skip_deduplication: true,
-						..Default::default()
-					},
-					DocumentNode {
-						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::network(concrete!(&WasmEditorApi), 1),
-							NodeInput::network(concrete!(ImaginateController), 2),
-							NodeInput::network(concrete!(f64), 3),
-							NodeInput::network(concrete!(Option<DVec2>), 4),
-							NodeInput::network(concrete!(u32), 5),
-							NodeInput::network(concrete!(ImaginateSamplingMethod), 6),
-							NodeInput::network(concrete!(f64), 7),
-							NodeInput::network(concrete!(String), 8),
-							NodeInput::network(concrete!(String), 9),
-							NodeInput::network(concrete!(bool), 10),
-							NodeInput::network(concrete!(f64), 11),
-							NodeInput::network(concrete!(bool), 12),
-							NodeInput::network(concrete!(f64), 13),
-							NodeInput::network(concrete!(ImaginateMaskStartingFill), 14),
-							NodeInput::network(concrete!(bool), 15),
-							NodeInput::network(concrete!(bool), 16),
-							NodeInput::network(concrete!(u64), 17),
-						],
-						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode"),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-				NodeInput::scope("editor-api"),
-				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
-				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
-				NodeInput::value(TaggedValue::OptionalDVec2(None), false),
-				NodeInput::value(TaggedValue::U32(30), false),
-				NodeInput::value(TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-				NodeInput::value(TaggedValue::F64(7.5), false),
-				NodeInput::value(TaggedValue::String(String::new()), false),
-				NodeInput::value(TaggedValue::String(String::new()), false),
-				NodeInput::value(TaggedValue::Bool(false), false),
-				NodeInput::value(TaggedValue::F64(66.), false),
-				NodeInput::value(TaggedValue::Bool(true), false),
-				NodeInput::value(TaggedValue::F64(4.), false),
-				NodeInput::value(TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
-				NodeInput::value(TaggedValue::Bool(false), false),
-				NodeInput::value(TaggedValue::Bool(false), false),
-				NodeInput::value(TaggedValue::U64(0), false),
-			],
-			..Default::default()
-		},
-		persistent_node_metadata: DocumentNodePersistentMetadata {
-			network_metadata: Some(NodeNetworkMetadata {
-				persistent_metadata: NodeNetworkPersistentMetadata {
-					node_metadata: [
-						DocumentNodeMetadata {
-							persistent_metadata: DocumentNodePersistentMetadata {
-								display_name: "Monitor".to_string(),
-								..Default::default()
-							},
-							..Default::default()
-						},
-						DocumentNodeMetadata {
-							persistent_metadata: DocumentNodePersistentMetadata {
-								display_name: "Imaginate".to_string(),
-								..Default::default()
-							},
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				},
-				..Default::default()
-			}),
-			input_properties: vec![
-				"Input Image".into(),
-				"Editor Api".into(),
-				"Controller".into(),
-				"Seed".into(),
-				"Resolution".into(),
-				"Samples".into(),
-				"Sampling Method".into(),
-				"Prompt Guidance".into(),
-				"Prompt".into(),
-				"Negative Prompt".into(),
-				"Adapt Input Image".into(),
-				"Image Creativity".into(),
-				"Inpaint".into(),
-				"Mask Blur".into(),
-				"Mask Starting Fill".into(),
-				"Improve Faces".into(),
-				"Tiling".into(),
-			],
-			output_names: vec!["Image".to_string()],
-			..Default::default()
-		},
-	},
-	description: Cow::Borrowed("TODO"),
-	properties: None, // Some(&node_properties::imaginate_properties),
-});
+// pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
+// 	identifier: "Imaginate",
+// 	category: "Raster",
+// 	node_template: NodeTemplate {
+// 		document_node: DocumentNode {
+// 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+// 				exports: vec![NodeInput::node(NodeId(1), 0)],
+// 				nodes: [
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
+// 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+// 						manual_composition: Some(concrete!(Context)),
+// 						skip_deduplication: true,
+// 						..Default::default()
+// 					},
+// 					DocumentNode {
+// 						inputs: vec![
+// 							NodeInput::node(NodeId(0), 0),
+// 							NodeInput::network(concrete!(&WasmEditorApi), 1),
+// 							NodeInput::network(concrete!(ImaginateController), 2),
+// 							NodeInput::network(concrete!(f64), 3),
+// 							NodeInput::network(concrete!(Option<DVec2>), 4),
+// 							NodeInput::network(concrete!(u32), 5),
+// 							NodeInput::network(concrete!(ImaginateSamplingMethod), 6),
+// 							NodeInput::network(concrete!(f64), 7),
+// 							NodeInput::network(concrete!(String), 8),
+// 							NodeInput::network(concrete!(String), 9),
+// 							NodeInput::network(concrete!(bool), 10),
+// 							NodeInput::network(concrete!(f64), 11),
+// 							NodeInput::network(concrete!(bool), 12),
+// 							NodeInput::network(concrete!(f64), 13),
+// 							NodeInput::network(concrete!(ImaginateMaskStartingFill), 14),
+// 							NodeInput::network(concrete!(bool), 15),
+// 							NodeInput::network(concrete!(bool), 16),
+// 							NodeInput::network(concrete!(u64), 17),
+// 						],
+// 						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode"),
+// 						..Default::default()
+// 					},
+// 				]
+// 				.into_iter()
+// 				.enumerate()
+// 				.map(|(id, node)| (NodeId(id as u64), node))
+// 				.collect(),
+// 				..Default::default()
+// 			}),
+// 			inputs: vec![
+// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
+// 				NodeInput::scope("editor-api"),
+// 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
+// 				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
+// 				NodeInput::value(TaggedValue::OptionalDVec2(None), false),
+// 				NodeInput::value(TaggedValue::U32(30), false),
+// 				NodeInput::value(TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
+// 				NodeInput::value(TaggedValue::F64(7.5), false),
+// 				NodeInput::value(TaggedValue::String(String::new()), false),
+// 				NodeInput::value(TaggedValue::String(String::new()), false),
+// 				NodeInput::value(TaggedValue::Bool(false), false),
+// 				NodeInput::value(TaggedValue::F64(66.), false),
+// 				NodeInput::value(TaggedValue::Bool(true), false),
+// 				NodeInput::value(TaggedValue::F64(4.), false),
+// 				NodeInput::value(TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
+// 				NodeInput::value(TaggedValue::Bool(false), false),
+// 				NodeInput::value(TaggedValue::Bool(false), false),
+// 				NodeInput::value(TaggedValue::U64(0), false),
+// 			],
+// 			..Default::default()
+// 		},
+// 		persistent_node_metadata: DocumentNodePersistentMetadata {
+// 			network_metadata: Some(NodeNetworkMetadata {
+// 				persistent_metadata: NodeNetworkPersistentMetadata {
+// 					node_metadata: [
+// 						DocumentNodeMetadata {
+// 							persistent_metadata: DocumentNodePersistentMetadata {
+// 								display_name: "Monitor".to_string(),
+// 								..Default::default()
+// 							},
+// 							..Default::default()
+// 						},
+// 						DocumentNodeMetadata {
+// 							persistent_metadata: DocumentNodePersistentMetadata {
+// 								display_name: "Imaginate".to_string(),
+// 								..Default::default()
+// 							},
+// 							..Default::default()
+// 						},
+// 					]
+// 					.into_iter()
+// 					.enumerate()
+// 					.map(|(id, node)| (NodeId(id as u64), node))
+// 					.collect(),
+// 					..Default::default()
+// 				},
+// 				..Default::default()
+// 			}),
+// 			input_properties: vec![
+// 				"Input Image".into(),
+// 				"Editor Api".into(),
+// 				"Controller".into(),
+// 				"Seed".into(),
+// 				"Resolution".into(),
+// 				"Samples".into(),
+// 				"Sampling Method".into(),
+// 				"Prompt Guidance".into(),
+// 				"Prompt".into(),
+// 				"Negative Prompt".into(),
+// 				"Adapt Input Image".into(),
+// 				"Image Creativity".into(),
+// 				"Inpaint".into(),
+// 				"Mask Blur".into(),
+// 				"Mask Starting Fill".into(),
+// 				"Improve Faces".into(),
+// 				"Tiling".into(),
+// 			],
+// 			output_names: vec!["Image".to_string()],
+// 			..Default::default()
+// 		},
+// 	},
+// 	description: Cow::Borrowed("TODO"),
+// 	properties: None, // Some(&node_properties::imaginate_properties),
+// });
 
 type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>;
 
