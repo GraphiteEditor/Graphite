@@ -1,8 +1,9 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
@@ -12,7 +13,7 @@ use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
-use graphene_std::vector::{VectorData, VectorModificationType};
+use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
@@ -52,6 +53,7 @@ pub struct TransformLayerMessageHandler {
 	grs_pen_handle: bool,
 
 	// Path tool ( proportional edit )
+	initial_proportional_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
 	proportional_edit_data: Option<ProportionalEditData>,
 }
 
@@ -109,7 +111,129 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 		_ => edge,
 	}
 }
+// fn apply_proportional_edit(
+// 	initial_positions: &HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+// 	proportional_data: &ProportionalEditData,
+// 	total_transformation_vp: DAffine2,
+// 	network_interface: &NodeNetworkInterface,
+// 	document_metadata: &DocumentMetadata,
+// 	responses: &mut VecDeque<Message>,
+// ) {
+// 	for (layer, affected_points) in &proportional_data.affected_points {
+// 		let Some(layer_initial_positions) = initial_positions.get(layer) else { continue };
+// 		// Get CURRENT vector data to know the point's current position for delta calculation
+// 		let Some(current_vector_data) = network_interface.compute_modified_vector(*layer) else { continue };
 
+// 		let viewspace = document_metadata.transform_to_viewport(*layer);
+// 		// Calculate the total transformation in the layer's coordinate space
+// 		let total_layerspace_transform = viewspace.inverse() * total_transformation_vp;
+
+// 		for (point_id, factor) in affected_points {
+// 			let Some(initial_pos_local) = layer_initial_positions.get(point_id) else { continue };
+// 			let Some(current_pos_local) = current_vector_data.point_domain.position_from_id(*point_id) else {
+// 				continue;
+// 			};
+
+// 			// 1. Transform INITIAL local position to viewport
+// 			let initial_pos_vp = viewspace.transform_point2(*initial_pos_local);
+
+// 			// 2. Apply the TOTAL accumulated transformation (in viewport space, relative to pivot)
+// 			//    to the initial viewport position.
+// 			let target_pos_fully_transformed_vp = total_layerspace_transform.transform_point2(initial_pos_vp);
+
+// 			// 3. Calculate the full potential delta (relative to initial position) in viewport space
+// 			let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
+
+// 			// 4. Scale this total intended delta by falloff and strength
+// 			let strength_divisor = (proportional_data.falloff_strength as f64).max(1.0);
+// 			let scaled_intended_delta_vp = full_intended_delta_vp * (*factor) / strength_divisor;
+
+// 			// 5. Calculate the final target position in viewport space
+// 			let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
+
+// 			// 6. Convert target viewport position back to layer space
+// 			let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
+
+// 			// 7. Calculate the final delta needed to move from CURRENT local to TARGET local
+// 			let final_delta_local = target_pos_proportional_local - current_pos_local;
+// 			debug!("{}", total_transformation_vp);
+// 			// 8. Apply this final delta
+// 			if final_delta_local.length_squared() > 1e-10 {
+// 				// Avoid tiny updates
+// 				let modification_type = VectorModificationType::ApplyPointDelta {
+// 					point: *point_id,
+// 					delta: final_delta_local,
+// 				};
+// 				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+// 			}
+// 		}
+// 	}
+// }
+fn apply_proportional_edit(
+	initial_positions: &HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+	proportional_data: &ProportionalEditData,
+	total_transformation_vp: DAffine2,
+	network_interface: &NodeNetworkInterface,
+	document_metadata: &DocumentMetadata,
+	responses: &mut VecDeque<Message>,
+) {
+	for (layer, affected_points) in &proportional_data.affected_points {
+		let Some(layer_initial_positions) = initial_positions.get(layer) else {
+			continue;
+		};
+
+		// Get CURRENT vector data to know the point's current position for delta calculation
+		let Some(current_vector_data) = network_interface.compute_modified_vector(*layer) else {
+			continue;
+		};
+
+		let viewspace = document_metadata.transform_to_viewport(*layer);
+
+		for (point_id, factor) in affected_points {
+			let Some(initial_pos_local) = layer_initial_positions.get(point_id) else {
+				continue;
+			};
+
+			let Some(current_pos_local) = current_vector_data.point_domain.position_from_id(*point_id) else {
+				continue;
+			};
+
+			// Transform INITIAL local position to viewport
+			let initial_pos_vp = viewspace.transform_point2(*initial_pos_local);
+
+			//  Apply the TOTAL accumulated transformation (in viewport space, relative to pivot)
+
+			let target_pos_fully_transformed_vp = total_transformation_vp.transform_point2(initial_pos_vp);
+
+			// Calculate the full potential delta (relative to initial position) in viewport space
+			let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
+
+			// Scale this total intended delta by falloff and strength
+			let strength_divisor = (proportional_data.falloff_strength as f64).max(1.0);
+
+			let scaled_intended_delta_vp = full_intended_delta_vp * (*factor) / strength_divisor;
+
+			//Calculate the final target position in viewport space
+			let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
+
+			//  Convert target viewport position back to layer space
+			let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
+
+			//  Calculate the final delta needed to move from CURRENT local to TARGET local
+			let final_delta_local = target_pos_proportional_local - current_pos_local;
+
+			// Apply this final delta
+			if final_delta_local.length_squared() > 1e-10 {
+				// Avoid tiny updates
+				let modification_type = VectorModificationType::ApplyPointDelta {
+					point: *point_id,
+					delta: final_delta_local,
+				};
+				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+			}
+		}
+	}
+}
 fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	for &layer in selected_layers {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -213,6 +337,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		match message {
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
+				if let Some(proportional_data) = &self.proportional_edit_data {
+					let viewport_center = document.metadata().document_to_viewport.transform_point2(proportional_data.center);
+					let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * proportional_data.radius as f64).x;
+
+					overlay_context.circle(viewport_center, radius_viewport, Some(COLOR_OVERLAY_TRANSPARENT), Some(COLOR_OVERLAY_BLUE));
+				}
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -352,6 +482,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 				self.proportional_edit_data = None;
+				self.initial_proportional_positions.clear();
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
@@ -404,6 +535,21 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					return;
 				};
 				self.proportional_edit_data = proportional_edit_data;
+				self.initial_proportional_positions.clear();
+
+				if let Some(prop_data) = &self.proportional_edit_data {
+					for (layer, affected_points) in &prop_data.affected_points {
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
+							let layer_initial_positions = self.initial_proportional_positions.entry(*layer).or_default();
+							for (point_id, _) in affected_points {
+								if let Some(pos_local) = vector_data.point_domain.position_from_id(*point_id) {
+									layer_initial_positions.insert(*point_id, pos_local);
+								}
+							}
+						}
+					}
+				}
+
 				if let [point] = selected_points.as_slice() {
 					if matches!(point, ManipulatorPointId::Anchor(_)) {
 						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
@@ -481,6 +627,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(ToolMessage::UpdateHints);
 				}
 				self.proportional_edit_data = None;
+				self.initial_proportional_positions.clear();
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => {
@@ -543,16 +690,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let new_increments = input.keyboard.get(increments_key as usize);
 				if new_increments != self.increments {
 					self.increments = new_increments;
-					self.transform_operation.apply_transform_operation(
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						pivot,
-						self.initial_transform,
-						self.proportional_edit_data.as_ref(),
-					);
+					self.transform_operation
+						.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
 				}
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
@@ -571,7 +710,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								document_to_viewport,
 								pivot,
 								self.initial_transform,
-								self.proportional_edit_data.as_ref(),
 							);
 						}
 						TransformOperation::Rotating(rotation) => {
@@ -590,7 +728,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								document_to_viewport,
 								pivot,
 								self.initial_transform,
-								self.proportional_edit_data.as_ref(),
 							);
 						}
 						TransformOperation::Scaling(mut scale) => {
@@ -622,12 +759,60 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 								document_to_viewport,
 								pivot,
 								self.initial_transform,
-								self.proportional_edit_data.as_ref(),
 							);
 						}
 					};
 				}
+				let pivot_vp = document_to_viewport.transform_point2(self.local_pivot);
+				let local_axis_transform_angle = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).to_angle();
+				let total_transformation_vp = match self.transform_operation {
+					TransformOperation::Grabbing(translation) => {
+						let total_delta_doc = translation.to_dvec(self.initial_transform, self.increments);
+						let translate = DAffine2::from_translation(document_to_viewport.transform_vector2(total_delta_doc));
+						if self.local {
+							let resolved_angle = if local_axis_transform_angle > 0. {
+								local_axis_transform_angle
+							} else {
+								local_axis_transform_angle - std::f64::consts::PI
+							};
+							DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
+						} else {
+							translate
+						}
+					}
+					TransformOperation::Rotating(rotation) => {
+						let total_angle = rotation.to_f64(self.increments);
+						let pivot_transform = DAffine2::from_translation(pivot_vp);
+						pivot_transform * DAffine2::from_angle(total_angle) * pivot_transform.inverse()
+					}
+					TransformOperation::Scaling(scale) => {
+						let total_scale_vec = scale.to_dvec(self.increments);
+						let pivot_transform = DAffine2::from_translation(pivot_vp);
+						if self.local {
+							pivot_transform
+								* DAffine2::from_angle(local_axis_transform_angle)
+								* DAffine2::from_scale(total_scale_vec)
+								* DAffine2::from_angle(-local_axis_transform_angle)
+								* pivot_transform.inverse()
+						} else {
+							pivot_transform * DAffine2::from_scale(total_scale_vec) * pivot_transform.inverse()
+						}
+					}
+					TransformOperation::None => DAffine2::IDENTITY,
+				};
 
+				// selected.apply_transformation(total_transformation_vp, Some(self.transform_operation));
+
+				if let Some(prop_data) = &self.proportional_edit_data {
+					apply_proportional_edit(
+						&self.initial_proportional_positions,
+						prop_data,
+						total_transformation_vp,
+						&document.network_interface,
+						document.metadata(),
+						responses,
+					);
+				}
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {

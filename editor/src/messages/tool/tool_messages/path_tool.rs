@@ -31,6 +31,7 @@ pub struct PathToolOptions {
 	path_overlay_mode: PathOverlayMode,
 	proportional_editing_enabled: bool,
 	proportional_falloff_type: ProportionalFalloffType,
+	proportional_falloff_strength: i32,
 	proportional_radius: i32,
 }
 impl Default for PathToolOptions {
@@ -39,6 +40,7 @@ impl Default for PathToolOptions {
 			path_overlay_mode: PathOverlayMode::default(),
 			proportional_editing_enabled: false,
 			proportional_falloff_type: ProportionalFalloffType::default(),
+			proportional_falloff_strength: 1,
 			proportional_radius: 100,
 		}
 	}
@@ -60,6 +62,7 @@ pub struct ProportionalEditData {
 	pub center: DVec2,
 	pub affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
 	pub falloff_type: ProportionalFalloffType,
+	pub falloff_strength: i32,
 	pub radius: i32,
 }
 
@@ -144,6 +147,7 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	ProportionalEditingEnabled(bool),
 	ProportionalFalloffType(ProportionalFalloffType),
+	ProportionalFalloffStrength(i32),
 	ProportionalRadius(i32),
 }
 
@@ -289,6 +293,14 @@ impl LayoutHolder for PathTool {
 			.disabled(!self.options.proportional_editing_enabled)
 			.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
 			.widget_holder();
+		let strength_label = TextLabel::new("Strength").disabled(!self.options.proportional_editing_enabled).widget_holder();
+		let strength_input = NumberInput::new(Some(self.options.proportional_falloff_strength as f64))
+			.min(1 as f64)
+			.step(1 as f64)
+			.disabled(!self.options.proportional_editing_enabled)
+			.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffStrength(number_input.value.unwrap_or(1.0) as i32)).into())
+			.widget_holder();
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
@@ -310,8 +322,12 @@ impl LayoutHolder for PathTool {
 				falloff_dropdown,
 				unrelated_seperator.clone(),
 				radius_label,
-				related_seperator,
+				related_seperator.clone(),
 				radius_input,
+				unrelated_seperator.clone(),
+				strength_label,
+				related_seperator,
+				strength_input,
 				unrelated_seperator,
 			],
 		}]))
@@ -343,6 +359,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.proportional_radius = radius.max(1).min(1000);
 					self.tool_data
 						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::ProportionalFalloffStrength(strength) => {
+					self.options.proportional_falloff_strength = strength.max(1);
 					responses.add(OverlaysMessage::Draw);
 				}
 			},
@@ -1032,7 +1052,7 @@ impl PathToolData {
 
 					for &(point_id, factor) in affected_points {
 						// Scale the delta by the influence factor
-						let scaled_delta = snapped_delta * factor;
+						let scaled_delta = (snapped_delta * factor) / (tool_options.proportional_falloff_strength as f64);
 
 						// Convert to document space
 						let document_delta = document_to_viewport.inverse().transform_vector2(scaled_delta);
@@ -1259,6 +1279,7 @@ impl Fsm for PathToolFsmState {
 					center: tool_data.proportional_edit_center.unwrap_or_default(),
 					affected_points: tool_data.proportional_affected_points.clone(),
 					falloff_type: tool_options.proportional_falloff_type,
+					falloff_strength: tool_options.proportional_falloff_strength,
 					radius: tool_options.proportional_radius,
 				});
 				if !tool_options.proportional_editing_enabled {
