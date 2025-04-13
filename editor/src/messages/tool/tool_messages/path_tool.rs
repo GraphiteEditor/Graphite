@@ -16,7 +16,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId};
-use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData, VectorModificationType};
+use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
 use std::vec;
 
 #[derive(Default)]
@@ -376,7 +376,7 @@ struct PathToolData {
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
 	snapping_axis: Option<Axis>,
-	stored_handle_positions: Option<HashMap<HandleId, DVec2>>,
+	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
 }
 
@@ -524,19 +524,8 @@ impl PathToolData {
 					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 						// Check that selected point is an anchor
 						if let (Some(point_id), Some(vector_data)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
-							let position = ManipulatorPointId::Anchor(point_id).get_position(&vector_data).unwrap_or_default();
 							let handles = vector_data.all_connected(point_id).collect::<Vec<_>>();
-							if vector_data.connected_count(point_id) == 2 {
-								if let (Some(pos1), Some(pos2)) = (
-									handles[0].to_manipulator_point().get_position(&vector_data),
-									handles[1].to_manipulator_point().get_position(&vector_data),
-								) {
-									let mut map = HashMap::new();
-									map.insert(handles[0], pos1 - position);
-									map.insert(handles[1], pos2 - position);
-									self.stored_handle_positions = Some(map);
-								}
-							}
+							self.alt_clicked_on_anchor = true;
 							for handle in &handles {
 								let modification_type = handle.set_relative_position(DVec2::ZERO);
 								responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -882,7 +871,7 @@ impl PathToolData {
 		let mut was_alt_dragging = false;
 
 		if self.snapping_axis.is_none() {
-			if self.stored_handle_positions.is_some() && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 				//checking that drag is in which direction
 				self.alt_dragging_from_anchor = true;
 				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
@@ -918,30 +907,10 @@ impl PathToolData {
 				}
 			}
 
-			if self.alt_dragging_from_anchor && !equidistant && self.stored_handle_positions.is_some() {
-				// Move other handle to the position where it started
-				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
-					return;
-				};
-				let Some(selected_handle) = shape_editor.selected_points().next() else { return };
-				let Some(position_map) = self.stored_handle_positions.clone() else { return };
-				let Some((opposite, opp_position)) = position_map
-					.iter()
-					.find_map(|(&handle, &pos)| if handle.to_manipulator_point() != *selected_handle { Some((handle, pos)) } else { None })
-				else {
-					return;
-				};
-
-				let Ok(handles) = position_map.keys().copied().collect::<Vec<_>>().try_into().map(|v: Vec<HandleId>| [v[0], v[1]]);
-
-				let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
-				let modification_type = opposite.set_relative_position(opp_position);
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
-
+			if self.alt_dragging_from_anchor && !equidistant && self.alt_clicked_on_anchor {
 				was_alt_dragging = true;
 				self.alt_dragging_from_anchor = false;
-				self.stored_handle_positions = None;
+				self.alt_clicked_on_anchor = false;
 			}
 			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
@@ -1420,7 +1389,7 @@ impl Fsm for PathToolFsmState {
 
 				if tool_data.alt_dragging_from_anchor {
 					tool_data.alt_dragging_from_anchor = false;
-					tool_data.stored_handle_positions = None;
+					tool_data.alt_clicked_on_anchor = false;
 				}
 
 				if tool_data.select_anchor_toggled {
