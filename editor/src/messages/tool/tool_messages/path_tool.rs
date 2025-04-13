@@ -748,10 +748,36 @@ impl PathToolData {
 	fn calculate_proportional_affected_points(&mut self, document: &DocumentMessageHandler, shape_editor: &ShapeState, radius: i32, proportional_falloff_type: ProportionalFalloffType) {
 		self.proportional_affected_points.clear();
 
-		let center = self.proportional_edit_center.unwrap_or_default();
 		let radius = radius as f64;
 
-		// For each layer with vector data
+		// Collect all selected points with their world positions
+		let mut selected_points_world_pos = Vec::new();
+
+		for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+				let transform = document.metadata().transform_to_document(layer);
+
+				// Get selected points in this layer
+				let selected_anchors: Vec<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+				for &anchor_id in &selected_anchors {
+					if let Some(position) = vector_data.point_domain.position_from_id(anchor_id) {
+						let world_pos = transform.transform_point2(position);
+						selected_points_world_pos.push(world_pos);
+					}
+				}
+			}
+		}
+
+		// Calculate center of all selected points
+		if !selected_points_world_pos.is_empty() {
+			let sum = selected_points_world_pos.iter().fold(DVec2::ZERO, |acc, &pos| acc + pos);
+			self.proportional_edit_center = Some(sum / selected_points_world_pos.len() as f64);
+		} else {
+			self.proportional_edit_center = None;
+		}
+
+		// find all the affected points
 		for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 				let transform = document.metadata().transform_to_document(layer);
@@ -759,14 +785,20 @@ impl PathToolData {
 
 				let mut layer_affected_points = Vec::new();
 
-				// Check each point in the layer
+				//  each point in the layer
 				for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
 					if !selected_points.contains(&point_id) {
 						let position = vector_data.point_domain.positions()[i];
 						let world_pos = transform.transform_point2(position);
 
-						let distance = world_pos.distance(center);
-						if distance <= radius {
+						// Find the smallest distance to any selected point
+						let min_distance = selected_points_world_pos
+							.iter()
+							.map(|&selected_pos| world_pos.distance(selected_pos))
+							.filter(|&distance| distance <= radius)
+							.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+						if let Some(distance) = min_distance {
 							let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
 							layer_affected_points.push((point_id, factor));
 						}
