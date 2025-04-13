@@ -353,6 +353,17 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.proportional_falloff_type = falloff_type.clone();
 					self.tool_data
 						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+
+					if self.options.proportional_editing_enabled {
+						let proportional_data = ProportionalEditData {
+							center: self.tool_data.proportional_edit_center.unwrap_or_default(),
+							affected_points: self.tool_data.proportional_affected_points.clone(),
+							falloff_type: self.options.proportional_falloff_type,
+							falloff_strength: self.options.proportional_falloff_strength,
+							radius: self.options.proportional_radius,
+						};
+						responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
+					}
 					responses.add(OverlaysMessage::Draw);
 				}
 				PathOptionsUpdate::ProportionalRadius(radius) => {
@@ -363,6 +374,16 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				}
 				PathOptionsUpdate::ProportionalFalloffStrength(strength) => {
 					self.options.proportional_falloff_strength = strength.max(1);
+					if self.options.proportional_editing_enabled {
+						let proportional_data = ProportionalEditData {
+							center: self.tool_data.proportional_edit_center.unwrap_or_default(),
+							affected_points: self.tool_data.proportional_affected_points.clone(),
+							falloff_type: self.options.proportional_falloff_type,
+							falloff_strength: self.options.proportional_falloff_strength,
+							radius: self.options.proportional_radius,
+						};
+						responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
+					}
 					responses.add(OverlaysMessage::Draw);
 				}
 			},
@@ -376,6 +397,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32)).max(1);
 					self.tool_data
 						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+
+					// Create updated proportional edit data
+					let proportional_data = ProportionalEditData {
+						center: self.tool_data.proportional_edit_center.unwrap_or_default(),
+						affected_points: self.tool_data.proportional_affected_points.clone(),
+						falloff_type: self.options.proportional_falloff_type,
+						falloff_strength: self.options.proportional_falloff_strength,
+						radius: self.options.proportional_radius,
+					};
+
+					// Send the updated data to any active GRS operation
+					responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
+
 					responses.add(OverlaysMessage::Draw);
 				}
 			}

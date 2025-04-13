@@ -111,64 +111,6 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 		_ => edge,
 	}
 }
-// fn apply_proportional_edit(
-// 	initial_positions: &HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
-// 	proportional_data: &ProportionalEditData,
-// 	total_transformation_vp: DAffine2,
-// 	network_interface: &NodeNetworkInterface,
-// 	document_metadata: &DocumentMetadata,
-// 	responses: &mut VecDeque<Message>,
-// ) {
-// 	for (layer, affected_points) in &proportional_data.affected_points {
-// 		let Some(layer_initial_positions) = initial_positions.get(layer) else { continue };
-// 		// Get CURRENT vector data to know the point's current position for delta calculation
-// 		let Some(current_vector_data) = network_interface.compute_modified_vector(*layer) else { continue };
-
-// 		let viewspace = document_metadata.transform_to_viewport(*layer);
-// 		// Calculate the total transformation in the layer's coordinate space
-// 		let total_layerspace_transform = viewspace.inverse() * total_transformation_vp;
-
-// 		for (point_id, factor) in affected_points {
-// 			let Some(initial_pos_local) = layer_initial_positions.get(point_id) else { continue };
-// 			let Some(current_pos_local) = current_vector_data.point_domain.position_from_id(*point_id) else {
-// 				continue;
-// 			};
-
-// 			// 1. Transform INITIAL local position to viewport
-// 			let initial_pos_vp = viewspace.transform_point2(*initial_pos_local);
-
-// 			// 2. Apply the TOTAL accumulated transformation (in viewport space, relative to pivot)
-// 			//    to the initial viewport position.
-// 			let target_pos_fully_transformed_vp = total_layerspace_transform.transform_point2(initial_pos_vp);
-
-// 			// 3. Calculate the full potential delta (relative to initial position) in viewport space
-// 			let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
-
-// 			// 4. Scale this total intended delta by falloff and strength
-// 			let strength_divisor = (proportional_data.falloff_strength as f64).max(1.0);
-// 			let scaled_intended_delta_vp = full_intended_delta_vp * (*factor) / strength_divisor;
-
-// 			// 5. Calculate the final target position in viewport space
-// 			let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
-
-// 			// 6. Convert target viewport position back to layer space
-// 			let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
-
-// 			// 7. Calculate the final delta needed to move from CURRENT local to TARGET local
-// 			let final_delta_local = target_pos_proportional_local - current_pos_local;
-// 			debug!("{}", total_transformation_vp);
-// 			// 8. Apply this final delta
-// 			if final_delta_local.length_squared() > 1e-10 {
-// 				// Avoid tiny updates
-// 				let modification_type = VectorModificationType::ApplyPointDelta {
-// 					point: *point_id,
-// 					delta: final_delta_local,
-// 				};
-// 				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
-// 			}
-// 		}
-// 	}
-// }
 fn apply_proportional_edit(
 	initial_positions: &HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
 	proportional_data: &ProportionalEditData,
@@ -335,6 +277,19 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		};
 
 		match message {
+			TransformLayerMessage::UpdateProportionalEditData(proportional_data) => {
+				// Only update if we're in a transform operation with proportional editing
+				if let Some(current_proportional_data) = &mut self.proportional_edit_data {
+					// Update all fields from the new data
+					current_proportional_data.center = proportional_data.center;
+					current_proportional_data.affected_points = proportional_data.affected_points;
+					current_proportional_data.falloff_type = proportional_data.falloff_type;
+					current_proportional_data.falloff_strength = proportional_data.falloff_strength;
+					current_proportional_data.radius = proportional_data.radius;
+
+					responses.add(OverlaysMessage::Draw);
+				}
+			}
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
 				if let Some(proportional_data) = &self.proportional_edit_data {
@@ -903,6 +858,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				TypeNegate,
 				ConstrainX,
 				ConstrainY,
+				UpdateProportionalEditData
 			);
 			common.extend(active);
 		}

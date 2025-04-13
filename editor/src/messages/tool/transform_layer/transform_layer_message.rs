@@ -48,4 +48,5 @@ pub enum TransformLayerMessage {
 		digit: u8,
 	},
 	TypeNegate,
+	UpdateProportionalEditData(ProportionalEditData),
 }
