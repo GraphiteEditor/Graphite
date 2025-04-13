@@ -6,7 +6,7 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Percentage, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
-use crate::vector::style::LineJoin;
+use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
@@ -183,6 +183,7 @@ where
 		line_join,
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
+		non_scaling: false,
 	};
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();
@@ -941,12 +942,16 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let bounding_box = vector_data.bounding_box_with_transform(vector_data_transform).unwrap();
-	let mut result = VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]));
+	let mut result = vector_data
+		.bounding_box()
+		.map(|bounding_box| VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1])))
+		.unwrap_or_default();
 	result.style = vector_data.style.clone();
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(result);
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
@@ -964,7 +969,7 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 		subpath.apply_transform(vector_data_transform);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let subpath_out = subpath.offset(
+		let mut subpath_out = subpath.offset(
 			-distance,
 			match line_join {
 				LineJoin::Miter => Join::Miter(Some(miter_limit)),
@@ -973,11 +978,15 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 			},
 		);
 
+		subpath_out.apply_transform(vector_data_transform.inverse());
+
 		// One closed subpath, open path.
 		result.append_subpath(subpath_out, false);
 	}
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(result);
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -985,39 +994,34 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let style = &vector_data.style;
-
+	let stroke = vector_data.style.stroke().clone().unwrap_or_default();
 	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
 
 	// Perform operation on all subpaths in this shape.
-	for mut subpath in subpaths {
-		let stroke = style.stroke().unwrap();
-		subpath.apply_transform(vector_data_transform);
-
-		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let subpath_out = subpath.outline(
-			stroke.weight / 2., // Diameter to radius.
-			match stroke.line_join {
-				LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
-				LineJoin::Bevel => Join::Bevel,
-				LineJoin::Round => Join::Round,
-			},
-			match stroke.line_cap {
-				crate::vector::style::LineCap::Butt => Cap::Butt,
-				crate::vector::style::LineCap::Round => Cap::Round,
-				crate::vector::style::LineCap::Square => Cap::Square,
-			},
-		);
+	for subpath in subpaths {
+		// Taking the existing stroke data and passing it to Bezier-rs to generate new fill paths.
+		let stroke_radius = stroke.weight / 2.;
+		let join = match stroke.line_join {
+			LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
+			LineJoin::Bevel => Join::Bevel,
+			LineJoin::Round => Join::Round,
+		};
+		let cap = match stroke.line_cap {
+			LineCap::Butt => Cap::Butt,
+			LineCap::Round => Cap::Round,
+			LineCap::Square => Cap::Square,
+		};
+		let solidified = subpath.outline(stroke_radius, join, cap);
 
 		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
-		if subpath_out.1.is_some() {
+		if solidified.1.is_some() {
 			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(subpath_out.0, false);
-			result.append_subpath(subpath_out.1.unwrap(), false);
+			result.append_subpath(solidified.0, false);
+			result.append_subpath(solidified.1.unwrap(), false);
 		} else {
 			// One closed subpath, open path.
-			result.append_subpath(subpath_out.0, false);
+			result.append_subpath(solidified.0, false);
 		}
 	}
 
@@ -1027,7 +1031,9 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 		result.style.set_stroke(Stroke::default());
 	}
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(result);
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1291,7 +1297,7 @@ async fn spline(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTabl
 
 	// Exit early if there are no points to generate splines from.
 	if vector_data.point_domain.positions().is_empty() {
-		return VectorDataTable::new(vector_data.clone());
+		return VectorDataTable::new(VectorData::empty());
 	}
 
 	let mut segment_domain = SegmentDomain::default();
@@ -1334,12 +1340,15 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 	let vector_data_transform = vector_data.transform();
 	let mut vector_data = vector_data.one_instance().instance.clone();
 
+	let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
+
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	let deltas = (0..vector_data.point_domain.positions().len())
 		.map(|_| {
 			let angle = rng.random::<f64>() * std::f64::consts::TAU;
-			DVec2::from_angle(angle) * rng.random::<f64>() * amount
+
+			inverse_transform.transform_vector2(DVec2::from_angle(angle) * rng.random::<f64>() * amount)
 		})
 		.collect::<Vec<_>>();
 	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
@@ -1350,21 +1359,19 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 		if !already_applied[*start] {
 			let start_position = vector_data.point_domain.positions()[*start];
-			let start_position = vector_data_transform.transform_point2(start_position);
 			vector_data.point_domain.set_position(*start, start_position + start_delta);
 			already_applied[*start] = true;
 		}
 		if !already_applied[*end] {
 			let end_position = vector_data.point_domain.positions()[*end];
-			let end_position = vector_data_transform.transform_point2(end_position);
 			vector_data.point_domain.set_position(*end, end_position + end_delta);
 			already_applied[*end] = true;
 		}
 
 		match handles {
 			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-				*handle_start = vector_data_transform.transform_point2(*handle_start) + start_delta;
-				*handle_end = vector_data_transform.transform_point2(*handle_end) + end_delta;
+				*handle_start += start_delta;
+				*handle_end += end_delta;
 			}
 			bezier_rs::BezierHandles::Quadratic { handle } => {
 				*handle = vector_data_transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
@@ -1375,19 +1382,13 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 	vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
 
-	VectorDataTable::new(vector_data)
+	let mut result = VectorDataTable::new(vector_data.clone());
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn morph(
-	_: impl Ctx,
-	source: VectorDataTable,
-	#[expose] target: VectorDataTable,
-	#[range((0., 1.))]
-	#[default(0.5)]
-	time: Fraction,
-	#[min(0.)] start_index: IntegerCount,
-) -> VectorDataTable {
+async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> VectorDataTable {
 	let time = time.clamp(0., 1.);
 
 	let source_alpha_blending = source.one_instance().alpha_blending;
@@ -1758,9 +1759,10 @@ mod test {
 		let bounding_box = bounding_box.instances().next().unwrap().instance;
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
-		let sqrt2 = core::f64::consts::SQRT_2;
-		let sqrt2_bounding_box = [DVec2::new(-sqrt2, -sqrt2), DVec2::new(sqrt2, -sqrt2), DVec2::new(sqrt2, sqrt2), DVec2::new(-sqrt2, sqrt2)];
-		assert!(subpath.anchors()[..4].iter().zip(sqrt2_bounding_box).all(|(p1, p2)| p1.abs_diff_eq(p2, f64::EPSILON)));
+		let expected_bounding_box = [DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.)];
+		for i in 0..4 {
+			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
+		}
 	}
 	#[tokio::test]
 	async fn copy_to_points() {

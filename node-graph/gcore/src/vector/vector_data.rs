@@ -194,9 +194,22 @@ impl VectorData {
 
 	/// Compute the bounding boxes of the subpaths with the specified transform
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.segment_bezier_iter()
+		let combine = |[a_min, a_max]: [DVec2; 2], [b_min, b_max]: [DVec2; 2]| [a_min.min(b_min), a_max.max(b_max)];
+
+		let anchor_bounds = self
+			.point_domain
+			.positions()
+			.iter()
+			.map(|&point| transform.transform_point2(point))
+			.map(|point| [point, point])
+			.reduce(combine);
+
+		let segment_bounds = self
+			.segment_bezier_iter()
 			.map(|(_, bezier, _, _)| bezier.apply_transformation(|point| transform.transform_point2(point)).bounding_box())
-			.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
+			.reduce(combine);
+
+		anchor_bounds.iter().chain(segment_bounds.iter()).copied().reduce(combine)
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
@@ -334,14 +347,22 @@ impl VectorData {
 				let (start_point_id, _, _) = self.segment_points_from_id(*segment_id)?;
 				let start_index = self.point_domain.resolve_id(start_point_id)?;
 
-				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id))
+				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id)).or(self
+					.segment_domain
+					.start_connected(start_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (start_point_id, id)))
 			}
 			ManipulatorPointId::EndHandle(segment_id) => {
 				// For end handle, find segments starting at our end point
 				let (_, end_point_id, _) = self.segment_points_from_id(*segment_id)?;
 				let end_index = self.point_domain.resolve_id(end_point_id)?;
 
-				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id))
+				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id)).or(self
+					.segment_domain
+					.end_connected(end_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (end_point_id, id)))
 			}
 			ManipulatorPointId::Anchor(_) => None,
 		}

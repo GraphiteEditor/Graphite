@@ -298,7 +298,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let radius = start_mouse.distance(pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
 							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
-							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
+							let angle_in_degrees = angle.to_degrees();
+							let display_angle = if angle_in_degrees.is_sign_positive() {
+								angle_in_degrees - (angle_in_degrees / 360.).floor() * 360.
+							} else if angle_in_degrees.is_sign_negative() {
+								angle_in_degrees - ((angle_in_degrees / 360.).floor() + 1.) * 360.
+							} else {
+								angle_in_degrees
+							};
+							let text = format!("{}°", format_rounded(display_angle, 2));
 							let text_texture_width = overlay_context.get_width(&text) / 2.;
 							let text_texture_height = 12.;
 							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
@@ -395,9 +403,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let handle1_length = handle1.length(&vector_data);
 							let handle2_length = handle2.length(&vector_data);
 
-							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
-								selected.original_transforms.clear();
-								return;
+							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+								// G should work for this point but not R and S
+								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+									selected.original_transforms.clear();
+									return;
+								}
 							}
 						}
 					} else {
@@ -703,7 +714,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 #[cfg(test)]
 mod test_transform_layer {
 	use crate::messages::{
-		portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext},
+		portfolio::document::graph_operation::{
+			transform_utils,
+			utility_types::{ModifyInputsContext, TransformIn},
+		},
 		prelude::Message,
 		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
 	};
@@ -1096,5 +1110,44 @@ mod test_transform_layer {
 
 		let final_transform = get_layer_transform(&mut editor, layer).await;
 		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
+	}
+	#[tokio::test]
+	async fn test_scale_to_zero_then_rescale() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		// First scale to near-zero
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDecimalPoint).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 1 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let near_zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Verify scale is near zero.
+		let scale_x = near_zero_transform.matrix2.x_axis.length();
+		let scale_y = near_zero_transform.matrix2.y_axis.length();
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x > 0.0, "Scale factor X should not be exactly zero");
+		assert!(scale_y > 0.0, "Scale factor Y should not be exactly zero");
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(final_transform.is_finite(), "Transform should be finite after rescaling");
+
+		let new_scale_x = final_transform.matrix2.x_axis.length();
+		let new_scale_y = final_transform.matrix2.y_axis.length();
+		assert!(new_scale_x > 0.0, "After rescaling, scale factor X should be non-zero");
+		assert!(new_scale_y > 0.0, "After rescaling, scale factor Y should be non-zero");
 	}
 }

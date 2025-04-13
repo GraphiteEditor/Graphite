@@ -1,7 +1,10 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::animation::TimingInformation;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, TaggedValue};
@@ -728,6 +731,9 @@ impl NodeGraphExecutor {
 						}
 					}
 				}
+				// NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
+				// 	responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
+				// }
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
@@ -755,9 +761,6 @@ impl NodeGraphExecutor {
 						node_graph_errors,
 					});
 					responses.add(NodeGraphMessage::SendGraph);
-				}
-				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
-					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));
 				}
 			}
 		}
@@ -919,5 +922,14 @@ impl Instrumented {
 		let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 
 		Self::downcast::<Input>(dynamic)
+	}
+
+	pub fn grab_input_from_layer<Input: graphene_std::NodeInputDecleration>(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, runtime: &NodeRuntime) -> Option<Input::Result>
+	where
+		Input::Result: Send + Sync + Clone + 'static,
+	{
+		let node_graph_layer = NodeGraphLayer::new(layer, network_interface);
+		let node = node_graph_layer.upstream_node_id_from_protonode(Input::identifier())?;
+		self.grab_protonode_input::<Input>(&vec![node], runtime)
 	}
 }

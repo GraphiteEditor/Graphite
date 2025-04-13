@@ -1,7 +1,7 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
 use crate::raster::image::ImageFrameTable;
-use crate::registry::types::Percentage;
+use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 use core::marker::PhantomData;
@@ -410,6 +410,37 @@ fn vector2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 #[node_macro::node(category("Value"))]
 fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
 	color
+}
+
+// // Aims for interoperable compatibility with:
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+// #[node_macro::node(category("Raster: Adjustment"))]
+// async fn gradient_map<T: Adjust<Color>>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		Color,
+// 		ImageFrameTable<Color>,
+// 		GradientStops,
+// 	)]
+// 	mut image: T,
+// 	gradient: GradientStops,
+// 	reverse: bool,
+// ) -> T {
+// 	image.adjust(|color| {
+// 		let intensity = color.luminance_srgb();
+// 		let intensity = if reverse { 1. - intensity } else { intensity };
+// 		gradient.evaluate(intensity as f64)
+// 	});
+
+// 	image
+// }
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("General"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
+	let position = position.clamp(0., 1.);
+	gradient.evaluate(position)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
