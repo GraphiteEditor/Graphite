@@ -1,7 +1,7 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
 use crate::raster::image::ImageFrameTable;
-use crate::registry::types::Percentage;
+use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 use core::marker::PhantomData;
@@ -219,23 +219,35 @@ fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
-/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value.
+/// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
+/// atan: the angle whose tangent is the specified scalar number.
+/// atan2: the angle of a ray from the origin to the specified vector2 point.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians { value.atan() } else { value.atan().to_degrees() }
+fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
+	value.atan(radians)
 }
 
-/// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
-#[node_macro::node(name("Tangent Inverse 2-Argument"), category("Math: Trig"))]
-fn tangent_inverse_2_argument<U: num_traits::float::Float>(
-	_: impl Ctx,
-	#[implementations(f64, f32)] y: U,
-	#[expose]
-	#[implementations(f64, f32)]
-	x: U,
-	radians: bool,
-) -> U {
-	if radians { y.atan2(x) } else { y.atan2(x).to_degrees() }
+pub trait TangentInverse {
+	type Output: num_traits::float::Float;
+	fn atan(self, radians: bool) -> Self::Output;
+}
+impl TangentInverse for f32 {
+	type Output = f32;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for f64 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for glam::DVec2 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.y.atan2(self.x) } else { self.y.atan2(self.x).to_degrees() }
+	}
 }
 
 /// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
@@ -398,6 +410,37 @@ fn vector2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 #[node_macro::node(category("Value"))]
 fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
 	color
+}
+
+// // Aims for interoperable compatibility with:
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+// #[node_macro::node(category("Raster: Adjustment"))]
+// async fn gradient_map<T: Adjust<Color>>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		Color,
+// 		ImageFrameTable<Color>,
+// 		GradientStops,
+// 	)]
+// 	mut image: T,
+// 	gradient: GradientStops,
+// 	reverse: bool,
+// ) -> T {
+// 	image.adjust(|color| {
+// 		let intensity = color.luminance_srgb();
+// 		let intensity = if reverse { 1. - intensity } else { intensity };
+// 		gradient.evaluate(intensity as f64)
+// 	});
+
+// 	image
+// }
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("General"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
+	let position = position.clamp(0., 1.);
+	gradient.evaluate(position)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
