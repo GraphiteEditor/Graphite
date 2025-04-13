@@ -1980,7 +1980,6 @@ impl Fsm for PenToolFsmState {
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.cleanup(responses);
-				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				if should_delete_layer {
 					responses.add(NodeGraphMessage::DeleteNodes {
