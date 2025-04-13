@@ -71,13 +71,13 @@ pub enum DocumentMessage {
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
-	ImaginateGenerate {
-		imaginate_node: Vec<NodeId>,
-	},
-	ImaginateRandom {
-		imaginate_node: Vec<NodeId>,
-		then_generate: bool,
-	},
+	// ImaginateGenerate {
+	// 	imaginate_node: Vec<NodeId>,
+	// },
+	// ImaginateRandom {
+	// 	imaginate_node: Vec<NodeId>,
+	// 	then_generate: bool,
+	// },
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
