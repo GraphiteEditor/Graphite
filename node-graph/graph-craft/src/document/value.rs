@@ -1,5 +1,4 @@
 use super::DocumentNode;
-pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
@@ -163,15 +162,15 @@ tagged_value! {
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
 	Image(graphene_core::raster::Image<Color>),
-	ImaginateCache(ImaginateCache),
 	Color(graphene_core::raster::color::Color),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
-	ImaginateSamplingMethod(ImaginateSamplingMethod),
-	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
-	ImaginateController(ImaginateController),
+	// ImaginateCache(ImaginateCache),
+	// ImaginateSamplingMethod(ImaginateSamplingMethod),
+	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
+	// ImaginateController(ImaginateController),
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),

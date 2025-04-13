@@ -33,6 +33,7 @@ pub struct PortfolioMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
+	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub animation: &'a AnimationMessageHandler,
 }
@@ -51,6 +52,7 @@ pub struct PortfolioMessageHandler {
 	/// The spreadsheet UI allows for instance data to be previewed.
 	pub spreadsheet: SpreadsheetMessageHandler,
 	device_pixel_ratio: Option<f64>,
+	pub reset_node_definitions_on_open: bool,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -60,6 +62,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			preferences,
 			current_tool,
 			message_logging_verbosity,
+			reset_node_definitions_on_open,
 			timing_information,
 			animation,
 		} = data;
@@ -75,6 +78,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.menu_bar_message_handler.has_selection_history = (false, false);
 				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
+				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					self.menu_bar_message_handler.has_active_document = true;
@@ -409,6 +413,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				});
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
+			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
+				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
+				responses.add(MenuBarMessage::SendLayout);
+			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
 				document_name,
@@ -420,8 +428,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
-				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
+				// Upgrade a document being opened to use fresh copies of all nodes
+				let replace_implementations_from_definition = reset_node_definitions_on_open || document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =
 					document_serialized_content.contains("graphene_core::ConstructLayerNode") || document_serialized_content.contains("graphene_core::AddArtboardNode");

@@ -1354,7 +1354,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				if (network_interface
 					.reference(&node_id, selection_network_path)
-					.is_none_or(|reference| *reference != Some("Imaginate".to_string()))
+					.is_none_or(|reference| *reference != Some("Imaginate".to_string())) // TODO: Potentially remove the reference to Imaginate
 					|| input_index == 0)
 					&& network_interface.connected_to_output(&node_id, selection_network_path)
 				{

@@ -179,11 +179,11 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		//
 		// ImaginateToolMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
-		entry!(KeyUp(MouseLeft); action_dispatch=ImaginateToolMessage::DragStop),
-		entry!(KeyDown(MouseRight); action_dispatch=ImaginateToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		// entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
+		// entry!(KeyUp(MouseLeft); action_dispatch=ImaginateToolMessage::DragStop),
+		// entry!(KeyDown(MouseRight); action_dispatch=ImaginateToolMessage::Abort),
+		// entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
+		// entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// EllipseToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=EllipseToolMessage::DragStart),
