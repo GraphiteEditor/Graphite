@@ -47,12 +47,12 @@ impl Default for PathToolOptions {
 }
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ProportionalFalloffType {
-	#[default]
 	Constant = 0,
 	Linear = 1,
 	Sharp = 2,
 	Root = 3,
 	Sphere = 4,
+	#[default]
 	Smooth = 5,
 	Random = 6,
 	InverseSquare = 7,
@@ -256,30 +256,30 @@ impl LayoutHolder for PathTool {
 		let falloff_label = TextLabel::new("Falloff").disabled(!self.options.proportional_editing_enabled).widget_holder();
 
 		let falloff_entries = vec![
-			MenuListEntry::new("Constant")
-				.label("Constant")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Constant)).into()),
-			MenuListEntry::new("Linear")
-				.label("Linear")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Linear)).into()),
-			MenuListEntry::new("Sharp")
-				.label("Sharp")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sharp)).into()),
-			MenuListEntry::new("Root")
-				.label("Root")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Root)).into()),
-			MenuListEntry::new("Sphere")
-				.label("Sphere")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sphere)).into()),
 			MenuListEntry::new("Smooth")
 				.label("Smooth")
 				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Smooth)).into()),
-			MenuListEntry::new("Random")
-				.label("Random")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
+			MenuListEntry::new("Sphere")
+				.label("Sphere")
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sphere)).into()),
+			MenuListEntry::new("Root")
+				.label("Root")
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Root)).into()),
 			MenuListEntry::new("Inverse Square")
 				.label("Inverse Square")
 				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::InverseSquare)).into()),
+			MenuListEntry::new("Sharp")
+				.label("Sharp")
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sharp)).into()),
+			MenuListEntry::new("Linear")
+				.label("Linear")
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Linear)).into()),
+			MenuListEntry::new("Constant")
+				.label("Constant")
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Constant)).into()),
+			MenuListEntry::new("Random")
+				.label("Random")
+				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
 		];
 
 		let falloff_dropdown = DropdownInput::new(vec![falloff_entries])
