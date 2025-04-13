@@ -65,6 +65,60 @@ impl TransformLayerMessageHandler {
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
 		self.transform_operation.hints(responses, self.local);
 	}
+	pub fn calculate_total_transformation_vp(&self, document_to_viewport: DAffine2) -> DAffine2 {
+		let pivot_vp = document_to_viewport.transform_point2(self.local_pivot);
+		let local_axis_transform_angle = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).to_angle();
+
+		match self.transform_operation {
+			TransformOperation::Grabbing(translation) => {
+				let total_delta_doc = translation.to_dvec(self.initial_transform, self.increments);
+				let translate = DAffine2::from_translation(document_to_viewport.transform_vector2(total_delta_doc));
+				if self.local {
+					let resolved_angle = if local_axis_transform_angle > 0. {
+						local_axis_transform_angle
+					} else {
+						local_axis_transform_angle - std::f64::consts::PI
+					};
+					DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
+				} else {
+					translate
+				}
+			}
+			TransformOperation::Rotating(rotation) => {
+				let total_angle = rotation.to_f64(self.increments);
+				let pivot_transform = DAffine2::from_translation(pivot_vp);
+				pivot_transform * DAffine2::from_angle(total_angle) * pivot_transform.inverse()
+			}
+			TransformOperation::Scaling(scale) => {
+				let total_scale_vec = scale.to_dvec(self.increments);
+				let pivot_transform = DAffine2::from_translation(pivot_vp);
+				if self.local {
+					pivot_transform
+						* DAffine2::from_angle(local_axis_transform_angle)
+						* DAffine2::from_scale(total_scale_vec)
+						* DAffine2::from_angle(-local_axis_transform_angle)
+						* pivot_transform.inverse()
+				} else {
+					pivot_transform * DAffine2::from_scale(total_scale_vec) * pivot_transform.inverse()
+				}
+			}
+			TransformOperation::None => DAffine2::IDENTITY,
+		}
+	}
+
+	// Apply proportional editing with the given transformation
+	fn apply_proportional_editing(&mut self, total_transformation_vp: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if let Some(prop_data) = &self.proportional_edit_data {
+			apply_proportional_edit(
+				&self.initial_proportional_positions,
+				prop_data,
+				total_transformation_vp,
+				&document.network_interface,
+				document.metadata(),
+				responses,
+			);
+		}
+	}
 }
 
 fn calculate_pivot(selected_points: &Vec<&ManipulatorPointId>, vector_data: &VectorData, viewspace: DAffine2, get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>) -> Option<(DVec2, DVec2)> {
@@ -774,6 +828,26 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
+			TransformLayerMessage::TypeDecimalPoint => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
+				if self.transform_operation.can_begin_typing() {
+					self.transform_operation.grs_typed(
+						self.typing.type_decimal_point(),
+						&mut selected,
+						self.increments,
+						self.local,
+						self.layer_bounding_box,
+						document_to_viewport,
+						pivot,
+						self.initial_transform,
+					);
+
+					// Apply proportional editing
+					let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+					self.apply_proportional_editing(total_transformation_vp, document, responses);
+				}
+			}
+
 			TransformLayerMessage::TypeBackspace => {
 				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.typing.digits.is_empty() && self.typing.negative {
@@ -791,22 +865,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					pivot,
 					self.initial_transform,
 				);
+
+				// Apply proportional editing
+				let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+				self.apply_proportional_editing(total_transformation_vp, document, responses);
 			}
-			TransformLayerMessage::TypeDecimalPoint => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
-				if self.transform_operation.can_begin_typing() {
-					self.transform_operation.grs_typed(
-						self.typing.type_decimal_point(),
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						pivot,
-						self.initial_transform,
-					)
-				}
-			}
+
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
 					let pivot = document_to_viewport.transform_point2(self.local_pivot);
@@ -819,7 +883,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						document_to_viewport,
 						pivot,
 						self.initial_transform,
-					)
+					);
+
+					// Calculate total transformation and apply proportional editing
+					let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+					self.apply_proportional_editing(total_transformation_vp, document, responses);
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
@@ -837,7 +905,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					document_to_viewport,
 					pivot,
 					self.initial_transform,
-				)
+				);
+
+				// Apply proportional editing
+				let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+				self.apply_proportional_editing(total_transformation_vp, document, responses);
 			}
 		}
 	}
