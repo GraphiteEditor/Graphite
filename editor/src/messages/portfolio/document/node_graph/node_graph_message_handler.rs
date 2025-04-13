@@ -346,6 +346,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, node_template } => {
 				network_interface.insert_node(node_id, node_template, selection_network_path);
