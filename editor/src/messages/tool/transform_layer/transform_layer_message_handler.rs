@@ -434,10 +434,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				}
 
 				if final_transform {
+					self.proportional_edit_data = None;
+					self.initial_proportional_positions.clear();
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
-				self.proportional_edit_data = None;
-				self.initial_proportional_positions.clear();
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
