@@ -47,15 +47,15 @@ impl Default for PathToolOptions {
 }
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ProportionalFalloffType {
-	Constant = 0,
-	Linear = 1,
-	Sharp = 2,
-	Root = 3,
-	Sphere = 4,
 	#[default]
-	Smooth = 5,
-	Random = 6,
-	InverseSquare = 7,
+	Smooth = 0,
+	Sphere = 1,
+	Root = 2,
+	InverseSquare = 3,
+	Sharp = 4,
+	Linear = 5,
+	Constant = 6,
+	Random = 7,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ProportionalEditData {
