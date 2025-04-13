@@ -564,6 +564,7 @@ struct PathToolData {
 
 	proportional_edit_center: Option<DVec2>,
 	proportional_affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
+	initial_point_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
 }
 
 impl PathToolData {
@@ -750,31 +751,50 @@ impl PathToolData {
 
 		let radius = radius as f64;
 
-		// Collect all selected points with their world positions
+		// If initial positions haven't been stored yet, do it now
+		if self.initial_point_positions.is_empty() {
+			self.store_initial_point_positions(document);
+		}
+
+		// Collect all selected points with their initial world positions
 		let mut selected_points_world_pos = Vec::new();
+		let selected_point_ids: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
 
-		for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-				let transform = document.metadata().transform_to_document(layer);
-
-				// Get selected points in this layer
-				let selected_anchors: Vec<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
-
-				for &anchor_id in &selected_anchors {
-					if let Some(position) = vector_data.point_domain.position_from_id(anchor_id) {
-						let world_pos = transform.transform_point2(position);
-						selected_points_world_pos.push(world_pos);
-					}
+		// Extract initial positions of selected points
+		for (_layer, points_map) in &self.initial_point_positions {
+			for &point_id in &selected_point_ids {
+				if let Some(&world_pos) = points_map.get(&point_id) {
+					selected_points_world_pos.push(world_pos);
 				}
 			}
 		}
 
-		// Calculate center of all selected points
-		if !selected_points_world_pos.is_empty() {
-			let sum = selected_points_world_pos.iter().fold(DVec2::ZERO, |acc, &pos| acc + pos);
-			self.proportional_edit_center = Some(sum / selected_points_world_pos.len() as f64);
-		} else {
-			self.proportional_edit_center = None;
+		// Find all affected points using initial positions
+		for (layer, points_map) in &self.initial_point_positions {
+			let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+			let mut layer_affected_points = Vec::new();
+
+			// Check each point in the layer
+			for (&point_id, &initial_position) in points_map {
+				if !selected_points.contains(&point_id) {
+					// Find the smallest distance to any selected point using initial positions
+					let min_distance = selected_points_world_pos
+						.iter()
+						.map(|&selected_pos| initial_position.distance(selected_pos))
+						.filter(|&distance| distance <= radius)
+						.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+					if let Some(distance) = min_distance {
+						let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
+						layer_affected_points.push((point_id, factor));
+					}
+				}
+			}
+
+			if !layer_affected_points.is_empty() {
+				self.proportional_affected_points.insert(*layer, layer_affected_points);
+			}
 		}
 
 		// find all the affected points
@@ -811,6 +831,29 @@ impl PathToolData {
 			}
 		}
 	}
+	fn store_initial_point_positions(&mut self, document: &DocumentMessageHandler) {
+		self.initial_point_positions.clear();
+
+		// Store positions of all points in selected layers
+		for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+				let transform = document.metadata().transform_to_document(layer);
+				let mut layer_points = HashMap::new();
+
+				// Store all point positions in document space
+				for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+					let position = vector_data.point_domain.positions()[i];
+					let world_pos = transform.transform_point2(position);
+					layer_points.insert(point_id, world_pos);
+				}
+
+				if !layer_points.is_empty() {
+					self.initial_point_positions.insert(layer, layer_points);
+				}
+			}
+		}
+	}
+
 	fn start_dragging_point(
 		&mut self,
 		selected_points: SelectedPointsInfo,
@@ -820,6 +863,7 @@ impl PathToolData {
 		tool_options: &PathToolOptions,
 	) {
 		if tool_options.proportional_editing_enabled {
+			self.initial_point_positions.clear();
 			self.proportional_edit_center = shape_editor.selection_center(document);
 			self.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
 		}
