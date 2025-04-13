@@ -162,6 +162,93 @@ impl ToolMetadata for PathTool {
 		ToolType::Path
 	}
 }
+pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> {
+	let mut widgets = Vec::new();
+
+	// Header row with title
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![TextLabel::new("Proportional Edit").bold(true).widget_holder()],
+	});
+
+	// Enabled row
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Enabled").center_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			CheckboxInput::new(options.proportional_editing_enabled)
+				.tooltip("Enable proportional editing (Alt+P)")
+				.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
+				.widget_holder(),
+		],
+	});
+
+	// Falloff type row
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Falloff Type").center_align(true).multiline(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![vec![
+				MenuListEntry::new("Smooth")
+					.label("Smooth")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Smooth)).into()),
+				MenuListEntry::new("Sphere")
+					.label("Sphere")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sphere)).into()),
+				MenuListEntry::new("Root")
+					.label("Root")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Root)).into()),
+				MenuListEntry::new("Inverse Square")
+					.label("Inverse Square")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::InverseSquare)).into()),
+				MenuListEntry::new("Sharp")
+					.label("Sharp")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sharp)).into()),
+				MenuListEntry::new("Linear")
+					.label("Linear")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Linear)).into()),
+				MenuListEntry::new("Constant")
+					.label("Constant")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Constant)).into()),
+				MenuListEntry::new("Random")
+					.label("Random")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
+			]])
+			.selected_index(Some(options.proportional_falloff_type as u32))
+			.disabled(!options.proportional_editing_enabled)
+			.widget_holder(),
+		],
+	});
+
+	// Radius row
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Radius").center_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(options.proportional_radius as f64))
+				.unit(" px")
+				.min(1.0)
+				.disabled(!options.proportional_editing_enabled)
+				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
+				.widget_holder(),
+		],
+	});
+
+	// Strength row
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Strength").center_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(options.proportional_falloff_strength as f64))
+				.min(1.0)
+				.step(1.0)
+				.disabled(!options.proportional_editing_enabled)
+				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffStrength(number_input.value.unwrap_or(1.0) as i32)).into())
+				.widget_holder(),
+		],
+	});
+
+	widgets
+}
 
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
@@ -247,59 +334,19 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
-		let proportional_editing_label = TextLabel::new("Proportional Edit").disabled(!self.options.proportional_editing_enabled).widget_holder();
-		let proportional_checkbox = CheckboxInput::new(self.options.proportional_editing_enabled)
-			.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
+		// Create the proportional edit dropdown trigger (checkbox icon)
+		// TODO: use this when icon is available?
+		// let proportional_edit_trigger = CheckboxInput::new(self.options.proportional_editing_enabled)
+		//     .icon("ProportionalEdit")
+		//     .tooltip("Proportional Editing (Alt+P)")
+		//     .on_update(|checkbox| PathToolMessage::UpdateOptions(
+		//         PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
+		//     .widget_holder();
+		let proportional_edit_trigger = CheckboxInput::new(self.options.proportional_editing_enabled)
 			.tooltip("Proportional Editing (Alt+P)")
+			.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
 			.widget_holder();
-
-		let falloff_label = TextLabel::new("Falloff").disabled(!self.options.proportional_editing_enabled).widget_holder();
-
-		let falloff_entries = vec![
-			MenuListEntry::new("Smooth")
-				.label("Smooth")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Smooth)).into()),
-			MenuListEntry::new("Sphere")
-				.label("Sphere")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sphere)).into()),
-			MenuListEntry::new("Root")
-				.label("Root")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Root)).into()),
-			MenuListEntry::new("Inverse Square")
-				.label("Inverse Square")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::InverseSquare)).into()),
-			MenuListEntry::new("Sharp")
-				.label("Sharp")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sharp)).into()),
-			MenuListEntry::new("Linear")
-				.label("Linear")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Linear)).into()),
-			MenuListEntry::new("Constant")
-				.label("Constant")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Constant)).into()),
-			MenuListEntry::new("Random")
-				.label("Random")
-				.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
-		];
-
-		let falloff_dropdown = DropdownInput::new(vec![falloff_entries])
-			.selected_index(Some(self.options.proportional_falloff_type as u32))
-			.disabled(!self.options.proportional_editing_enabled)
-			.widget_holder();
-		let radius_label = TextLabel::new("Radius").disabled(!self.options.proportional_editing_enabled).widget_holder();
-		let radius_input = NumberInput::new(Some(self.options.proportional_radius as f64))
-			.unit(" px")
-			.min(1.0)
-			.disabled(!self.options.proportional_editing_enabled)
-			.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
-			.widget_holder();
-		let strength_label = TextLabel::new("Strength").disabled(!self.options.proportional_editing_enabled).widget_holder();
-		let strength_input = NumberInput::new(Some(self.options.proportional_falloff_strength as f64))
-			.min(1 as f64)
-			.step(1 as f64)
-			.disabled(!self.options.proportional_editing_enabled)
-			.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffStrength(number_input.value.unwrap_or(1.0) as i32)).into())
-			.widget_holder();
+		let proportional_edit_dropdown = PopoverButton::new().popover_layout(proportional_edit_options(&self.options)).widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
@@ -308,27 +355,13 @@ impl LayoutHolder for PathTool {
 				y_location,
 				unrelated_seperator.clone(),
 				colinear_handle_checkbox,
-				related_seperator.clone(),
+				related_seperator,
 				colinear_handles_label,
 				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
-				unrelated_seperator.clone(),
-				proportional_editing_label,
-				related_seperator.clone(),
-				proportional_checkbox,
-				unrelated_seperator.clone(),
-				falloff_label,
-				related_seperator.clone(),
-				falloff_dropdown,
-				unrelated_seperator.clone(),
-				radius_label,
-				related_seperator.clone(),
-				radius_input,
-				unrelated_seperator.clone(),
-				strength_label,
-				related_seperator,
-				strength_input,
 				unrelated_seperator,
+				proportional_edit_trigger,
+				proportional_edit_dropdown,
 			],
 		}]))
 	}
