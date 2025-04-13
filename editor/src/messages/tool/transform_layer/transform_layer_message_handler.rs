@@ -53,7 +53,7 @@ pub struct TransformLayerMessageHandler {
 	grs_pen_handle: bool,
 
 	// Path tool ( proportional edit )
-	initial_proportional_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+	initial_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
 	proportional_edit_data: Option<ProportionalEditData>,
 }
 
@@ -109,14 +109,7 @@ impl TransformLayerMessageHandler {
 	// Apply proportional editing with the given transformation
 	fn apply_proportional_editing(&mut self, total_transformation_vp: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		if let Some(prop_data) = &self.proportional_edit_data {
-			apply_proportional_edit(
-				&self.initial_proportional_positions,
-				prop_data,
-				total_transformation_vp,
-				&document.network_interface,
-				document.metadata(),
-				responses,
-			);
+			apply_proportional_edit(&self.initial_positions, prop_data, total_transformation_vp, &document.network_interface, document.metadata(), responses);
 		}
 	}
 }
@@ -173,59 +166,59 @@ fn apply_proportional_edit(
 	document_metadata: &DocumentMetadata,
 	responses: &mut VecDeque<Message>,
 ) {
-	for (layer, affected_points) in &proportional_data.affected_points {
-		let Some(layer_initial_positions) = initial_positions.get(layer) else {
-			continue;
-		};
-
-		// Get CURRENT vector data to know the point's current position for delta calculation
+	// Iterate through layers that have initial positions
+	for (layer, layer_initial_positions) in initial_positions {
+		// Get current vector data for position comparison
 		let Some(current_vector_data) = network_interface.compute_modified_vector(*layer) else {
 			continue;
 		};
 
 		let viewspace = document_metadata.transform_to_viewport(*layer);
 
-		for (point_id, factor) in affected_points {
-			let Some(initial_pos_local) = layer_initial_positions.get(point_id) else {
-				continue;
-			};
+		// Create a lookup map for affected points
+		let affected_points_map: HashMap<PointId, f64> = proportional_data
+			.affected_points
+			.get(layer)
+			.map(|points| points.iter().map(|(id, factor)| (*id, *factor)).collect())
+			.unwrap_or_default();
 
+		// Process ALL points that were stored in initial positions
+		for (point_id, initial_pos_local) in layer_initial_positions {
 			let Some(current_pos_local) = current_vector_data.point_domain.position_from_id(*point_id) else {
 				continue;
 			};
 
-			// Transform INITIAL local position to viewport
+			// Transform initial position to viewport space
 			let initial_pos_vp = viewspace.transform_point2(*initial_pos_local);
 
-			//  Apply the TOTAL accumulated transformation (in viewport space, relative to pivot)
+			if let Some(factor) = affected_points_map.get(point_id) {
+				// AFFECTED POINT: Apply proportional transformation
+				let target_pos_fully_transformed_vp = total_transformation_vp.transform_point2(initial_pos_vp);
+				let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
 
-			let target_pos_fully_transformed_vp = total_transformation_vp.transform_point2(initial_pos_vp);
+				let strength_divisor = (proportional_data.falloff_strength as f64).max(1.0);
+				let scaled_intended_delta_vp = full_intended_delta_vp * (*factor) / strength_divisor;
 
-			// Calculate the full potential delta (relative to initial position) in viewport space
-			let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
+				let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
+				let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
 
-			// Scale this total intended delta by falloff and strength
-			let strength_divisor = (proportional_data.falloff_strength as f64).max(1.0);
+				let final_delta_local = target_pos_proportional_local - current_pos_local;
 
-			let scaled_intended_delta_vp = full_intended_delta_vp * (*factor) / strength_divisor;
+				if final_delta_local.length_squared() > 1e-10 {
+					let modification_type = VectorModificationType::ApplyPointDelta {
+						point: *point_id,
+						delta: final_delta_local,
+					};
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				}
+			} else {
+				// NOT AFFECTED: Reset to original position
+				let reset_delta = *initial_pos_local - current_pos_local;
 
-			//Calculate the final target position in viewport space
-			let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
-
-			//  Convert target viewport position back to layer space
-			let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
-
-			//  Calculate the final delta needed to move from CURRENT local to TARGET local
-			let final_delta_local = target_pos_proportional_local - current_pos_local;
-
-			// Apply this final delta
-			if final_delta_local.length_squared() > 1e-10 {
-				// Avoid tiny updates
-				let modification_type = VectorModificationType::ApplyPointDelta {
-					point: *point_id,
-					delta: final_delta_local,
-				};
-				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				if reset_delta.length_squared() > 1e-10 {
+					let modification_type = VectorModificationType::ApplyPointDelta { point: *point_id, delta: reset_delta };
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				}
 			}
 		}
 	}
@@ -341,6 +334,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					current_proportional_data.falloff_strength = proportional_data.falloff_strength;
 					current_proportional_data.radius = proportional_data.radius;
 
+					// TODO: Essentialy a hack to trigger redraw for updated values
+					responses.add(TransformLayerMessage::PointerMove {
+						slow_key: SLOW_KEY,
+						increments_key: INCREMENTS_KEY,
+					});
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
@@ -489,7 +487,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 				if final_transform {
 					self.proportional_edit_data = None;
-					self.initial_proportional_positions.clear();
+					self.initial_positions.clear();
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 			}
@@ -544,15 +542,26 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					return;
 				};
 				self.proportional_edit_data = proportional_edit_data;
-				self.initial_proportional_positions.clear();
+				self.initial_positions.clear();
 
-				if let Some(prop_data) = &self.proportional_edit_data {
-					for (layer, affected_points) in &prop_data.affected_points {
-						if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
-							let layer_initial_positions = self.initial_proportional_positions.entry(*layer).or_default();
-							for (point_id, _) in affected_points {
-								if let Some(pos_local) = vector_data.point_domain.position_from_id(*point_id) {
-									layer_initial_positions.insert(*point_id, pos_local);
+				if let Some(_prop_data) = &self.proportional_edit_data {
+					// Store positions of ALL points in selected layers, not just affected points
+					for &layer in &selected_layers {
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+							let layer_initial_positions = self.initial_positions.entry(layer).or_default();
+
+							// Get all selected points in this layer to exclude them
+							let selected_points: HashSet<PointId> = shape_editor
+								.selected_points_in_layer(layer)
+								.map(|points| points.iter().filter_map(|p| p.as_anchor()).collect())
+								.unwrap_or_default();
+
+							// Store point positions ONLY for unselected points
+							for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+								// Skip points that are selected by the user
+								if !selected_points.contains(&point_id) {
+									let pos_local = vector_data.point_domain.positions()[i];
+									layer_initial_positions.insert(point_id, pos_local);
 								}
 							}
 						}
@@ -639,7 +648,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					responses.add(ToolMessage::UpdateHints);
 				}
 				self.proportional_edit_data = None;
-				self.initial_proportional_positions.clear();
+				self.initial_positions.clear();
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => {
@@ -816,14 +825,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				// selected.apply_transformation(total_transformation_vp, Some(self.transform_operation));
 
 				if let Some(prop_data) = &self.proportional_edit_data {
-					apply_proportional_edit(
-						&self.initial_proportional_positions,
-						prop_data,
-						total_transformation_vp,
-						&document.network_interface,
-						document.metadata(),
-						responses,
-					);
+					apply_proportional_edit(&self.initial_positions, prop_data, total_transformation_vp, &document.network_interface, document.metadata(), responses);
 				}
 				self.mouse_position = input.mouse.position;
 			}
