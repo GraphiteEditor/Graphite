@@ -394,10 +394,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			}
 			ToolMessage::Path(PathToolMessage::AdjustProportionalRadius) => {
 				if self.options.proportional_editing_enabled {
-					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32)).max(1);
+					self.options.proportional_radius = (self.options.proportional_radius + (-tool_data.input.mouse.scroll_delta.y as i32)).max(1);
+					// Store previous affected points
+					let previous_affected = self.tool_data.proportional_affected_points.clone();
+
 					self.tool_data
 						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+					if self.tool_data.is_dragging {
+						// Reset points no longer affected
+						self.tool_data.reset_removed_points(&previous_affected, tool_data.document, tool_data.shape_editor, responses);
 
+						// Update current points
+						self.tool_data.update_proportional_positions(tool_data.document, tool_data.shape_editor, &self.options, responses);
+					}
 					// Create updated proportional edit data
 					let proportional_data = ProportionalEditData {
 						center: self.tool_data.proportional_edit_center.unwrap_or_default(),
@@ -565,6 +574,8 @@ struct PathToolData {
 	proportional_edit_center: Option<DVec2>,
 	proportional_affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
 	initial_point_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+	total_delta: DVec2,
+	is_dragging: bool,
 }
 
 impl PathToolData {
@@ -862,7 +873,9 @@ impl PathToolData {
 		shape_editor: &mut ShapeState,
 		tool_options: &PathToolOptions,
 	) {
+		self.is_dragging = true;
 		if tool_options.proportional_editing_enabled {
+			self.total_delta = DVec2::ZERO;
 			self.initial_point_positions.clear();
 			self.proportional_edit_center = shape_editor.selection_center(document);
 			self.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
@@ -1091,7 +1104,52 @@ impl PathToolData {
 
 		self.snapping_axis = None;
 	}
+	fn reset_removed_points(&self, previous: &HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>) {
+		for (layer, prev_points) in previous {
+			let current_points = self
+				.proportional_affected_points
+				.get(layer)
+				.map(|v| v.iter().map(|(id, _)| *id).collect::<HashSet<_>>())
+				.unwrap_or_default();
 
+			for (point_id, _) in prev_points {
+				if !current_points.contains(point_id) {
+					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
+						let inverse_transform = document.metadata().transform_to_document(*layer).inverse();
+						let target_layer_pos = inverse_transform.transform_point2(*initial_doc_pos);
+
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
+							if let Some(current_layer_pos) = vector_data.point_domain.position_from_id(*point_id) {
+								let delta = target_layer_pos - current_layer_pos;
+								shape_editor.move_anchor(*point_id, &vector_data, delta, *layer, None, responses);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	fn update_proportional_positions(&self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, options: &PathToolOptions, responses: &mut VecDeque<Message>) {
+		for (layer, affected_points) in &self.proportional_affected_points {
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
+				let inverse_transform = document.metadata().transform_to_document(*layer).inverse();
+
+				for (point_id, factor) in affected_points {
+					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
+						let displacement_doc = self.total_delta * (*factor / options.proportional_falloff_strength as f64);
+						let target_doc_pos = *initial_doc_pos + displacement_doc;
+						let target_layer_pos = inverse_transform.transform_point2(target_doc_pos);
+
+						if let Some(current_layer_pos) = vector_data.point_domain.position_from_id(*point_id) {
+							let delta = target_layer_pos - current_layer_pos;
+							shape_editor.move_anchor(*point_id, &vector_data, delta, *layer, None, responses);
+						}
+					}
+				}
+			}
+		}
+	}
 	#[allow(clippy::too_many_arguments)]
 	fn drag(
 		&mut self,
@@ -1154,7 +1212,8 @@ impl PathToolData {
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
-
+		// Accumulate total displacement
+		self.total_delta += snapped_delta;
 		if tool_options.proportional_editing_enabled && !self.proportional_affected_points.is_empty() {
 			for (&layer, affected_points) in &self.proportional_affected_points {
 				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
@@ -1672,6 +1731,7 @@ impl Fsm for PathToolFsmState {
 						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Lasso(&tool_data.lasso_polygon), select_kind),
 					}
 				}
+				tool_data.is_dragging = false;
 				tool_data.initial_point_positions.clear();
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -1716,7 +1776,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.snapping_axis.is_some() {
 					tool_data.snapping_axis = None;
 				}
-
+				tool_data.is_dragging = false;
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
