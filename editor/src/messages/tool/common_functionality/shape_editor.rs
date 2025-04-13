@@ -1447,7 +1447,14 @@ impl ShapeState {
 					if select {
 						match selection_change {
 							SelectionChange::Shrink => state.deselect_point(id),
-							_ => state.select_point(id),
+							_ => {
+								// Select only the handles which are of nonzero length
+								if let Some(handle) = id.as_handle() {
+									if handle.length(&vector_data) > 0. {
+										state.select_point(id)
+									}
+								}
+							}
 						}
 					}
 				}

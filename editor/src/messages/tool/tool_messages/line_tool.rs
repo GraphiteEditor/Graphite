@@ -468,6 +468,39 @@ mod test_line_tool {
 	}
 
 	#[tokio::test]
+	async fn test_line_tool_with_transformed_viewport() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100.0, 50.0) }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30.0_f64.to_radians() }).await;
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			let document = editor.active_document();
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let viewport_to_document = document_to_viewport.inverse();
+
+			let expected_start = viewport_to_document.transform_point2(DVec2::ZERO);
+			let expected_end = viewport_to_document.transform_point2(DVec2::new(100.0, 100.0));
+
+			assert!(
+				(start_input - expected_start).length() < 1.0,
+				"Start point should match expected document coordinates. Got {:?}, expected {:?}",
+				start_input,
+				expected_start
+			);
+			assert!(
+				(end_input - expected_end).length() < 1.0,
+				"End point should match expected document coordinates. Got {:?}, expected {:?}",
+				end_input,
+				expected_end
+			);
+		} else {
+			panic!("Line was not created successfully with transformed viewport");
+		}
+	}
+
+	#[tokio::test]
 	async fn test_line_tool_ctrl_anglelock() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
