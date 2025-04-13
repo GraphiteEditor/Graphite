@@ -3,7 +3,7 @@ use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELEC
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
@@ -62,9 +62,16 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 		match action {
 			GradientOptionsUpdate::Type(gradient_type) => {
 				self.options.gradient_type = gradient_type;
+				// Update the selected gradient if it exists
 				if let Some(selected_gradient) = &mut self.data.selected_gradient {
-					selected_gradient.gradient.gradient_type = gradient_type;
-					selected_gradient.render_gradient(responses);
+					// Check if the current layer is a raster layer
+					if let Some(layer) = selected_gradient.layer {
+						if NodeGraphLayer::is_raster_layer(layer, &mut tool_data.document.network_interface) {
+							return; // Don't proceed if it's a raster layer
+						}
+						selected_gradient.gradient.gradient_type = gradient_type;
+						selected_gradient.render_gradient(responses);
+					}
 				}
 			}
 		}
@@ -406,6 +413,10 @@ impl Fsm for GradientToolFsmState {
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
+						// Add check for raster layer
+						if NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface) {
+							return GradientToolFsmState::Ready;
+						}
 						if !document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata()) {
 							let nodes = vec![layer.to_node()];
 
@@ -556,8 +567,6 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	// TODO: remove once https://github.com/GraphiteEditor/Graphite/issues/2444 is fixed
-	#[should_panic]
 	async fn ignore_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
