@@ -137,7 +137,7 @@ impl WasmSubpath {
 		let r = separation_disk_diameter / 2.;
 
 		let subpath_svg = self.to_default_svg();
-		let points = self.0.poisson_disk_points(separation_disk_diameter, Math::random);
+		let points = self.0.poisson_disk_points(separation_disk_diameter, Math::random, &[(self.0.clone(), self.0.bounding_box().unwrap())]);
 
 		let points_style = format!("<style class=\"poisson\">style.poisson ~ circle {{ fill: {RED}; opacity: 0.25; }}</style>");
 		let content = points
