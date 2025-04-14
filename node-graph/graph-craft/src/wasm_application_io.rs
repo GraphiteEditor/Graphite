@@ -71,7 +71,7 @@ pub fn wgpu_available() -> Option<bool> {
 	// Always enable wgpu when running with Tauri
 	#[cfg(target_arch = "wasm32")]
 	if let Some(window) = web_sys::window() {
-		if let Ok(tauri) = js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")) {
+		if js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")).is_ok() {
 			return Some(true);
 		}
 	}
