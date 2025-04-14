@@ -37,9 +37,9 @@ impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 				self.update_layout(responses);
 			}
 
-			SpreadsheetMessage::UpdateLayout { inspect_result } => {
+			SpreadsheetMessage::UpdateLayout { mut inspect_result } => {
 				self.inspect_node = Some(inspect_result.inspect_node);
-				self.introspected_data = inspect_result.introspected_data;
+				self.introspected_data = inspect_result.take_data();
 				self.update_layout(responses)
 			}
 
