@@ -13,7 +13,7 @@ impl Context {
 	pub async fn new() -> Option<Self> {
 		// Instantiates instance of WebGPU
 		let instance_descriptor = wgpu::InstanceDescriptor {
-			backends: wgpu::Backends::VULKAN | wgpu::Backends::BROWSER_WEBGPU,
+			backends: wgpu::Backends::all(),
 			..Default::default()
 		};
 		let instance = wgpu::Instance::new(instance_descriptor);
