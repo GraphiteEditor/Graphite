@@ -1227,7 +1227,7 @@ mod test_transform_layer {
 
 		// Test 4: Transform layers inside transformed group
 		let child_layer_id = {
-			let mut document = editor.active_document_mut();
+			let document = editor.active_document_mut();
 			let group_children = document.network_interface.downstream_layers(&group_layer.to_node(), &[]);
 			if !group_children.is_empty() {
 				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface, &[]))

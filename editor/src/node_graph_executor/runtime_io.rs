@@ -94,7 +94,7 @@ impl NodeRuntimeIO {
 	}
 }
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", not(test)))]
 pub fn create_message_object(message: &str) -> JsValue {
 	let obj = js_sys::Object::new();
 	js_sys::Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(message)).unwrap();

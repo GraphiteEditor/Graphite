@@ -3,7 +3,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, generate_uuid};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, generate_uuid};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, RenderConfig};
@@ -15,8 +15,7 @@ use graphene_core::vector::style::ViewMode;
 use graphene_std::application_io::TimingInformation;
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::vector::VectorData;
-use interpreted_executor::dynamic_executor::{IntrospectError, ResolvedDocumentNodeTypesDelta};
-use std::sync::Arc;
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 mod runtime_io;
 pub use runtime_io::NodeRuntimeIO;
@@ -404,9 +403,12 @@ pub use test::Instrumented;
 
 #[cfg(test)]
 mod test {
+	use std::sync::Arc;
+
 	use super::*;
 	use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
+	use graph_craft::document::NodeNetwork;
 	use graphene_std::Context;
 	use graphene_std::NodeInputDecleration;
 	use graphene_std::memo::IORecord;

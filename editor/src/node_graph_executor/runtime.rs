@@ -12,7 +12,6 @@ use graphene_core::memo::IORecord;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_core::text::FontCache;
-use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::Context;
 use graphene_std::vector::{VectorData, VectorDataTable};

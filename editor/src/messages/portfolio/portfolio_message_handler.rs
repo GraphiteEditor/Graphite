@@ -24,8 +24,6 @@ use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
-use interpreted_executor::dynamic_executor::IntrospectError;
-use std::sync::Arc;
 use std::vec;
 
 pub struct PortfolioMessageData<'a> {
