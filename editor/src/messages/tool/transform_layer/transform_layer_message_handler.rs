@@ -713,14 +713,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 #[cfg(test)]
 mod test_transform_layer {
-	use crate::messages::{
-		portfolio::document::graph_operation::{
-			transform_utils,
-			utility_types::{ModifyInputsContext, TransformIn},
-		},
-		prelude::Message,
-		tool::transform_layer::transform_layer_message_handler::VectorModificationType,
-	};
+	use crate::messages::portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext};
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+	use crate::messages::prelude::Message;
+	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_core::vector::PointId;
@@ -1149,5 +1145,114 @@ mod test_transform_layer {
 		let new_scale_y = final_transform.matrix2.y_axis.length();
 		assert!(new_scale_x > 0.0, "After rescaling, scale factor X should be non-zero");
 		assert!(new_scale_y > 0.0, "After rescaling, scale factor Y should be non-zero");
+	}
+
+	#[tokio::test]
+	async fn test_transform_with_different_selections() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.draw_rect(150., 0., 250., 100.).await;
+		editor.draw_rect(0., 150., 100., 250.).await;
+		editor.draw_rect(150., 150., 250., 250.).await;
+		let document = editor.active_document();
+		let layers: Vec<LayerNodeIdentifier> = document.metadata().all_layers().collect();
+
+		assert!(layers.len() == 4);
+
+		// Creating a group with two rectangles
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![layers[2].to_node(), layers[3].to_node()],
+			})
+			.await;
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		// Get the group layer (should be the newest layer)
+		let document = editor.active_document();
+		let group_layer = document.metadata().all_layers().next().unwrap();
+
+		// Test 1: Transform single layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layers[0].to_node()] }).await;
+		let original_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Transform should change for single layer");
+
+		// Test 2: Transform multiple layers
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![layers[0].to_node(), layers[1].to_node()],
+			})
+			.await;
+		let original_transform_1 = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		let original_transform_2 = get_layer_transform(&mut editor, layers[1]).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		editor.move_mouse(200.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform_1 = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		let final_transform_2 = get_layer_transform(&mut editor, layers[1]).await.unwrap();
+		assert!(!final_transform_1.abs_diff_eq(original_transform_1, 1e-5), "Transform should change for first layer in multi-selection");
+		assert!(
+			!final_transform_2.abs_diff_eq(original_transform_2, 1e-5),
+			"Transform should change for second layer in multi-selection"
+		);
+
+		// Test 3: Transform group
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![group_layer.to_node()] }).await;
+		let original_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
+		assert!(!final_group_transform.abs_diff_eq(original_group_transform, 1e-5), "Transform should change for group");
+
+		// Test 4: Transform layers inside transformed group
+		let child_layer_id = {
+			let document = editor.active_document_mut();
+			let group_children = document.network_interface.downstream_layers(&group_layer.to_node(), &[]);
+			if !group_children.is_empty() {
+				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface, &[]))
+			} else {
+				None
+			}
+		};
+		assert!(child_layer_id.is_some(), "Group should have child layers");
+		let child_layer_id = child_layer_id.unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![child_layer_id.to_node()],
+			})
+			.await;
+		let original_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(30.0, 30.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
+		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
 	}
 }
