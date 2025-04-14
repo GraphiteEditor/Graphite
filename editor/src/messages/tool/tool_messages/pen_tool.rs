@@ -609,7 +609,7 @@ impl PenToolData {
 		let mut end = None;
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(self.prior_segment_layer)?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
@@ -1032,7 +1032,7 @@ impl PenToolData {
 
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(self.prior_segment_layer)?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let transform = document.metadata().document_to_viewport * transform;
 		for point in vector_data.extendable_points(preferences.vector_meshes) {
@@ -1369,7 +1369,7 @@ impl Fsm for PenToolFsmState {
 
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none());
+		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(tool_data.prior_segment_layer);
 		let mut transform = layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
