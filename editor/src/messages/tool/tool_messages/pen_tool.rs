@@ -1659,7 +1659,7 @@ impl Fsm for PenToolFsmState {
 								})
 								.collect();
 
-							let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
+							let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.2).to_rgba_hex_srgb();
 							fill_color.insert(0, '#');
 
 							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());

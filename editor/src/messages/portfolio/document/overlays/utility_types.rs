@@ -553,17 +553,29 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	/// Outline a path and draw diagonal lines inside.
-	/// This isn't used by any tool, but it's kept in case we need it in the future
-	pub fn outline_striped(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	/// Fills the area inside the path
+	/// This is used by the fill tool to show the area to be filled and by the pen tool to show the path being closed
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
+	}
+
+	pub fn fill_striped_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
 
 		// Canvas state must be saved before clipping
 		self.render_context.save();
 		self.render_context.clip();
 
+		self.render_context.set_line_width(0.8);
+
 		// Draw the diagonal lines
-		let line_separation = 50 as f64; // in px
+		let line_separation = 25 as f64; // in px
 		let max_dimension = if self.size.x > self.size.y { self.size.x } else { self.size.y };
 		let end = (max_dimension / line_separation * 2.0).ceil() as i32;
 		for n in 1..end {
@@ -575,15 +587,6 @@ impl OverlayContext {
 
 		// Undo the clipping
 		self.render_context.restore();
-	}
-
-	/// Fills the area inside the path
-	/// This is used by the fill tool to show the area to be filled and by the pen tool to show the path being closed
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.push_path(subpaths, transform);
-
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {
