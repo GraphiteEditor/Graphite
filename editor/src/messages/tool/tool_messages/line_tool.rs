@@ -432,7 +432,9 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 #[cfg(test)]
 mod test_line_tool {
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::{messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer, test_utils::test_prelude::*};
+	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
 
 	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
@@ -559,6 +561,49 @@ mod test_line_tool {
 					assert!((angle_degrees - nearest_angle).abs() < 1.0, "Angle should snap to the nearest 15 degrees");
 				}
 			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_with_transformed_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Artboard).await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 200., 200., ModifierKeys::empty()).await;
+
+		let artboard_id = editor
+			.active_document()
+			.network_interface
+			.selected_nodes()
+			.selected_layers(editor.active_document().metadata())
+			.next()
+			.unwrap();
+
+		editor
+			.handle_message(GraphOperationMessage::TransformChange {
+				layer: artboard_id,
+				transform: DAffine2::from_angle(45.0_f64.to_radians()),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.drag_tool(ToolType::Line, 50., 50., 150., 150., ModifierKeys::empty()).await;
+
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			let line_vector = end_input - start_input;
+			let line_length = line_vector.length();
+			assert!((line_length - 141.42).abs() < 1.0, "Line length should be approximately 141.42 units. Got: {line_length}");
+			assert!((line_vector.x - 100.0).abs() < 1.0, "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
+			assert!(
+				(line_vector.y.abs() - 100.0).abs() < 1.0,
+				"Absolute Y-component of line vector should be approximately 100. Got: {}",
+				line_vector.y.abs()
+			);
+			let angle_degrees = line_vector.angle_to(DVec2::X).to_degrees();
+			assert!((angle_degrees - (-45.0)).abs() < 1.0, "Line angle should be close to -45 degrees. Got: {angle_degrees}");
+		} else {
+			panic!("Line was not created successfully within transformed artboard");
 		}
 	}
 }
