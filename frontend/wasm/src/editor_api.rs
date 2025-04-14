@@ -152,6 +152,12 @@ impl EditorHandle {
 						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
+
+						// Used by auto-panning, but this could possibly be refactored in the future, see:
+						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
+						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+							handle.send_frontend_message_to_js(message);
+						}
 					});
 				}
 
