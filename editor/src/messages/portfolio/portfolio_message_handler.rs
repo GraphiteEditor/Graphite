@@ -1202,10 +1202,6 @@ impl PortfolioMessageHandler {
 		Self { executor, ..Default::default() }
 	}
 
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync>, IntrospectError> {
-		self.executor.introspect_node(node_path).await
-	}
-
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
 		self.documents.get(&document_id)
 	}

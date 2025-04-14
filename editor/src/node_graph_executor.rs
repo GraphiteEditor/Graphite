@@ -103,10 +103,6 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	pub async fn introspect_node(&self, path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-		introspect_node(path).await
-	}
-
 	pub fn update_font_cache(&self, font_cache: FontCache) {
 		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
@@ -115,26 +111,6 @@ impl NodeGraphExecutor {
 		self.runtime_io
 			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
 			.expect("Failed to send editor preferences");
-	}
-
-	pub fn introspect_node_in_network<T: std::any::Any + core::fmt::Debug, U, F1: FnOnce(&NodeNetwork) -> Option<NodeId>, F2: FnOnce(&T) -> U>(
-		&mut self,
-		network: &NodeNetwork,
-		node_path: &[NodeId],
-		find_node: F1,
-		extract_data: F2,
-	) -> Option<U> {
-		let wrapping_document_node = network.nodes.get(node_path.last()?)?;
-		let DocumentNodeImplementation::Network(wrapped_network) = &wrapping_document_node.implementation else {
-			return None;
-		};
-		let introspection_node = find_node(wrapped_network)?;
-		let introspection = futures::executor::block_on(self.introspect_node(&[node_path, &[introspection_node]].concat())).ok()?;
-		let Some(downcasted): Option<&T> = <dyn std::any::Any>::downcast_ref(introspection.as_ref()) else {
-			log::warn!("Failed to downcast type for introspection");
-			return None;
-		};
-		Some(extract_data(downcasted))
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
