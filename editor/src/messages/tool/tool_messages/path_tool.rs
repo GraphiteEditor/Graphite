@@ -170,22 +170,10 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 		widgets: vec![TextLabel::new("Proportional Edit").bold(true).widget_holder()],
 	});
 
-	// Enabled row
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![
-			TextLabel::new("Enabled").center_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(options.proportional_editing_enabled)
-				.tooltip("Enable proportional editing (Alt+P)")
-				.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
-				.widget_holder(),
-		],
-	});
-
 	// Falloff type row
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Falloff Type").center_align(true).multiline(true).widget_holder(),
+			TextLabel::new("Falloff Type").table_align(true).min_width(100).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(vec![vec![
 				MenuListEntry::new("Smooth")
@@ -222,11 +210,12 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 	// Radius row
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Radius").center_align(true).widget_holder(),
+			TextLabel::new("Radius").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(options.proportional_radius as f64))
 				.unit(" px")
 				.min(1.0)
+				.min_width(100)
 				.disabled(!options.proportional_editing_enabled)
 				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
 				.widget_holder(),
@@ -236,11 +225,12 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 	// Strength row
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Strength").center_align(true).widget_holder(),
+			TextLabel::new("Strength").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(options.proportional_falloff_strength as f64))
 				.min(1.0)
 				.step(1.0)
+				.min_width(100)
 				.disabled(!options.proportional_editing_enabled)
 				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffStrength(number_input.value.unwrap_or(1.0) as i32)).into())
 				.widget_holder(),
@@ -841,37 +831,65 @@ impl PathToolData {
 			}
 		}
 
-		// find all the affected points
-		for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-				let transform = document.metadata().transform_to_document(layer);
-				let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+		// // find all the affected points ( THIS WORKS BASED ON CURRENT AFFECTED POINT LOCATION -> ORIGINAL SELECTED POINT LOCATION FOR FALLOFF CALCULATION)
+		// for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+		// 	if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+		// 		let transform = document.metadata().transform_to_document(layer);
+		// 		let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
 
-				let mut layer_affected_points = Vec::new();
+		// 		let mut layer_affected_points = Vec::new();
 
-				//  each point in the layer
-				for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
-					if !selected_points.contains(&point_id) {
-						let position = vector_data.point_domain.positions()[i];
-						let world_pos = transform.transform_point2(position);
+		// 		//  each point in the layer
+		// 		for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+		// 			if !selected_points.contains(&point_id) {
+		// 				let position = vector_data.point_domain.positions()[i];
+		// 				let world_pos = transform.transform_point2(position);
 
-						// Find the smallest distance to any selected point
-						let min_distance = selected_points_world_pos
-							.iter()
-							.map(|&selected_pos| world_pos.distance(selected_pos))
-							.filter(|&distance| distance <= radius)
-							.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+		// 				// Find the smallest distance to any selected point
+		// 				let min_distance = selected_points_world_pos
+		// 					.iter()
+		// 					.map(|&selected_pos| world_pos.distance(selected_pos)) // Difference here
+		// 					.filter(|&distance| distance <= radius)
+		// 					.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-						if let Some(distance) = min_distance {
-							let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
-							layer_affected_points.push((point_id, factor));
-						}
+		// 				if let Some(distance) = min_distance {
+		// 					let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
+		// 					layer_affected_points.push((point_id, factor));
+		// 				}
+		// 			}
+		// 		}
+
+		// 		if !layer_affected_points.is_empty() {
+		// 			self.proportional_affected_points.insert(layer, layer_affected_points);
+		// 		}
+		// 	}
+		// }
+
+		// Find all affected points using initial positions  ( THIS WORKS BASED ON INITIAL AFFECTED POINT LOCATION -> ORIGINAL SELECTED POINT LOCATION FOR FALLOFF CALCULATION)
+		for (layer, points_map) in &self.initial_point_positions {
+			let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+			let mut layer_affected_points = Vec::new();
+
+			// Check each point in the layer
+			for (&point_id, &initial_position) in points_map {
+				if !selected_points.contains(&point_id) {
+					// Find the smallest distance to any selected point using initial positions
+					let min_distance = selected_points_world_pos
+						.iter()
+						.map(|&selected_pos| initial_position.distance(selected_pos))
+						.filter(|&distance| distance <= radius)
+						.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+					if let Some(distance) = min_distance {
+						let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
+						layer_affected_points.push((point_id, factor));
 					}
 				}
+			}
 
-				if !layer_affected_points.is_empty() {
-					self.proportional_affected_points.insert(layer, layer_affected_points);
-				}
+			if !layer_affected_points.is_empty() {
+				self.proportional_affected_points.insert(*layer, layer_affected_points);
 			}
 		}
 	}
@@ -910,6 +928,7 @@ impl PathToolData {
 		if tool_options.proportional_editing_enabled {
 			self.total_delta = DVec2::ZERO;
 			self.initial_point_positions.clear();
+			self.store_initial_point_positions(document);
 			self.proportional_edit_center = shape_editor.selection_center(document);
 			self.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
 		}
@@ -1162,18 +1181,28 @@ impl PathToolData {
 			}
 		}
 	}
-
 	fn update_proportional_positions(&self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, options: &PathToolOptions, responses: &mut VecDeque<Message>) {
+		// Get a set of all selected point IDs across all layers
+		let selected_points: HashSet<PointId> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
 		for (layer, affected_points) in &self.proportional_affected_points {
 			if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
-				let inverse_transform = document.metadata().transform_to_document(*layer).inverse();
+				let transform = document.metadata().transform_to_document(*layer);
+				let inverse_transform = transform.inverse();
 
 				for (point_id, factor) in affected_points {
+					// Skip this point if it's in the selected_points set
+					if selected_points.contains(point_id) {
+						continue;
+					}
+
 					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
+						// Calculate displacement from initial position to target position
 						let displacement_doc = self.total_delta * (*factor / options.proportional_falloff_strength as f64);
 						let target_doc_pos = *initial_doc_pos + displacement_doc;
 						let target_layer_pos = inverse_transform.transform_point2(target_doc_pos);
 
+						// Get current position and calculate delta
 						if let Some(current_layer_pos) = vector_data.point_domain.position_from_id(*point_id) {
 							let delta = target_layer_pos - current_layer_pos;
 							shape_editor.move_anchor(*point_id, &vector_data, delta, *layer, None, responses);
@@ -1233,6 +1262,7 @@ impl PathToolData {
 		let unsnapped_delta = current_mouse - previous_mouse;
 
 		if self.snapping_axis.is_none() {
+			self.total_delta += snapped_delta;
 			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
@@ -1242,28 +1272,30 @@ impl PathToolData {
 				Axis::Y => DVec2::new(0., unsnapped_delta.y),
 				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
+			self.total_delta += unsnapped_delta;
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 		// Accumulate total displacement
-		self.total_delta += snapped_delta;
+
 		if tool_options.proportional_editing_enabled && !self.proportional_affected_points.is_empty() {
-			for (&layer, affected_points) in &self.proportional_affected_points {
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-					let inverse_transform = document.metadata().transform_to_document(layer).inverse();
+			self.update_proportional_positions(document, shape_editor, tool_options, responses);
+			// for (&layer, affected_points) in &self.proportional_affected_points {
+			// 	if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+			// 		let inverse_transform = document.metadata().transform_to_document(layer).inverse();
 
-					for &(point_id, factor) in affected_points {
-						// Scale the delta by the influence factor
-						let scaled_delta = (snapped_delta * factor) / (tool_options.proportional_falloff_strength as f64);
+			// 		for &(point_id, factor) in affected_points {
+			// 			// Scale the delta by the influence factor
+			// 			let scaled_delta = (snapped_delta * factor) / (tool_options.proportional_falloff_strength as f64);
 
-						// Convert to document space
-						let document_delta = document_to_viewport.inverse().transform_vector2(scaled_delta);
+			// 			// Convert to document space
+			// 			let document_delta = document_to_viewport.inverse().transform_vector2(scaled_delta);
 
-						// Apply the movement
-						shape_editor.move_anchor(point_id, &vector_data, inverse_transform.transform_vector2(document_delta), layer, None, responses);
-					}
-				}
-			}
+			// 			// Apply the movement
+			// 			shape_editor.move_anchor(point_id, &vector_data, inverse_transform.transform_vector2(document_delta), layer, None, responses);
+			// 		}
+			// 	}
+			// }
 		}
 
 		if snap_angle && self.snapping_axis.is_some() {
@@ -1293,14 +1325,19 @@ impl PathToolData {
 			ProportionalFalloffType::Sharp => (1.0 - normalized_distance).powi(2),
 			ProportionalFalloffType::Root => (1.0 - normalized_distance).sqrt(),
 			ProportionalFalloffType::Sphere => (1.0 - normalized_distance.powi(2)).sqrt(),
-			ProportionalFalloffType::Smooth => 3.0 * normalized_distance.powi(2) - 2.0 * normalized_distance.powi(3),
+			// ProportionalFalloffType::Smooth => 3.0 * normalized_distance.powi(2) - 2.0 * normalized_distance.powi(3),
+			// Modified Smooth: starts higher at distance=0 and provides a more gradual falloff
+			ProportionalFalloffType::Smooth => 1.0 - (normalized_distance.powi(2) * (3.0 - 2.0 * normalized_distance)),
 			ProportionalFalloffType::Random => {
 				// Seed RNG with position-based value for consistency
 				let seed = (distance * 1000.0) as u64;
 				let mut rng = ChaCha20Rng::seed_from_u64(seed);
 				rng.random_range(0.0..1.0) * (1.0 - normalized_distance)
 			}
-			ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 10.0 + 0.1),
+			// ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 10.0 + 0.1),
+			// Modified InverseSquare: reduces the steepness and maximum value
+			// ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 3.0 + 0.5),
+			ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 2.0 + 1.0),
 		}
 	}
 }
@@ -1725,6 +1762,8 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				tool_data.is_dragging = false;
+				tool_data.initial_point_positions.clear();
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
@@ -1737,6 +1776,8 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Drawing { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				tool_data.is_dragging = false;
+				tool_data.initial_point_positions.clear();
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
