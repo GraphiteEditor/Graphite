@@ -1245,17 +1245,23 @@ async fn poisson_disk_points(
 	if separation_disk_diameter <= 0.01 {
 		return VectorDataTable::new(result);
 	}
+	let path_with_bounding_boxes: Vec<_> = vector_data
+		.stroke_bezier_paths()
+		.filter_map(|mut subpath| {
+			// TODO: apply transform to points instead of modifying the paths
+			subpath.apply_transform(vector_data_transform);
+			subpath.loose_bounding_box().map(|bb| (subpath, bb))
+		})
+		.collect();
 
-	for mut subpath in vector_data.stroke_bezier_paths() {
+	for (subpath, _) in &path_with_bounding_boxes {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
 
-		subpath.apply_transform(vector_data_transform);
-
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>()) {
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 
