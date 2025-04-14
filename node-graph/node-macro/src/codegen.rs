@@ -252,6 +252,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
+	let output_fields = match attributes.deconstruct_output {
+		false => quote!(&[]),
+		true => quote!(#output_type::fields),
+	};
+
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier);
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
@@ -310,6 +315,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					category: #category,
 					description: #description,
 					properties: #properties,
+					output_fields: #output_fields,
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -371,7 +377,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 			impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
 				const INDEX: usize = #input_index;
 				fn identifier() -> &'static str {
-					protonode_identifier()
+					#identifier
 				}
 				type Result = #ty;
 			}
@@ -381,12 +387,6 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, fn_generics: &[crate::G
 	quote! {
 		pub mod #inputs_module_name {
 			use super::*;
-
-			pub fn protonode_identifier() -> &'static str {
-				// Storing the string in a once lock should reduce allocations (since we call this in a loop)?
-				static NODE_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-				NODE_NAME.get_or_init(|| #identifier )
-			}
 			#(#generated_input_accessor)*
 		}
 	}

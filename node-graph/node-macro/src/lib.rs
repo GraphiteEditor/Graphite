@@ -125,6 +125,21 @@ pub fn old_node_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	node_impl_proxy(attr, item)
 }
 
+mod destruct;
+
+#[proc_macro_error]
+#[proc_macro_derive(Destruct)]
+/// Derives the `Destruct` trait for structs and creates acessor node implementations.
+pub fn derive_destruct(item: TokenStream) -> TokenStream {
+	let s = syn::parse_macro_input!(item as syn::DeriveInput);
+	let parse_result = destruct::derive(s.ident, s.data).into();
+	let Ok(parsed_node) = parse_result else {
+		let e = parse_result.unwrap_err();
+		return syn::Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error().into();
+	};
+	parsed_node.into()
+}
+
 fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	let node = parse_macro_input!(attr as syn::PathSegment);
 

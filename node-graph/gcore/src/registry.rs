@@ -35,6 +35,7 @@ pub struct NodeMetadata {
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
 	pub properties: Option<&'static str>,
+	pub output_fields: &'static [StructField],
 }
 
 // Translation struct between macro and definition
@@ -49,6 +50,25 @@ pub struct FieldMetadata {
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
+}
+
+pub struct StructField {
+	pub name: &'static str,
+	pub node_path: &'static str,
+	pub ty: Type,
+}
+
+pub trait Destruct {
+	fn fields(&self) -> &'static [StructField];
+}
+
+impl<T> Destruct for &T
+where
+	T: Default,
+{
+	fn fields(&self) -> &'static [StructField] {
+		&[]
+	}
 }
 
 #[derive(Clone, Debug)]

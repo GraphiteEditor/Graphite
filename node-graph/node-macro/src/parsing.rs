@@ -43,6 +43,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
 	pub(crate) properties_string: Option<LitStr>,
+	pub(crate) deconstruct_output: bool,
 	// Add more attributes as needed
 }
 
@@ -173,6 +174,7 @@ impl Parse for NodeFnAttributes {
 		let mut display_name = None;
 		let mut path = None;
 		let mut skip_impl = false;
+		let mut deconstruct_output = false;
 		let mut properties_string = None;
 
 		let content = input;
@@ -213,6 +215,12 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
+				Meta::Path(path) if path.is_ident("deconstruct_output") => {
+					if skip_impl {
+						return Err(Error::new_spanned(path, "Multiple 'deconstruct_output' attributes are not allowed"));
+					}
+					deconstruct_output = true;
+				}
 				Meta::List(meta) if meta.path.is_ident("properties") => {
 					if properties_string.is_some() {
 						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
@@ -229,7 +237,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path' and 'name'.
+							Supported attributes are 'category', 'path', 'skip_impl', 'deconstruct_output', 'properties_string' and 'name'.
 							
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
@@ -246,6 +254,7 @@ impl Parse for NodeFnAttributes {
 			path,
 			skip_impl,
 			properties_string,
+			deconstruct_output,
 		})
 	}
 }
