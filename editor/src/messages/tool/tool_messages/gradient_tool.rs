@@ -3,7 +3,7 @@ use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELEC
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
@@ -62,9 +62,16 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 		match action {
 			GradientOptionsUpdate::Type(gradient_type) => {
 				self.options.gradient_type = gradient_type;
+				// Update the selected gradient if it exists
 				if let Some(selected_gradient) = &mut self.data.selected_gradient {
-					selected_gradient.gradient.gradient_type = gradient_type;
-					selected_gradient.render_gradient(responses);
+					// Check if the current layer is a raster layer
+					if let Some(layer) = selected_gradient.layer {
+						if NodeGraphLayer::is_raster_layer(layer, &mut tool_data.document.network_interface) {
+							return; // Don't proceed if it's a raster layer
+						}
+						selected_gradient.gradient.gradient_type = gradient_type;
+						selected_gradient.render_gradient(responses);
+					}
 				}
 			}
 		}
@@ -406,6 +413,10 @@ impl Fsm for GradientToolFsmState {
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
+						// Add check for raster layer
+						if NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface) {
+							return GradientToolFsmState::Ready;
+						}
 						if !document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata()) {
 							let nodes = vec![layer.to_node()];
 
@@ -522,6 +533,8 @@ impl Fsm for GradientToolFsmState {
 
 #[cfg(test)]
 mod test_gradient {
+	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
+	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
 	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -554,8 +567,6 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	// TODO: remove once https://github.com/GraphiteEditor/Graphite/issues/2444 is fixed
-	#[should_panic]
 	async fn ignore_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -644,5 +655,58 @@ mod test_gradient {
 		let gradient = fill.as_gradient().unwrap();
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
+	}
+
+	#[tokio::test]
+	async fn double_click_insert_stop() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_secondary_color(Color::BLUE).await;
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// Get initial gradient state (should have 2 stops)
+		let initial_fills = get_fills(&mut editor).await;
+		assert_eq!(initial_fills.len(), 1);
+		let (initial_fill, _) = initial_fills.first().unwrap();
+		let initial_gradient = initial_fill.as_gradient().unwrap();
+		assert_eq!(initial_gradient.stops.len(), 2);
+
+		editor.select_tool(ToolType::Gradient).await;
+
+		// Simulate a double click
+		let click_position = DVec2::new(50., 0.);
+		let modifier_keys = ModifierKeys::empty();
+
+		// Send the DoubleClick event
+		editor
+			.handle_message(InputPreprocessorMessage::DoubleClick {
+				editor_mouse_state: EditorMouseState {
+					editor_position: click_position,
+					mouse_keys: MouseKeys::LEFT,
+					scroll_delta: ScrollDelta::default(),
+				},
+				modifier_keys,
+			})
+			.await;
+
+		// Check that a new stop has been added
+		let updated_fills = get_fills(&mut editor).await;
+		assert_eq!(updated_fills.len(), 1);
+		let (updated_fill, _) = updated_fills.first().unwrap();
+		let updated_gradient = updated_fill.as_gradient().unwrap();
+
+		assert_eq!(updated_gradient.stops.len(), 3);
+
+		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
+		assert!(
+			positions.iter().any(|pos| (pos - 0.5).abs() < 0.1),
+			"Expected to find a stop near position 0.5, but found: {:?}",
+			positions
+		);
 	}
 }

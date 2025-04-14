@@ -302,30 +302,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-					log::error!("Could not get network metadata in NodeGraphMessage::EnterNestedNetwork");
-					return;
-				};
-
-				let click = ipp.mouse.position;
-				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
-
-				// Check if clicked on empty area (no node, no input/output connector)
-				let clicked_id = network_interface.node_from_click(click, selection_network_path);
-				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
-				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
-
-				if clicked_id.is_none() && clicked_input.is_none() && clicked_output.is_none() && self.context_menu.is_none() {
-					// Create a context menu with node creation options
-					self.context_menu = Some(ContextMenuInformation {
-						context_menu_coordinates: (node_graph_point.x as i32, node_graph_point.y as i32),
-						context_menu_data: ContextMenuData::CreateNode { compatible_type: None },
-					});
-
-					responses.add(FrontendMessage::UpdateContextMenuInformation {
-						context_menu_information: self.context_menu.clone(),
-					});
-				}
 				let Some(node_id) = network_interface.node_from_click(ipp.mouse.position, selection_network_path) else {
 					return;
 				};
@@ -370,6 +346,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, node_template } => {
 				network_interface.insert_node(node_id, node_template, selection_network_path);
@@ -1378,7 +1355,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				if (network_interface
 					.reference(&node_id, selection_network_path)
-					.is_none_or(|reference| *reference != Some("Imaginate".to_string()))
+					.is_none_or(|reference| *reference != Some("Imaginate".to_string())) // TODO: Potentially remove the reference to Imaginate
 					|| input_index == 0)
 					&& network_interface.connected_to_output(&node_id, selection_network_path)
 				{

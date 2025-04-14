@@ -80,6 +80,11 @@ impl DocumentMetadata {
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		// We're not allowed to convert the root parent to a node id
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.document_to_viewport;
+		}
+
 		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
 
@@ -137,14 +142,17 @@ impl DocumentMetadata {
 	///
 	/// If the layer bounds are `0` in either axis then they are changed to be `1`.
 	pub fn nonzero_bounding_box(&self, layer: LayerNodeIdentifier) -> [DVec2; 2] {
-		let [bounds_min, mut bounds_max] = self.bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap_or_default();
+		let [mut bounds_min, mut bounds_max] = self.bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap_or_default();
 
 		let bounds_size = bounds_max - bounds_min;
+		let bounds_midpoint = bounds_min.midpoint(bounds_max);
 		if bounds_size.x < 1e-10 {
-			bounds_max.x = bounds_min.x + 1.;
+			bounds_max.x = bounds_midpoint.x + 0.5;
+			bounds_min.x = bounds_midpoint.x - 0.5;
 		}
 		if bounds_size.y < 1e-10 {
-			bounds_max.y = bounds_min.y + 1.;
+			bounds_max.y = bounds_midpoint.y + 0.5;
+			bounds_min.y = bounds_midpoint.y - 0.5;
 		}
 
 		[bounds_min, bounds_max]
