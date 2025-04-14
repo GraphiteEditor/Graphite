@@ -73,6 +73,7 @@ pub enum PortfolioMessage {
 		document_name: String,
 		document_serialized_content: String,
 	},
+	ToggleResetNodesToDefinitionsOnOpen,
 	OpenDocumentFileWithId {
 		document_id: DocumentId,
 		document_name: String,
@@ -104,6 +105,9 @@ pub enum PortfolioMessage {
 	PrevDocument,
 	SetActivePanel {
 		panel: PanelType,
+	},
+	SetDevicePixelRatio {
+		ratio: f64,
 	},
 	SelectDocument {
 		document_id: DocumentId,

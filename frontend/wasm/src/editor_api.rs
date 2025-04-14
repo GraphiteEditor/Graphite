@@ -152,6 +152,12 @@ impl EditorHandle {
 						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
 							handle.send_frontend_message_to_js(message);
 						}
+
+						// Used by auto-panning, but this could possibly be refactored in the future, see:
+						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
+						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+							handle.send_frontend_message_to_js(message);
+						}
 					});
 				}
 
@@ -352,7 +358,7 @@ impl EditorHandle {
 	/// Inform the overlays system of the current device pixel ratio
 	#[wasm_bindgen(js_name = setDevicePixelRatio)]
 	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
+		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 

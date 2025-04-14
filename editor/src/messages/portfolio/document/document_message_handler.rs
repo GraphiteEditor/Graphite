@@ -42,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub device_pixel_ratio: f64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -173,6 +174,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			executor,
 			current_tool,
 			preferences,
+			device_pixel_ratio,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -191,13 +193,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
+					preferences,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::Overlays(message) => {
 				let overlays_visible = self.overlays_visible;
-				self.overlays_message_handler.process_message(message, responses, OverlaysMessageData { overlays_visible, ipp });
+				self.overlays_message_handler.process_message(
+					message,
+					responses,
+					OverlaysMessageData {
+						overlays_visible,
+						ipp,
+						device_pixel_ratio,
+					},
+				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
@@ -409,7 +420,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.node_graph_handler
 					.context_menu
 					.as_ref()
-					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
 				{
 					// Close the context menu
 					self.node_graph_handler.context_menu = None;
@@ -497,6 +508,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}
@@ -567,37 +579,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 				}
 			}
-			DocumentMessage::ImaginateGenerate { imaginate_node } => {
-				let random_value = generate_uuid();
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 17,
-					value: graph_craft::document::value::TaggedValue::U64(random_value),
-				});
+			// DocumentMessage::ImaginateGenerate { imaginate_node } => {
+			// 	let random_value = generate_uuid();
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 17,
+			// 		value: graph_craft::document::value::TaggedValue::U64(random_value),
+			// 	});
 
-				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
-			}
-			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
-				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
-				// outside of this range can get rounded in f64
-				let random_bits = generate_uuid();
-				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
+			// 	responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+			// }
+			// DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
+			// 	// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+			// 	// outside of this range can get rounded in f64
+			// 	let random_bits = generate_uuid();
+			// 	let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 
-				responses.add(DocumentMessage::AddTransaction);
-				// Set a random seed input
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 3,
-					value: graph_craft::document::value::TaggedValue::F64(random_value),
-				});
+			// 	responses.add(DocumentMessage::AddTransaction);
+			// 	// Set a random seed input
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 3,
+			// 		value: graph_craft::document::value::TaggedValue::F64(random_value),
+			// 	});
 
-				// Generate the image
-				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
-				}
-			}
+			// 	// Generate the image
+			// 	if then_generate {
+			// 		responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
+			// 	}
+			// }
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
@@ -1199,14 +1211,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.children(metadata).collect();
+						let children: HashSet<_> = layer.descendants(metadata).collect();
 						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
 					} else {
 						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
 						self.collapsed.0.extend(children_to_add);
 					}
 					self.collapsed.0.push(layer);
@@ -2467,6 +2479,10 @@ impl DocumentMessageHandler {
 		// If moving down, insert below this layer. If moving up, insert above this layer.
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
+	}
+
+	pub fn graph_view_overlay_open(&self) -> bool {
+		self.graph_view_overlay_open
 	}
 }
 

@@ -33,6 +33,7 @@ pub struct PortfolioMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
+	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub animation: &'a AnimationMessageHandler,
 }
@@ -50,6 +51,8 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	/// The spreadsheet UI allows for instance data to be previewed.
 	pub spreadsheet: SpreadsheetMessageHandler,
+	device_pixel_ratio: Option<f64>,
+	pub reset_node_definitions_on_open: bool,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -59,6 +62,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			preferences,
 			current_tool,
 			message_logging_verbosity,
+			reset_node_definitions_on_open,
 			timing_information,
 			animation,
 		} = data;
@@ -74,6 +78,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.menu_bar_message_handler.has_selection_history = (false, false);
 				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
+				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					self.menu_bar_message_handler.has_active_document = true;
@@ -103,6 +108,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							executor: &mut self.executor,
 							current_tool,
 							preferences,
+							device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -119,6 +125,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
+						device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -406,6 +413,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				});
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
+			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
+				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
+				responses.add(MenuBarMessage::SendLayout);
+			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
 				document_name,
@@ -417,8 +428,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
-				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
+				// Upgrade a document being opened to use fresh copies of all nodes
+				let replace_implementations_from_definition = reset_node_definitions_on_open || document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =
 					document_serialized_content.contains("graphene_core::ConstructLayerNode") || document_serialized_content.contains("graphene_core::AddArtboardNode");
@@ -803,6 +814,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 					}
 
+					// Upgrade the Mirror node to add the `keep_original` boolean input
+					if reference == "Mirror" && inputs_count == 3 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					}
+
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" && upgrade_from_before_returning_nested_click_targets {
 						let label = document.network_interface.frontend_display_name(node_id, network_path);
@@ -1007,6 +1034,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::SetActivePanel { panel } => {
 				self.active_panel = panel;
 				responses.add(DocumentMessage::SetActivePanel { active_panel: self.active_panel });
+			}
+			PortfolioMessage::SetDevicePixelRatio { ratio } => {
+				self.device_pixel_ratio = Some(ratio);
+				responses.add(OverlaysMessage::Draw);
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving

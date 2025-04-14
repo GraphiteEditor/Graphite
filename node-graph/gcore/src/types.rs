@@ -293,12 +293,24 @@ impl Type {
 		}
 	}
 
-	pub fn nested_type(self) -> Type {
+	pub fn nested_type(&self) -> &Type {
 		match self {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+		}
+	}
+
+	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
+		if let Some(replacement) = f(self) {
+			return Some(std::mem::replace(self, replacement));
+		}
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(_) => None,
+			Self::Fn(_, output) => output.replace_nested(f),
+			Self::Future(output) => output.replace_nested(f),
 		}
 	}
 }
@@ -344,5 +356,9 @@ impl From<&'static str> for ProtoNodeIdentifier {
 impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
 		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
 }
