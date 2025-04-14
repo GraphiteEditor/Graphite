@@ -296,7 +296,7 @@ impl NodeRuntime {
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
 				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
 			} else {
-				log::debug!("failed to downcast monitor node output");
+				log::warn!("failed to downcast monitor node output");
 			}
 		}
 	}
