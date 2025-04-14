@@ -427,7 +427,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			}
 			ToolMessage::Path(PathToolMessage::AdjustProportionalRadius) => {
 				if self.options.proportional_editing_enabled {
-					self.options.proportional_radius = (self.options.proportional_radius + (-tool_data.input.mouse.scroll_delta.y as i32)).max(1);
+					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32).min(10).max(-10)).max(1);
 					// Store previous affected points
 					let previous_affected = self.tool_data.proportional_affected_points.clone();
 
