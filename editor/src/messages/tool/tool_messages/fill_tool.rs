@@ -95,7 +95,8 @@ impl Fsm for FillToolFsmState {
 				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
 				if !input.keyboard.get(Key::MouseMiddle as usize) {
 					let primary_color = global_tool_data.primary_color;
-					let preview_color = primary_color.to_gamma_srgb().with_alpha(0.4).to_css();
+					let mut preview_color = primary_color.to_gamma_srgb().with_alpha(0.25).to_rgba_hex_srgb();
+					preview_color.insert(0, '#');
 
 					// Get the layer the user is hovering over
 					let click = document.click(input);

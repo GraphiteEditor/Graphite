@@ -1659,10 +1659,10 @@ impl Fsm for PenToolFsmState {
 								})
 								.collect();
 
-							let base_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.replace("#", "").as_str()).unwrap();
-							let color = base_color.to_gamma_srgb().with_alpha(0.4);
+							let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
+							fill_color.insert(0, '#');
 
-							overlay_context.fill_path(subpaths.iter(), transform, color.to_css().as_str());
+							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
 						}
 					}
 				}
