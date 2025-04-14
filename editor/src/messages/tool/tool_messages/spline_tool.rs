@@ -534,3 +534,304 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 	tool_data.preview_point = None;
 	tool_data.preview_segment = None;
 }
+
+#[cfg(test)]
+mod test_spline_tool {
+	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
+	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
+	use crate::test_utils::test_prelude::*;
+
+	// Helper function to get spline points after drawing
+	async fn get_spline_points(editor: &mut EditorTestUtils) -> Option<Vec<DVec2>> {
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let layer = network_interface.selected_nodes().selected_visible_and_unlocked_layers(network_interface).next()?;
+		println!("Found layer: {:?}", layer);
+		let vector_data = network_interface.compute_modified_vector(layer)?;
+		let points: Vec<DVec2> = vector_data.point_domain.positions().iter().cloned().collect();
+		println!("Found points: {:?}", points);
+		Some(points)
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_zoomed_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Zooming the viewport
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+
+		// Selecting the spline tool
+		editor.select_tool(ToolType::Spline).await;
+
+		// Initiate drawing a spline
+		editor.left_mousedown(50.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(50.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Adding the second point
+		editor.left_mousedown(100.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(100.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Adding the third point
+		editor.left_mousedown(150.0, 100.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(150.0, 100.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Finish the spline
+		editor.handle_message(SplineToolMessage::Confirm).await;
+
+		// Evaluate the graph to ensure everything is processed
+		editor.eval_graph().await;
+
+		if let Some(points) = get_spline_points(&mut editor).await {
+			assert!(points.len() >= 3, "Spline should have at least 3 points");
+
+			// Calculating expected points in document coordinates
+			let document = editor.active_document();
+			let viewport_to_document = document.metadata().document_to_viewport.inverse();
+			let expected_points = vec![
+				viewport_to_document.transform_point2(DVec2::new(50.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(100.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(150.0, 100.0)),
+			];
+
+			// Check each key point is close to the expected position
+			for (i, (point, expected)) in points.iter().take(3).zip(expected_points.iter()).enumerate() {
+				assert!(
+					(*point - *expected).length() < 1.0,
+					"Point {i} should be close to expected position. Got: {point:?}, expected: {expected:?}"
+				);
+			}
+		} else {
+			panic!("Could not get spline points");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_panned_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let pan_amount = DVec2::new(200.0, 150.0);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
+		editor.select_tool(ToolType::Spline).await;
+		editor.left_mousedown(50.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(50.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.left_mousedown(100.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(100.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.left_mousedown(150.0, 100.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(150.0, 100.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.handle_message(SplineToolMessage::Confirm).await;
+		editor.eval_graph().await;
+
+		if let Some(points) = get_spline_points(&mut editor).await {
+			assert!(points.len() >= 3, "Spline should have at least 3 points");
+			let document = editor.active_document();
+			let viewport_to_document = document.metadata().document_to_viewport.inverse();
+			let expected_points = vec![
+				viewport_to_document.transform_point2(DVec2::new(50.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(100.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(150.0, 100.0)),
+			];
+			for (i, (point, expected)) in points.iter().take(3).zip(expected_points.iter()).enumerate() {
+				assert!(
+					(*point - *expected).length() < 1.0,
+					"Point {i} should be close to expected position. Got: {point:?}, expected: {expected:?}"
+				);
+			}
+		} else {
+			panic!("Could not get spline points");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_tilted_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
+		editor.select_tool(ToolType::Spline).await;
+		editor.left_mousedown(50.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(50.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.left_mousedown(100.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(100.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.left_mousedown(150.0, 100.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(150.0, 100.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.handle_message(SplineToolMessage::Confirm).await;
+
+		editor.eval_graph().await;
+
+		if let Some(points) = get_spline_points(&mut editor).await {
+			assert!(points.len() >= 3, "Spline should have at least 3 points");
+			let document = editor.active_document();
+			let viewport_to_document = document.metadata().document_to_viewport.inverse();
+			let expected_points = vec![
+				viewport_to_document.transform_point2(DVec2::new(50.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(100.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(150.0, 100.0)),
+			];
+			for (i, (point, expected)) in points.iter().take(3).zip(expected_points.iter()).enumerate() {
+				assert!(
+					(*point - *expected).length() < 1.0,
+					"Point {i} should be close to expected position. Got: {point:?}, expected: {expected:?}"
+				);
+			}
+		} else {
+			panic!("Could not get spline points");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_combined_transformations() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Multiple transformations
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 1.5 }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100.0, 75.0) }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30.0_f64.to_radians() }).await;
+
+		editor.select_tool(ToolType::Spline).await;
+		editor.left_mousedown(50.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(50.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.left_mousedown(100.0, 50.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(100.0, 50.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.left_mousedown(150.0, 100.0, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(150.0, 100.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.handle_message(SplineToolMessage::Confirm).await;
+		editor.eval_graph().await;
+
+		if let Some(points) = get_spline_points(&mut editor).await {
+			assert!(points.len() >= 3, "Spline should have at least 3 points");
+			let document = editor.active_document();
+			let viewport_to_document = document.metadata().document_to_viewport.inverse();
+			let expected_points = vec![
+				viewport_to_document.transform_point2(DVec2::new(50.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(100.0, 50.0)),
+				viewport_to_document.transform_point2(DVec2::new(150.0, 100.0)),
+			];
+			for (i, (point, expected)) in points.iter().take(3).zip(expected_points.iter()).enumerate() {
+				assert!(
+					(*point - *expected).length() < 1.0,
+					"Point {i} should be close to expected position. Got: {point:?}, expected: {expected:?}"
+				);
+			}
+		} else {
+			panic!("Could not get spline points");
+		}
+	}
+}
