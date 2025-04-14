@@ -7,6 +7,7 @@ mod buffer_struct;
 mod codegen;
 mod crate_ident;
 mod derive_choice_type;
+mod destruct;
 mod parsing;
 mod shader_nodes;
 mod validation;
@@ -38,4 +39,17 @@ pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
 pub fn derive_buffer_struct(input_item: TokenStream) -> TokenStream {
 	let crate_ident = CrateIdent::default();
 	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item).unwrap_or_else(|err| err.to_compile_error()))
+}
+
+#[proc_macro_error]
+#[proc_macro_derive(Destruct)]
+/// Derives the `Destruct` trait for structs and creates accessor node implementations.
+pub fn derive_destruct(item: TokenStream) -> TokenStream {
+	let s = syn::parse_macro_input!(item as syn::DeriveInput);
+	let parse_result = destruct::derive(s.ident, s.data).into();
+	let Ok(parsed_node) = parse_result else {
+		let e = parse_result.unwrap_err();
+		return syn::Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error().into();
+	};
+	parsed_node.into()
 }

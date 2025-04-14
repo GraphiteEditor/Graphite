@@ -402,6 +402,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
+	let output_fields = match attributes.deconstruct_output {
+		false => quote!(&[]),
+		true => quote!(#output_type::fields),
+	};
+
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
@@ -474,6 +479,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					description: #description,
 					properties: #properties,
 					context_features: vec![#(ContextFeature::#context_features,)*],
+					output_fields: #output_fields,
 					fields: vec![
 						#(
 							FieldMetadata {
