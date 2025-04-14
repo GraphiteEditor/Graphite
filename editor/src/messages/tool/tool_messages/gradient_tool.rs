@@ -715,7 +715,20 @@ mod test_gradient {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+
 		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let selected_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: selected_layer,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10.0, -5.0)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
 
 		editor.select_primary_color(Color::GREEN).await;
 		editor.select_secondary_color(Color::BLUE).await;
@@ -728,7 +741,7 @@ mod test_gradient {
 		let (initial_fill, transform) = initial_fills.first().unwrap();
 		let initial_gradient = initial_fill.as_gradient().unwrap();
 
-		// Verify initial gradient endpoints
+		// Verify initial gradient endpoints in viewport space
 		let initial_start = transform.transform_point2(initial_gradient.start);
 		let initial_end = transform.transform_point2(initial_gradient.end);
 		assert!(initial_start.abs_diff_eq(DVec2::new(0., 0.), 1e-10));
