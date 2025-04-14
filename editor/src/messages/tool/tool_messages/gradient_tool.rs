@@ -875,4 +875,93 @@ mod test_gradient {
 		assert_eq!(updated_stops[1].1.to_rgba8_srgb(), middle_color);
 		assert_eq!(updated_stops[2].1.to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
 	}
+
+	#[tokio::test]
+	async fn select_and_delete_removes_stop() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_secondary_color(Color::BLUE).await;
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// Get initial gradient state (should have 2 stops)
+		let initial_fills = get_fills(&mut editor).await;
+		assert_eq!(initial_fills.len(), 1);
+		let (initial_fill, _) = initial_fills.first().unwrap();
+		let initial_gradient = initial_fill.as_gradient().unwrap();
+		assert_eq!(initial_gradient.stops.len(), 2);
+
+		editor.select_tool(ToolType::Gradient).await;
+
+		let position1 = DVec2::new(25., 0.);
+		editor
+			.handle_message(InputPreprocessorMessage::DoubleClick {
+				editor_mouse_state: EditorMouseState {
+					editor_position: position1,
+					mouse_keys: MouseKeys::LEFT,
+					scroll_delta: ScrollDelta::default(),
+				},
+				modifier_keys: ModifierKeys::empty(),
+			})
+			.await;
+
+		let position2 = DVec2::new(75., 0.);
+		editor
+			.handle_message(InputPreprocessorMessage::DoubleClick {
+				editor_mouse_state: EditorMouseState {
+					editor_position: position2,
+					mouse_keys: MouseKeys::LEFT,
+					scroll_delta: ScrollDelta::default(),
+				},
+				modifier_keys: ModifierKeys::empty(),
+			})
+			.await;
+
+		let updated_fills = get_fills(&mut editor).await;
+		let (updated_fill, _) = updated_fills.first().unwrap();
+		let updated_gradient = updated_fill.as_gradient().unwrap();
+		assert_eq!(updated_gradient.stops.len(), 4, "Expected 4 stops after adding additional stops");
+
+		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
+
+		// Check if we have stops at approximate expected positions
+		assert!((positions[0] - 0.0).abs() < 0.05, "Expected stop near position 0.0, got {}", positions[0]);
+		assert!((positions[1] - 0.25).abs() < 0.05, "Expected stop near position 0.25, got {}", positions[1]);
+		assert!((positions[2] - 0.75).abs() < 0.05, "Expected stop near position 0.75, got {}", positions[2]);
+		assert!((positions[3] - 1.0).abs() < 0.05, "Expected stop near position 1.0, got {}", positions[3]);
+
+		editor.move_mouse(position2.x, position2.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(position2.x, position2.y, ModifierKeys::empty()).await;
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: position2,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+
+		// Verify we now have 3 stops
+		let final_fills = get_fills(&mut editor).await;
+		let (final_fill, _) = final_fills.first().unwrap();
+		let final_gradient = final_fill.as_gradient().unwrap();
+		assert_eq!(final_gradient.stops.len(), 3, "Expected 3 stops after deleting one stop");
+
+		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|(pos, _)| *pos).collect();
+
+		assert!((final_positions[0] - 0.0).abs() < 0.05, "Expected stop near position 0.0");
+		assert!((final_positions[1] - 0.25).abs() < 0.05, "Expected stop near position 0.25");
+		assert!((final_positions[2] - 1.0).abs() < 0.05, "Expected stop near position 1.0");
+
+		// Verify the stop at 0.75 is no longer present
+		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");
+	}
 }
