@@ -572,7 +572,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let handle1_length = handle1.length(&vector_data);
 							let handle2_length = handle2.length(&vector_data);
 
-							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+							// Check if proportional editing is enabled
+							let proportional_editing_enabled = self.proportional_edit_data.is_some();
+
+							// Only restrict R and S operations if proportional editing is NOT enabled
+							if !proportional_editing_enabled
+								&& ((handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool))
+							{
 								// G should work for this point but not R and S
 								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
 									selected.original_transforms.clear();
