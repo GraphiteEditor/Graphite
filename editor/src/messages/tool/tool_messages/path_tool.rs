@@ -884,7 +884,6 @@ impl PathToolData {
 		shape_editor: &mut ShapeState,
 		tool_options: &PathToolOptions,
 	) {
-		self.is_dragging = true;
 		if tool_options.proportional_editing_enabled {
 			self.total_delta = DVec2::ZERO;
 			self.initial_point_positions.clear();
@@ -1184,6 +1183,7 @@ impl PathToolData {
 		responses: &mut VecDeque<Message>,
 		tool_options: &PathToolOptions,
 	) {
+		self.is_dragging = true;
 		// First check if selection is not just a single handle point
 		let selected_points = shape_editor.selected_points();
 		let single_handle_selected = selected_points.count() == 1
@@ -1399,7 +1399,7 @@ impl Fsm for PathToolFsmState {
 					}
 					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
-						if tool_options.proportional_editing_enabled {
+						if tool_options.proportional_editing_enabled && tool_data.is_dragging {
 							if let Some(center) = tool_data.proportional_edit_center {
 								let viewport_center = document.metadata().document_to_viewport.transform_point2(center);
 								let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * tool_options.proportional_radius as f64).x;
