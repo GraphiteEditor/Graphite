@@ -2707,3 +2707,49 @@ impl Iterator for ClickXRayIter<'_> {
 		None
 	}
 }
+
+#[cfg(test)]
+mod document_message_handler_tests {
+    use super::*;
+    use crate::test_utils::test_prelude::*;
+
+    #[tokio::test]
+    async fn test_moving_folder_with_children() {
+        let mut editor = EditorTestUtils::create();
+        editor.new_document().await;
+
+        // Creating two folders at root level
+        editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+        editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+        let folder1 = editor.active_document().metadata().all_layers().next().unwrap();
+        let folder2 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+        editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+        let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+        // First move rectangle into folder1
+        editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+        editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+        // Verifying rectagle is now in folder1
+        let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
+        assert_eq!(rect_parent, folder1, "Rectangle should be inside folder1");
+
+        // Moving folder1 into folder2
+        editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+        editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+        // Verifing hirarchy: folder2 > folder1 > rectangle
+        let document = editor.active_document();
+        let folder1_parent = folder1.parent(document.metadata()).unwrap();
+        assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
+
+        // Verifing rectangle moved with its parent
+        let rect_parent = rect_layer.parent(document.metadata()).unwrap();
+        assert_eq!(rect_parent, folder1, "Rectangle should still be inside folder1");
+
+        let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
+        assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
+    }
+}
