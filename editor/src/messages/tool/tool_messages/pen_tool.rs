@@ -1673,7 +1673,11 @@ impl Fsm for PenToolFsmState {
 					if let Some((other_layer, _, _)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, layers, preferences) {
 						let selected_nodes = document.network_interface.selected_nodes();
 						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-						if let Some(current_layer) = selected_layers.next().filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer) {
+						if let Some(current_layer) = selected_layers
+							.next()
+							.filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer)
+							.or(tool_data.prior_segment_layer.filter(|layer| *layer != other_layer))
+						{
 							merge_layers(document, current_layer, other_layer, responses);
 						}
 					}
