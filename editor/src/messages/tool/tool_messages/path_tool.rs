@@ -988,7 +988,7 @@ impl Fsm for PathToolFsmState {
 
 						if let Some(closest_segment) = &tool_data.segment {
 							if display_anchors {
-								overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));	
+								overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
 							}
 							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
 								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);

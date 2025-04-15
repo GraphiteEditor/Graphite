@@ -1021,6 +1021,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
+				if !self.overlays_visibility_settings.selection_outline {
+					return;
+				}
+
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata.all_layers().filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[])).filter(|&layer| {
 					self.network_interface.selected_nodes().layer_visible(layer, &self.network_interface) && !self.network_interface.selected_nodes().layer_locked(layer, &self.network_interface)
@@ -1145,8 +1149,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					OverlaysType::All => self.overlays_visibility_settings.all = visible,
 					OverlaysType::ArtboardName => self.overlays_visibility_settings.artboard_name = visible,
 					OverlaysType::CompassRose => self.overlays_visibility_settings.compass_rose = visible,
-					OverlaysType::Measurement => self.overlays_visibility_settings.measurement = visible,
+					OverlaysType::QuickMeasurement => self.overlays_visibility_settings.quick_measurement = visible,
+					OverlaysType::TransformMeasurement => self.overlays_visibility_settings.transform_measurement = visible,
 					OverlaysType::TransformCage => self.overlays_visibility_settings.transform_cage = visible,
+					OverlaysType::HoverOutline => self.overlays_visibility_settings.hover_outline = visible,
+					OverlaysType::SelectionOutline => self.overlays_visibility_settings.selection_outline = visible,
 					OverlaysType::Pivot => self.overlays_visibility_settings.pivot = visible,
 					OverlaysType::Path => self.overlays_visibility_settings.path = visible,
 					OverlaysType::Anchors => self.overlays_visibility_settings.anchors = visible,
@@ -2118,17 +2125,32 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.measurement)
-								.tooltip("Enable or disable the measurement overlay")
+							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
+								.tooltip("Enable or disable the quick measurement overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::Measurement,
+										overlays_type: OverlaysType::QuickMeasurement,
 									}
 									.into()
 								})
 								.widget_holder(),
-							TextLabel::new("Measurement".to_string()).widget_holder(),
+							TextLabel::new("Quick Measurement".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
+								.tooltip("Enable or disable the transform measurement overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::TransformMeasurement,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Measurement".to_string()).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
@@ -2144,6 +2166,36 @@ impl DocumentMessageHandler {
 								})
 								.widget_holder(),
 							TextLabel::new("Transform Cage".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
+								.tooltip("Enable or disable the hover outline overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::HoverOutline,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Hover Outline".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
+								.tooltip("Enable or disable the selection outline overlay")
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::SelectionOutline,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Selection Outline".to_string()).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
@@ -2419,75 +2471,74 @@ impl DocumentMessageHandler {
 			.selected_layers(self.metadata())
 			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
 
-		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				DropdownInput::new(blend_mode_menu_entries)
-					.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
-					.disabled(disabled)
-					.draw_icon(false)
-					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(opacity)
-					.label("Opacity")
-					.unit("%")
-					.display_decimal_places(2)
-					.disabled(disabled)
-					.min(0.)
-					.max(100.)
-					.range_min(Some(0.))
-					.range_max(Some(100.))
-					.mode_range()
-					.on_update(|number_input: &NumberInput| {
-						if let Some(value) = number_input.value {
-							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
-						} else {
-							Message::NoOp
-						}
-					})
-					.on_commit(|_| DocumentMessage::AddTransaction.into())
-					.widget_holder(),
-				//
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				//
-				IconButton::new("NewLayer", 24)
-					.tooltip("New Layer")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-					.widget_holder(),
-				IconButton::new("Folder", 24)
-					.tooltip("Group Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-					.on_update(|_| {
-						let group_folder_type = GroupFolderType::Layer;
-						DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-					})
-					.disabled(!has_selection)
-					.widget_holder(),
-				IconButton::new("Trash", 24)
-					.tooltip("Delete Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
-					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-				//
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				//
-				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
-					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
-					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
-					.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-			],
-		}]);
+		let widgets = vec![
+			DropdownInput::new(blend_mode_menu_entries)
+				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
+				.disabled(disabled)
+				.draw_icon(false)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(opacity)
+				.label("Opacity")
+				.unit("%")
+				.display_decimal_places(2)
+				.disabled(disabled)
+				.min(0.)
+				.max(100.)
+				.range_min(Some(0.))
+				.range_max(Some(100.))
+				.mode_range()
+				.on_update(|number_input: &NumberInput| {
+					if let Some(value) = number_input.value {
+						DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
+					} else {
+						Message::NoOp
+					}
+				})
+				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.widget_holder(),
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("Trash", 24)
+				.tooltip("Delete Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+		];
+		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(layers_panel_control_bar),

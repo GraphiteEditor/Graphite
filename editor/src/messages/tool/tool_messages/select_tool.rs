@@ -552,11 +552,13 @@ impl Fsm for SelectToolFsmState {
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						if overlay_context.overlays_visibility_settings.hover_outline {
+							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						}
 
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-						if !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
+						if overlay_context.overlays_visibility_settings.quick_measurement && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
 							// Get all selected layers and compute their viewport-aligned AABB
 							let selected_bounds_viewport = document
 								.network_interface
@@ -581,23 +583,25 @@ impl Fsm for SelectToolFsmState {
 
 							// Use the viewport-aligned AABBs for measurement
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
-								if overlay_context.overlays_visibility_settings.measurement {
-									// Since we're already in viewport space, use identity transform
-									measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
-								}
+								// Since we're already in viewport space, use identity transform
+								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
 							}
 						}
 					}
 				}
 
-				if let Some(bounds) = bounds {
-					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+				let display_transform_cage = overlay_context.overlays_visibility_settings.transform_cage;
+				if display_transform_cage {
+					if let Some(bounds) = bounds {
+						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
-					bounding_box_manager.bounds = bounds;
-					bounding_box_manager.transform = transform;
-					bounding_box_manager.transform_tampered = transform_tampered;
-					bounding_box_manager.render_overlays(&mut overlay_context, true);
-				} else {
+						bounding_box_manager.bounds = bounds;
+						bounding_box_manager.transform = transform;
+						bounding_box_manager.transform_tampered = transform_tampered;
+						bounding_box_manager.render_overlays(&mut overlay_context, true);
+					}
+				}
+				else {
 					tool_data.bounding_box_manager.take();
 				}
 
@@ -628,16 +632,18 @@ impl Fsm for SelectToolFsmState {
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 
-				if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
-					let edges = bounds.check_selected_edges(input.mouse.position);
-					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
-					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
-						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
-					}
-					if !is_skewing && dragging_bounds {
-						if let Some(edges) = edges {
-							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
+				if display_transform_cage {
+					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
+						let edges = bounds.check_selected_edges(input.mouse.position);
+						let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
+						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+						if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
+							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
+						}
+						if !is_skewing && dragging_bounds {
+							if let Some(edges) = edges {
+								tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
+							}
 						}
 					}
 				}
@@ -671,7 +677,7 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
 					let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
-					Some((axis, false))
+						Some((axis, false))
 					} else {
 						compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
 					};

@@ -252,8 +252,6 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				let display_handles = overlay_context.overlays_visibility_settings.handles;
-
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
@@ -265,18 +263,14 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
 					overlay_context.line(start, end, None, None);
-					if display_handles {
-						overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
-						overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
-					}
+					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
+					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
 					for (index, (position, _)) in stops.into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
 
-						if display_handles {
-							overlay_context.manipulator_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), None);
-						}
+						overlay_context.manipulator_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), None);
 					}
 				}
 

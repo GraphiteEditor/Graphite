@@ -49,7 +49,7 @@ pub enum LayoutTarget {
 	WorkingColors,
 
 	// KEEP THIS ENUM LAST
-	// This is a marker that is used to define an array that is used to hold widgets
+	// This is a marker that is used to define an array to hold widgets
 	LayoutTargetLength,
 }
 
