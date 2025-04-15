@@ -285,6 +285,12 @@ fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)]
 	value.to_u64().unwrap()
 }
 
+/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
+	value.to_f64().unwrap()
+}
+
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {

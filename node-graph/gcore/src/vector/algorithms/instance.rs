@@ -1,8 +1,8 @@
 use glam::{DAffine2, DVec2};
 
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl, instances::Instance, vector::VectorDataTable};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl, instances::Instance, vector::VectorDataTable};
 
-#[node_macro::node(category("Vector: Shape"), path(graphene_core::vector))]
+#[node_macro::node(name("Instance on Points"), category("Vector: Shape"), path(graphene_core::vector))]
 async fn instance_on_points(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	points: VectorDataTable,
@@ -11,10 +11,10 @@ async fn instance_on_points(
 	let mut result = VectorDataTable::empty();
 
 	for Instance { instance: points, transform, .. } in points.instances() {
-		for &point in points.point_domain.positions() {
+		for (index, &point) in points.point_domain.positions().iter().enumerate() {
 			let transformed_point = transform.transform_point2(point);
 			println!("Transformed {transformed_point:?}");
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(transformed_point));
+			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let instanced = instance_node.eval(new_ctx.into_context()).await;
 			for instanced in instanced.instances() {
 				let instanced = result.push_instance(instanced);
@@ -29,14 +29,19 @@ async fn instance_on_points(
 async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	match ctx.vararg(0).map(|dynamic| dynamic.downcast_ref::<DVec2>()) {
 		Ok(Some(position)) => return *position,
-		Ok(_) => {
-			warn!("Extracted value of incorrect type");
-		}
-		Err(e) => {
-			warn!("Cannot extract position vararg: {e:?}");
-		}
+		Ok(_) => warn!("Extracted value of incorrect type"),
+		Err(e) => warn!("Cannot extract position vararg: {e:?}"),
 	}
 	Default::default()
+}
+
+#[node_macro::node(category("Attributes"), path(graphene_core::vector))]
+async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
+	match ctx.try_index() {
+		Some(index) => return index as f64,
+		None => warn!("Extracted value of incorrect type"),
+	}
+	0.
 }
 
 #[cfg(test)]

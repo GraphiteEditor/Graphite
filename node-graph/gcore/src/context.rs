@@ -333,6 +333,10 @@ impl OwnedContextImpl {
 		self.varargs = Some(Arc::new([value]));
 		self
 	}
+	pub fn with_index(mut self, index: usize) -> Self {
+		self.index = Some(index);
+		self
+	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
 		Some(Arc::new(self))
 	}

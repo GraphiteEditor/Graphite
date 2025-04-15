@@ -36,7 +36,14 @@ impl CornerRadius for [f64; 4] {
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: f64) -> VectorDataTable {
+fn circle(
+	_: impl Ctx,
+	_primary: (),
+	#[default(50.)]
+	#[max(0.)]
+	radius: f64,
+) -> VectorDataTable {
+	let radius = radius.max(0.);
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
