@@ -1254,14 +1254,14 @@ async fn poisson_disk_points(
 		})
 		.collect();
 
-	for (subpath, _) in &path_with_bounding_boxes {
+	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
 
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes) {
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 

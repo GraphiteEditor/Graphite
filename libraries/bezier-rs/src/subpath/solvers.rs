@@ -389,7 +389,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	///
 	/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
 	/// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
-	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64, shapes: &[(Self, [DVec2; 2])]) -> Vec<DVec2> {
+	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64, shapes: &[(Self, [DVec2; 2])], shape_index: usize) -> Vec<DVec2> {
 		let Some(bounding_box) = self.bounding_box() else { return Vec::new() };
 		let (offset_x, offset_y) = bounding_box[0].into();
 		let (width, height) = (bounding_box[1] - bounding_box[0]).into();
@@ -402,17 +402,19 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 		let point_in_shape_checker = |point: DVec2| {
 			// Check against all paths the point is contained in to compute the correct winding number
-			let number: i32 = shapes
-				.iter()
-				.map(|(shape, bb)| {
-					let point = point + bounding_box[0];
-					if bb[0].x > point.x || bb[0].y > point.y || bb[1].x < point.x || bb[1].y < point.y {
-						return 0;
-					}
+			let mut number = 0;
+			for (i, (shape, bb)) in shapes.iter().enumerate() {
+				let point = point + bounding_box[0];
+				if bb[0].x > point.x || bb[0].y > point.y || bb[1].x < point.x || bb[1].y < point.y {
+					continue;
+				}
+				let winding = shape.winding_order(point);
 
-					shape.winding_order(point)
-				})
-				.sum();
+				if i == shape_index && winding == 0 {
+					return false;
+				}
+				number += winding;
+			}
 			number != 0
 		};
 
