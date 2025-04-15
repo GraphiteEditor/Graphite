@@ -6,7 +6,8 @@ use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
-use glam::DVec2;
+use dyn_any::DynAny;
+use glam::{DVec2, IVec2, UVec2};
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
@@ -489,6 +490,32 @@ fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Colo
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
+}
+
+/// Obtain the X or Y component of a vector2.
+#[node_macro::node(name("Extract XY"), category("Math: Vector"))]
+fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: T, axis: XY) -> f64 {
+	match axis {
+		XY::X => vector.into().x,
+		XY::Y => vector.into().y,
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+pub enum XY {
+	#[default]
+	X,
+	Y,
+}
+impl core::fmt::Display for XY {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			XY::X => write!(f, "X"),
+			XY::Y => write!(f, "Y"),
+		}
+	}
 }
 
 // TODO: Rename to "Passthrough"

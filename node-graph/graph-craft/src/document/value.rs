@@ -202,6 +202,7 @@ tagged_value! {
 	VecU64(Vec<u64>),
 	NodePath(Vec<NodeId>),
 	VecDVec2(Vec<DVec2>),
+	XY(graphene_core::ops::XY),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),

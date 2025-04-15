@@ -1,10 +1,9 @@
+use super::misc::AsU64;
+use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
-
-use super::misc::AsU64;
-use super::{PointId, SegmentId, StrokeId};
 
 trait CornerRadius {
 	fn generate(self, size: DVec2, clamped: bool) -> VectorDataTable;

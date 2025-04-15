@@ -21,6 +21,7 @@ use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
+use graphene_std::ops::XY;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::BooleanOperation;
@@ -168,6 +169,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<XY>() => xy_components(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
@@ -838,6 +840,33 @@ pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
+}
+
+pub fn xy_components(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::XY(mode)) = input.as_non_exposed_value() {
+		let calculation_modes = [XY::X, XY::Y];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::XY(method), node_id, index))
+					.on_commit(commit_value),
+			);
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("X or Y Component of Vector2")
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum

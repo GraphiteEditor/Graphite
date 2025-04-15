@@ -18,7 +18,7 @@ async fn instance_on_points(
 			let instanced = instance_node.eval(new_ctx.into_context()).await;
 			for instanced in instanced.instances() {
 				let instanced = result.push_instance(instanced);
-				*instanced.transform = *instanced.transform * DAffine2::from_translation(transformed_point);
+				*instanced.transform *= DAffine2::from_translation(transformed_point);
 			}
 		}
 	}
@@ -26,18 +26,17 @@ async fn instance_on_points(
 }
 
 #[node_macro::node(category("Attributes"), path(graphene_core::vector))]
-async fn y_position(ctx: impl Ctx + ExtractVarArgs) -> f64 {
+async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	match ctx.vararg(0).map(|dynamic| dynamic.downcast_ref::<DVec2>()) {
-		Ok(Some(position)) => position.y,
+		Ok(Some(position)) => return *position,
 		Ok(_) => {
 			warn!("Extracted value of incorrect type");
-			0.
 		}
 		Err(e) => {
-			warn!("Cannot extract y position vararg: {e:?}");
-			0.
+			warn!("Cannot extract position vararg: {e:?}");
 		}
 	}
+	Default::default()
 }
 
 #[cfg(test)]
