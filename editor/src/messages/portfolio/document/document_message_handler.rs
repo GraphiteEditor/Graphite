@@ -2707,3 +2707,38 @@ impl Iterator for ClickXRayIter<'_> {
 		None
 	}
 }
+
+#[cfg(test)]
+mod document_message_handler_tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn test_move_folder_into_itself_doesnt_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Creating a parent folder
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let parent_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Creating a child folder inside the parent folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let child_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Attempt to move parent folder into child folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: child_folder,
+				insert_index: 0,
+			})
+			.await;
+
+		// The operation completed without crashing
+		// Verifying application still functions by performing another operation
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		assert!(true, "Application didn't crash after folder move operation");
+	}
+}
