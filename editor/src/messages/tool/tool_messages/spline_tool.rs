@@ -537,8 +537,7 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 
 #[cfg(test)]
 mod test_spline_tool {
-	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
-	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
+	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 	use crate::test_utils::test_prelude::*;
 
 	// Helper function to get spline points after drawing
@@ -615,6 +614,7 @@ mod test_spline_tool {
 			// Calculating expected points in document coordinates
 			let document = editor.active_document();
 			let viewport_to_document = document.metadata().document_to_viewport.inverse();
+
 			let expected_points = vec![
 				viewport_to_document.transform_point2(DVec2::new(50.0, 50.0)),
 				viewport_to_document.transform_point2(DVec2::new(100.0, 50.0)),
@@ -637,8 +637,10 @@ mod test_spline_tool {
 	async fn test_spline_with_panned_view() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+
 		let pan_amount = DVec2::new(200.0, 150.0);
 		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
+
 		editor.select_tool(ToolType::Spline).await;
 		editor.left_mousedown(50.0, 50.0, ModifierKeys::empty()).await;
 		editor
@@ -703,8 +705,10 @@ mod test_spline_tool {
 	async fn test_spline_with_tilted_view() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+
 		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
 		editor.select_tool(ToolType::Spline).await;
+
 		editor.left_mousedown(50.0, 50.0, ModifierKeys::empty()).await;
 		editor
 			.mouseup(
