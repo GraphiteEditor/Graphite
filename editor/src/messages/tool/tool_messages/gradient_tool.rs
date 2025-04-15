@@ -709,4 +709,78 @@ mod test_gradient {
 			positions
 		);
 	}
+
+	#[tokio::test]
+	async fn dragging_endpoint_sets_correct_point() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let selected_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: selected_layer,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10.0, -5.0)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_secondary_color(Color::BLUE).await;
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// Get the initial gradient state (should have 2 stops)
+		let initial_fills = get_fills(&mut editor).await;
+		assert_eq!(initial_fills.len(), 1);
+		let (initial_fill, transform) = initial_fills.first().unwrap();
+		let initial_gradient = initial_fill.as_gradient().unwrap();
+
+		// Verify initial gradient endpoints in viewport space
+		let initial_start = transform.transform_point2(initial_gradient.start);
+		let initial_end = transform.transform_point2(initial_gradient.end);
+		assert!(initial_start.abs_diff_eq(DVec2::new(0., 0.), 1e-10));
+		assert!(initial_end.abs_diff_eq(DVec2::new(100., 0.), 1e-10));
+
+		editor.select_tool(ToolType::Gradient).await;
+
+		// Simulate dragging the end point to a new position (100, 50)
+		let start_pos = DVec2::new(100., 0.);
+		let end_pos = DVec2::new(100., 50.);
+
+		editor.move_mouse(start_pos.x, start_pos.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(start_pos.x, start_pos.y, ModifierKeys::empty()).await;
+
+		editor.move_mouse(end_pos.x, end_pos.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: end_pos,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Check the updated gradient
+		let updated_fills = get_fills(&mut editor).await;
+		assert_eq!(updated_fills.len(), 1);
+		let (updated_fill, transform) = updated_fills.first().unwrap();
+		let updated_gradient = updated_fill.as_gradient().unwrap();
+
+		// Verify the start point hasn't changed
+		let updated_start = transform.transform_point2(updated_gradient.start);
+		assert!(updated_start.abs_diff_eq(DVec2::new(0., 0.), 1e-10));
+
+		// Verify the end point has been updated to the new position
+		let updated_end = transform.transform_point2(updated_gradient.end);
+		assert!(updated_end.abs_diff_eq(DVec2::new(100., 50.), 1e-10), "Expected end point at (100, 50), got {:?}", updated_end);
+	}
 }
