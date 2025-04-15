@@ -958,8 +958,9 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
-	vector_data.bounding_box_with_transform(vector_data_transform)
-		.map(|bb| bb[1] - bb[0])
+	vector_data
+		.bounding_box_with_transform(vector_data_transform)
+		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default()
 }
 
