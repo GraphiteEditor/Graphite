@@ -1250,7 +1250,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
-				if self.drag_start.is_some() || self.box_selection_start.is_some() {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
 					let _ = self.auto_panning.shift_viewport(ipp, responses);
 				} else {
 					// Auto-panning
