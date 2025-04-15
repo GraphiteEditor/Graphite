@@ -378,7 +378,25 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			}
 			ToolMessage::Path(PathToolMessage::AdjustProportionalRadius) => {
 				if self.options.proportional_editing_enabled {
-					self.options.proportional_radius = (self.options.proportional_radius + (tool_data.input.mouse.scroll_delta.y as i32).min(10).max(-10)).max(1);
+					// Get the current radius and scroll delta
+					let current_radius = self.options.proportional_radius as f64;
+					let scroll_delta = (tool_data.input.mouse.scroll_delta.y as f64).min(1.0).max(-1.0);
+
+					//base factor that determines how aggressive the scaling is
+					let base_factor = 0.15; //  sensitivity
+
+					// Calculate new radius using logarithmic scaling
+					let scale_factor = if scroll_delta > 0.0 {
+						1.0 + (base_factor * scroll_delta)
+					} else {
+						1.0 / (1.0 + (base_factor * -scroll_delta))
+					};
+
+					let new_radius = (current_radius * scale_factor).round() as i32;
+
+					// Ensure the radius stays within reasonable bounds
+					self.options.proportional_radius = new_radius.max(1);
+
 					// Store previous affected points
 					let previous_affected = self.tool_data.proportional_affected_points.clone();
 
