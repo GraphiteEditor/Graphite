@@ -1157,13 +1157,13 @@ impl PathToolData {
 
 					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
 						// Calculate displacement from initial position to target position
-						let displacement_doc = self.total_delta * (*factor);
-						let target_doc_pos = *initial_doc_pos + displacement_doc;
-						let target_layer_pos = inverse_transform.transform_point2(target_doc_pos);
+						let displacement_document_space = self.total_delta * (*factor);
+						let target_document_space_position = *initial_doc_pos + displacement_document_space;
+						let target_layer_space_position = inverse_transform.transform_point2(target_document_space_position);
 
 						// Get current position and calculate delta
-						if let Some(current_layer_pos) = vector_data.point_domain.position_from_id(*point_id) {
-							let delta = target_layer_pos - current_layer_pos;
+						if let Some(current_layer_space_position) = vector_data.point_domain.position_from_id(*point_id) {
+							let delta = target_layer_space_position - current_layer_space_position;
 							shape_editor.move_anchor(*point_id, &vector_data, delta, *layer, None, responses);
 						}
 					}
@@ -1470,6 +1470,7 @@ impl Fsm for PathToolFsmState {
 			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
 			(_, PathToolMessage::GRS { key }) => {
 				// Calculate proportional editing center and affected points
+				tool_data.initial_point_positions.clear();
 				tool_data.proportional_edit_center = shape_editor.selection_center(document);
 				tool_data.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
 
