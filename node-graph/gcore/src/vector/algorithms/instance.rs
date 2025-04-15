@@ -48,6 +48,7 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 mod test {
 	use super::*;
 	use crate::Node;
+	use crate::ops::ExtractXyNode;
 	use crate::vector::VectorData;
 	use bezier_rs::Subpath;
 	use glam::DVec2;
@@ -69,7 +70,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = crate::vector::generator_nodes::RectangleNode::new(
 			FutureWrapperNode(()),
-			YPositionNode {},
+			ExtractXyNode::new(InstancePositionNode {}, FutureWrapperNode(crate::ops::XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),
