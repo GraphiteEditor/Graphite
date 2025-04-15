@@ -67,6 +67,10 @@ pub struct DropdownInput {
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Styling
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
 	//
 	// Callbacks
 	// `on_update` exists on the `MenuListEntry`, not this parent `DropdownInput`

@@ -1084,6 +1084,10 @@ export class DropdownInput extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	// Styling
+
+	minWidth!: number;
 }
 
 export class FontInput extends WidgetProps {

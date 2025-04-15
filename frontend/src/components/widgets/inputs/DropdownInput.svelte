@@ -21,16 +21,18 @@
 	export let interactive = true;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
+	export let minWidth = 0;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
-	let minWidth = 0;
+	let measuredMinWidth = 0;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
+	$: minWidth = Math.max(minWidth, measuredMinWidth);
 
 	function watchOpen(open: boolean) {
 		initialSelectedIndex = open ? selectedIndex : undefined;
@@ -94,7 +96,7 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		on:naturalWidth={({ detail }) => (measuredMinWidth = detail)}
 		{activeEntry}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
 		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}

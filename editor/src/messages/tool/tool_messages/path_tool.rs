@@ -4,6 +4,7 @@ use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE,
 	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
+use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -167,13 +168,13 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 
 	// Header row with title
 	widgets.push(LayoutGroup::Row {
-		widgets: vec![TextLabel::new("Proportional Edit").bold(true).widget_holder()],
+		widgets: vec![TextLabel::new("Proportional Editing").bold(true).widget_holder()],
 	});
 
 	// Falloff type row
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Falloff Type").table_align(true).min_width(100).widget_holder(),
+			TextLabel::new("Falloff").table_align(true).min_width(80).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(vec![vec![
 				MenuListEntry::new("Smooth")
@@ -201,8 +202,8 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 					.label("Random")
 					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
 			]])
+			.min_width(120)
 			.selected_index(Some(options.proportional_falloff_type as u32))
-			.disabled(!options.proportional_editing_enabled)
 			.widget_holder(),
 		],
 	});
@@ -210,13 +211,12 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 	// Radius row
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Radius").table_align(true).widget_holder(),
+			TextLabel::new("Radius").table_align(true).min_width(80).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(options.proportional_radius as f64))
 				.unit(" px")
 				.min(1.0)
-				.min_width(100)
-				.disabled(!options.proportional_editing_enabled)
+				.min_width(120)
 				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
 				.widget_holder(),
 		],
@@ -225,13 +225,12 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 	// Strength row
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Strength").table_align(true).widget_holder(),
+			TextLabel::new("Strength").table_align(true).min_width(80).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(options.proportional_falloff_strength as f64))
 				.min(1.0)
 				.step(1.0)
-				.min_width(100)
-				.disabled(!options.proportional_editing_enabled)
+				.min_width(120)
 				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffStrength(number_input.value.unwrap_or(1.0) as i32)).into())
 				.widget_holder(),
 		],
@@ -324,16 +323,11 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
-		// Create the proportional edit dropdown trigger (checkbox icon)
-		// TODO: use this when icon is available?
-		// let proportional_edit_trigger = CheckboxInput::new(self.options.proportional_editing_enabled)
-		//     .icon("ProportionalEdit")
-		//     .tooltip("Proportional Editing (Alt+P)")
-		//     .on_update(|checkbox| PathToolMessage::UpdateOptions(
-		//         PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
-		//     .widget_holder();
 		let proportional_edit_trigger = CheckboxInput::new(self.options.proportional_editing_enabled)
-			.tooltip("Proportional Editing (Alt+P)")
+			// TODO: Replace placeholder icon with a proper one
+			.icon("Empty12px")
+			.tooltip("Proportional Editing")
+			.tooltip_shortcut(action_keys!(PathToolMessageDiscriminant::ToggleProportionalEditing))
 			.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
 			.widget_holder();
 		let proportional_edit_dropdown = PopoverButton::new().popover_layout(proportional_edit_options(&self.options)).widget_holder();
