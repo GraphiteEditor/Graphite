@@ -562,17 +562,15 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
-	pub fn fill_striped_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	pub fn strip_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.push_path(subpaths, transform);
-
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
 
 		// Canvas state must be saved before clipping
 		self.render_context.save();
 		self.render_context.clip();
 
-		self.render_context.set_line_width(0.8);
+		self.render_context.set_line_width(1.5);
+		self.render_context.set_stroke_style_str(color);
 
 		// Draw the diagonal lines
 		let line_separation = 25 as f64; // in px
