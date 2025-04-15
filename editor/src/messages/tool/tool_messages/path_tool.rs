@@ -32,7 +32,6 @@ pub struct PathToolOptions {
 	path_overlay_mode: PathOverlayMode,
 	proportional_editing_enabled: bool,
 	proportional_falloff_type: ProportionalFalloffType,
-	proportional_falloff_strength: i32,
 	proportional_radius: i32,
 }
 impl Default for PathToolOptions {
@@ -41,7 +40,6 @@ impl Default for PathToolOptions {
 			path_overlay_mode: PathOverlayMode::default(),
 			proportional_editing_enabled: false,
 			proportional_falloff_type: ProportionalFalloffType::default(),
-			proportional_falloff_strength: 1,
 			proportional_radius: 100,
 		}
 	}
@@ -63,7 +61,6 @@ pub struct ProportionalEditData {
 	pub center: DVec2,
 	pub affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
 	pub falloff_type: ProportionalFalloffType,
-	pub falloff_strength: i32,
 	pub radius: i32,
 }
 
@@ -148,7 +145,6 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	ProportionalEditingEnabled(bool),
 	ProportionalFalloffType(ProportionalFalloffType),
-	ProportionalFalloffStrength(i32),
 	ProportionalRadius(i32),
 }
 
@@ -218,20 +214,6 @@ pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> 
 				.min(1.0)
 				.min_width(120)
 				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
-				.widget_holder(),
-		],
-	});
-
-	// Strength row
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![
-			TextLabel::new("Strength").table_align(true).min_width(80).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(options.proportional_falloff_strength as f64))
-				.min(1.0)
-				.step(1.0)
-				.min_width(120)
-				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffStrength(number_input.value.unwrap_or(1.0) as i32)).into())
 				.widget_holder(),
 		],
 	});
@@ -376,7 +358,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 							center: self.tool_data.proportional_edit_center.unwrap_or_default(),
 							affected_points: self.tool_data.proportional_affected_points.clone(),
 							falloff_type: self.options.proportional_falloff_type,
-							falloff_strength: self.options.proportional_falloff_strength,
 							radius: self.options.proportional_radius,
 						};
 						responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
@@ -387,20 +368,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.proportional_radius = radius.max(1).min(1000);
 					self.tool_data
 						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
-					responses.add(OverlaysMessage::Draw);
-				}
-				PathOptionsUpdate::ProportionalFalloffStrength(strength) => {
-					self.options.proportional_falloff_strength = strength.max(1);
-					if self.options.proportional_editing_enabled {
-						let proportional_data = ProportionalEditData {
-							center: self.tool_data.proportional_edit_center.unwrap_or_default(),
-							affected_points: self.tool_data.proportional_affected_points.clone(),
-							falloff_type: self.options.proportional_falloff_type,
-							falloff_strength: self.options.proportional_falloff_strength,
-							radius: self.options.proportional_radius,
-						};
-						responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
-					}
 					responses.add(OverlaysMessage::Draw);
 				}
 			},
@@ -422,14 +389,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 						self.tool_data.reset_removed_points(&previous_affected, tool_data.document, tool_data.shape_editor, responses);
 
 						// Update current points
-						self.tool_data.update_proportional_positions(tool_data.document, tool_data.shape_editor, &self.options, responses);
+						self.tool_data.update_proportional_positions(tool_data.document, tool_data.shape_editor, responses);
 					}
 					// Create updated proportional edit data
 					let proportional_data = ProportionalEditData {
 						center: self.tool_data.proportional_edit_center.unwrap_or_default(),
 						affected_points: self.tool_data.proportional_affected_points.clone(),
 						falloff_type: self.options.proportional_falloff_type,
-						falloff_strength: self.options.proportional_falloff_strength,
 						radius: self.options.proportional_radius,
 					};
 
@@ -1175,7 +1141,7 @@ impl PathToolData {
 			}
 		}
 	}
-	fn update_proportional_positions(&self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, options: &PathToolOptions, responses: &mut VecDeque<Message>) {
+	fn update_proportional_positions(&self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>) {
 		// Get a set of all selected point IDs across all layers
 		let selected_points: HashSet<PointId> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
 
@@ -1192,7 +1158,7 @@ impl PathToolData {
 
 					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
 						// Calculate displacement from initial position to target position
-						let displacement_doc = self.total_delta * (*factor / options.proportional_falloff_strength as f64);
+						let displacement_doc = self.total_delta * (*factor);
 						let target_doc_pos = *initial_doc_pos + displacement_doc;
 						let target_layer_pos = inverse_transform.transform_point2(target_doc_pos);
 
@@ -1273,7 +1239,7 @@ impl PathToolData {
 		// Accumulate total displacement
 
 		if tool_options.proportional_editing_enabled && !self.proportional_affected_points.is_empty() {
-			self.update_proportional_positions(document, shape_editor, tool_options, responses);
+			self.update_proportional_positions(document, shape_editor, responses);
 			// for (&layer, affected_points) in &self.proportional_affected_points {
 			// 	if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 			// 		let inverse_transform = document.metadata().transform_to_document(layer).inverse();
@@ -1512,7 +1478,6 @@ impl Fsm for PathToolFsmState {
 					center: tool_data.proportional_edit_center.unwrap_or_default(),
 					affected_points: tool_data.proportional_affected_points.clone(),
 					falloff_type: tool_options.proportional_falloff_type,
-					falloff_strength: tool_options.proportional_falloff_strength,
 					radius: tool_options.proportional_radius,
 				});
 				if !tool_options.proportional_editing_enabled {

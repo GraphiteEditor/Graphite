@@ -196,8 +196,7 @@ fn apply_proportional_edit(
 				let target_pos_fully_transformed_vp = total_transformation_vp.transform_point2(initial_pos_vp);
 				let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
 
-				let strength_divisor = (proportional_data.falloff_strength as f64).max(1.0);
-				let scaled_intended_delta_vp = full_intended_delta_vp * (*factor) / strength_divisor;
+				let scaled_intended_delta_vp = full_intended_delta_vp * (*factor);
 
 				let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
 				let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
@@ -331,7 +330,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					current_proportional_data.center = proportional_data.center;
 					current_proportional_data.affected_points = proportional_data.affected_points;
 					current_proportional_data.falloff_type = proportional_data.falloff_type;
-					current_proportional_data.falloff_strength = proportional_data.falloff_strength;
 					current_proportional_data.radius = proportional_data.radius;
 
 					// TODO: Essentialy a hack to trigger redraw for updated values
