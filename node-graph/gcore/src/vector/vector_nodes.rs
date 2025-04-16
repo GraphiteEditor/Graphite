@@ -954,6 +954,16 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	result
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+	vector_data
+		.bounding_box_with_transform(vector_data_transform)
+		.map(|[top_left, bottom_right]| bottom_right - top_left)
+		.unwrap_or_default()
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
@@ -1245,17 +1255,23 @@ async fn poisson_disk_points(
 	if separation_disk_diameter <= 0.01 {
 		return VectorDataTable::new(result);
 	}
+	let path_with_bounding_boxes: Vec<_> = vector_data
+		.stroke_bezier_paths()
+		.filter_map(|mut subpath| {
+			// TODO: apply transform to points instead of modifying the paths
+			subpath.apply_transform(vector_data_transform);
+			subpath.loose_bounding_box().map(|bb| (subpath, bb))
+		})
+		.collect();
 
-	for mut subpath in vector_data.stroke_bezier_paths() {
+	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
 
-		subpath.apply_transform(vector_data_transform);
-
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>()) {
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 
