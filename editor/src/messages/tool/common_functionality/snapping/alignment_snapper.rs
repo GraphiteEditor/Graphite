@@ -59,7 +59,7 @@ impl AlignmentSnapper {
 		// TODO: snap handle points
 		let document = snap_data.document;
 		let tolerance = snap_tolerance(document);
-		let tolerance_squared = tolerance * tolerance;
+		let tolerance_squared = tolerance.powi(2);
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
@@ -69,8 +69,7 @@ impl AlignmentSnapper {
 			// Perpendicular snap for line's endpoints
 			if let Some(quad) = target_point.quad.map(|q| q.0) {
 				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
-					let p1 = quad[0];
-					let p2 = quad[1];
+					let [p1, p2, ..] = quad;
 					let direction = (p2 - p1).normalize();
 					let normal = DVec2::new(-direction.y, direction.x);
 
@@ -84,7 +83,7 @@ impl AlignmentSnapper {
 								let snap_point = SnappedPoint {
 									snapped_point_document: perpendicular_snap,
 									source: point.source,
-									target: SnapTarget::Alignment(AlignmentSnapTarget::PerpendicularFromEndpoint),
+									target: SnapTarget::Alignment(AlignmentSnapTarget::PerpendicularToEndpoint),
 									target_bounds: Some(Quad(quad)),
 									distance,
 									tolerance,

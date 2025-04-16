@@ -99,7 +99,7 @@ impl SnappingState {
 				PathSnapTarget::NormalToPath => self.path.normal_to_path,
 				PathSnapTarget::TangentToPath => self.path.tangent_to_path,
 				PathSnapTarget::IntersectionPoint => self.path.path_intersection_point,
-				PathSnapTarget::PerpendicularFromEndpoint => self.path.perpendicular_from_endpoint,
+				PathSnapTarget::PerpendicularToEndpoint => self.path.perpendicular_from_endpoint,
 			},
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
@@ -479,7 +479,7 @@ pub enum PathSnapTarget {
 	NormalToPath,
 	TangentToPath,
 	IntersectionPoint,
-	PerpendicularFromEndpoint,
+	PerpendicularToEndpoint,
 }
 
 impl fmt::Display for PathSnapTarget {
@@ -491,7 +491,7 @@ impl fmt::Display for PathSnapTarget {
 			PathSnapTarget::NormalToPath => write!(f, "Path: Normal to Path"),
 			PathSnapTarget::TangentToPath => write!(f, "Path: Tangent to Path"),
 			PathSnapTarget::IntersectionPoint => write!(f, "Path: Intersection Point"),
-			PathSnapTarget::PerpendicularFromEndpoint => write!(f, "Path: Perpendicular from endpoint"),
+			PathSnapTarget::PerpendicularToEndpoint => write!(f, "Path: Perp. to Endpoint"),
 		}
 	}
 }
@@ -538,7 +538,7 @@ pub enum AlignmentSnapTarget {
 	ArtboardCenterPoint,
 	AlignWithAnchorPoint,
 	IntersectionPoint,
-	PerpendicularFromEndpoint,
+	PerpendicularToEndpoint,
 }
 
 impl fmt::Display for AlignmentSnapTarget {
@@ -550,7 +550,7 @@ impl fmt::Display for AlignmentSnapTarget {
 			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
 			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
 			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
-			AlignmentSnapTarget::PerpendicularFromEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularFromEndpoint),
+			AlignmentSnapTarget::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),
 		}
 	}
 }
