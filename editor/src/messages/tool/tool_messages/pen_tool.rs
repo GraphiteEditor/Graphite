@@ -1613,6 +1613,7 @@ impl Fsm for PenToolFsmState {
 					overlay_context.manipulator_anchor(next_anchor, false, None);
 				}
 
+				// Fill the shape if the new point closes the path
 				if tool_data.latest_point().is_some() {
 					let latest_point = tool_data.latest_point().unwrap();
 
