@@ -20,6 +20,7 @@ use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
+use graphene_std::ops::XY;
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
@@ -881,6 +882,75 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Extract Channel".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("TODO"),
+			properties: None,
+		},
+		DocumentNodeDefinition {
+			identifier: "Split Vector2",
+			category: "Math: Vector",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+
+						..Default::default()
+					}),
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_properties: vec!["Vector2".into()],
+					output_names: vec!["X".to_string(), "Y".to_string()],
+					has_primary_output: false,
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Extract XY".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Extract XY".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2889,6 +2959,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("exposure_properties".to_string(), Box::new(node_properties::exposure_properties));
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
+	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
 	map.insert(
 		"identity_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.")),
