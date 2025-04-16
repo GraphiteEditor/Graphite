@@ -8,9 +8,12 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::style::LineJoin;
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Bezier, BezierHandles, Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
+use kurbo::offset::CubicOffset;
+use kurbo::simplify::SimplifyBezPath;
+use kurbo::{Affine, BezPath, CubicBez, ParamCurve, ParamCurveFit, PathSeg, Point, Shape};
 use rand::{Rng, SeedableRng};
 
 /// Implemented for types that can be converted to an iterator of vector data.
@@ -950,33 +953,113 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	VectorDataTable::new(result)
 }
 
+fn offset(cubics: &[CubicBez], distance: f64, join: kurbo::Join, miter_limit: Option<f64>) -> BezPath {
+	let mut offset_paths = Vec::new();
+	for cubic in cubics {
+		let cubic_offset = CubicOffset::new_regularized(*cubic, -distance, 3.);
+		let offset_segment = kurbo::fit_to_bezpath(&cubic_offset, 1e-3);
+		offset_paths.push(offset_segment);
+	}
+
+	let mut new_paths = Vec::new();
+
+	for i in 0..offset_paths.len() - 1 {
+		let j = i + 1;
+		let bez1 = offset_paths[i].clone();
+		let bez2 = offset_paths[j].clone();
+
+		let last_seg = bez1.segments().last().unwrap();
+		let first_seg = bez2.segments().nth(0).unwrap();
+
+		new_paths.push(bez1.clone());
+
+		if last_seg.end().distance(first_seg.start()) < 0.001 {
+			//////// NOTE
+			continue;
+		}
+
+		let out_tangent = SimplifyBezPath::new(last_seg.path_elements(0.1).into_iter()).sample_pt_tangent(1., 1.).tangent;
+		let in_tangent = SimplifyBezPath::new(first_seg.path_elements(0.1).into_iter()).sample_pt_tangent(0., 1.).tangent;
+
+		let angle = DVec2::new(out_tangent.x, out_tangent.y).angle_to(DVec2::new(in_tangent.x, in_tangent.y));
+		info!("{:?}", (i, j, angle.to_degrees()));
+
+		let mut apply_join = true;
+		if (angle > 0. && distance > 0.) || (angle < 0. && distance < 0.) {
+			// if let Some((clipped_bez1, clipped_bez2)) = clip_bezpath(&bez1, &bez2) {
+			// 	offset_bezpath[i] = clipped_bez1;
+			// 	offset_bezpath[j] = clipped_bez2;
+			// 	apply_join = false;
+			// }
+		}
+
+		if apply_join {
+			match join {
+				kurbo::Join::Bevel => {}
+				kurbo::Join::Miter => {}
+				kurbo::Join::Round => {}
+			}
+		}
+	}
+
+	if let Some(last) = offset_paths.get(offset_paths.len() - 1) {
+		new_paths.push(last.clone())
+	}
+
+	let mut bezpath = BezPath::new();
+
+	for i in 0..new_paths.len() {
+		if i == 0 {
+			bezpath.extend(&new_paths[i]);
+			continue;
+		}
+
+		let last_point = bezpath.get_seg(bezpath.elements().len() - 1).unwrap().end();
+		let next_point = new_paths[i].get_seg(1).unwrap().start();
+
+		if last_point.distance_squared(next_point) > 1. {
+			bezpath.line_to(next_point);
+		}
+		for elm in new_paths[i].elements().iter().skip(1) {
+			bezpath.push(*elm);
+		}
+	}
+
+	bezpath
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
 	let subpaths = vector_data.stroke_bezier_paths();
+
 	let mut result = VectorData::empty();
 	result.style = vector_data.style.clone();
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
-	// Perform operation on all subpaths in this shape.
+	let mut cubic_bez = Vec::new();
+
 	for mut subpath in subpaths {
 		subpath.apply_transform(vector_data_transform);
-
-		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let subpath_out = subpath.offset(
-			-distance,
-			match line_join {
-				LineJoin::Miter => Join::Miter(Some(miter_limit)),
-				LineJoin::Bevel => Join::Bevel,
-				LineJoin::Round => Join::Round,
-			},
-		);
-
-		// One closed subpath, open path.
-		result.append_subpath(subpath_out, false);
+		for bezier in subpath.iter() {
+			let Bezier { start, end, handles } = bezier.to_cubic();
+			let BezierHandles::Cubic { handle_start, handle_end } = handles else { continue };
+			let cubic = CubicBez::new((start.x, start.y), (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), (end.x, end.y));
+			cubic_bez.push(cubic);
+		}
 	}
+
+	let join = match line_join {
+		LineJoin::Miter => kurbo::Join::Miter,
+		LineJoin::Bevel => kurbo::Join::Bevel,
+		LineJoin::Round => kurbo::Join::Round,
+	};
+
+	let offset_path = offset(&cubic_bez, distance, join, Some(miter_limit));
+
+	result.append_bezpath(&offset_path);
 
 	VectorDataTable::new(result)
 }

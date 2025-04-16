@@ -6,11 +6,12 @@ use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::ManipulatorGroup;
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
+use kurbo::BezPath;
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -172,6 +173,100 @@ impl VectorData {
 
 			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
 				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg, fill_id);
+			}
+		}
+	}
+
+	// # TODO:
+	pub fn as_bezpath(&self) -> BezPath {
+		for i in 0..self.segment_domain.handles().len() {}
+		todo!()
+	}
+
+	// # TODO: clean up and test
+	pub fn append_bezpath(&mut self, bezpath: &BezPath) {
+		let [mut first_seg, mut last_seg] = [None, None];
+		let [mut first_point, mut last_point] = [None, None];
+		let mut point_id = self.point_domain.next_id();
+		let mut segment_id = self.segment_domain.next_id();
+
+		let fill_id = FillId::ZERO;
+		let stroke_id = StrokeId::ZERO;
+
+		for elm in bezpath.elements().iter() {
+			match elm {
+				kurbo::PathEl::MoveTo(point) => {
+					let point_id = point_id.next_id();
+					self.point_domain.push(point_id, DVec2::new(point.x, point.y));
+
+					let index = self.point_domain.ids().len() - 1;
+
+					last_point = Some(index);
+					first_point = Some(first_point.unwrap_or(index));
+				}
+				kurbo::PathEl::LineTo(point) => {
+					let start = last_point.unwrap();
+					let point_id = point_id.next_id();
+
+					self.point_domain.push(point_id, DVec2::new(point.x, point.y));
+					let index = self.point_domain.ids().len() - 1;
+
+					let seg_id = segment_id.next_id();
+					first_seg = Some(first_seg.unwrap_or(seg_id));
+					last_seg = Some(seg_id);
+
+					self.segment_domain.push(seg_id, start, index, BezierHandles::Linear, stroke_id);
+					last_point = Some(index);
+					// first_point = Some(first_point.unwrap_or(index)); // is it needed?
+				}
+				kurbo::PathEl::QuadTo(handle, point) => {
+					let start = last_point.unwrap();
+					let point_id = point_id.next_id();
+
+					self.point_domain.push(point_id, DVec2::new(point.x, point.y));
+					let index = self.point_domain.ids().len() - 1;
+
+					let seg_id = segment_id.next_id();
+					first_seg = Some(first_seg.unwrap_or(seg_id));
+					last_seg = Some(seg_id);
+
+					let handle = DVec2::new(handle.x, handle.y);
+					self.segment_domain.push(seg_id, start, index, BezierHandles::Quadratic { handle }, stroke_id);
+
+					last_point = Some(index);
+					// first_point = Some(first_point.unwrap_or(index));
+				}
+				kurbo::PathEl::CurveTo(handle_start, handle_end, end_point) => {
+					let start = last_point.unwrap();
+					let end_point_id = point_id.next_id();
+
+					self.point_domain.push(end_point_id, DVec2::new(end_point.x, end_point.y));
+					let index = self.point_domain.ids().len() - 1;
+
+					let seg_id = segment_id.next_id();
+					first_seg = Some(first_seg.unwrap_or(seg_id));
+					last_seg = Some(seg_id);
+
+					let handle_start = DVec2::new(handle_start.x, handle_start.y);
+					let handle_end = DVec2::new(handle_end.x, handle_end.y);
+
+					self.segment_domain.push(seg_id, start, index, BezierHandles::Cubic { handle_start, handle_end }, stroke_id);
+
+					last_point = Some(index);
+					// first_point = Some(first_point.unwrap_or(index)); // is it needed?
+				}
+				kurbo::PathEl::ClosePath => {
+					if let (Some(first_id), Some(last_id)) = (first_point, last_point) {
+						let id = segment_id.next_id();
+						first_seg = Some(first_seg.unwrap_or(id));
+						last_seg = Some(id);
+						self.segment_domain.push(id, last_id, first_id, BezierHandles::Linear, stroke_id);
+					}
+
+					if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
+						self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg, fill_id);
+					}
+				}
 			}
 		}
 	}

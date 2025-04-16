@@ -12,6 +12,7 @@ mod symmetrical_basis;
 mod utils;
 
 pub use bezier::*;
+pub use consts::*;
 pub use subpath::*;
 pub use symmetrical_basis::*;
-pub use utils::{Cap, Join, SubpathTValue, TValue, TValueType};
+pub use utils::{Cap, Join, SubpathTValue, TValue, TValueType, line_intersection};
