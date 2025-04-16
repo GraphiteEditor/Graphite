@@ -954,6 +954,16 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	result
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+	vector_data
+		.bounding_box_with_transform(vector_data_transform)
+		.map(|[top_left, bottom_right]| bottom_right - top_left)
+		.unwrap_or_default()
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
