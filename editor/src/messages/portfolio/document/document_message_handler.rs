@@ -2710,54 +2710,54 @@ impl Iterator for ClickXRayIter<'_> {
 
 #[cfg(test)]
 mod document_message_handler_tests {
-    use super::*;
-    use crate::test_utils::test_prelude::*;
+	use super::*;
+	use crate::test_utils::test_prelude::*;
 
-    #[tokio::test]
-    async fn test_layer_rearrangement() {
-        let mut editor = EditorTestUtils::create();
-        editor.new_document().await;
-        // Create three rectangle layers
-        editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-        editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
-        editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+	#[tokio::test]
+	async fn test_layer_rearrangement() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Create three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
 
-        // Helper function to identify layers by bounds
-        async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
-            let document = editor.active_document();
-            for layer in document.metadata().all_layers() {
-                if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-                    if (bbox[0].x - min_x).abs() < 1.0 && (bbox[0].y - min_y).abs() < 1.0 {
-                        return Some(layer);
-                    }
-                }
-            }
-            None
-        }
+		// Helper function to identify layers by bounds
+		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
+			let document = editor.active_document();
+			for layer in document.metadata().all_layers() {
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
+					if (bbox[0].x - min_x).abs() < 1.0 && (bbox[0].y - min_y).abs() < 1.0 {
+						return Some(layer);
+					}
+				}
+			}
+			None
+		}
 
-        async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
-            let document = editor.active_document();
-            let parent = layer.parent(document.metadata())?;
-            parent.children(document.metadata()).position(|child| child == layer)
-        }
+		async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
+			let document = editor.active_document();
+			let parent = layer.parent(document.metadata())?;
+			parent.children(document.metadata()).position(|child| child == layer)
+		}
 
-        let layer_bottom = get_layer_by_bounds(&mut editor, 0.0, 0.0).await.unwrap();
-        let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
-        let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
+		let layer_bottom = get_layer_by_bounds(&mut editor, 0.0, 0.0).await.unwrap();
+		let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
+		let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
 
-        let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
-        let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
 
-        // Test 1: Lower the top layer
-        editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
-        editor.handle_message(DocumentMessage::SelectedLayersLower).await;
-        let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
-        assert!(new_index_top > initial_index_top, "Top layer should have moved down");
+		// Test 1: Lower the top layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersLower).await;
+		let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		assert!(new_index_top > initial_index_top, "Top layer should have moved down");
 
-        // Test 2: Raise the middle layer
-        editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
-        editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
-        let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
-        assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
-    }
+		// Test 2: Raise the middle layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
+		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
+	}
 }
