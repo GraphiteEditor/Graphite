@@ -496,6 +496,13 @@ impl ManipulatorPointId {
 			_ => None,
 		}
 	}
+
+	pub fn get_segment(self) -> Option<SegmentId> {
+		match self {
+			ManipulatorPointId::PrimaryHandle(segment) | ManipulatorPointId::EndHandle(segment) => Some(segment),
+			_ => None,
+		}
+	}
 }
 
 /// The type of handle found on a bézier curve.

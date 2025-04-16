@@ -698,7 +698,9 @@ impl ShapeState {
 					let length = transform.transform_vector2(unselected_position - anchor).length();
 					let position = transform.inverse().transform_vector2(direction * length);
 					let modification_type = unselected_handle.set_relative_position(position);
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					if (anchor - selected_position).length() > 1e-6 {
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
 				}
 				// If both handles are selected, average the angles of the handles
 				else {
