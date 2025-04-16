@@ -66,9 +66,8 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 							size: size.as_dvec2(),
 							device_pixel_ratio,
 							overlays_visibility_settings: overlays_visibility_settings.clone(),
-						});
+						}));
 						// debug!("OverlaysMessageHandler: {:?}", message.clone());
-						responses.add(message);
 					}
 				}
 			}
