@@ -2707,3 +2707,82 @@ impl Iterator for ClickXRayIter<'_> {
 		None
 	}
 }
+
+#[cfg(test)]
+mod document_message_handler_tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn test_layer_selection_with_shift_and_ctrl() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+
+		// Case 1: Basic selection (no modifier)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[0].to_node(),
+				ctrl: false,
+				shift: false,
+			})
+			.await;
+		// Fresh document reference for verification
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+
+		// Case 2: Ctrl + click to add another layer
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[2].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 3: Shift + click to select a range
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: false,
+				shift: true,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		// We expect 2 layers to be selected (layers 1 and 2) - not 3
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 4: Ctrl + click to toggle selection (deselect)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+
+		// Final fresh document reference
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+	}
+}
