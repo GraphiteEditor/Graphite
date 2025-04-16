@@ -1,6 +1,7 @@
+use crate::instances::Instance;
+use crate::vector::{VectorData, VectorDataTable};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl, instances::Instance, vector::VectorDataTable};
 
 #[node_macro::node(name("Instance on Points"), category("Vector: Shape"), path(graphene_core::vector))]
 async fn instance_on_points(
@@ -23,6 +24,12 @@ async fn instance_on_points(
 			}
 		}
 	}
+
+	// TODO: Remove once we support empty tables, currently this is here to avoid crashing
+	if result.is_empty() {
+		return VectorDataTable::new(VectorData::empty());
+	}
+
 	result
 }
 
