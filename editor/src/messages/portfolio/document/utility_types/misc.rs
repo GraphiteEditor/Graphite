@@ -99,6 +99,7 @@ impl SnappingState {
 				PathSnapTarget::NormalToPath => self.path.normal_to_path,
 				PathSnapTarget::TangentToPath => self.path.tangent_to_path,
 				PathSnapTarget::IntersectionPoint => self.path.path_intersection_point,
+				PathSnapTarget::PerpendicularToEndpoint => self.path.perpendicular_from_endpoint,
 			},
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
@@ -142,6 +143,7 @@ pub struct PathSnapping {
 	pub tangent_to_path: bool,
 	pub path_intersection_point: bool,
 	pub align_with_anchor_point: bool, // TODO: Rename
+	pub perpendicular_from_endpoint: bool,
 }
 
 impl Default for PathSnapping {
@@ -154,6 +156,7 @@ impl Default for PathSnapping {
 			tangent_to_path: true,
 			path_intersection_point: true,
 			align_with_anchor_point: true,
+			perpendicular_from_endpoint: true,
 		}
 	}
 }
@@ -476,6 +479,7 @@ pub enum PathSnapTarget {
 	NormalToPath,
 	TangentToPath,
 	IntersectionPoint,
+	PerpendicularToEndpoint,
 }
 
 impl fmt::Display for PathSnapTarget {
@@ -487,6 +491,7 @@ impl fmt::Display for PathSnapTarget {
 			PathSnapTarget::NormalToPath => write!(f, "Path: Normal to Path"),
 			PathSnapTarget::TangentToPath => write!(f, "Path: Tangent to Path"),
 			PathSnapTarget::IntersectionPoint => write!(f, "Path: Intersection Point"),
+			PathSnapTarget::PerpendicularToEndpoint => write!(f, "Path: Perp. to Endpoint"),
 		}
 	}
 }
@@ -533,6 +538,7 @@ pub enum AlignmentSnapTarget {
 	ArtboardCenterPoint,
 	AlignWithAnchorPoint,
 	IntersectionPoint,
+	PerpendicularToEndpoint,
 }
 
 impl fmt::Display for AlignmentSnapTarget {
@@ -544,6 +550,7 @@ impl fmt::Display for AlignmentSnapTarget {
 			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
 			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
 			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
+			AlignmentSnapTarget::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),
 		}
 	}
 }
