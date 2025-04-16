@@ -24,8 +24,6 @@ use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
-use interpreted_executor::dynamic_executor::IntrospectError;
-use std::sync::Arc;
 use std::vec;
 
 pub struct PortfolioMessageData<'a> {
@@ -1200,10 +1198,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 impl PortfolioMessageHandler {
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
 		Self { executor, ..Default::default() }
-	}
-
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync>, IntrospectError> {
-		self.executor.introspect_node(node_path).await
 	}
 
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
