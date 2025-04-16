@@ -568,16 +568,9 @@ mod test_line_tool {
 	async fn test_line_tool_with_transformed_artboard() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.select_tool(ToolType::Artboard).await;
 		editor.drag_tool(ToolType::Artboard, 0., 0., 200., 200., ModifierKeys::empty()).await;
 
-		let artboard_id = editor
-			.active_document()
-			.network_interface
-			.selected_nodes()
-			.selected_layers(editor.active_document().metadata())
-			.next()
-			.unwrap();
+		let artboard_id = editor.get_selected_layer().await.expect("Should have selected the artboard");
 
 		editor
 			.handle_message(GraphOperationMessage::TransformChange {
@@ -590,20 +583,22 @@ mod test_line_tool {
 
 		editor.drag_tool(ToolType::Line, 50., 50., 150., 150., ModifierKeys::empty()).await;
 
-		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			let line_vector = end_input - start_input;
-			let line_length = line_vector.length();
-			assert!((line_length - 141.42).abs() < 1.0, "Line length should be approximately 141.42 units. Got: {line_length}");
-			assert!((line_vector.x - 100.0).abs() < 1.0, "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
-			assert!(
-				(line_vector.y.abs() - 100.0).abs() < 1.0,
-				"Absolute Y-component of line vector should be approximately 100. Got: {}",
-				line_vector.y.abs()
-			);
-			let angle_degrees = line_vector.angle_to(DVec2::X).to_degrees();
-			assert!((angle_degrees - (-45.0)).abs() < 1.0, "Line angle should be close to -45 degrees. Got: {angle_degrees}");
-		} else {
-			panic!("Line was not created successfully within transformed artboard");
-		}
+		let (start_input, end_input) = get_line_node_inputs(&mut editor).await.expect("Line was not created successfully within transformed artboard");
+		// The line should still be diagonal with equal change in x and y
+		let line_vector = end_input - start_input;
+		// Verifying the line is approximately 100*sqrt(2) units in length (diagonal of 100x100 square)
+		let line_length = line_vector.length();
+		assert!(
+			(line_length - 141.42).abs() < 1.0, // 100 * sqrt(2) ~= 141.42
+			"Line length should be approximately 141.42 units. Got: {line_length}"
+		);
+		assert!((line_vector.x - 100.0).abs() < 1.0, "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
+		assert!(
+			(line_vector.y.abs() - 100.0).abs() < 1.0,
+			"Absolute Y-component of line vector should be approximately 100. Got: {}",
+			line_vector.y.abs()
+		);
+		let angle_degrees = line_vector.angle_to(DVec2::X).to_degrees();
+		assert!((angle_degrees - (-45.0)).abs() < 1.0, "Line angle should be close to -45 degrees. Got: {angle_degrees}");
 	}
 }
