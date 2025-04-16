@@ -350,10 +350,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value == value
 }
@@ -363,10 +360,7 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 fn not_equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value != value
 }

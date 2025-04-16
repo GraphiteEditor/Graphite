@@ -13,9 +13,10 @@ async fn instance_on_points(
 	for Instance { instance: points, transform, .. } in points.instances() {
 		for (index, &point) in points.point_domain.positions().iter().enumerate() {
 			let transformed_point = transform.transform_point2(point);
-			println!("Transformed {transformed_point:?}");
+
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let instanced = instance_node.eval(new_ctx.into_context()).await;
+
 			for instanced in instanced.instances() {
 				let instanced = result.push_instance(instanced);
 				*instanced.transform *= DAffine2::from_translation(transformed_point);

@@ -1,4 +1,4 @@
-use super::misc::AsU64;
+use super::misc::{AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
@@ -40,7 +40,7 @@ fn circle(
 	_: impl Ctx,
 	_primary: (),
 	#[default(50.)]
-	#[max(0.)]
+	#[min(0.)]
 	radius: f64,
 ) -> VectorDataTable {
 	let radius = radius.max(0.);
@@ -116,45 +116,105 @@ fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: DVec2, #[defaul
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
 }
 
-#[node_macro::node(category("Vector: Shape"))]
-fn isometric_grid(
+trait GridSpacing {
+	fn as_dvec2(&self) -> DVec2;
+}
+impl GridSpacing for f64 {
+	fn as_dvec2(&self) -> DVec2 {
+		DVec2::splat(*self)
+	}
+}
+impl GridSpacing for DVec2 {
+	fn as_dvec2(&self) -> DVec2 {
+		*self
+	}
+}
+
+#[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
+fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
-	#[min(0.)]
-	#[default(30)]
-	#[max(90.)]
-	angle_a: f64,
+	grid_type: GridType,
 	#[min(0.)]
 	#[default(10)]
-	y_axis_spacing: f64,
+	#[implementations(f64, DVec2)]
+	spacing: T,
+	#[default(30., 30.)] angles: DVec2,
 	#[default(10)] rows: u32,
 	#[default(10)] columns: u32,
 ) -> VectorDataTable {
-	let tan_a = angle_a.to_radians().tan();
-	let spacing = DVec2::new(y_axis_spacing / (tan_a * 2.), y_axis_spacing);
+	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
+	let (angle_a, angle_b) = angles.into();
+
 	let mut vector_data = VectorData::empty();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
-	for y in 0..rows {
-		for x in 0..columns {
-			let current_index = vector_data.point_domain.ids().len();
-			vector_data
-				.point_domain
-				.push(point_id.next_id(), DVec2::new(spacing.x * x as f64, spacing.y * (y as f64 - (x % 2) as f64 * 0.5)));
 
-			let mut push_segment = |to_index: Option<usize>| {
-				if let Some(other_index) = to_index {
-					vector_data
-						.segment_domain
-						.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+	match grid_type {
+		GridType::Rectangular => {
+			// Create rectangular grid points and connect them with line segments
+			for y in 0..rows {
+				for x in 0..columns {
+					// Add current point to the grid
+					let current_index = vector_data.point_domain.ids().len();
+					vector_data.point_domain.push(point_id.next_id(), DVec2::new(x_spacing * x as f64, y_spacing * y as f64));
+
+					// Helper function to connect points with line segments
+					let mut push_segment = |to_index: Option<usize>| {
+						if let Some(other_index) = to_index {
+							vector_data
+								.segment_domain
+								.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+						}
+					};
+
+					// Connect to the point to the left (horizontal connection)
+					push_segment((x > 0).then(|| current_index - 1));
+
+					// Connect to the point above (vertical connection)
+					push_segment(current_index.checked_sub(columns as usize));
 				}
-			};
+			}
+		}
+		GridType::Isometric => {
+			// Calculate isometric grid spacing based on angles
+			let tan_a = angle_a.to_radians().tan();
+			let tan_b = angle_b.to_radians().tan();
+			let spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
 
-			push_segment((x > 0).then(|| current_index - 1));
-			push_segment(current_index.checked_sub(columns as usize));
-			if x % 2 == 1 {
-				push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
-				push_segment(current_index.checked_sub(columns as usize + 1));
+			// Create isometric grid points and connect them with line segments
+			for y in 0..rows {
+				for x in 0..columns {
+					// Add current point to the grid with offset for odd columns
+					let current_index = vector_data.point_domain.ids().len();
+					vector_data
+						.point_domain
+						.push(point_id.next_id(), DVec2::new(spacing.x * x as f64, spacing.y * (y as f64 - (x % 2) as f64 * 0.5)));
+
+					// Helper function to connect points with line segments
+					let mut push_segment = |to_index: Option<usize>| {
+						if let Some(other_index) = to_index {
+							vector_data
+								.segment_domain
+								.push(segment_id.next_id(), other_index, current_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+						}
+					};
+
+					// Connect to the point to the left
+					push_segment((x > 0).then(|| current_index - 1));
+
+					// Connect to the point directly above
+					push_segment(current_index.checked_sub(columns as usize));
+
+					// Additional diagonal connections for odd columns (creates hexagonal pattern)
+					if x % 2 == 1 {
+						// Connect to the point diagonally up-right (if not at right edge)
+						push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
+
+						// Connect to the point diagonally up-left
+						push_segment(current_index.checked_sub(columns as usize + 1));
+					}
+				}
 			}
 		}
 	}
@@ -165,11 +225,11 @@ fn isometric_grid(
 #[test]
 fn isometric_grid_test() {
 	// Doesn't crash with weird angles
-	isometric_grid((), (), 0., 0., 5, 5);
-	isometric_grid((), (), 90., 90., 5, 5);
+	grid((), (), GridType::Isometric, 0., (0., 0.).into(), 5, 5);
+	grid((), (), GridType::Isometric, 90., (90., 90.).into(), 5, 5);
 
 	// Works properly
-	let grid = isometric_grid((), (), 30., 10., 5, 5);
+	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
 	assert_eq!(grid.one_instance().instance.point_domain.ids().len(), 5 * 5);
 	assert_eq!(grid.one_instance().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
 	for (_, bezier, _, _) in grid.one_instance().instance.segment_bezier_iter() {

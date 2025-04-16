@@ -213,6 +213,7 @@ tagged_value! {
 	DomainWarpType(graphene_core::raster::DomainWarpType),
 	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
+	GridType(graphene_core::vector::misc::GridType),
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),
