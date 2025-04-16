@@ -1155,6 +1155,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 										!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
 									})
+									.collect::<Vec<_>>()
+									.into_iter()
+									.filter_map(|mut wire| {
+										if let Some(end_node_id) = wire.wire_end.node_id() {
+											let Some(actual_index_from_exposed) = (0..network_interface.number_of_inputs(&end_node_id, selection_network_path))
+												.filter(|&input_index| {
+													network_interface
+														.input_from_connector(&InputConnector::Node { node_id: end_node_id, input_index }, selection_network_path)
+														.is_some_and(|input| input.is_exposed_to_frontend(selection_network_path.is_empty()))
+												})
+												.nth(wire.wire_end.input_index())
+											else {
+												log::error!("Could not get exposed input index for {:?}", wire.wire_end);
+												return None;
+											};
+											wire.wire_end = InputConnector::Node {
+												node_id: end_node_id,
+												input_index: actual_index_from_exposed,
+											};
+										}
+										Some(wire)
+									})
 									.collect::<Vec<_>>();
 
 								let is_stack_wire = |wire: &FrontendNodeWire| match (wire.wire_start.node_id(), wire.wire_end.node_id(), wire.wire_end.input_index()) {
