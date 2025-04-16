@@ -537,6 +537,7 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 
 #[cfg(test)]
 mod test_spline_tool {
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -806,7 +807,6 @@ mod test_spline_tool {
 		editor.new_document().await;
 
 		editor.drag_tool(ToolType::Artboard, 0., 0., 500., 500., ModifierKeys::empty()).await;
-
 		let document = editor.active_document();
 		let artboard_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
 
@@ -819,69 +819,19 @@ mod test_spline_tool {
 			})
 			.await;
 
-		let spline_start = DVec2::new(100., 100.);
-		let spline_mid = DVec2::new(200., 150.);
-		let spline_end = DVec2::new(300., 100.);
+		let spline_points = [DVec2::new(100., 100.), DVec2::new(200., 150.), DVec2::new(300., 100.)];
 
-		editor.select_tool(ToolType::Spline).await;
-		editor.move_mouse(spline_start.x, spline_start.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(spline_start.x, spline_start.y, ModifierKeys::empty()).await;
-		editor
-			.mouseup(
-				EditorMouseState {
-					editor_position: spline_start,
-					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
-				},
-				ModifierKeys::empty(),
-			)
-			.await;
-
-		editor.move_mouse(spline_mid.x, spline_mid.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(spline_mid.x, spline_mid.y, ModifierKeys::empty()).await;
-		editor
-			.mouseup(
-				EditorMouseState {
-					editor_position: spline_mid,
-					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
-				},
-				ModifierKeys::empty(),
-			)
-			.await;
-
-		editor.move_mouse(spline_end.x, spline_end.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(spline_end.x, spline_end.y, ModifierKeys::empty()).await;
-		editor
-			.mouseup(
-				EditorMouseState {
-					editor_position: spline_end,
-					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
-				},
-				ModifierKeys::empty(),
-			)
-			.await;
-
-		editor.press(Key::Enter, ModifierKeys::empty()).await;
-
-		// Execute the graph to ensure everything is processed
-		let _instrumented = editor.eval_graph().await;
+		editor.draw_spline(&spline_points).await;
 
 		let document = editor.active_document();
 
 		let mut layers = document.metadata().all_layers();
-
 		layers.next();
 
 		let spline_layer = layers.next().expect("Failed to find the spline layer");
-
 		assert!(find_spline(document, spline_layer).is_some(), "Spline node not found in the layer");
 
-		let vector_data = document.network_interface.compute_modified_vector(spline_layer);
-		assert!(vector_data.is_some(), "Vector data not found for the spline layer");
-
-		let vector_data = vector_data.unwrap();
+		let vector_data = document.network_interface.compute_modified_vector(spline_layer).expect("Vector data not found for the spline layer");
 
 		// Verify we have the correct number of points and segments
 		let point_count = vector_data.point_domain.ids().len();
@@ -889,5 +839,33 @@ mod test_spline_tool {
 
 		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {}", point_count);
 		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {}", segment_count);
+
+		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
+
+		let points_in_viewport: Vec<DVec2> = vector_data
+			.point_domain
+			.ids()
+			.iter()
+			.filter_map(|&point_id| {
+				let position = vector_data.point_domain.position_from_id(point_id)?;
+				Some(layer_to_viewport.transform_point2(position))
+			})
+			.collect();
+
+		// Verify each point position is close to the expected position
+		let epsilon = 1e-10;
+		for (i, expected_point) in spline_points.iter().enumerate() {
+			let actual_point = points_in_viewport[i];
+			let distance = (actual_point - *expected_point).length();
+
+			assert!(
+				distance < epsilon,
+				"Point {} position mismatch: expected {:?}, got {:?} (distance: {})",
+				i,
+				expected_point,
+				actual_point,
+				distance
+			);
+		}
 	}
 }
