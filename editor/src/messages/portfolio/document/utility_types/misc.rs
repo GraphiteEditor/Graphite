@@ -163,26 +163,33 @@ impl Default for PathSnapping {
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum GridType {
-	Rectangle { spacing: DVec2 },
-	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
+	#[serde(alias = "Rectangle")]
+	Rectangular {
+		spacing: DVec2,
+	},
+	Isometric {
+		y_axis_spacing: f64,
+		angle_a: f64,
+		angle_b: f64,
+	},
 }
 
 impl Default for GridType {
 	fn default() -> Self {
-		Self::RECTANGLE
+		Self::RECTANGULAR
 	}
 }
 
 impl GridType {
-	pub const RECTANGLE: Self = GridType::Rectangle { spacing: DVec2::ONE };
+	pub const RECTANGULAR: Self = GridType::Rectangular { spacing: DVec2::ONE };
 	pub const ISOMETRIC: Self = GridType::Isometric {
 		y_axis_spacing: 1.,
 		angle_a: 30.,
 		angle_b: 30.,
 	};
-	pub fn rect_spacing(&mut self) -> Option<&mut DVec2> {
+	pub fn rectangular_spacing(&mut self) -> Option<&mut DVec2> {
 		match self {
-			Self::Rectangle { spacing } => Some(spacing),
+			Self::Rectangular { spacing } => Some(spacing),
 			_ => None,
 		}
 	}
