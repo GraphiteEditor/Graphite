@@ -63,9 +63,10 @@ impl AlignmentSnapper {
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
-		// Perpendicular snap for line's endpoints
 		for target_point in self.bounding_box_points.iter().chain(unselected_geometry) {
 			let target_position = target_point.document_point;
+
+			// Perpendicular snap for line's endpoints
 			if let Some(quad) = target_point.quad.map(|q| q.0) {
 				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
 					let p1 = quad[0];
