@@ -15,7 +15,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
-use graphene_core::vector::{ManipulatorPointId, PointId};
+use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
 use std::vec;
 
@@ -529,11 +529,18 @@ impl PathToolData {
 							for handle in &handles {
 								let modification_type = handle.set_relative_position(DVec2::ZERO);
 								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+								for &handles in &vector_data.colinear_manipulators {
+									if handles.contains(&handle) {
+										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+										responses.add(GraphOperationMessage::Vector { layer, modification_type });
+									}
+								}
 							}
+
 							let manipulator_point_id = handles[0].to_manipulator_point();
 							shape_editor.deselect_all_points();
 							shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
-							responses.add(PathToolMessage::SelectionChanged);
+							responses.add(PathToolMessage::SelectedPointUpdated);
 						}
 					}
 				}
@@ -1387,10 +1394,8 @@ impl Fsm for PathToolFsmState {
 					tool_data.handle_drag_toggle = false;
 				}
 
-				if tool_data.alt_dragging_from_anchor {
-					tool_data.alt_dragging_from_anchor = false;
-					tool_data.alt_clicked_on_anchor = false;
-				}
+				tool_data.alt_dragging_from_anchor = false;
+				tool_data.alt_clicked_on_anchor = false;
 
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
