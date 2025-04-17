@@ -879,7 +879,7 @@ impl PathToolData {
 
 		if self.snapping_axis.is_none() {
 			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
-				//checking that drag is in which direction
+				// Checking which direction the dragging begins
 				self.alt_dragging_from_anchor = true;
 				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
 					return;
@@ -907,7 +907,7 @@ impl PathToolData {
 						segment2.to_manipulator_point()
 					};
 
-					//now change the selection to this handle
+					// Now change the selection to this handle
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&vec![handle]);
 					responses.add(PathToolMessage::SelectionChanged);
