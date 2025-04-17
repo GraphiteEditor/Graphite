@@ -375,7 +375,6 @@ struct PathToolData {
 	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
-  path_tool_click_and_drag
 	last_clicked_point_was_selected: bool,
 	snapping_axis: Option<Axis>,
 	alt_clicked_on_anchor: bool,
@@ -1404,7 +1403,6 @@ impl Fsm for PathToolFsmState {
 				if let Some((layer, nearest_point)) = nearest_point {
 					if !drag_occurred && extend_selection {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
-						debug!("{}", clicked_selected);
 						if clicked_selected && tool_data.last_clicked_point_was_selected {
 							shape_editor.selected_shape_state.entry(layer).or_default().deselect_point(nearest_point);
 						} else {
