@@ -764,8 +764,11 @@ impl Fsm for SelectToolFsmState {
 						SelectionMode::Directional => unreachable!(),
 					});
 
-					for layer in layers_to_outline {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					if overlay_context.overlays_visibility_settings.selection_outline {
+						// Draws a temporary outline on the layers that will be selected
+						for layer in layers_to_outline {
+							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						}
 					}
 
 					// Update the selection box

@@ -73,10 +73,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!(
-					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visibility_settings:?} {ipp:?} {:?} {:?}",
-					self.canvas, self.context
-				);
+				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visibility_settings:?} {ipp:?}",);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

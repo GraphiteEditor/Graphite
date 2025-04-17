@@ -875,6 +875,14 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				let display_anchors = overlay_context.overlays_visibility_settings.anchors;
+				let display_handles = overlay_context.overlays_visibility_settings.handles;
+				if !display_handles {
+					shape_editor.deselect_all_handles();
+				} else if !display_anchors {
+					shape_editor.deselect_all_anchors();
+				}
+
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -982,9 +990,6 @@ impl Fsm for PathToolFsmState {
 					}
 					Self::InsertPoint => {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
-
-						let display_anchors = overlay_context.overlays_visibility_settings.anchors;
-						let display_handles = overlay_context.overlays_visibility_settings.handles;
 
 						if let Some(closest_segment) = &tool_data.segment {
 							if display_anchors {

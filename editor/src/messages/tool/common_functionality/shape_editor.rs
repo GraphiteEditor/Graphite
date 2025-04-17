@@ -465,6 +465,42 @@ impl ShapeState {
 		}
 	}
 
+	/// Deselects all the anchors across every selected layer.
+	pub fn deselect_all_anchors(&mut self) {
+		for (_, state) in self.selected_shape_state.iter_mut() {
+			let selected_anchor_points: Vec<ManipulatorPointId> = state
+				.selected_points
+				.iter()
+				.filter(|selected_point| if let ManipulatorPointId::Anchor(_) = selected_point { true } else { false })
+				.cloned()
+				.collect();
+
+			for point in selected_anchor_points {
+				state.deselect_point(point);
+			}
+		}
+	}
+
+	/// Deselects all the handles across every selected layer.
+	pub fn deselect_all_handles(&mut self) {
+		for (_, state) in self.selected_shape_state.iter_mut() {
+			let selected_handle_points: Vec<ManipulatorPointId> = state
+				.selected_points
+				.iter()
+				.filter(|selected_point| match selected_point {
+					ManipulatorPointId::PrimaryHandle(_) => true,
+					ManipulatorPointId::EndHandle(_) => true,
+					_ => false,
+				})
+				.cloned()
+				.collect();
+
+			for point in selected_handle_points {
+				state.deselect_point(point);
+			}
+		}
+	}
+
 	/// Set the shapes we consider for selection, we will choose draggable manipulators from these shapes.
 	pub fn set_selected_layers(&mut self, target_layers: Vec<LayerNodeIdentifier>) {
 		self.selected_shape_state.retain(|layer_path, _| target_layers.contains(layer_path));
