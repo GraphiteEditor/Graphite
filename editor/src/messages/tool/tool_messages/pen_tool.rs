@@ -1465,14 +1465,17 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::SplineDrawing, PenToolMessage::DragStop) => {
 				let tool_data = &mut tool_data.spline_mode_tool_data;
+				if tool_data.current_layer.is_none() {
+					return PenToolFsmState::Ready;
+				};
 				// The first DragStop event will be ignored to prevent insertion of new point.
 				if tool_data.extend {
 					tool_data.extend = false;
 					return PenToolFsmState::SplineDrawing;
 				}
-				if tool_data.current_layer.is_none() {
-					return PenToolFsmState::Ready;
-				};
+
+				responses.add(DocumentMessage::StartTransaction);
+
 				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
 				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
 					let preview_point = tool_data.preview_point;
@@ -1552,7 +1555,10 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::SplineMergingEndpoints
 			}
 			(PenToolFsmState::SplineDrawing, PenToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				delete_preview(tool_data, responses);
+
+				responses.add(PenToolMessage::Abort);
 				PenToolFsmState::Ready
 			}
 			(PenToolFsmState::SplineMergingEndpoints, PenToolMessage::SplineMergeEndpoints) => {
