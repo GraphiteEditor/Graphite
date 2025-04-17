@@ -86,7 +86,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		downstream_input: InputConnector::node(second_layer.to_node(), 1),
 		input_connector: InputConnector::node(merge_node_id, 1),
 	});
-	// Delete the second layer layer node without deleting it's children nodes.
+	// We delete the second layer node without deleting its child nodes
 	responses.add(NodeGraphMessage::DeleteNodes {
 		node_ids: vec![second_layer.to_node()],
 		delete_children: false,

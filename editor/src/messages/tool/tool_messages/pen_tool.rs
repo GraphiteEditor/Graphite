@@ -16,13 +16,11 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
-
+use spline_mode::*;
 use std::fmt;
 
-// TODO: refactor the code into new module for drawing a Path.
+// TODO: Refactor the code into new module for drawing a path
 mod spline_mode;
-
-use spline_mode::*;
 
 #[derive(Default)]
 pub struct PenTool {
@@ -100,7 +98,7 @@ pub enum PenToolMessage {
 	FinalPosition {
 		final_position: DVec2,
 	},
-	// Specific to the Spline mode.
+	/// Specific to spline mode.
 	SplineMergeEndpoints,
 	SwapHandles,
 }
@@ -147,7 +145,7 @@ impl PenTool {
 
 		DropdownInput::new(vec![tool_mode_entries])
 			.selected_index(Some((self.options.tool_mode) as u32))
-			.tooltip("Select Spline to draw smooth curves or select Path to draw a path.")
+			.tooltip(format!("Path Mode:\n\n{}\n{}", ToolMode::Path.description(), ToolMode::Spline.description()))
 			.widget_holder()
 	}
 }
@@ -352,6 +350,16 @@ impl fmt::Display for ToolMode {
 		}
 	}
 }
+
+impl ToolMode {
+	fn description(&self) -> &'static str {
+		match self {
+			ToolMode::Path => "Path mode is the standard Pen tool behavior for drawing Bézier paths.",
+			ToolMode::Spline => "Spline mode is for placing the control points of a spline curve.",
+		}
+	}
+}
+
 /// The type of handle which is dragged by the cursor (under the cursor).
 ///
 /// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
