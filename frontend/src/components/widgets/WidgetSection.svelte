@@ -26,7 +26,7 @@
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
-		<TextLabel bold={true}>{widgetData.name}</TextLabel>
+		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
 			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
