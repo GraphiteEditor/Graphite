@@ -22,6 +22,16 @@ members = [
 	"website/other/bezier-rs-demos/wasm",
 ]
 exclude = ["node-graph/gpu-compiler"]
+default-members = [
+	"editor",
+	"frontend/wasm",
+	"node-graph/gcore",
+	"node-graph/gstd",
+	"node-graph/graph-craft",
+	"node-graph/graphene-cli",
+	"node-graph/interpreted-executor",
+	"node-graph/node-macro",
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -95,6 +105,9 @@ syn = { version = "2.0", default-features = false, features = [
 	"derive",
 ] }
 kurbo = { version = "0.11.0", features = ["serde"] }
+petgraph = { version = "0.7.1", default-features = false, features = [
+	"graphmap",
+] }
 
 [profile.dev]
 opt-level = 1

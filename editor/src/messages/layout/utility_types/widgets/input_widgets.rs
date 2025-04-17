@@ -1,11 +1,10 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-
-use graphene_core::{raster::curve::Curve, Color};
-use graphite_proc_macros::WidgetBuilder;
-
 use derivative::*;
 use glam::DVec2;
+use graphene_core::Color;
+use graphene_core::raster::curve::Curve;
+use graphite_proc_macros::WidgetBuilder;
 
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]

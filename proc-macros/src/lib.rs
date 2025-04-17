@@ -16,7 +16,6 @@ use crate::helper_structs::AttrInnerSingleString;
 use crate::hint::derive_hint_impl;
 use crate::transitive_child::derive_transitive_child_impl;
 use crate::widget_builder::derive_widget_builder_impl;
-
 use proc_macro::TokenStream;
 
 /// Derive the `ToDiscriminant` trait and create a `<Type Name>Discriminant` enum
@@ -285,7 +284,6 @@ pub fn derive_widget_builder(input_item: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
 	use proc_macro2::TokenStream as TokenStream2;
 
 	fn ts_assert_eq(l: TokenStream2, r: TokenStream2) {

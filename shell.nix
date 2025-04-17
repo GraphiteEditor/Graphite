@@ -33,7 +33,7 @@ let
   rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
     targets = [ "wasm32-unknown-unknown" ];
     # wasm-pack needs this
-    extensions = [ "rust-src" "rust-analyzer" "clippy"];
+    extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo"];
   };
 in
   # Make a shell with the dependencies we need
@@ -41,7 +41,6 @@ in
     packages = with pkgs; [
       rustc-wasm
       nodejs
-      cargo
       cargo-watch
       cargo-nextest
       cargo-expand
@@ -50,9 +49,6 @@ in
       wasm-bindgen-cli
       vulkan-loader
       libxkbcommon
-      llvm
-      gcc-unwrapped.lib
-      llvmPackages.libcxxStdenv
       pkg-config
       # used for profiling
       gnuplot
@@ -60,11 +56,18 @@ in
       cargo-flamegraph
 
       # For Tauri
-      openssl
+      at-spi2-atk
+      atkmm
+      cairo
+      gdk-pixbuf
       glib
       gtk3
-      libsoup
-      webkitgtk
+      harfbuzz
+      librsvg
+      libsoup_3
+      pango
+      webkitgtk_4_1
+      openssl
 
       # For Rawkit tests
       libraw

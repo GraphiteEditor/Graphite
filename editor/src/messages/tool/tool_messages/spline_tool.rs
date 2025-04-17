@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
+use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -9,7 +10,6 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
-
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
@@ -104,7 +104,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -114,7 +114,7 @@ impl LayoutHolder for SplineTool {
 			true,
 			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -228,7 +228,9 @@ impl SplineToolData {
 
 	/// Get the snapped point while ignoring current layer
 	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> SnappedPoint {
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let metadata = document.metadata();
+		let transform = self.current_layer.map_or(metadata.document_to_viewport, |layer| metadata.transform_to_viewport(layer));
+		let point = SnapCandidatePoint::handle(transform.inverse().transform_point2(input.mouse.position));
 		let ignore = if let Some(layer) = self.current_layer { vec![layer] } else { vec![] };
 		let snap_data = SnapData::ignore(document, input, &ignore);
 		self.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default())
@@ -405,6 +407,9 @@ impl Fsm for SplineToolFsmState {
 				self
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerOutsideViewport) => {
+				if !input.mouse.mouse_keys.contains(MouseKeys::LEFT) {
+					return self;
+				}
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 

@@ -8,26 +8,22 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
-
+use glam::DVec2;
+use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::imaginate_input::ImaginateSamplingMethod;
-use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
+use graphene_core::raster::{Color, RedGreenBlue, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::*;
-use graphene_std::wasm_application_io::WasmEditorApi;
+use graphene_std::ops::XY;
+use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
-
-use glam::DVec2;
-use once_cell::sync::Lazy;
-use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
@@ -52,10 +48,9 @@ impl NodePropertiesContext<'_> {
 						log::error!("Could not get input properties row in call_widget_override");
 						return Vec::new();
 					};
-					if let Some(tooltip) = &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
-						layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>()
-					} else {
-						layout_group
+					match &input_properties_row.input_data.get("tooltip").and_then(|tooltip| tooltip.as_str()) {
+						Some(tooltip) => layout_group.into_iter().map(|widget| widget.with_tooltip(*tooltip)).collect::<Vec<_>>(),
+						_ => layout_group,
 					}
 				})
 				.map_err(|error| {
@@ -441,7 +436,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Decode Image".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -449,7 +444,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -514,7 +509,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -591,7 +586,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Canvas".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
 										..Default::default()
 									},
 									..Default::default()
@@ -599,7 +594,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
 										..Default::default()
 									},
 									..Default::default()
@@ -607,7 +602,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Draw Canvas".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -683,7 +678,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Surface".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
 										..Default::default()
 									},
 									..Default::default()
@@ -691,7 +686,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
 										..Default::default()
 									},
 									..Default::default()
@@ -699,7 +694,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Rasterize".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -719,87 +714,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("Rasterizes the given vector data"),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Noise Pattern",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					manual_composition: Some(concrete!(Context)),
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode")),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::Bool(true), false),
-						NodeInput::value(TaggedValue::U32(0), false),
-						NodeInput::value(TaggedValue::F64(10.), false),
-						NodeInput::value(TaggedValue::NoiseType(NoiseType::default()), false),
-						NodeInput::value(TaggedValue::DomainWarpType(DomainWarpType::default()), false),
-						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::FractalType(FractalType::default()), false),
-						NodeInput::value(TaggedValue::U32(3), false),
-						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::F64(0.5), false),
-						NodeInput::value(TaggedValue::F64(0.), false), // 0-1 range
-						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::CellularDistanceFunction(CellularDistanceFunction::default()), false),
-						NodeInput::value(TaggedValue::CellularReturnType(CellularReturnType::default()), false),
-						NodeInput::value(TaggedValue::F64(1.), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						"Spacer".into(),
-						"Clip".into(),
-						"Seed".into(),
-						PropertiesRow::with_override("Scale", WidgetOverride::Custom("noise_properties_scale".to_string())),
-						PropertiesRow::with_override("Noise Type", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
-						PropertiesRow::with_override("Domain Warp Type", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
-						PropertiesRow::with_override("Domain Warp Amplitude", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
-						PropertiesRow::with_override("Fractal Type", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
-						PropertiesRow::with_override("Fractal Octaves", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
-						PropertiesRow::with_override("Fractal Lacunarity", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
-						PropertiesRow::with_override("Fractal Gain", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
-						PropertiesRow::with_override("Fractal Weighted Strength", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
-						PropertiesRow::with_override("Fractal Ping Pong Strength", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
-						PropertiesRow::with_override("Cellular Distance Function", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
-						PropertiesRow::with_override("Cellular Return Type", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
-						PropertiesRow::with_override("Cellular Jitter", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
-					],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Noise Pattern".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("Generates different noise patterns."),
-			properties: None,
-		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -812,6 +726,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 					],
+					manual_composition: Some(generic!(T)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -987,6 +902,75 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
+			identifier: "Split Vector2",
+			category: "Math: Vector",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+
+						..Default::default()
+					}),
+					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_properties: vec!["Vector2".into()],
+					output_names: vec!["X".to_string(), "Y".to_string()],
+					has_primary_output: false,
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Extract XY".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Extract XY".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("TODO"),
+			properties: None,
+		},
+		DocumentNodeDefinition {
 			identifier: "Brush",
 			category: "Raster",
 			node_template: NodeTemplate {
@@ -1012,7 +996,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
+						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), false),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::new_proto()), false),
 					],
@@ -1023,24 +1007,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Brush".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
+							node_metadata: [DocumentNodeMetadata {
+								persistent_metadata: DocumentNodePersistentMetadata {
+									display_name: "Brush".to_string(),
+									node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 									..Default::default()
 								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
+								..Default::default()
+							}]
 							.into_iter()
 							.enumerate()
 							.map(|(id, node)| (NodeId(id as u64), node))
@@ -1198,7 +1172,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Uniform".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1206,7 +1180,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1277,7 +1251,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Storage".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1285,7 +1259,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1356,7 +1330,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Output Buffer".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1364,7 +1338,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1445,7 +1419,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Create Compute Pass".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1453,7 +1427,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1550,7 +1524,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Execute Compute Pipeline".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1558,7 +1532,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1630,7 +1604,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Read Output Buffer".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1638,7 +1612,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1704,7 +1678,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1775,7 +1749,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Render Texture".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1848,7 +1822,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Upload Texture".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1856,7 +1830,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2067,7 +2041,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Path Modify".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2089,7 +2063,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Text",
-			category: "Vector",
+			category: "Text",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::text::TextNode"),
@@ -2214,6 +2188,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Monitor".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2221,6 +2196,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Transform".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2255,15 +2231,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
-						PropertiesRow::with_override(
-							"Skew",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: "°".to_string(),
-								..Default::default()
-							}),
-						),
+						PropertiesRow::with_override("Skew", WidgetOverride::Custom("transform_skew".to_string())),
 						PropertiesRow::with_override("Pivot", WidgetOverride::Hidden),
 					],
 					output_names: vec!["Data".to_string()],
@@ -2280,7 +2248,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
+						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: vec![
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(VectorDataTable), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
@@ -2290,7 +2258,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(2), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -2314,15 +2294,31 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Boolean Operation".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										display_name: "Memoize".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Freeze Real Time".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Boundless Footprint".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2447,7 +2443,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)], // Taken from output 0 of Sample Points
+						exports: vec![NodeInput::node(NodeId(4), 0)], // Taken from output 0 of Sample Points
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0)],
@@ -2470,7 +2466,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(2), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(3), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -2497,6 +2505,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Subpath Segment Lengths".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 5)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2504,13 +2513,31 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Sample Points".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Memoize Impure".to_string(),
+										display_name: "Memoize".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Freeze Real Time".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Boundless Footprint".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2569,7 +2596,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
+						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: [
 							DocumentNode {
 								inputs: vec![
@@ -2583,7 +2610,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(2), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -2608,13 +2647,31 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Poisson-Disk Points".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 										..Default::default()
 									},
 									..Default::default()
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Memoize Impure".to_string(),
+										display_name: "Memoize".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Freeze Real Time".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Boundless Footprint".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -2674,6 +2731,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
 		use graphene_core::registry::*;
+		let id = id.clone();
 
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
@@ -2684,7 +2742,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -2696,12 +2754,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description,
 			properties,
 		} = metadata;
-		let Some(implementations) = &node_registry.get(id) else { continue };
+		let Some(implementations) = &node_registry.get(&id) else { continue };
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut input_type = &first_node_io.call_argument;
 		if valid_inputs.len() > 1 {
-			input_type = &const { generic!(T) };
+			input_type = &const { generic!(D) };
 		}
 		let output_type = &first_node_io.return_value;
 
@@ -2751,6 +2809,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
+
 					..Default::default()
 				},
 			},
@@ -2763,127 +2822,127 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	custom
 }
 
-pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
-	identifier: "Imaginate",
-	category: "Raster",
-	node_template: NodeTemplate {
-		document_node: DocumentNode {
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(1), 0)],
-				nodes: [
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
-						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-						manual_composition: Some(concrete!(Context)),
-						skip_deduplication: true,
-						..Default::default()
-					},
-					DocumentNode {
-						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::network(concrete!(&WasmEditorApi), 1),
-							NodeInput::network(concrete!(ImaginateController), 2),
-							NodeInput::network(concrete!(f64), 3),
-							NodeInput::network(concrete!(Option<DVec2>), 4),
-							NodeInput::network(concrete!(u32), 5),
-							NodeInput::network(concrete!(ImaginateSamplingMethod), 6),
-							NodeInput::network(concrete!(f64), 7),
-							NodeInput::network(concrete!(String), 8),
-							NodeInput::network(concrete!(String), 9),
-							NodeInput::network(concrete!(bool), 10),
-							NodeInput::network(concrete!(f64), 11),
-							NodeInput::network(concrete!(bool), 12),
-							NodeInput::network(concrete!(f64), 13),
-							NodeInput::network(concrete!(ImaginateMaskStartingFill), 14),
-							NodeInput::network(concrete!(bool), 15),
-							NodeInput::network(concrete!(bool), 16),
-							NodeInput::network(concrete!(u64), 17),
-						],
-						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode"),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-				NodeInput::scope("editor-api"),
-				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
-				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
-				NodeInput::value(TaggedValue::OptionalDVec2(None), false),
-				NodeInput::value(TaggedValue::U32(30), false),
-				NodeInput::value(TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
-				NodeInput::value(TaggedValue::F64(7.5), false),
-				NodeInput::value(TaggedValue::String(String::new()), false),
-				NodeInput::value(TaggedValue::String(String::new()), false),
-				NodeInput::value(TaggedValue::Bool(false), false),
-				NodeInput::value(TaggedValue::F64(66.), false),
-				NodeInput::value(TaggedValue::Bool(true), false),
-				NodeInput::value(TaggedValue::F64(4.), false),
-				NodeInput::value(TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
-				NodeInput::value(TaggedValue::Bool(false), false),
-				NodeInput::value(TaggedValue::Bool(false), false),
-				NodeInput::value(TaggedValue::U64(0), false),
-			],
-			..Default::default()
-		},
-		persistent_node_metadata: DocumentNodePersistentMetadata {
-			network_metadata: Some(NodeNetworkMetadata {
-				persistent_metadata: NodeNetworkPersistentMetadata {
-					node_metadata: [
-						DocumentNodeMetadata {
-							persistent_metadata: DocumentNodePersistentMetadata {
-								display_name: "Monitor".to_string(),
-								..Default::default()
-							},
-							..Default::default()
-						},
-						DocumentNodeMetadata {
-							persistent_metadata: DocumentNodePersistentMetadata {
-								display_name: "Imaginate".to_string(),
-								..Default::default()
-							},
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				},
-				..Default::default()
-			}),
-			input_properties: vec![
-				"Input Image".into(),
-				"Editor Api".into(),
-				"Controller".into(),
-				"Seed".into(),
-				"Resolution".into(),
-				"Samples".into(),
-				"Sampling Method".into(),
-				"Prompt Guidance".into(),
-				"Prompt".into(),
-				"Negative Prompt".into(),
-				"Adapt Input Image".into(),
-				"Image Creativity".into(),
-				"Inpaint".into(),
-				"Mask Blur".into(),
-				"Mask Starting Fill".into(),
-				"Improve Faces".into(),
-				"Tiling".into(),
-			],
-			output_names: vec!["Image".to_string()],
-			..Default::default()
-		},
-	},
-	description: Cow::Borrowed("TODO"),
-	properties: None, // Some(&node_properties::imaginate_properties),
-});
+// pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
+// 	identifier: "Imaginate",
+// 	category: "Raster",
+// 	node_template: NodeTemplate {
+// 		document_node: DocumentNode {
+// 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+// 				exports: vec![NodeInput::node(NodeId(1), 0)],
+// 				nodes: [
+// 					DocumentNode {
+// 						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
+// 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+// 						manual_composition: Some(concrete!(Context)),
+// 						skip_deduplication: true,
+// 						..Default::default()
+// 					},
+// 					DocumentNode {
+// 						inputs: vec![
+// 							NodeInput::node(NodeId(0), 0),
+// 							NodeInput::network(concrete!(&WasmEditorApi), 1),
+// 							NodeInput::network(concrete!(ImaginateController), 2),
+// 							NodeInput::network(concrete!(f64), 3),
+// 							NodeInput::network(concrete!(Option<DVec2>), 4),
+// 							NodeInput::network(concrete!(u32), 5),
+// 							NodeInput::network(concrete!(ImaginateSamplingMethod), 6),
+// 							NodeInput::network(concrete!(f64), 7),
+// 							NodeInput::network(concrete!(String), 8),
+// 							NodeInput::network(concrete!(String), 9),
+// 							NodeInput::network(concrete!(bool), 10),
+// 							NodeInput::network(concrete!(f64), 11),
+// 							NodeInput::network(concrete!(bool), 12),
+// 							NodeInput::network(concrete!(f64), 13),
+// 							NodeInput::network(concrete!(ImaginateMaskStartingFill), 14),
+// 							NodeInput::network(concrete!(bool), 15),
+// 							NodeInput::network(concrete!(bool), 16),
+// 							NodeInput::network(concrete!(u64), 17),
+// 						],
+// 						implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode"),
+// 						..Default::default()
+// 					},
+// 				]
+// 				.into_iter()
+// 				.enumerate()
+// 				.map(|(id, node)| (NodeId(id as u64), node))
+// 				.collect(),
+// 				..Default::default()
+// 			}),
+// 			inputs: vec![
+// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
+// 				NodeInput::scope("editor-api"),
+// 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
+// 				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
+// 				NodeInput::value(TaggedValue::OptionalDVec2(None), false),
+// 				NodeInput::value(TaggedValue::U32(30), false),
+// 				NodeInput::value(TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
+// 				NodeInput::value(TaggedValue::F64(7.5), false),
+// 				NodeInput::value(TaggedValue::String(String::new()), false),
+// 				NodeInput::value(TaggedValue::String(String::new()), false),
+// 				NodeInput::value(TaggedValue::Bool(false), false),
+// 				NodeInput::value(TaggedValue::F64(66.), false),
+// 				NodeInput::value(TaggedValue::Bool(true), false),
+// 				NodeInput::value(TaggedValue::F64(4.), false),
+// 				NodeInput::value(TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),
+// 				NodeInput::value(TaggedValue::Bool(false), false),
+// 				NodeInput::value(TaggedValue::Bool(false), false),
+// 				NodeInput::value(TaggedValue::U64(0), false),
+// 			],
+// 			..Default::default()
+// 		},
+// 		persistent_node_metadata: DocumentNodePersistentMetadata {
+// 			network_metadata: Some(NodeNetworkMetadata {
+// 				persistent_metadata: NodeNetworkPersistentMetadata {
+// 					node_metadata: [
+// 						DocumentNodeMetadata {
+// 							persistent_metadata: DocumentNodePersistentMetadata {
+// 								display_name: "Monitor".to_string(),
+// 								..Default::default()
+// 							},
+// 							..Default::default()
+// 						},
+// 						DocumentNodeMetadata {
+// 							persistent_metadata: DocumentNodePersistentMetadata {
+// 								display_name: "Imaginate".to_string(),
+// 								..Default::default()
+// 							},
+// 							..Default::default()
+// 						},
+// 					]
+// 					.into_iter()
+// 					.enumerate()
+// 					.map(|(id, node)| (NodeId(id as u64), node))
+// 					.collect(),
+// 					..Default::default()
+// 				},
+// 				..Default::default()
+// 			}),
+// 			input_properties: vec![
+// 				"Input Image".into(),
+// 				"Editor Api".into(),
+// 				"Controller".into(),
+// 				"Seed".into(),
+// 				"Resolution".into(),
+// 				"Samples".into(),
+// 				"Sampling Method".into(),
+// 				"Prompt Guidance".into(),
+// 				"Prompt".into(),
+// 				"Negative Prompt".into(),
+// 				"Adapt Input Image".into(),
+// 				"Image Creativity".into(),
+// 				"Inpaint".into(),
+// 				"Mask Blur".into(),
+// 				"Mask Starting Fill".into(),
+// 				"Improve Faces".into(),
+// 				"Tiling".into(),
+// 			],
+// 			output_names: vec!["Image".to_string()],
+// 			..Default::default()
+// 		},
+// 	},
+// 	description: Cow::Borrowed("TODO"),
+// 	properties: None, // Some(&node_properties::imaginate_properties),
+// });
 
 type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>;
 
@@ -2900,6 +2959,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("exposure_properties".to_string(), Box::new(node_properties::exposure_properties));
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
+	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
 	map.insert(
 		"identity_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.")),
@@ -3363,6 +3423,52 @@ fn static_input_properties() -> InputProperties {
 			Ok(vec![LayoutGroup::Row { widgets }])
 		}),
 	);
+	// Skew has a custom override that maps to degrees
+	map.insert(
+		"transform_skew".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name) = node_properties::query_node_and_input_name(node_id, index, context)?;
+
+			let mut widgets = node_properties::start_widgets(document_node, node_id, index, input_name, super::utility_types::FrontendGraphDataType::Number, true);
+
+			let Some(input) = document_node.inputs.get(index) else {
+				return Err("Input not found in transform skew input override".to_string());
+			};
+			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
+				let to_skew = |input: &NumberInput| input.value.unwrap().to_radians().tan();
+				widgets.extend_from_slice(&[
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(val.x.atan().to_degrees()))
+						.label("X")
+						.unit("°")
+						.min(-89.9)
+						.max(89.9)
+						.on_update(node_properties::update_value(
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(to_skew(input), val.y)),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(val.y.atan().to_degrees()))
+						.label("Y")
+						.unit("°")
+						.min(-89.9)
+						.max(89.9)
+						.on_update(node_properties::update_value(
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, to_skew(input))),
+							node_id,
+							index,
+						))
+						.on_commit(node_properties::commit_value)
+						.widget_holder(),
+				]);
+			}
+
+			Ok(vec![LayoutGroup::Row { widgets }])
+		}),
+	);
 	map.insert(
 		"text_area".to_string(),
 		Box::new(|node_id, index, context| {
@@ -3406,11 +3512,86 @@ pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefin
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES
+	// Create a mapping from registry ID to document node identifier
+	let id_to_identifier_map: HashMap<String, &'static str> = DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|definition| {
+			if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = &definition.node_template.document_node.implementation {
+				Some((name.to_string(), definition.identifier))
+			} else {
+				None
+			}
+		})
+		.collect();
+	let mut extracted_node_types = Vec::new();
+
+	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
+	let node_metadata = graphene_core::registry::NODE_METADATA.lock().unwrap();
+	for (id, metadata) in node_metadata.iter() {
+		if let Some(implementations) = node_registry.get(id) {
+			let identifier = match id_to_identifier_map.get(id) {
+				Some(&id) => id.to_string(),
+				None => continue,
+			};
+
+			// Extract category from metadata (already creates an owned String)
+			let category = metadata.category.unwrap_or_default().to_string();
+
+			// Extract input types (already creates owned Strings)
+			let input_types = implementations
+				.iter()
+				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
+				.collect::<HashSet<String>>()
+				.into_iter()
+				.collect::<Vec<String>>();
+
+			// Create a FrontendNodeType
+			let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier, category, input_types);
+
+			// Store the created node_type
+			extracted_node_types.push(node_type);
+		}
+	}
+
+	let node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|definition| !definition.category.is_empty())
-		.map(|definition| FrontendNodeType::new(definition.identifier, definition.category))
-		.collect()
+		.map(|definition| {
+			let input_types = definition
+				.node_template
+				.document_node
+				.inputs
+				.iter()
+				.filter_map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()))
+				.collect::<Vec<String>>();
+
+			FrontendNodeType::with_input_types(definition.identifier, definition.category, input_types)
+		})
+		.collect();
+
+	// Update categories in extracted_node_types from node_types
+	for extracted_node in &mut extracted_node_types {
+		if extracted_node.category.is_empty() {
+			// Find matching node in node_types and update category if found
+			if let Some(matching_node) = node_types.iter().find(|node_type| node_type.name == extracted_node.name) {
+				extracted_node.category = matching_node.category.clone();
+			}
+		}
+	}
+	let missing_nodes: Vec<FrontendNodeType> = node_types
+		.iter()
+		.filter(|node| !extracted_node_types.iter().any(|extracted| extracted.name == node.name))
+		.cloned()
+		.collect();
+
+	// Add the missing nodes to extracted_node_types
+	for node in missing_nodes {
+		extracted_node_types.push(node);
+	}
+	// Remove entries with empty categories
+	extracted_node_types.retain(|node| !node.category.is_empty());
+
+	extracted_node_types
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {

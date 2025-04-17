@@ -4,19 +4,21 @@ use crate::messages::prelude::*;
 pub struct OverlaysMessageData<'a> {
 	pub overlays_visible: bool,
 	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub device_pixel_ratio: f64,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
+	#[cfg(target_arch = "wasm32")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
+	#[cfg(target_arch = "wasm32")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
-	device_pixel_ratio: Option<f64>,
 }
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData { overlays_visible, ipp } = data;
+		let OverlaysMessageData { overlays_visible, ipp, .. } = data;
 
 		match message {
 			#[cfg(target_arch = "wasm32")]
@@ -25,6 +27,8 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				use super::utility_types::OverlayContext;
 				use glam::{DAffine2, DVec2};
 				use wasm_bindgen::JsCast;
+
+				let device_pixel_ratio = data.device_pixel_ratio;
 
 				let canvas = match &self.canvas {
 					Some(canvas) => canvas,
@@ -40,8 +44,6 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				});
 
 				let size = ipp.viewport_bounds.size().as_uvec2();
-
-				let device_pixel_ratio = self.device_pixel_ratio.unwrap_or(1.);
 
 				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
 				let _ = context.set_transform(a, b, c, d, e, f);
@@ -65,14 +67,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!(
-					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?} {:?} {:?}",
-					self.canvas, self.context
-				);
-			}
-			OverlaysMessage::SetDevicePixelRatio { ratio } => {
-				self.device_pixel_ratio = Some(ratio);
-				responses.add(OverlaysMessage::Draw);
+				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?}",);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

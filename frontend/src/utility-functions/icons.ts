@@ -163,6 +163,10 @@ import PadlockUnlocked from "@graphite-frontend/assets/icon-16px-solid/padlock-u
 import Paste from "@graphite-frontend/assets/icon-16px-solid/paste.svg";
 import PinActive from "@graphite-frontend/assets/icon-16px-solid/pin-active.svg";
 import PinInactive from "@graphite-frontend/assets/icon-16px-solid/pin-inactive.svg";
+import PlaybackPause from "@graphite-frontend/assets/icon-16px-solid/playback-pause.svg";
+import PlaybackPlay from "@graphite-frontend/assets/icon-16px-solid/playback-play.svg";
+import PlaybackToEnd from "@graphite-frontend/assets/icon-16px-solid/playback-to-end.svg";
+import PlaybackToStart from "@graphite-frontend/assets/icon-16px-solid/playback-to-start.svg";
 import Random from "@graphite-frontend/assets/icon-16px-solid/random.svg";
 import Reload from "@graphite-frontend/assets/icon-16px-solid/reload.svg";
 import Reset from "@graphite-frontend/assets/icon-16px-solid/reset.svg";
@@ -279,6 +283,10 @@ const SOLID_16PX = {
 	Paste: { svg: Paste, size: 16 },
 	PinActive: { svg: PinActive, size: 16 },
 	PinInactive: { svg: PinInactive, size: 16 },
+	PlaybackPause: { svg: PlaybackPause, size: 16 },
+	PlaybackPlay: { svg: PlaybackPlay, size: 16 },
+	PlaybackToEnd: { svg: PlaybackToEnd, size: 16 },
+	PlaybackToStart: { svg: PlaybackToStart, size: 16 },
 	Random: { svg: Random, size: 16 },
 	Reload: { svg: Reload, size: 16 },
 	Reset: { svg: Reset, size: 16 },

@@ -38,7 +38,6 @@
  */
 
 use crate::{Bezier, BezierHandles};
-
 use glam::DVec2;
 
 impl std::ops::Index<usize> for Bezier {

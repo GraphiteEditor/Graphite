@@ -2,10 +2,10 @@ use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{GroupFolderType, SnappingOptions, SnappingState, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS};
+use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
-use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
+use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -24,17 +24,16 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
-use graphene_std::vector::{path_bool_lib, PointId};
-
-use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::vector::{PointId, path_bool_lib};
+use std::time::Duration;
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -43,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub device_pixel_ratio: f64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -174,6 +174,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			executor,
 			current_tool,
 			preferences,
+			device_pixel_ratio,
 		} = data;
 
 		let selected_nodes_bounding_box_viewport = self.network_interface.selected_nodes_bounding_box_viewport(&self.breadcrumb_network_path);
@@ -192,13 +193,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
+					preferences,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::Overlays(message) => {
 				let overlays_visible = self.overlays_visible;
-				self.overlays_message_handler.process_message(message, responses, OverlaysMessageData { overlays_visible, ipp });
+				self.overlays_message_handler.process_message(
+					message,
+					responses,
+					OverlaysMessageData {
+						overlays_visible,
+						ipp,
+						device_pixel_ratio,
+					},
+				);
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
@@ -410,7 +420,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.node_graph_handler
 					.context_menu
 					.as_ref()
-					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
 				{
 					// Close the context menu
 					self.node_graph_handler.context_menu = None;
@@ -498,6 +508,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}
@@ -568,37 +579,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 				}
 			}
-			DocumentMessage::ImaginateGenerate { imaginate_node } => {
-				let random_value = generate_uuid();
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 17,
-					value: graph_craft::document::value::TaggedValue::U64(random_value),
-				});
+			// DocumentMessage::ImaginateGenerate { imaginate_node } => {
+			// 	let random_value = generate_uuid();
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 17,
+			// 		value: graph_craft::document::value::TaggedValue::U64(random_value),
+			// 	});
 
-				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
-			}
-			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
-				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
-				// outside of this range can get rounded in f64
-				let random_bits = generate_uuid();
-				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
+			// 	responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+			// }
+			// DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
+			// 	// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+			// 	// outside of this range can get rounded in f64
+			// 	let random_bits = generate_uuid();
+			// 	let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 
-				responses.add(DocumentMessage::AddTransaction);
-				// Set a random seed input
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 3,
-					value: graph_craft::document::value::TaggedValue::F64(random_value),
-				});
+			// 	responses.add(DocumentMessage::AddTransaction);
+			// 	// Set a random seed input
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 3,
+			// 		value: graph_craft::document::value::TaggedValue::F64(random_value),
+			// 	});
 
-				// Generate the image
-				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
-				}
-			}
+			// 	// Generate the image
+			// 	if then_generate {
+			// 		responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
+			// 	}
+			// }
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
@@ -1200,14 +1211,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.children(metadata).collect();
+						let children: HashSet<_> = layer.descendants(metadata).collect();
 						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
 					} else {
 						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
 						self.collapsed.0.extend(children_to_add);
 					}
 					self.collapsed.0.push(layer);
@@ -1497,7 +1508,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let document_quad = document_to_viewport.inverse() * viewport_quad;
 
@@ -1505,12 +1516,12 @@ impl DocumentMessageHandler {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
-	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
 	/// Runs an intersection test with all layers and a viewport space subpath
-	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_polygon<'a>(&'a self, mut viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		viewport_polygon.apply_transform(document_to_viewport.inverse());
 
@@ -1518,7 +1529,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space subpath; ignoring artboards
-	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_polygon_no_artboards<'a>(&'a self, viewport_polygon: Subpath<PointId>, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
@@ -1562,7 +1573,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
-	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+	pub fn click_xray(&self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'_> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let point = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		ClickXRayIter::new(&self.network_interface, XRayTarget::Point(point))
@@ -1584,7 +1595,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.click_xray(ipp)
 			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
@@ -1990,7 +2001,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
@@ -2028,6 +2039,18 @@ impl DocumentMessageHandler {
 		let mut snapping_state2 = self.snapping_state.clone();
 
 		let mut widgets = vec![
+			IconButton::new("PlaybackToStart", 24)
+				.tooltip("Restart Animation")
+				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
+				.on_update(|_| AnimationMessage::RestartAnimation.into())
+				.disabled(time == Duration::ZERO)
+				.widget_holder(),
+			IconButton::new(if animation_is_playing { "PlaybackPause" } else { "PlaybackPlay" }, 24)
+				.tooltip(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
+				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
+				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.overlays_visible)
 				.icon("Overlays")
 				.tooltip("Overlays")
@@ -2457,6 +2480,10 @@ impl DocumentMessageHandler {
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
+
+	pub fn graph_view_overlay_open(&self) -> bool {
+		self.graph_view_overlay_open
+	}
 }
 
 /// Create a network interface with a single export
@@ -2678,5 +2705,131 @@ impl Iterator for ClickXRayIter<'_> {
 		}
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
+	}
+}
+
+#[cfg(test)]
+mod document_message_handler_tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn test_layer_selection_with_shift_and_ctrl() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+
+		// Case 1: Basic selection (no modifier)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[0].to_node(),
+				ctrl: false,
+				shift: false,
+			})
+			.await;
+		// Fresh document reference for verification
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+
+		// Case 2: Ctrl + click to add another layer
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[2].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 3: Shift + click to select a range
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: false,
+				shift: true,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		// We expect 2 layers to be selected (layers 1 and 2) - not 3
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 4: Ctrl + click to toggle selection (deselect)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+
+		// Final fresh document reference
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+	}
+	#[tokio::test]
+	async fn test_layer_rearrangement() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Create three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		// Helper function to identify layers by bounds
+		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
+			let document = editor.active_document();
+			for layer in document.metadata().all_layers() {
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
+					if (bbox[0].x - min_x).abs() < 1.0 && (bbox[0].y - min_y).abs() < 1.0 {
+						return Some(layer);
+					}
+				}
+			}
+			None
+		}
+
+		async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
+			let document = editor.active_document();
+			let parent = layer.parent(document.metadata())?;
+			parent.children(document.metadata()).position(|child| child == layer)
+		}
+
+		let layer_bottom = get_layer_by_bounds(&mut editor, 0.0, 0.0).await.unwrap();
+		let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
+		let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
+
+		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+
+		// Test 1: Lower the top layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersLower).await;
+		let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		assert!(new_index_top > initial_index_top, "Top layer should have moved down");
+
+		// Test 2: Raise the middle layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
+		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
 	}
 }

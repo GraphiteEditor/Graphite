@@ -1,16 +1,12 @@
+use dyn_any::StaticType;
 use graphene_core::application_io::SurfaceHandleFrame;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
-use wgpu_executor::WgpuExecutor;
-
-use dyn_any::StaticType;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
-// #[cfg(not(target_arch = "wasm32"))]
-// use std::sync::Mutex;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
 #[cfg(target_arch = "wasm32")]
@@ -18,9 +14,10 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 #[cfg(target_arch = "wasm32")]
-use web_sys::window;
-#[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
+#[cfg(target_arch = "wasm32")]
+use web_sys::window;
+use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug)]
 struct WindowWrapper {
@@ -71,6 +68,14 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
+	// Always enable wgpu when running with Tauri
+	#[cfg(target_arch = "wasm32")]
+	if let Some(window) = web_sys::window() {
+		if js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")).is_ok() {
+			return Some(true);
+		}
+	}
+
 	match WGPU_AVAILABLE.load(::std::sync::atomic::Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
@@ -95,9 +100,11 @@ impl WasmApplicationIo {
 		} else {
 			None
 		};
+
 		#[cfg(not(target_arch = "wasm32"))]
 		let executor = WgpuExecutor::new().await;
 		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+
 		let mut io = Self {
 			#[cfg(target_arch = "wasm32")]
 			ids: AtomicU64::new(0),
@@ -106,12 +113,30 @@ impl WasmApplicationIo {
 			windows: Vec::new(),
 			resources: HashMap::new(),
 		};
-		if cfg!(target_arch = "wasm32") {
-			let window = io.create_window();
-			io.windows.push(WindowWrapper { window });
-		}
+		let window = io.create_window();
+		io.windows.push(WindowWrapper { window });
+		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+
+		io
+	}
+
+	pub async fn new_offscreen() -> Self {
+		let executor = WgpuExecutor::new().await;
+
+		WGPU_AVAILABLE.store(executor.is_some() as i8, ::std::sync::atomic::Ordering::SeqCst);
+
+		// Always enable wgpu when running with Tauri
+		let mut io = Self {
+			#[cfg(target_arch = "wasm32")]
+			ids: AtomicU64::new(0),
+			#[cfg(feature = "wgpu")]
+			gpu_executor: executor,
+			windows: Vec::new(),
+			resources: HashMap::new(),
+		};
 
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+
 		io
 	}
 }
@@ -181,19 +206,22 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
-		#[cfg(feature = "wayland")]
+		log::trace!("Spawning window");
+
+		#[cfg(not(test))]
 		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		#[cfg(feature = "wayland")]
+		#[cfg(not(test))]
 		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
-		#[cfg(not(feature = "wayland"))]
+
+		#[cfg(test)]
 		let event_loop = winit::event_loop::EventLoop::new().unwrap();
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
 			.build(&event_loop)
 			.unwrap();
-		// self.windows.lock().as_mut().unwrap().push(window.clone());
+
 		SurfaceHandle {
 			window_id: SurfaceId(window.id().into()),
 			surface: Arc::new(window),
@@ -277,14 +305,14 @@ pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<wgpu_executor::Window>;
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EditorPreferences {
-	pub imaginate_hostname: String,
+	// pub imaginate_hostname: String,
 	pub use_vello: bool,
 }
 
 impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
-	fn hostname(&self) -> &str {
-		&self.imaginate_hostname
-	}
+	// fn hostname(&self) -> &str {
+	// 	&self.imaginate_hostname
+	// }
 	fn use_vello(&self) -> bool {
 		self.use_vello
 	}
@@ -293,8 +321,11 @@ impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
 impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
-			imaginate_hostname: "http://localhost:7860/".into(),
+			// imaginate_hostname: "http://localhost:7860/".into(),
+			#[cfg(target_arch = "wasm32")]
 			use_vello: false,
+			#[cfg(not(target_arch = "wasm32"))]
+			use_vello: true,
 		}
 	}
 }

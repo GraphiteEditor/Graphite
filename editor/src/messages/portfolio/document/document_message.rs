@@ -5,16 +5,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
-
+use glam::DAffine2;
 use graph_craft::document::NodeId;
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::Color;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
-
-use glam::DAffine2;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -73,13 +71,13 @@ pub enum DocumentMessage {
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
-	ImaginateGenerate {
-		imaginate_node: Vec<NodeId>,
-	},
-	ImaginateRandom {
-		imaginate_node: Vec<NodeId>,
-		then_generate: bool,
-	},
+	// ImaginateGenerate {
+	// 	imaginate_node: Vec<NodeId>,
+	// },
+	// ImaginateRandom {
+	// 	imaginate_node: Vec<NodeId>,
+	// 	then_generate: bool,
+	// },
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,

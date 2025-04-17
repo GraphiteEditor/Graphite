@@ -2,13 +2,14 @@ use super::tool_prelude::*;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::{document_metadata::LayerNodeIdentifier, network_interface::InputConnector};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -85,7 +86,7 @@ impl LayoutHolder for LineTool {
 			true,
 			|_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -150,6 +151,9 @@ enum LineEnd {
 
 #[derive(Clone, Debug, Default)]
 struct LineToolData {
+	drag_begin: DVec2,
+	drag_start_shifted: DVec2,
+	drag_current_shifted: DVec2,
 	drag_start: DVec2,
 	drag_current: DVec2,
 	angle: f64,
@@ -187,8 +191,8 @@ impl Fsm for LineToolFsmState {
 						};
 
 						let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
-						if (start.x - end.x).abs() > f64::EPSILON * 1000. && (start.y - end.y).abs() > f64::EPSILON * 1000. {
-							overlay_context.line(viewport_start, viewport_end, None);
+						if !start.abs_diff_eq(end, f64::EPSILON * 1000.) {
+							overlay_context.line(viewport_start, viewport_end, None, None);
 							overlay_context.square(viewport_start, Some(6.), None, None);
 							overlay_context.square(viewport_end, Some(6.), None, None);
 						}
@@ -203,6 +207,9 @@ impl Fsm for LineToolFsmState {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				tool_data.drag_start = snapped.snapped_point_document;
+				tool_data.drag_begin = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start);
+
+				responses.add(DocumentMessage::StartTransaction);
 
 				for (layer, [document_start, document_end]) in tool_data.selected_layers_with_position.iter() {
 					let transform = document.metadata().transform_to_viewport(*layer);
@@ -224,8 +231,6 @@ impl Fsm for LineToolFsmState {
 						return LineToolFsmState::Drawing;
 					}
 				}
-
-				responses.add(DocumentMessage::StartTransaction);
 
 				let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 				let node = node_type.node_template_input_override([
@@ -255,7 +260,9 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
 				let Some(layer) = tool_data.editing_layer else { return LineToolFsmState::Ready };
 
-				tool_data.drag_current = document.metadata().transform_to_viewport(layer).inverse().transform_point2(input.mouse.position);
+				tool_data.drag_current_shifted = document.metadata().transform_to_viewport(layer).inverse().transform_point2(input.mouse.position);
+				tool_data.drag_current = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				tool_data.drag_start_shifted = document.metadata().transform_to_viewport(layer).inverse().transform_point2(tool_data.drag_begin);
 
 				let keyboard = &input.keyboard;
 				let ignore = vec![layer];
@@ -319,9 +326,7 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.editing_layer.take();
-				if tool_data.dragging_endpoint.is_none() {
-					responses.add(DocumentMessage::AbortTransaction);
-				}
+				responses.add(DocumentMessage::AbortTransaction);
 				LineToolFsmState::Ready
 			}
 			(_, LineToolMessage::WorkingColorChanged) => {
@@ -362,6 +367,7 @@ impl Fsm for LineToolFsmState {
 }
 
 fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
+	let shift = tool_data.drag_current_shifted - tool_data.drag_current;
 	let mut document_points = [tool_data.drag_start, tool_data.drag_current];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
@@ -376,12 +382,12 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 	tool_data.angle = angle;
 
+	let angle_vec = DVec2::from_angle(angle);
 	if lock_angle {
-		let angle_vec = DVec2::new(angle.cos(), angle.sin());
 		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
 	}
 
-	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
+	document_points[1] = document_points[0] + line_length * angle_vec;
 
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.snap_manager;
@@ -420,5 +426,139 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 		snap.update_indicator(snapped);
 	}
 
-	document_points
+	// Snapping happens in other space, while document graph renders in another.
+	document_points.map(|vector| vector + shift)
+}
+
+#[cfg(test)]
+mod test_line_tool {
+	use crate::{messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer, test_utils::test_prelude::*};
+	use graph_craft::document::value::TaggedValue;
+
+	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let node_id = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.filter_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, &network_interface).find_node_inputs("Line")?;
+				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+					return None;
+				};
+				Some((start, end))
+			})
+			.next();
+		node_id
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_basicdraw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					assert!((start_input - DVec2::ZERO).length() < 1.0, "Start point should be near (0,0)");
+					assert!((end_input - DVec2::new(100.0, 100.0)).length() < 1.0, "End point should be near (100,100)");
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_with_transformed_viewport() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100.0, 50.0) }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30.0_f64.to_radians() }).await;
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			let document = editor.active_document();
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let viewport_to_document = document_to_viewport.inverse();
+
+			let expected_start = viewport_to_document.transform_point2(DVec2::ZERO);
+			let expected_end = viewport_to_document.transform_point2(DVec2::new(100.0, 100.0));
+
+			assert!(
+				(start_input - expected_start).length() < 1.0,
+				"Start point should match expected document coordinates. Got {:?}, expected {:?}",
+				start_input,
+				expected_start
+			);
+			assert!(
+				(end_input - expected_end).length() < 1.0,
+				"End point should match expected document coordinates. Got {:?}, expected {:?}",
+				end_input,
+				expected_end
+			);
+		} else {
+			panic!("Line was not created successfully with transformed viewport");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_ctrl_anglelock() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let line_vec = end_input - start_input;
+					let original_angle = line_vec.angle_to(DVec2::X);
+					editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
+					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
+						match (updated_start, updated_end) {
+							(updated_start, updated_end) => {
+								let updated_line_vec = updated_end - updated_start;
+								let updated_angle = updated_line_vec.angle_to(DVec2::X);
+								assert!((original_angle - updated_angle).abs() < 0.1, "Line angle should be locked when Ctrl is kept pressed");
+								assert!((updated_start - updated_end).length() > 1.0, "Line should be able to change length when Ctrl is kept pressed");
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_alt() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::ALT).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let expected_start = DVec2::new(0., 100.);
+					let expected_end = DVec2::new(200., 100.);
+					assert!((start_input - expected_start).length() < 1.0, "start point should be near (0,100)");
+					assert!((end_input - expected_end).length() < 1.0, "end point should be near (200,100)");
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_alt_shift_drag() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 150., 120., ModifierKeys::ALT | ModifierKeys::SHIFT).await;
+		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
+			match (start_input, end_input) {
+				(start_input, end_input) => {
+					let line_vec = end_input - start_input;
+					let angle_radians = line_vec.angle_to(DVec2::X);
+					let angle_degrees = angle_radians.to_degrees();
+					let nearest_angle = (angle_degrees / 15.0).round() * 15.0;
+
+					assert!((angle_degrees - nearest_angle).abs() < 1.0, "Angle should snap to the nearest 15 degrees");
+				}
+			}
+		}
+	}
 }

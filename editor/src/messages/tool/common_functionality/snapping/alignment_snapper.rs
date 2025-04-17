@@ -1,9 +1,7 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::*;
-
-use graphene_core::renderer::Quad;
-
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {
@@ -61,13 +59,46 @@ impl AlignmentSnapper {
 		// TODO: snap handle points
 		let document = snap_data.document;
 		let tolerance = snap_tolerance(document);
-
+		let tolerance_squared = tolerance.powi(2);
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
 		for target_point in self.bounding_box_points.iter().chain(unselected_geometry) {
 			let target_position = target_point.document_point;
 
+			// Perpendicular snap for line's endpoints
+			if let Some(quad) = target_point.quad.map(|q| q.0) {
+				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
+					let [p1, p2, ..] = quad;
+					let direction = (p2 - p1).normalize();
+					let normal = DVec2::new(-direction.y, direction.x);
+
+					for endpoint in [p1, p2] {
+						if let Some(perpendicular_snap) = Quad::intersect_rays(point.document_point, direction, endpoint, normal) {
+							let distance_squared = point.document_point.distance_squared(perpendicular_snap);
+							if distance_squared < tolerance_squared {
+								let distance = distance_squared.sqrt();
+								let distance_to_align_target = perpendicular_snap.distance_squared(endpoint).sqrt();
+
+								let snap_point = SnappedPoint {
+									snapped_point_document: perpendicular_snap,
+									source: point.source,
+									target: SnapTarget::Alignment(AlignmentSnapTarget::PerpendicularToEndpoint),
+									target_bounds: Some(Quad(quad)),
+									distance,
+									tolerance,
+									distance_to_align_target,
+									fully_constrained: false,
+									at_intersection: true,
+									alignment_target_x: Some(endpoint),
+									..Default::default()
+								};
+								snap_results.points.push(snap_point);
+							}
+						}
+					}
+				}
+			}
 			let [point_on_x, point_on_y] = if let SnapConstraint::Line { origin, direction } = constraint {
 				[
 					Quad::intersect_rays(target_point.document_point, DVec2::Y, origin, direction),

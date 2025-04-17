@@ -6,7 +6,6 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
 
@@ -36,7 +35,7 @@ impl Default for Pivot {
 impl Pivot {
 	/// Calculates the transform that gets from normalized pivot to viewspace.
 	fn get_layer_pivot_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-		let [min, max] = document.metadata().nonzero_bounding_box(layer);
+		let [min, max] = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY).unwrap_or_default();
 
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
 		let layer_transform = document.metadata().transform_to_viewport(layer);
@@ -82,10 +81,10 @@ impl Pivot {
 		}
 	}
 
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, angle: f64) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
 		self.recalculate_pivot(document);
-		if let Some(pivot) = self.pivot {
-			overlay_context.pivot(pivot, angle);
+		if let (Some(pivot), Some(data)) = (self.pivot, draw_data) {
+			overlay_context.pivot(pivot, data.0);
 		}
 	}
 

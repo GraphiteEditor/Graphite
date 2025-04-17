@@ -46,6 +46,8 @@ const ContextTupleToVec2 = Transform((data) => {
 	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
 	if (contextMenuData.ToggleLayer !== undefined) {
 		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
+	} else if (contextMenuData.CreateNode !== undefined) {
+		contextMenuData = { type: "CreateNode", compatibleType: contextMenuData.CreateNode.compatibleType };
 	}
 	return { contextMenuCoordinates, contextMenuData };
 });
@@ -185,8 +187,7 @@ export type FrontendClickTargets = {
 
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-
-	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
+	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
@@ -337,6 +338,8 @@ export class FrontendNodeType {
 	readonly name!: string;
 
 	readonly category!: string;
+
+	readonly inputTypes!: string[];
 }
 
 export class NodeGraphTransform {
@@ -454,7 +457,7 @@ export class Gradient {
 	}
 }
 
-// All channels range from 0 to 1
+// All channels range are represented by 0-1, sRGB, gamma.
 export class Color {
 	readonly red!: number;
 
@@ -769,6 +772,12 @@ export class UpdateGraphViewOverlay extends JsMessage {
 
 export class UpdateGraphFadeArtwork extends JsMessage {
 	readonly percentage!: number;
+}
+
+export class UpdateSpreadsheetState extends JsMessage {
+	readonly open!: boolean;
+
+	readonly node!: bigint | undefined;
 }
 
 export class UpdateMouseCursor extends JsMessage {
@@ -1432,7 +1441,7 @@ export class WidgetDiffUpdate extends JsMessage {
 	diff!: WidgetDiff[];
 }
 
-type UIItem = LayoutGroup[] | LayoutGroup | Widget | MenuBarEntry[] | MenuBarEntry;
+type UIItem = LayoutGroup[] | LayoutGroup | Widget | Widget[] | MenuBarEntry[] | MenuBarEntry;
 type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
 
 export function defaultWidgetLayout(): WidgetLayout {
@@ -1451,6 +1460,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 		const diffObject = update.widgetPath.reduce((targetLayout, index) => {
 			if ("columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
+			if ("tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
 				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
@@ -1481,7 +1491,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 	});
 }
 
-export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetSection;
+export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
 
 export type WidgetSpanColumn = { columnWidgets: Widget[] };
 export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
@@ -1491,6 +1501,11 @@ export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is W
 export type WidgetSpanRow = { rowWidgets: Widget[] };
 export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
+}
+
+export type WidgetTable = { tableWidgets: Widget[][] };
+export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTable {
+	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
 }
 
 export type WidgetSection = { name: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
@@ -1543,6 +1558,13 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 		return result;
 	}
 
+	if (layoutGroup.table) {
+		const result: WidgetTable = {
+			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetHolders),
+		};
+		return result;
+	}
+
 	throw new Error("Layout row type does not exist");
 }
 
@@ -1572,6 +1594,8 @@ export class UpdateMenuBarLayout extends JsMessage {
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
 export class UpdatePropertyPanelSectionsLayout extends WidgetDiffUpdate {}
+
+export class UpdateSpreadsheetLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
@@ -1649,6 +1673,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateEyedropperSamplingState,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
+	UpdateSpreadsheetState,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
@@ -1664,6 +1689,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateSpreadsheetLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWirePathInProgress,

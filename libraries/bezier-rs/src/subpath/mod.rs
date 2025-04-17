@@ -4,13 +4,12 @@ mod manipulators;
 mod solvers;
 mod structs;
 mod transform;
-pub use core::*;
-pub use structs::*;
 
 use crate::Bezier;
-
+pub use core::*;
 use std::fmt::{Debug, Formatter, Result};
 use std::ops::{Index, IndexMut};
+pub use structs::*;
 
 /// Structure used to represent a path composed of [Bezier] curves.
 #[derive(Clone, PartialEq, Hash)]
@@ -57,11 +56,7 @@ impl<PointId: crate::Identifier> Iterator for SubpathIter<'_, PointId> {
 			return None;
 		}
 		let closed = if self.is_always_closed { true } else { self.subpath.closed };
-		let len = self.subpath.len() - 1
-			+ match closed {
-				true => 1,
-				false => 0,
-			};
+		let len = self.subpath.len() - 1 + if closed { 1 } else { 0 };
 		if self.index >= len {
 			return None;
 		}

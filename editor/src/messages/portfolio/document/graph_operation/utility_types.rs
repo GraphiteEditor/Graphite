@@ -3,22 +3,20 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
-use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::GraphicGroupTable;
-
-use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::vector::{VectorData, VectorDataTable};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -82,10 +80,9 @@ impl<'a> ModifyInputsContext<'a> {
 			if current_index == insert_index {
 				break;
 			}
-			let next_node_in_stack_id =
-				network_interface
-					.input_from_connector(&post_node_input_connector, &[])
-					.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
+			let next_node_in_stack_id = network_interface
+				.input_from_connector(&post_node_input_connector, &[])
+				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
 
 			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
 				// Only increment index for layer nodes
@@ -295,7 +292,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(GraphicGroupTable) {
 				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
 					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
@@ -416,21 +413,13 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn transform_set_direct(&mut self, transform: DAffine2, skip_rerender: bool, transform_node_id: Option<NodeId>) {
 		// If the Transform node didn't exist yet, create it now
 		let Some(transform_node_id) = transform_node_id.or_else(|| {
-			// Check if the transform is the identity transform within an epsilon
-			let is_identity = {
-				let transform = transform.to_scale_angle_translation();
-				let identity = DAffine2::IDENTITY.to_scale_angle_translation();
-
-				(transform.0.x - identity.0.x).abs() < 1e-6
-					&& (transform.0.y - identity.0.y).abs() < 1e-6
-					&& (transform.1 - identity.1).abs() < 1e-6
-					&& (transform.2.x - identity.2.x).abs() < 1e-6
-					&& (transform.2.y - identity.2.y).abs() < 1e-6
-			};
-
-			// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
-			if is_identity {
-				return None;
+			// Check if the transform is the identity transform and if so, don't create a new Transform node
+			if let Some((scale, angle, translation)) = (transform.matrix2.determinant() != 0.).then(|| transform.to_scale_angle_translation()) {
+				// Check if the transform is the identity transform within an epsilon
+				if scale.x.abs() < 1e-6 && scale.y.abs() < 1e-6 && angle.abs() < 1e-6 && translation.x.abs() < 1e-6 && translation.y.abs() < 1e-6 {
+					// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
+					return None;
+				}
 			}
 
 			// Create the Transform node

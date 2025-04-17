@@ -1,14 +1,12 @@
 use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::instances::Instances;
-use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::BlendMode;
+use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
-
 use dyn_any::DynAny;
-
 use glam::{DAffine2, IVec2};
 use std::hash::Hash;
 
@@ -298,31 +296,31 @@ async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElemen
 	stack
 }
 
-// TODO: Once we have nicely working spreadsheet tables, test this and make it nicely user-facing and move it from "Debug" to "General"
-#[node_macro::node(category("Debug"))]
-async fn concatenate<T: Clone>(
-	_: impl Ctx,
-	#[implementations(
-		GraphicGroupTable,
-	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
-	)]
-	from: Instances<T>,
-	#[expose]
-	#[implementations(
-		GraphicGroupTable,
-	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
-	)]
-	mut to: Instances<T>,
-) -> Instances<T> {
-	for instance in from.instances() {
-		to.push_instance(instance);
-	}
-	to
-}
+// // TODO: Once we have nicely working spreadsheet tables, test this and make it nicely user-facing and move it from "Debug" to "General"
+// #[node_macro::node(category("Debug"))]
+// async fn concatenate<T: Clone>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		GraphicGroupTable,
+// 	 	VectorDataTable,
+// 		ImageFrameTable<Color>,
+// 	 	TextureFrameTable,
+// 	)]
+// 	from: Instances<T>,
+// 	#[expose]
+// 	#[implementations(
+// 		GraphicGroupTable,
+// 	 	VectorDataTable,
+// 		ImageFrameTable<Color>,
+// 	 	TextureFrameTable,
+// 	)]
+// 	mut to: Instances<T>,
+// ) -> Instances<T> {
+// 	for instance in from.instances() {
+// 		to.push_instance(instance);
+// 	}
+// 	to
+// }
 
 #[node_macro::node(category("Debug"))]
 async fn to_element<Data: Into<GraphicElement> + 'n>(

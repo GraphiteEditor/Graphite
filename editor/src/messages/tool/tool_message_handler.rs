@@ -1,5 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
-use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
+use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
@@ -7,7 +7,6 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use graphene_core::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
@@ -65,8 +64,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
-			ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
-
+			// ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let old_tool = tool_data.active_tool_type;
@@ -264,6 +262,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let tool_data = &mut self.tool_state.tool_data;
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+					let graph_view_overlay_open = document.graph_view_overlay_open();
+
 					if tool_type == tool_data.active_tool_type {
 						let mut data = ToolActionHandlerData {
 							document,
@@ -276,7 +276,10 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							preferences,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
-							if self.transform_layer_handler.is_transforming() {
+							if graph_view_overlay_open {
+								// When graph view is open, forward the hint update to the node graph handler
+								responses.add(NodeGraphMessage::UpdateHints);
+							} else if self.transform_layer_handler.is_transforming() {
 								self.transform_layer_handler.hints(responses);
 							} else {
 								tool.process_message(ToolMessage::UpdateHints, responses, &mut data)
@@ -310,7 +313,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolPolygon,
 
 			ActivateToolBrush,
-			ActivateToolImaginate,
+			// ActivateToolImaginate,
 
 			SelectRandomPrimaryColor,
 			ResetColors,

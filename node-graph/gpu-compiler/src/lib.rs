@@ -1,7 +1,6 @@
 use gpu_executor::{GPUConstant, ShaderIO, ShaderInput, SpirVCompiler};
 use graph_craft::proto::*;
 use graphene_core::Cow;
-
 use std::path::{Path, PathBuf};
 use tera::Context;
 
@@ -242,7 +241,7 @@ mod test {
 name = "project-node"
 version = "0.1.0"
 authors = ["Example <john.smith@example.com>", "smith.john@example.com", ]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
 
