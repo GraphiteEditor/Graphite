@@ -1237,6 +1237,79 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result
 }
 
+/// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(name("Position on Path"), category("Vector"), path(graphene_core::vector))]
+async fn position_on_path(
+	_: impl Ctx,
+	/// The path to traverse.
+	vector_data: VectorDataTable,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progress: f64,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> DVec2 {
+	let euclidian = !parameterized_distance;
+
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
+	let progress = progress.clamp(0., subpaths_count);
+	let progress = if reverse { subpaths_count - progress } else { progress };
+	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+
+	vector_data.stroke_bezier_paths().nth(index).map_or(DVec2::ZERO, |mut subpath| {
+		subpath.apply_transform(vector_data_transform);
+
+		let t = if progress == subpaths_count { 1. } else { progress.fract() };
+		subpath.evaluate(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) })
+	})
+}
+
+/// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(name("Tangent on Path"), category("Vector"), path(graphene_core::vector))]
+async fn tangent_on_path(
+	_: impl Ctx,
+	/// The path to traverse.
+	vector_data: VectorDataTable,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progress: f64,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> f64 {
+	let euclidian = !parameterized_distance;
+
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
+	let progress = progress.clamp(0., subpaths_count);
+	let progress = if reverse { subpaths_count - progress } else { progress };
+	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+
+	vector_data.stroke_bezier_paths().nth(index).map_or(0., |mut subpath| {
+		subpath.apply_transform(vector_data_transform);
+
+		let t = if progress == subpaths_count { 1. } else { progress.fract() };
+		let mut tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		if tangent == DVec2::ZERO {
+			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
+			tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		}
+		if tangent == DVec2::ZERO {
+			return 0.;
+		}
+
+		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
+	})
+}
+
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn poisson_disk_points(
 	_: impl Ctx,
