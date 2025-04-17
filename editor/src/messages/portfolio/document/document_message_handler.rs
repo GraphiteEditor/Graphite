@@ -2813,7 +2813,6 @@ mod document_message_handler_tests {
 			parent.children(document.metadata()).position(|child| child == layer)
 		}
 
-		let layer_bottom = get_layer_by_bounds(&mut editor, 0.0, 0.0).await.unwrap();
 		let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
 		let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
 
