@@ -534,3 +534,117 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 	tool_data.preview_point = None;
 	tool_data.preview_segment = None;
 }
+
+#[cfg(test)]
+mod test_spline_tool {
+	use crate::messages::tool::tool_messages::spline_tool::find_spline;
+	use crate::test_utils::test_prelude::*;
+	use graphene_std::vector::PointId;
+
+	#[tokio::test]
+	async fn test_continue_drawing_from_existing_spline() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let initial_points = [DVec2::new(100., 100.), DVec2::new(200., 150.), DVec2::new(300., 100.)];
+
+		editor.select_tool(ToolType::Spline).await;
+
+		for &point in &initial_points {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let spline_layer = document
+			.metadata()
+			.all_layers()
+			.find(|layer| find_spline(document, *layer).is_some())
+			.expect("Failed to find a layer with a spline node");
+
+		let first_spline_node = find_spline(document, spline_layer).expect("Spline node not found in the layer");
+
+		let first_vector_data = document.network_interface.compute_modified_vector(spline_layer).expect("Vector data not found for the spline layer");
+
+		// Verify initial spline has correct number of points and segments
+		let initial_point_count = first_vector_data.point_domain.ids().len();
+		let initial_segment_count = first_vector_data.segment_domain.ids().len();
+		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {}", initial_point_count);
+		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {}", initial_segment_count);
+
+		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
+
+		let endpoints: Vec<(PointId, DVec2)> = first_vector_data
+			.extendable_points(false)
+			.filter_map(|point_id| first_vector_data.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
+			.collect();
+
+		assert_eq!(endpoints.len(), 2, "Expected 2 endpoints in the initial spline");
+
+		let (_, endpoint_position) = endpoints.first().expect("No endpoints found in spline");
+
+		editor.select_tool(ToolType::Spline).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, *endpoint_position, ModifierKeys::empty()).await;
+
+		let continuation_points = [DVec2::new(400., 150.), DVec2::new(500., 100.)];
+
+		for &point in &continuation_points {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let extended_vector_data = document
+			.network_interface
+			.compute_modified_vector(spline_layer)
+			.expect("Vector data not found for the extended spline layer");
+
+		// Verify extended spline has correct number of points and segments
+		let extended_point_count = extended_vector_data.point_domain.ids().len();
+		let extended_segment_count = extended_vector_data.segment_domain.ids().len();
+
+		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {}", extended_point_count);
+		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {}", extended_segment_count);
+
+		// Verify the spline node is still the same
+		let extended_spline_node = find_spline(document, spline_layer).expect("Spline node not found after extension");
+		assert_eq!(first_spline_node, extended_spline_node, "Spline node changed after extension");
+
+		// Verify the positions of all points in the extended spline
+		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
+
+		let points_in_viewport: Vec<DVec2> = extended_vector_data
+			.point_domain
+			.ids()
+			.iter()
+			.filter_map(|&point_id| {
+				let position = extended_vector_data.point_domain.position_from_id(point_id)?;
+				Some(layer_to_viewport.transform_point2(position))
+			})
+			.collect();
+
+		let all_expected_points = [initial_points[0], initial_points[1], initial_points[2], continuation_points[0], continuation_points[1]];
+
+		assert_eq!(
+			points_in_viewport.len(),
+			all_expected_points.len(),
+			"Expected {} points in extended spline, found {}",
+			all_expected_points.len(),
+			points_in_viewport.len()
+		);
+
+		for (i, (actual, expected)) in points_in_viewport.iter().zip(all_expected_points.iter()).enumerate() {
+			let distance = (*actual - *expected).length();
+			assert!(
+				distance < 1e-10,
+				"Point at index {} doesn't match: expected {:?}, got {:?} (distance: {})",
+				i,
+				expected,
+				actual,
+				distance
+			);
+		}
+	}
+}
