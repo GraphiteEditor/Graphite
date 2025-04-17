@@ -52,8 +52,8 @@ pub enum ToolMessage {
 	// Relight(RelightToolMessage),
 	// 	// #[child]
 	// Detail(DetailToolMessage),
-	#[child]
-	Imaginate(ImaginateToolMessage),
+	// #[child]
+	// Imaginate(ImaginateToolMessage),
 
 	// Messages
 	ActivateToolSelect,
@@ -74,8 +74,8 @@ pub enum ToolMessage {
 	ActivateToolPolygon,
 
 	ActivateToolBrush,
-	ActivateToolImaginate,
-
+	// ActivateToolImaginate,
+	//
 	ActivateTool {
 		tool_type: ToolType,
 	},

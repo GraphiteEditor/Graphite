@@ -10,7 +10,6 @@ use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graphene_core::raster::curve::Curve;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::{
@@ -22,9 +21,10 @@ use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
+use graphene_std::ops::XY;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::misc::BooleanOperation;
+use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::{GraphicGroupTable, RasterFrame};
 
@@ -127,7 +127,7 @@ pub(crate) fn property_from_type(
 				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), true).into(),
 				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit(" px"), true).into(),
 				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), true).into(),
-				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).max(max(1.)), true).into(),
+				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(0.)).max(max(1.)), true).into(),
 				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), true).into(),
 				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
 				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", " px", Some(64.), add_blank_assist),
@@ -169,6 +169,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
+						Some(x) if x == TypeId::of::<XY>() => xy_components(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
@@ -186,6 +187,7 @@ pub(crate) fn property_from_type(
 							.widget_holder(),
 						]
 						.into(),
+						Some(x) if x == TypeId::of::<GridType>() => grid_type_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<FillType>() => vec![
@@ -215,38 +217,38 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
 						Some(x) if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![
-							DropdownInput::new(
-								ImaginateSamplingMethod::list()
-									.into_iter()
-									.map(|method| {
-										vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateSamplingMethod(method),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder(),
-						]
-						.into(),
-						Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![
-							DropdownInput::new(
-								ImaginateMaskStartingFill::list()
-									.into_iter()
-									.map(|fill| {
-										vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
-											move |_| TaggedValue::ImaginateMaskStartingFill(fill),
-											node_id,
-											index,
-										))]
-									})
-									.collect(),
-							)
-							.widget_holder(),
-						]
-						.into(),
+						// Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![
+						// 	DropdownInput::new(
+						// 		ImaginateSamplingMethod::list()
+						// 			.into_iter()
+						// 			.map(|method| {
+						// 				vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
+						// 					move |_| TaggedValue::ImaginateSamplingMethod(method),
+						// 					node_id,
+						// 					index,
+						// 				))]
+						// 			})
+						// 			.collect(),
+						// 	)
+						// 	.widget_holder(),
+						// ]
+						// .into(),
+						// Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![
+						// 	DropdownInput::new(
+						// 		ImaginateMaskStartingFill::list()
+						// 			.into_iter()
+						// 			.map(|fill| {
+						// 				vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
+						// 					move |_| TaggedValue::ImaginateMaskStartingFill(fill),
+						// 					node_id,
+						// 					index,
+						// 				))]
+						// 			})
+						// 			.collect(),
+						// 	)
+						// 	.widget_holder(),
+						// ]
+						// .into(),
 						_ => {
 							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, true);
 							widgets.extend_from_slice(&[
@@ -568,6 +570,28 @@ pub fn vec2_widget(
 					.widget_holder(),
 			]);
 		}
+		Some(&TaggedValue::F64(value)) => {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				NumberInput::new(Some(value))
+					.label(x)
+					.unit(unit)
+					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value)), node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				NumberInput::new(Some(value))
+					.label(y)
+					.unit(unit)
+					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap())), node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+			]);
+		}
 		_ => {}
 	}
 
@@ -746,6 +770,15 @@ pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 					.widget_holder(),
 			]);
 		}
+		Some(&TaggedValue::DVec2(dvec2)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
+				.value(Some(dvec2.y))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
 		_ => {}
 	}
 
@@ -839,6 +872,33 @@ pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
+}
+
+pub fn xy_components(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::XY(mode)) = input.as_non_exposed_value() {
+		let calculation_modes = [XY::X, XY::Y];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::XY(method), node_id, index))
+					.on_commit(commit_value),
+			);
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("X or Y Component of Vector2")
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
@@ -1060,6 +1120,31 @@ pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: No
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+pub fn grid_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::GridType(grid_type)) = input.as_non_exposed_value() {
+		let entries = [("Rectangular", GridType::Rectangular), ("Isometric", GridType::Isometric)]
+			.into_iter()
+			.map(|(name, val)| {
+				RadioEntryData::new(format!("{val:?}"))
+					.label(name)
+					.on_update(update_value(move |_| TaggedValue::GridType(val), node_id, index))
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }
@@ -1483,6 +1568,52 @@ pub(crate) fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId,
 	let map = text_widget(document_node, node_id, 1, "Map", true);
 
 	vec![LayoutGroup::Row { widgets: map }]
+}
+
+pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let grid_type_index = 1;
+	let spacing_index = 2;
+	let angles_index = 3;
+	let rows_index = 4;
+	let columns_index = 5;
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in exposure_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let grid_type = grid_type_widget(document_node, node_id, grid_type_index, "Grid Type", true);
+
+	let mut widgets = vec![grid_type];
+
+	let Some(grid_type_input) = document_node.inputs.get(grid_type_index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
+		match grid_type {
+			GridType::Rectangular => {
+				let spacing = vec2_widget(document_node, node_id, spacing_index, "Spacing", "W", "H", " px", Some(0.), add_blank_assist);
+				widgets.push(spacing);
+			}
+			GridType::Isometric => {
+				let spacing = LayoutGroup::Row {
+					widgets: number_widget(document_node, node_id, spacing_index, "Spacing", NumberInput::default().label("H").min(0.).unit(" px"), true),
+				};
+				let angles = vec2_widget(document_node, node_id, angles_index, "Angles", "", "", "°", None, add_blank_assist);
+				widgets.extend([spacing, angles]);
+			}
+		}
+	}
+
+	let rows = number_widget(document_node, node_id, rows_index, "Rows", NumberInput::default().min(1.), true);
+	let columns = number_widget(document_node, node_id, columns_index, "Columns", NumberInput::default().min(1.), true);
+
+	widgets.extend([LayoutGroup::Row { widgets: rows }, LayoutGroup::Row { widgets: columns }]);
+
+	widgets
 }
 
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
