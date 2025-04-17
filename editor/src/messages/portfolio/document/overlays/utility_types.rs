@@ -570,6 +570,7 @@ impl OverlayContext {
 		self.render_context.clip();
 
 		self.render_context.begin_path();
+		self.render_context.set_line_width(1.0);
 		self.render_context.set_stroke_style_str(color);
 
 		// Draw the diagonal lines
