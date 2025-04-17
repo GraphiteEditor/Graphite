@@ -809,6 +809,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
 					],
+					manual_composition: Some(generic!(T)),
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -2086,7 +2087,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			identifier: "Text",
-			category: "Vector",
+			category: "Text",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_std::text::TextNode"),
@@ -2663,6 +2664,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
 		use graphene_core::registry::*;
+		let id = id.clone();
 
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
@@ -2673,7 +2675,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -2685,12 +2687,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description,
 			properties,
 		} = metadata;
-		let Some(implementations) = &node_registry.get(id) else { continue };
+		let Some(implementations) = &node_registry.get(&id) else { continue };
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut input_type = &first_node_io.call_argument;
 		if valid_inputs.len() > 1 {
-			input_type = &const { generic!(T) };
+			input_type = &const { generic!(D) };
 		}
 		let output_type = &first_node_io.return_value;
 
@@ -2740,6 +2742,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					output_names: vec![output_type.to_string()],
 					has_primary_output: true,
 					locked: false,
+
 					..Default::default()
 				},
 			},
@@ -3441,11 +3444,86 @@ pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeDefin
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES
+	// Create a mapping from registry ID to document node identifier
+	let id_to_identifier_map: HashMap<String, &'static str> = DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|definition| {
+			if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = &definition.node_template.document_node.implementation {
+				Some((name.to_string(), definition.identifier))
+			} else {
+				None
+			}
+		})
+		.collect();
+	let mut extracted_node_types = Vec::new();
+
+	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
+	let node_metadata = graphene_core::registry::NODE_METADATA.lock().unwrap();
+	for (id, metadata) in node_metadata.iter() {
+		if let Some(implementations) = node_registry.get(id) {
+			let identifier = match id_to_identifier_map.get(id) {
+				Some(&id) => id.to_string(),
+				None => continue,
+			};
+
+			// Extract category from metadata (already creates an owned String)
+			let category = metadata.category.unwrap_or_default().to_string();
+
+			// Extract input types (already creates owned Strings)
+			let input_types = implementations
+				.iter()
+				.flat_map(|(_, node_io)| node_io.inputs.iter().map(|ty| ty.clone().nested_type().to_string()))
+				.collect::<HashSet<String>>()
+				.into_iter()
+				.collect::<Vec<String>>();
+
+			// Create a FrontendNodeType
+			let node_type = FrontendNodeType::with_owned_strings_and_input_types(identifier, category, input_types);
+
+			// Store the created node_type
+			extracted_node_types.push(node_type);
+		}
+	}
+
+	let node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|definition| !definition.category.is_empty())
-		.map(|definition| FrontendNodeType::new(definition.identifier, definition.category))
-		.collect()
+		.map(|definition| {
+			let input_types = definition
+				.node_template
+				.document_node
+				.inputs
+				.iter()
+				.filter_map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()))
+				.collect::<Vec<String>>();
+
+			FrontendNodeType::with_input_types(definition.identifier, definition.category, input_types)
+		})
+		.collect();
+
+	// Update categories in extracted_node_types from node_types
+	for extracted_node in &mut extracted_node_types {
+		if extracted_node.category.is_empty() {
+			// Find matching node in node_types and update category if found
+			if let Some(matching_node) = node_types.iter().find(|node_type| node_type.name == extracted_node.name) {
+				extracted_node.category = matching_node.category.clone();
+			}
+		}
+	}
+	let missing_nodes: Vec<FrontendNodeType> = node_types
+		.iter()
+		.filter(|node| !extracted_node_types.iter().any(|extracted| extracted.name == node.name))
+		.cloned()
+		.collect();
+
+	// Add the missing nodes to extracted_node_types
+	for node in missing_nodes {
+		extracted_node_types.push(node);
+	}
+	// Remove entries with empty categories
+	extracted_node_types.retain(|node| !node.category.is_empty());
+
+	extracted_node_types
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {

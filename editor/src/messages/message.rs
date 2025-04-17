@@ -11,6 +11,8 @@ pub enum Message {
 	EndBuffer(graphene_std::renderer::RenderMetadata),
 
 	#[child]
+	Animation(AnimationMessage),
+	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
 	Debug(DebugMessage),

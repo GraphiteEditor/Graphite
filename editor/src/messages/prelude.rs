@@ -2,6 +2,7 @@
 pub use crate::utility_traits::{ActionList, AsMessage, MessageHandler, ToDiscriminant, TransitiveChild};
 
 // Message, MessageData, MessageDiscriminant, MessageHandler
+pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscriminant, AnimationMessageHandler};
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
 pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageData, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
@@ -20,7 +21,8 @@ pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, Nod
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageData, OverlaysMessageDiscriminant, OverlaysMessageHandler};
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageData, DocumentMessageDiscriminant, DocumentMessageHandler};
-pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageData, MenuBarMessageDiscriminant, MenuBarMessageHandler};
+pub use crate::messages::portfolio::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, MenuBarMessageHandler};
+pub use crate::messages::portfolio::spreadsheet::{SpreadsheetMessage, SpreadsheetMessageDiscriminant};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageData, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};

@@ -654,7 +654,7 @@ impl NodeNetworkInterface {
 							let input_type = self.input_type(&InputConnector::node(*node_id, iterator_index), network_path).0;
 							// Value inputs are stored as concrete, so they are compared to the nested type. Node inputs are stored as fn, so they are compared to the entire type.
 							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
-							node_io.inputs[iterator_index].clone().nested_type() == input_type || node_io.inputs[iterator_index] == input_type
+							node_io.inputs[iterator_index].clone().nested_type() == &input_type || node_io.inputs[iterator_index] == input_type
 						});
 						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
 					})

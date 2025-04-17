@@ -334,14 +334,22 @@ impl VectorData {
 				let (start_point_id, _, _) = self.segment_points_from_id(*segment_id)?;
 				let start_index = self.point_domain.resolve_id(start_point_id)?;
 
-				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id))
+				self.segment_domain.end_connected(start_index).find(|&id| id != *segment_id).map(|id| (start_point_id, id)).or(self
+					.segment_domain
+					.start_connected(start_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (start_point_id, id)))
 			}
 			ManipulatorPointId::EndHandle(segment_id) => {
 				// For end handle, find segments starting at our end point
 				let (_, end_point_id, _) = self.segment_points_from_id(*segment_id)?;
 				let end_index = self.point_domain.resolve_id(end_point_id)?;
 
-				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id))
+				self.segment_domain.start_connected(end_index).find(|&id| id != *segment_id).map(|id| (end_point_id, id)).or(self
+					.segment_domain
+					.end_connected(end_index)
+					.find(|&id| id != *segment_id)
+					.map(|id| (end_point_id, id)))
 			}
 			ManipulatorPointId::Anchor(_) => None,
 		}
@@ -519,7 +527,10 @@ impl HandleId {
 
 	/// Calculate the magnitude of the handle from the anchor.
 	pub fn length(self, vector_data: &VectorData) -> f64 {
-		let anchor_position = self.to_manipulator_point().get_anchor_position(vector_data).unwrap();
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector_data) else {
+			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
+			return 0.;
+		};
 		let handle_position = self.to_manipulator_point().get_position(vector_data);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}

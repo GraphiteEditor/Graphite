@@ -3,6 +3,8 @@ use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
 
+use super::misc::AsU64;
+
 trait CornerRadius {
 	fn generate(self, size: DVec2, clamped: bool) -> VectorDataTable;
 }
@@ -70,30 +72,32 @@ fn rectangle<T: CornerRadius>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon(
+fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
 	#[min(3.)]
-	sides: u32,
+	#[implementations(u32, u64, f64)]
+	sides: T,
 	#[default(50)] radius: f64,
 ) -> VectorDataTable {
-	let points = sides.into();
+	let points = sides.as_u64();
 	let radius: f64 = radius * 2.;
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn star(
+fn star<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
 	#[min(2.)]
-	sides: u32,
+	#[implementations(u32, u64, f64)]
+	sides: T,
 	#[default(50)] radius: f64,
 	#[default(25)] inner_radius: f64,
 ) -> VectorDataTable {
-	let points = sides.into();
+	let points = sides.as_u64();
 	let diameter: f64 = radius * 2.;
 	let inner_diameter = inner_radius * 2.;
 

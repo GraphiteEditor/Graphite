@@ -970,12 +970,12 @@ impl Fsm for PathToolFsmState {
 
 							match axis {
 								Axis::Y => {
-									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(other));
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(other), None);
 								}
 								Axis::X | Axis::Both => {
-									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(other));
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(other), None);
 								}
 							}
 						}
@@ -986,8 +986,8 @@ impl Fsm for PathToolFsmState {
 						if let Some(closest_segment) = &tool_data.segment {
 							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
 							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
-								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE));
-								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE));
+								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);
+								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE), None);
 								overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
 								overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
 							}
@@ -1442,7 +1442,7 @@ impl Fsm for PathToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PathToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
 				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
@@ -1468,7 +1468,7 @@ impl Fsm for PathToolFsmState {
 				let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
 				let toggle_group = match dragging_state.point_select_state {
 					PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
-						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Selected Handles")];
+						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
 						hints.push(HintInfo::keys(
 							[Key::KeyC],
 							if colinear == ManipulatorAngle::Colinear {
