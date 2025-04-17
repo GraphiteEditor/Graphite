@@ -353,7 +353,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
 
-					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
+					let name = self.network_interface.display_name(&layer.to_node(), &[]);
 
 					let transform = self.metadata().document_to_viewport
 						* DAffine2::from_translation(bounds[0].min(bounds[1]))
@@ -2813,7 +2813,6 @@ mod document_message_handler_tests {
 			parent.children(document.metadata()).position(|child| child == layer)
 		}
 
-		let layer_bottom = get_layer_by_bounds(&mut editor, 0.0, 0.0).await.unwrap();
 		let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
 		let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
 
@@ -2831,5 +2830,33 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
 		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
 		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
+	}
+	#[tokio::test]
+	async fn test_move_folder_into_itself_doesnt_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Creating a parent folder
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let parent_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Creating a child folder inside the parent folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let child_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Attempt to move parent folder into child folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: child_folder,
+				insert_index: 0,
+			})
+			.await;
+
+		// The operation completed without crashing
+		// Verifying application still functions by performing another operation
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		assert!(true, "Application didn't crash after folder move operation");
 	}
 }
