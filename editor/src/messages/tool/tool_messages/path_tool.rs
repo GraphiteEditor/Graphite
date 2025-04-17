@@ -502,13 +502,14 @@ impl PathToolData {
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
-		// Check if Point already Selected, else select the first point within the threshold (in pixels)
+		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
 		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
+
 			self.last_clicked_point_was_selected = already_selected;
-			// If the point is already selected and we're using shift (extend_selection),
-			// don't change selection.
-			// otherwise select first point within threshold.
+
+			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
+			// Otherwise, select the first point within the threshold.
 			if !(already_selected && extend_selection) {
 				if let Some(updated_selection_info) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
 					selection_info = updated_selection_info;
