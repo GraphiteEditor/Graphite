@@ -1860,14 +1860,17 @@ impl Fsm for PenToolFsmState {
 					let append_to_selected_layer = input.keyboard.key(append_to_selected);
 
 					// Create new path in the selected layer when shift is down
-					if let (Some(layer), true) = (selected_layer, append_to_selected_layer) {
-						tool_data.current_layer = Some(layer);
+					match (selected_layer, append_to_selected_layer) {
+						(Some(layer), true) => {
+							tool_data.current_layer = Some(layer);
 
-						let transform = document.metadata().transform_to_viewport(layer);
-						let position = transform.inverse().transform_point2(input.mouse.position);
-						tool_data.next_point = position;
+							let transform = document.metadata().transform_to_viewport(layer);
+							let position = transform.inverse().transform_point2(input.mouse.position);
+							tool_data.next_point = position;
 
-						return PenToolFsmState::SplineDrawing;
+							return PenToolFsmState::SplineDrawing;
+						}
+						_ => {}
 					}
 
 					responses.add(DocumentMessage::DeselectAllLayers);
