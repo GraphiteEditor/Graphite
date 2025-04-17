@@ -325,7 +325,14 @@ pub enum LayoutGroup {
 	},
 	// TODO: Move this from being a child of `enum LayoutGroup` to being a child of `enum Layout`
 	#[serde(rename = "section")]
-	Section { name: String, visible: bool, pinned: bool, id: u64, layout: SubLayout },
+	Section {
+		name: String,
+		description: String,
+		visible: bool,
+		pinned: bool,
+		id: u64,
+		layout: SubLayout,
+	},
 }
 
 impl Default for LayoutGroup {
@@ -402,6 +409,7 @@ impl LayoutGroup {
 			(
 				Self::Section {
 					name: current_name,
+					description: current_description,
 					visible: current_visible,
 					pinned: current_pinned,
 					id: current_id,
@@ -409,6 +417,7 @@ impl LayoutGroup {
 				},
 				Self::Section {
 					name: new_name,
+					description: new_description,
 					visible: new_visible,
 					pinned: new_pinned,
 					id: new_id,
@@ -417,9 +426,16 @@ impl LayoutGroup {
 			) => {
 				// Resend the entire panel if the lengths, names, visibility, or node IDs are different
 				// TODO: Diff insersion and deletion of items
-				if current_layout.len() != new_layout.len() || *current_name != new_name || *current_visible != new_visible || *current_pinned != new_pinned || *current_id != new_id {
+				if current_layout.len() != new_layout.len()
+					|| *current_name != new_name
+					|| *current_description != new_description
+					|| *current_visible != new_visible
+					|| *current_pinned != new_pinned
+					|| *current_id != new_id
+				{
 					// Update self to reflect new changes
 					current_name.clone_from(&new_name);
+					current_description.clone_from(&new_description);
 					*current_visible = new_visible;
 					*current_pinned = new_pinned;
 					*current_id = new_id;
@@ -428,6 +444,7 @@ impl LayoutGroup {
 					// Push an update layout group to the diff
 					let new_value = DiffUpdate::LayoutGroup(Self::Section {
 						name: new_name,
+						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
 						id: new_id,

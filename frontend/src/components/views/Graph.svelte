@@ -1069,7 +1069,7 @@
 					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
 						{#each exposedInputsOutputs as [input, output]}
 							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltip={input !== undefined ? input.name : output.name}>
+								<TextLabel tooltip={(input !== undefined ? `${input.name}\n\n${input.description}` : `${output.name}\n\n${output.description}`).trim()}>
 									{input !== undefined ? input.name : output.name}
 								</TextLabel>
 							</div>
