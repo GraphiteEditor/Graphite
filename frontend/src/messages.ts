@@ -110,12 +110,9 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-const InputTypeDescriptions = Transform(({ obj }) => new Map(obj.inputTypeDescriptions));
 const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
 
 export class SendUIMetadata extends JsMessage {
-	@InputTypeDescriptions
-	readonly inputTypeDescriptions!: Map<string, string>;
 	@NodeDescriptions
 	readonly nodeDescriptions!: Map<string, string>;
 	@Type(() => FrontendNode)
@@ -220,6 +217,8 @@ export class FrontendGraphInput {
 
 	readonly name!: string;
 
+	readonly description!: string;
+
 	readonly resolvedType!: string | undefined;
 
 	readonly validTypes!: string[];
@@ -250,6 +249,8 @@ export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
+
+	readonly description!: string;
 
 	readonly resolvedType!: string | undefined;
 
@@ -1508,7 +1509,7 @@ export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTa
 	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
 }
 
-export type WidgetSection = { name: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
@@ -1550,6 +1551,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.section) {
 		const result: WidgetSection = {
 			name: layoutGroup.section.name,
+			description: layoutGroup.section.description,
 			visible: layoutGroup.section.visible,
 			pinned: layoutGroup.section.pinned,
 			id: layoutGroup.section.id,
