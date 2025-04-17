@@ -44,15 +44,21 @@ pub enum LuminanceCalculation {
 	MaximumChannels,
 }
 
-impl LuminanceCalculation {
-	pub fn list() -> [LuminanceCalculation; 5] {
-		[
-			LuminanceCalculation::SRGB,
-			LuminanceCalculation::Perceptual,
-			LuminanceCalculation::AverageChannels,
-			LuminanceCalculation::MinimumChannels,
-			LuminanceCalculation::MaximumChannels,
-		]
+impl crate::vector::misc::AsU32 for LuminanceCalculation {
+	fn as_u32(&self) -> u32 {
+		*self as u32
+	}
+}
+
+impl crate::vector::misc::DropdownableStatic for LuminanceCalculation {
+	fn list() -> &'static [&'static [(Self, Option<&'static str>)]] {
+		&[&[
+			(LuminanceCalculation::SRGB, None),
+			(LuminanceCalculation::Perceptual, None),
+			(LuminanceCalculation::AverageChannels, None),
+			(LuminanceCalculation::MinimumChannels, None),
+			(LuminanceCalculation::MaximumChannels, None),
+		]]
 	}
 }
 

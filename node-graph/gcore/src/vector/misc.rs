@@ -36,6 +36,24 @@ impl BooleanOperation {
 	}
 }
 
+impl AsU32 for BooleanOperation {
+	fn as_u32(&self) -> u32 {
+		*self as u32
+	}
+}
+
+impl DropdownableStatic for BooleanOperation {
+	fn list() -> &'static [&'static [(Self, Option<&'static str>)]] {
+		&[&[
+			(BooleanOperation::Union, Some("BooleanUnion")),
+			(BooleanOperation::SubtractFront, Some("BooleanSubtractFront")),
+			(BooleanOperation::SubtractBack, Some("BooleanSubtractBack")),
+			(BooleanOperation::Intersect, Some("BooleanIntersect")),
+			(BooleanOperation::Difference, Some("BooleanDifference")),
+		]]
+	}
+}
+
 impl core::fmt::Display for BooleanOperation {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
@@ -45,6 +63,19 @@ impl core::fmt::Display for BooleanOperation {
 			BooleanOperation::Intersect => write!(f, "Intersect"),
 			BooleanOperation::Difference => write!(f, "Difference"),
 		}
+	}
+}
+
+pub trait DropdownableStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
+	fn list() -> &'static [&'static [(Self, Option<&'static str>)]];
+}
+
+pub trait AsU32 {
+	fn as_u32(&self) -> u32;
+}
+impl AsU32 for u32 {
+	fn as_u32(&self) -> u32 {
+		*self as u32
 	}
 }
 

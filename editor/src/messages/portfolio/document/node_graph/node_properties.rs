@@ -85,6 +85,102 @@ pub fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize
 	widgets
 }
 
+trait DropdownSource {
+	type Value: Sized + Copy + Send + Sync + 'static;
+
+	fn into_index(v: Self::Value) -> Option<u32>;
+	fn into_tagged_value(v: Self::Value) -> TaggedValue;
+	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value>;
+	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = (Self::Value, String, String, Option<String>)>>;
+}
+
+struct DropdownSourceStatic<T: graphene_core::vector::misc::DropdownableStatic>(std::marker::PhantomData<T>);
+impl<T> DropdownSource for DropdownSourceStatic<T>
+where
+	T: graphene_core::vector::misc::DropdownableStatic + 'static,
+	for<'a> &'a T: TryFrom<&'a TaggedValue>,
+	TaggedValue: From<T>,
+{
+	type Value = T;
+
+	fn into_index(v: Self::Value) -> Option<u32> {
+		Some(v.as_u32())
+	}
+	fn into_tagged_value(v: Self::Value) -> TaggedValue {
+		TaggedValue::from(v)
+	}
+	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value> {
+		let v_ref: Option<&Self::Value> = tv.map(|tv| tv.try_into().ok()).flatten();
+		v_ref.map(|vr| *vr)
+	}
+	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = (Self::Value, String, String, Option<String>)>> {
+		T::list()
+			.into_iter()
+			.map(|cat| cat.into_iter().map(|(item, icon)| (*item, format!("{item:?}"), format!("{item}"), icon.map(String::from))))
+	}
+}
+
+fn enum_source<E: graphene_core::vector::misc::DropdownableStatic>() -> DropdownSourceStatic<E> {
+	DropdownSourceStatic(std::marker::PhantomData)
+}
+
+fn radio_buttons<E: DropdownSource>(_list: E, document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+
+	if let Some(current) = E::from_tagged_value(input.as_non_exposed_value()) {
+		let items = E::enumerate()
+			.flatten()
+			.map(|(item, valstr, label, icon)| {
+				let red = RadioEntryData::new(valstr)
+					.on_update(update_value(move |_| E::into_tagged_value(item), node_id, index))
+					.on_commit(commit_value);
+				let red = if let Some(icon) = icon { red.icon(icon).tooltip(label) } else { red.label(label) };
+				red
+			})
+			.collect();
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(items).selected_index(E::into_index(current)).widget_holder()
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+fn dropdown<E: DropdownSource>(_list: E, document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+
+	if let Some(current) = E::from_tagged_value(input.as_non_exposed_value()) {
+		let items = E::enumerate()
+			.map(|category| {
+				category
+					.map(|(item, valstr, label, _)| {
+						MenuListEntry::new(valstr)
+							.label(label)
+							.on_update(update_value(move |_| E::into_tagged_value(item), node_id, index))
+							.on_commit(commit_value)
+					})
+					.collect()
+			})
+			.collect();
+		
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(items).selected_index(E::into_index(current)).widget_holder()
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
 pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
@@ -1006,62 +1102,12 @@ pub fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, n
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
 }
 
-// TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
 pub fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::LuminanceCalculation(calculation)) = input.as_non_exposed_value() {
-		let calculation_modes = LuminanceCalculation::list();
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(
-				MenuListEntry::new(format!("{method:?}"))
-					.label(method.to_string())
-					.on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index))
-					.on_commit(commit_value),
-			);
-		}
-		let entries = vec![entries];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
+	dropdown(enum_source::<LuminanceCalculation>(), document_node, node_id, index, name, blank_assist)
 }
 
 pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::BooleanOperation(calculation)) = input.as_non_exposed_value() {
-		let operations = BooleanOperation::list();
-		let icons = BooleanOperation::icons();
-		let mut entries = Vec::with_capacity(operations.len());
-
-		for (operation, icon) in operations.into_iter().zip(icons.into_iter()) {
-			entries.push(
-				RadioEntryData::new(format!("{operation:?}"))
-					.icon(icon)
-					.tooltip(operation.to_string())
-					.on_update(update_value(move |_| TaggedValue::BooleanOperation(operation), node_id, index))
-					.on_commit(commit_value),
-			);
-		}
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
+	radio_buttons(enum_source::<BooleanOperation>(), document_node, node_id, index, name, blank_assist)
 }
 
 pub fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
