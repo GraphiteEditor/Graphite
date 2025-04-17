@@ -388,6 +388,37 @@ impl ShapeState {
 		None
 	}
 
+	pub fn get_point_selection_state(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(bool, Option<SelectedPointsInfo>)> {
+		if self.selected_shape_state.is_empty() {
+			return None;
+		}
+
+		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
+			let vector_data = network_interface.compute_modified_vector(layer)?;
+			let point_position = manipulator_point_id.get_position(&vector_data)?;
+
+			let selected_shape_state = self.selected_shape_state.get(&layer)?;
+			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
+
+			// Offset to snap the selected point to the cursor
+			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
+
+			// Gather current selection information
+			let points = self
+				.selected_shape_state
+				.iter()
+				.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
+				.collect();
+
+			let selection_info = SelectedPointsInfo { points, offset, vector_data };
+
+			// Return the current selection state and info
+			return Some((already_selected, Some(selection_info)));
+		}
+
+		None
+	}
+
 	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, extend_selection: bool) {
 		if !extend_selection {
 			self.deselect_all_points();
@@ -778,6 +809,7 @@ impl ShapeState {
 		delta: DVec2,
 		equidistant: bool,
 		in_viewport_space: bool,
+		was_alt_dragging: bool,
 		opposite_handle_position: Option<DVec2>,
 		responses: &mut VecDeque<Message>,
 	) {
@@ -846,9 +878,11 @@ impl ShapeState {
 					let length = opposing_handle.copied().unwrap_or_else(|| transform.transform_vector2(other_position - anchor_position).length());
 					direction.map_or(other_position - anchor_position, |direction| transform.inverse().transform_vector2(-direction * length))
 				};
-				let modification_type = other.set_relative_position(new_relative);
 
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if !was_alt_dragging {
+					let modification_type = other.set_relative_position(new_relative);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 			}
 		}
 	}

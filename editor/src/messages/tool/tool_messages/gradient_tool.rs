@@ -782,4 +782,96 @@ mod test_gradient {
 		let updated_end = transform.transform_point2(updated_gradient.end);
 		assert!(updated_end.abs_diff_eq(DVec2::new(100., 50.), 1e-10), "Expected end point at (100, 50), got {:?}", updated_end);
 	}
+
+	#[tokio::test]
+	async fn dragging_stop_reorders_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_secondary_color(Color::BLUE).await;
+
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		editor.select_tool(ToolType::Gradient).await;
+		let click_position = DVec2::new(50., 0.);
+		let modifier_keys = ModifierKeys::empty();
+
+		editor
+			.handle_message(InputPreprocessorMessage::DoubleClick {
+				editor_mouse_state: EditorMouseState {
+					editor_position: click_position,
+					mouse_keys: MouseKeys::LEFT,
+					scroll_delta: ScrollDelta::default(),
+				},
+				modifier_keys,
+			})
+			.await;
+
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		let (initial_fill, _) = fills.first().unwrap();
+		let initial_gradient = initial_fill.as_gradient().unwrap();
+		assert_eq!(initial_gradient.stops.len(), 3);
+
+		// Verify initial stop positions and colors
+		let mut stops = initial_gradient.stops.clone();
+		stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+		assert!((stops[0].0 - 0.0).abs() < 0.001);
+		assert!((stops[1].0 - 0.5).abs() < 0.1);
+		assert!((stops[2].0 - 1.0).abs() < 0.001);
+
+		let middle_color = stops[1].1.to_rgba8_srgb();
+
+		// Simulate dragging the middle stop to position 0.8
+		editor.select_tool(ToolType::Gradient).await;
+
+		editor
+			.mousedown(
+				EditorMouseState {
+					editor_position: click_position,
+					mouse_keys: MouseKeys::LEFT,
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let drag_position = DVec2::new(80., 0.);
+		editor.move_mouse(drag_position.x, drag_position.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: drag_position,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let fills_after_drag = get_fills(&mut editor).await;
+		assert_eq!(fills_after_drag.len(), 1);
+		let (updated_fill, _) = fills_after_drag.first().unwrap();
+		let updated_gradient = updated_fill.as_gradient().unwrap();
+		assert_eq!(updated_gradient.stops.len(), 3);
+
+		// Verify updated stop positions and colors
+		let mut updated_stops = updated_gradient.stops.clone();
+		updated_stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+		// Check positions are now correctly ordered
+		assert!((updated_stops[0].0 - 0.0).abs() < 0.001);
+		assert!((updated_stops[1].0 - 0.8).abs() < 0.1);
+		assert!((updated_stops[2].0 - 1.0).abs() < 0.001);
+
+		// Colors should maintain their associations with the stop points
+		assert_eq!(updated_stops[0].1.to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
+		assert_eq!(updated_stops[1].1.to_rgba8_srgb(), middle_color);
+		assert_eq!(updated_stops[2].1.to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+	}
 }
