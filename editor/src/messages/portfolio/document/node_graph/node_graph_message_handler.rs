@@ -315,7 +315,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}
-			NodeGraphMessage::ExposeInput { input_connector, new_exposed } => {
+			NodeGraphMessage::ExposeInput {
+				input_connector,
+				set_to_exposed,
+				start_transaction,
+			} => {
 				let InputConnector::Node { node_id, input_index } = input_connector else {
 					log::error!("Cannot expose/hide export");
 					return;
@@ -324,26 +328,43 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not find node {node_id} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				let Some(mut input) = node.inputs.get(input_index).cloned() else {
+				let Some(mut node_input) = node.inputs.get(input_index).cloned() else {
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = new_exposed;
-				} else if !new_exposed {
-					// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
-					responses.add(NodeGraphMessage::DisconnectInput { input_connector });
-					responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
+
+				// If we're un-exposing an input that is not a value, then disconnect it. This will convert it to a value input,
+				// so we can come back to handle this message again to set the exposed value in the second run-through.
+				if !set_to_exposed && node_input.as_value().is_none() {
+					// Reversed order because we are pushing front
+					responses.add_front(NodeGraphMessage::ExposeInput {
+						input_connector,
+						set_to_exposed,
+						start_transaction: false,
+					});
+					responses.add_front(NodeGraphMessage::DisconnectInput { input_connector });
+					responses.add_front(DocumentMessage::StartTransaction);
 					return;
 				}
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Add a history step, but only do so if we didn't already start a transaction in the first run-through of this message in the above code
+				if start_transaction {
+					responses.add_front(DocumentMessage::StartTransaction);
+				}
 
+				// If this node's input is a value type, we set its chosen exposed state
+				if let NodeInput::Value { exposed, .. } = &mut node_input {
+					*exposed = set_to_exposed;
+				}
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
-					input,
+					input: node_input,
 				});
 
+				// Finish the history step
+				responses.add(DocumentMessage::CommitTransaction);
+
+				// Update the graph UI and re-render
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -2051,7 +2072,7 @@ impl NodeGraphMessageHandler {
 						Separator::new(SeparatorType::Related).widget_holder(),
 						IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
-						TextInput::new(context.network_interface.frontend_display_name(&layer, context.selection_network_path))
+						TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
 							.tooltip("Name of the selected layer")
 							.on_update(move |text_input| {
 								NodeGraphMessage::SetDisplayName {
@@ -2095,9 +2116,10 @@ impl NodeGraphMessageHandler {
 							!context.network_interface.is_layer(node_id, context.selection_network_path)
 						}
 					})
+					.map(|(_, node_id)| node_id)
 					.collect::<Vec<_>>()
-					.iter()
-					.map(|(_, node_id)| node_properties::generate_node_properties(*node_id, context))
+					.into_iter()
+					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
 
 				layer_properties.extend(node_properties);
@@ -2215,6 +2237,7 @@ impl NodeGraphMessageHandler {
 					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
 					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
 					name: input.name.unwrap_or_else(|| input.ty.nested_type().to_string()),
+					description: input.description.unwrap_or_default(),
 					connected_to: input.output_connector,
 				})
 			});
@@ -2234,6 +2257,7 @@ impl NodeGraphMessageHandler {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
+					description: String::new(),
 					resolved_type: primary_output_type.map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
 					connected_to,
 				})
@@ -2267,6 +2291,7 @@ impl NodeGraphMessageHandler {
 				exposed_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: output_name,
+					description: String::new(),
 					resolved_type: exposed_output.clone().map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
 					connected_to,
 				});
@@ -2306,7 +2331,7 @@ impl NodeGraphMessageHandler {
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
 				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned().unwrap_or_default(),
-				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
+				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,
 				primary_output,
@@ -2332,7 +2357,7 @@ impl NodeGraphMessageHandler {
 			if let Some(network) = node.implementation.get_network() {
 				current_network = network;
 			};
-			subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
+			subgraph_names.push(network_interface.display_name(node_id, &current_network_path));
 			current_network_path.push(*node_id)
 		}
 		Some(subgraph_names)
@@ -2395,7 +2420,7 @@ impl NodeGraphMessageHandler {
 
 				let data = LayerPanelEntry {
 					id: node_id,
-					alias: network_interface.frontend_display_name(&node_id, &[]),
+					alias: network_interface.display_name(&node_id, &[]),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
@@ -2522,6 +2547,7 @@ impl NodeGraphMessageHandler {
 #[derive(Default)]
 struct InputLookup {
 	name: Option<String>,
+	description: Option<String>,
 	ty: Type,
 	type_source: TypeSource,
 	valid_types: Vec<Type>,
@@ -2552,11 +2578,16 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 				.input_name(&node_id, index, breadcrumb_network_path)
 				.filter(|s| !s.is_empty())
 				.map(|name| name.to_string());
+			let description = network_interface
+				.input_description(&node_id, index, breadcrumb_network_path)
+				.filter(|s| !s.is_empty())
+				.map(|description| description.to_string());
 			// Get the output connector that feeds into this input (done here as well for simplicity)
 			let connector = OutputConnector::from_input(input);
 
 			inputs.push(Some(InputLookup {
 				name,
+				description,
 				output_connector: connector,
 				..Default::default()
 			}));
