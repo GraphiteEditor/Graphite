@@ -353,7 +353,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
 
-					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
+					let name = self.network_interface.display_name(&layer.to_node(), &[]);
 
 					let transform = self.metadata().document_to_viewport
 						* DAffine2::from_translation(bounds[0].min(bounds[1]))
