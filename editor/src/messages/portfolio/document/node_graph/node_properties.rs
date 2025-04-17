@@ -52,11 +52,12 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
-		.tooltip("Expose this parameter input in node graph")
+		.tooltip("Expose this parameter as a node input in the graph")
 		.on_update(move |_parameter| {
 			NodeGraphMessage::ExposeInput {
 				input_connector: InputConnector::node(node_id, index),
-				new_exposed: !exposed,
+				set_to_exposed: !exposed,
+				start_transaction: true,
 			}
 			.into()
 		})
