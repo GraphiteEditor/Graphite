@@ -34,6 +34,22 @@ fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f
 }
 
 #[node_macro::node(category("Text"))]
+fn split_string_by_index(
+	_: impl Ctx,
+	#[implementations(String)]
+	/// The comma-separated string to split.
+	input: String,
+	/// The zero-based index of the item to retrieve.
+	#[default(0.0)]
+	#[min(0.0)]
+	index: f64,
+) -> String {
+	let parts: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+	let floored_index = index.floor() as usize;
+	if floored_index < parts.len() { parts[floored_index].to_string() } else { String::new() }
+}
+
+#[node_macro::node(category("Text"))]
 fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usize {
 	string.len()
 }

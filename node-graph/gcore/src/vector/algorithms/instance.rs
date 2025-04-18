@@ -1,6 +1,6 @@
 use crate::instances::Instance;
 use crate::vector::{VectorData, VectorDataTable};
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl};
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicGroupTable, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 
 #[node_macro::node(name("Instance on Points"), category("Vector: Shape"), path(graphene_core::vector))]
@@ -28,6 +28,36 @@ async fn instance_on_points(
 	// TODO: Remove once we support empty tables, currently this is here to avoid crashing
 	if result.is_empty() {
 		return VectorDataTable::new(VectorData::empty());
+	}
+
+	result
+}
+
+#[node_macro::node(name("Group Instance on Points"), category("Vector: Shape"), path(graphene_core::vector))]
+async fn group_instance_on_points(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	points: VectorDataTable,
+	#[implementations(Context -> GraphicGroupTable)] instance_node: impl Node<'n, Context<'static>, Output = GraphicGroupTable>,
+) -> GraphicGroupTable {
+	let mut result = GraphicGroupTable::empty();
+
+	for Instance { instance: points, transform, .. } in points.instances() {
+		for (index, &point) in points.point_domain.positions().iter().enumerate() {
+			let transformed_point = transform.transform_point2(point);
+
+			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
+			let instanced = instance_node.eval(new_ctx.into_context()).await;
+
+			for instanced_element in instanced.instances() {
+				let new_instance = result.push_instance(instanced_element);
+				*new_instance.transform *= DAffine2::from_translation(transformed_point);
+			}
+		}
+	}
+
+	// TODO: Remove once we support empty tables, currently this is here to avoid crashing
+	if result.is_empty() {
+		return GraphicGroupTable::empty();
 	}
 
 	result

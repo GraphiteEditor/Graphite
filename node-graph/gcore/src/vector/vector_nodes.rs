@@ -807,6 +807,98 @@ where
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn box_pack(
+	_: impl Ctx,
+	#[implementations(GraphicGroupTable)] instances: GraphicGroupTable,
+	#[expose]
+	#[implementations(VectorDataTable)]
+	container_shape: VectorDataTable,
+	#[default(10.)] padding: f64,
+	#[default(false)] sort_by_area: bool,
+) -> GraphicGroupTable {
+	let mut result = GraphicGroupTable::empty();
+
+	// Get the container's bounding box
+	let container_transform = container_shape.transform();
+	let container_bbox = container_shape
+		.one_instance()
+		.instance
+		.bounding_box_with_transform(container_transform)
+		.unwrap_or_else(|| [DVec2::ZERO, DVec2::ZERO]);
+
+	let container_size = container_bbox[1] - container_bbox[0];
+	let container_origin = container_bbox[0];
+
+	// Extract bounding boxes and original instances
+	let mut items = Vec::new();
+	for instance in instances.instances() {
+		// Get the bounding box directly from the instance transform
+		if let Some(bbox) = instance.instance.bounding_box(*instance.transform) {
+			let size = bbox[1] - bbox[0];
+			items.push((size, *instance.transform, instance.instance.clone()));
+		}
+	}
+
+	// Sort instances by area if requested (larger first for better packing)
+	if sort_by_area {
+		items.sort_by(|a, b| {
+			let area_a = a.0.x * a.0.y;
+			let area_b = b.0.x * b.0.y;
+			area_b.partial_cmp(&area_a).unwrap_or(std::cmp::Ordering::Equal)
+		});
+	}
+
+	// Simple bin packing algorithm
+	let mut current_x = container_origin.x;
+	let mut current_y = container_origin.y;
+	let mut row_height = 0.0;
+
+	for (size, _, instance) in items {
+		// Add padding to the item size
+		let item_width = size.x + padding;
+		let item_height = size.y + padding;
+
+		// Check if we need to move to the next row
+		if current_x + item_width > container_origin.x + container_size.x {
+			current_x = container_origin.x;
+			current_y += row_height;
+			row_height = 0.0;
+		}
+
+		// Check if we've exceeded the container height
+		if current_y + item_height > container_origin.y + container_size.y {
+			// We could implement multi-page packing here
+			break;
+		}
+
+		// Calculate the position for this item
+		let position = DVec2::new(current_x, current_y);
+
+		// Extract the current center of the instance
+		let instance_center = {
+			if let Some(bbox) = instance.bounding_box(DAffine2::IDENTITY) {
+				(bbox[0] + bbox[1]) * 0.5
+			} else {
+				DVec2::ZERO
+			}
+		};
+
+		// Create a new transform that positions the instance correctly
+		let new_transform = DAffine2::from_translation(position + instance_center);
+
+		// Add to the result
+		let pushed = result.push(instance);
+		*pushed.transform = new_transform;
+
+		// Update position tracking
+		current_x += item_width;
+		row_height = row_height.max(item_height);
+	}
+
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn center_instances(
 	_: impl Ctx,
 	graphic_group: GraphicGroupTable,

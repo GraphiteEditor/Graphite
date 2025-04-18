@@ -351,25 +351,38 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		rotated_subpath
 	}
 
-	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
-	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
-	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#subpath/offset/solo" title="Offset Demo"></iframe>
 	pub fn offset(&self, distance: f64, join: Join) -> Subpath<PointId> {
-		// An offset at a distance 0 from the curve is simply the same curve
-		// An offset of a single point is not defined
+		// Early returns - same as before
 		if distance == 0. || self.len() <= 1 || self.len_segments() < 1 {
 			return self.clone();
 		}
 
-		let mut subpaths = self
-			.iter()
-			.filter(|bezier| !bezier.is_point())
-			.map(|bezier| bezier.offset(distance))
-			.filter(|subpath| subpath.len() >= 2) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
-			.collect::<Vec<Subpath<PointId>>>();
+		// Collect valid offset subpaths
+		let mut subpaths = Vec::new();
+		for bezier in self.iter() {
+			if bezier.is_point() {
+				continue;
+			}
+
+			// Try to offset the bezier and handle potential failures
+			let offset_result = std::panic::catch_unwind(|| bezier.offset(distance));
+
+			// Only include valid results
+			if let Ok(subpath) = offset_result {
+				if subpath.len() >= 2 {
+					subpaths.push(subpath);
+				}
+			}
+		}
+
+		// If we couldn't offset any segments, just return the original
+		if subpaths.is_empty() {
+			return self.clone();
+		}
 
 		let mut drop_common_point = vec![true; self.len()];
 
+		// Rest of the function remains the same
 		// Clip or join consecutive Subpaths
 		for i in 0..subpaths.len() - 1 {
 			let j = i + 1;
@@ -424,7 +437,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		}
 
 		// Clip any overlap in the last segment
-		if self.closed {
+		if self.closed && !subpaths.is_empty() {
 			let out_tangent = self.get_segment(self.len_segments() - 1).unwrap().tangent(TValue::Parametric(1.));
 			let in_tangent = self.get_segment(0).unwrap().tangent(TValue::Parametric(0.));
 			let angle = out_tangent.angle_to(in_tangent);
@@ -462,6 +475,11 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			}
 		}
 
+		// Ensure we have subpaths before merging
+		if subpaths.is_empty() {
+			return self.clone();
+		}
+
 		// Merge the subpaths. Drop points which overlap with one another.
 		let mut manipulator_groups = subpaths[0].manipulator_groups.clone();
 		for i in 1..subpaths.len() {
@@ -475,7 +493,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 				manipulator_groups.append(&mut subpaths[i].manipulator_groups.clone());
 			}
 		}
-		if self.closed && drop_common_point[0] {
+		if self.closed && !subpaths.is_empty() && drop_common_point[0] {
 			let last_group = manipulator_groups.pop().unwrap();
 			manipulator_groups[0].in_handle = last_group.in_handle;
 		}
