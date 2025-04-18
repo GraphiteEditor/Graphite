@@ -568,17 +568,18 @@ mod test_gradient {
 		(gradient.clone(), transform.clone())
 	}
 
-	async fn double_click_at(editor: &mut EditorTestUtils, position: DVec2) {
-		editor
-			.handle_message(InputPreprocessorMessage::DoubleClick {
-				editor_mouse_state: EditorMouseState {
-					editor_position: position,
-					mouse_keys: MouseKeys::LEFT,
-					scroll_delta: ScrollDelta::default(),
-				},
-				modifier_keys: ModifierKeys::empty(),
-			})
-			.await;
+	fn assert_stops_at_positions(actual_positions: &[f64], expected_positions: &[f64], tolerance: f64) {
+		assert_eq!(
+			actual_positions.len(),
+			expected_positions.len(),
+			"Expected {} stops, found {}",
+			expected_positions.len(),
+			actual_positions.len()
+		);
+
+		for (i, (actual, expected)) in actual_positions.iter().zip(expected_positions.iter()).enumerate() {
+			assert!((actual - expected).abs() < tolerance, "Stop {}: Expected position near {}, got {}", i, expected, actual);
+		}
 	}
 
 	#[tokio::test]
@@ -694,7 +695,7 @@ mod test_gradient {
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		editor.select_tool(ToolType::Gradient).await;
-		double_click_at(&mut editor, DVec2::new(50., 0.)).await;
+		editor.double_click(DVec2::new(50., 0.)).await;
 
 		// Check that a new stop has been added
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
@@ -788,7 +789,7 @@ mod test_gradient {
 		editor.select_tool(ToolType::Gradient).await;
 
 		// Add a middle stop at 50%
-		double_click_at(&mut editor, DVec2::new(50., 0.)).await;
+		editor.double_click(DVec2::new(50., 0.)).await;
 
 		let (initial_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 3, "Expected 3 stops, found {}", initial_gradient.stops.len());
@@ -797,9 +798,8 @@ mod test_gradient {
 		let mut stops = initial_gradient.stops.clone();
 		stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-		assert!((stops[0].0 - 0.0).abs() < 0.001);
-		assert!((stops[1].0 - 0.5).abs() < 0.1);
-		assert!((stops[2].0 - 1.0).abs() < 0.001);
+		let positions: Vec<f64> = stops.iter().map(|(pos, _)| *pos).collect();
+		assert_stops_at_positions(&positions, &[0.0, 0.5, 1.0], 0.1);
 
 		let middle_color = stops[1].1.to_rgba8_srgb();
 
@@ -838,9 +838,8 @@ mod test_gradient {
 		updated_stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
 		// Check positions are now correctly ordered
-		assert!((updated_stops[0].0 - 0.0).abs() < 0.001);
-		assert!((updated_stops[1].0 - 0.8).abs() < 0.1);
-		assert!((updated_stops[2].0 - 1.0).abs() < 0.001);
+		let updated_positions: Vec<f64> = updated_stops.iter().map(|(pos, _)| *pos).collect();
+		assert_stops_at_positions(&updated_positions, &[0.0, 0.8, 1.0], 0.1);
 
 		// Colors should maintain their associations with the stop points
 		assert_eq!(updated_stops[0].1.to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
@@ -865,19 +864,16 @@ mod test_gradient {
 		editor.select_tool(ToolType::Gradient).await;
 
 		// Add two middle stops
-		double_click_at(&mut editor, DVec2::new(25., 0.)).await;
-		double_click_at(&mut editor, DVec2::new(75., 0.)).await;
+		editor.double_click(DVec2::new(25., 0.)).await;
+		editor.double_click(DVec2::new(75., 0.)).await;
 
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 4, "Expected 4 stops, found {}", updated_gradient.stops.len());
 
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 
-		// Check if we have stops at approximate expected positions
-		assert!((positions[0] - 0.0).abs() < 0.05, "Expected stop near position 0.0, got {}", positions[0]);
-		assert!((positions[1] - 0.25).abs() < 0.05, "Expected stop near position 0.25, got {}", positions[1]);
-		assert!((positions[2] - 0.75).abs() < 0.05, "Expected stop near position 0.75, got {}", positions[2]);
-		assert!((positions[3] - 1.0).abs() < 0.05, "Expected stop near position 1.0, got {}", positions[3]);
+		// Use helper function to verify positions
+		assert_stops_at_positions(&positions, &[0.0, 0.25, 0.75, 1.0], 0.05);
 
 		// Select the stop at position 0.75 and delete it
 		let position2 = DVec2::new(75., 0.);
@@ -902,11 +898,10 @@ mod test_gradient {
 
 		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|(pos, _)| *pos).collect();
 
-		assert!((final_positions[0] - 0.0).abs() < 0.05, "Expected stop near position 0.0");
-		assert!((final_positions[1] - 0.25).abs() < 0.05, "Expected stop near position 0.25");
-		assert!((final_positions[2] - 1.0).abs() < 0.05, "Expected stop near position 1.0");
+		// Verify final positions with helper function
+		assert_stops_at_positions(&final_positions, &[0.0, 0.25, 1.0], 0.05);
 
-		// Verify the stop at 0.75 is no longer present
+		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");
 	}
 }
