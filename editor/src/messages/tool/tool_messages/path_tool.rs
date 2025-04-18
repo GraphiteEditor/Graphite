@@ -979,35 +979,13 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
-						//closest segment should be set when pointermoved and tabhi update segment bhi hona chahiye
-
-						//check for a close segment if it is there
+						// Check for a close segment if it is there
 						if let Some(closest_segment) = &tool_data.segment {
-							//insert a perpendicular line
-							let tangent = if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
-								(handle1 - handle2).try_normalize()
-							} else {
-								let layer = closest_segment.layer();
-								let points = closest_segment.points();
-								if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-									if let (Some(pos1), Some(pos2)) = (
-										ManipulatorPointId::Anchor(points[0]).get_position(&vector_data),
-										ManipulatorPointId::Anchor(points[1]).get_position(&vector_data),
-									) {
-										(pos1 - pos2).try_normalize()
-									} else {
-										None
-									}
-								} else {
-									None
-								}
-							}
-							.unwrap_or(DVec2::ZERO);
-							let perp = tangent.perp();
+							let perp = closest_segment.calculate_perp(document);
 							let point = closest_segment.closest_point_to_viewport();
 							if tool_data.delete_segment_pressed {
 								let degrees: f64 = 45.0;
-								let tilted_line = DVec2::from_angle(degrees.to_radians()).rotate(tangent);
+								let tilted_line = DVec2::from_angle(degrees.to_radians()).rotate(perp);
 								let tilted_perp = tilted_line.perp();
 								overlay_context.line(point - tilted_line * SEGMENT_OVERLAY_SIZE, point + tilted_line * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 								overlay_context.line(point - tilted_perp * SEGMENT_OVERLAY_SIZE, point + tilted_perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
@@ -1221,11 +1199,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { lock_angle, .. }) => {
 				let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				if lock_angle_state {
-					tool_data.delete_segment_pressed = true;
-				} else {
-					tool_data.delete_segment_pressed = false;
-				}
+				tool_data.delete_segment_pressed = lock_angle_state;
 
 				// If there is a point nearby then remove the overlay
 				if shape_editor
@@ -1478,7 +1452,6 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
-			// (_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 				shape_editor.move_selected_points(
 					tool_data.opposing_handle_lengths.take(),
