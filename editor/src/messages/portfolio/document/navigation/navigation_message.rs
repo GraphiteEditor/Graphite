@@ -25,4 +25,5 @@ pub enum NavigationMessage {
 	FitViewportToBounds { bounds: [DVec2; 2], prevent_zoom_past_100: bool },
 	FitViewportToSelection,
 	PointerMove { snap: Key },
+	FlipCanvas,
 }
