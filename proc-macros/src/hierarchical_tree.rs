@@ -17,7 +17,7 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 		let has_child = variant
 			.attrs
 			.iter()
-			.any(|attr| attr.path().get_ident().map_or(false, |ident| ident == "sub_discriminant" || ident == "child"));
+			.any(|attr| attr.path().get_ident().is_some_and(|ident| ident == "sub_discriminant" || ident == "child"));
 
 		if has_child {
 			if let Fields::Unnamed(fields) = &variant.fields {
