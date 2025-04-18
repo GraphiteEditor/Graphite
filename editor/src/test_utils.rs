@@ -217,6 +217,10 @@ impl EditorTestUtils {
 		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
 	}
 
+	pub async fn select_secondary_color(&mut self, color: Color) {
+		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+	}
+
 	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(PortfolioMessage::PasteImage {
 			name: None,

@@ -78,7 +78,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -356,5 +356,9 @@ impl From<&'static str> for ProtoNodeIdentifier {
 impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
 		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
 }

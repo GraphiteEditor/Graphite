@@ -6,7 +6,7 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Percentage, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
-use crate::vector::style::LineJoin;
+use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
@@ -183,6 +183,7 @@ where
 		line_join,
 		line_join_miter_limit: miter_limit,
 		transform: DAffine2::IDENTITY,
+		non_scaling: false,
 	};
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();
@@ -342,17 +343,21 @@ async fn mirror<I: 'n + Send>(
 	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
 	#[default(0., 0.)] center: DVec2,
 	#[range((-90., 90.))] angle: Angle,
+	#[default(true)] keep_original: bool,
 ) -> GraphicGroupTable
 where
 	Instances<I>: GraphicElementRendered,
 {
 	let mut result_table = GraphicGroupTable::default();
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
+
 	// The mirror center is based on the bounding box for now
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
 	let mirror_center = (bounding_box[0] + bounding_box[1]) / 2. + center;
-	// Normalize direction vector
+
+	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
-	// Create reflection matrix
+
+	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
 		glam::DMat2::from_cols(
 			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
@@ -360,15 +365,20 @@ where
 		),
 		DVec2::ZERO,
 	);
+
 	// Apply reflection around the center point
 	let modification = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
-	// Add original instance to result
-	let original_element = instance.to_graphic_element().clone();
-	result_table.push(original_element);
+
+	// Add original instance depending on the keep_original flag
+	if keep_original {
+		result_table.push(instance.to_graphic_element());
+	}
+
 	// Create and add mirrored instance
-	let mut mirrored_element = instance.to_graphic_element().clone();
+	let mut mirrored_element = instance.to_graphic_element();
 	mirrored_element.new_ids_from_hash(None);
-	// Finally, apply the transformation to the mirrored instance
+
+	// Apply the transformation to the mirrored instance
 	let mirrored_instance = result_table.push(mirrored_element);
 	*mirrored_instance.transform = modification;
 
@@ -393,6 +403,7 @@ async fn round_corners(
 	let source_transform = source.transform();
 	let source_transform_inverse = source_transform.inverse();
 	let source = source.one_instance().instance;
+	let upstream_graphics_group = source.upstream_graphic_group.clone();
 
 	// Flip the roundness to help with user intuition
 	let roundness = 1. - roundness;
@@ -402,11 +413,14 @@ async fn round_corners(
 	let mut result = VectorData::empty();
 	result.style = source.style.clone();
 
+	// Grab the initial point ID as a stable starting point
+	let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
+
 	for mut subpath in source.stroke_bezier_paths() {
 		subpath.apply_transform(source_transform);
 
+		// End if not enough points for corner rounding
 		if subpath.manipulator_groups().len() < 3 {
-			// Not enough points for corner rounding
 			result.append_subpath(subpath, false);
 			continue;
 		}
@@ -450,28 +464,30 @@ async fn round_corners(
 			let p1 = curr - dir1 * distance_along_edge;
 			let p2 = curr + dir2 * distance_along_edge;
 
-			// Add first point with out handle
+			// Add first point (coming into the rounded corner)
 			new_groups.push(ManipulatorGroup {
 				anchor: p1,
 				in_handle: None,
 				out_handle: Some(curr - dir1 * distance_along_edge * roundness),
-				id: PointId::generate(),
+				id: initial_point_id.next_id(),
 			});
 
-			// Add second point with in handle
+			// Add second point (coming out of the rounded corner)
 			new_groups.push(ManipulatorGroup {
 				anchor: p2,
 				in_handle: Some(curr + dir2 * distance_along_edge * roundness),
 				out_handle: None,
-				id: PointId::generate(),
+				id: initial_point_id.next_id(),
 			});
 		}
 
+		// One subpath for each shape
 		let mut rounded_subpath = Subpath::new(new_groups, is_closed);
 		rounded_subpath.apply_transform(source_transform_inverse);
 		result.append_subpath(rounded_subpath, false);
 	}
 
+	result.upstream_graphic_group = upstream_graphics_group;
 	let mut result_table = VectorDataTable::new(result);
 	*result_table.transform_mut() = source_transform;
 	result_table
@@ -926,12 +942,26 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let bounding_box = vector_data.bounding_box_with_transform(vector_data_transform).unwrap();
-	let mut result = VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]));
+	let mut result = vector_data
+		.bounding_box()
+		.map(|bounding_box| VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1])))
+		.unwrap_or_default();
 	result.style = vector_data.style.clone();
 	result.style.set_stroke_transform(DAffine2::IDENTITY);
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(result);
+	*result.transform_mut() = vector_data_transform;
+	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+	vector_data
+		.bounding_box_with_transform(vector_data_transform)
+		.map(|[top_left, bottom_right]| bottom_right - top_left)
+		.unwrap_or_default()
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
@@ -949,7 +979,7 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 		subpath.apply_transform(vector_data_transform);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let subpath_out = subpath.offset(
+		let mut subpath_out = subpath.offset(
 			-distance,
 			match line_join {
 				LineJoin::Miter => Join::Miter(Some(miter_limit)),
@@ -958,11 +988,15 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 			},
 		);
 
+		subpath_out.apply_transform(vector_data_transform.inverse());
+
 		// One closed subpath, open path.
 		result.append_subpath(subpath_out, false);
 	}
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(result);
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -970,39 +1004,34 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let style = &vector_data.style;
-
+	let stroke = vector_data.style.stroke().clone().unwrap_or_default();
 	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
 
 	// Perform operation on all subpaths in this shape.
-	for mut subpath in subpaths {
-		let stroke = style.stroke().unwrap();
-		subpath.apply_transform(vector_data_transform);
-
-		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let subpath_out = subpath.outline(
-			stroke.weight / 2., // Diameter to radius.
-			match stroke.line_join {
-				LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
-				LineJoin::Bevel => Join::Bevel,
-				LineJoin::Round => Join::Round,
-			},
-			match stroke.line_cap {
-				crate::vector::style::LineCap::Butt => Cap::Butt,
-				crate::vector::style::LineCap::Round => Cap::Round,
-				crate::vector::style::LineCap::Square => Cap::Square,
-			},
-		);
+	for subpath in subpaths {
+		// Taking the existing stroke data and passing it to Bezier-rs to generate new fill paths.
+		let stroke_radius = stroke.weight / 2.;
+		let join = match stroke.line_join {
+			LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
+			LineJoin::Bevel => Join::Bevel,
+			LineJoin::Round => Join::Round,
+		};
+		let cap = match stroke.line_cap {
+			LineCap::Butt => Cap::Butt,
+			LineCap::Round => Cap::Round,
+			LineCap::Square => Cap::Square,
+		};
+		let solidified = subpath.outline(stroke_radius, join, cap);
 
 		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
-		if subpath_out.1.is_some() {
+		if solidified.1.is_some() {
 			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(subpath_out.0, false);
-			result.append_subpath(subpath_out.1.unwrap(), false);
+			result.append_subpath(solidified.0, false);
+			result.append_subpath(solidified.1.unwrap(), false);
 		} else {
 			// One closed subpath, open path.
-			result.append_subpath(subpath_out.0, false);
+			result.append_subpath(solidified.0, false);
 		}
 	}
 
@@ -1012,7 +1041,9 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 		result.style.set_stroke(Stroke::default());
 	}
 
-	VectorDataTable::new(result)
+	let mut result = VectorDataTable::new(result);
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1206,6 +1237,79 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result
 }
 
+/// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(name("Position on Path"), category("Vector"), path(graphene_core::vector))]
+async fn position_on_path(
+	_: impl Ctx,
+	/// The path to traverse.
+	vector_data: VectorDataTable,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progress: f64,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> DVec2 {
+	let euclidian = !parameterized_distance;
+
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
+	let progress = progress.clamp(0., subpaths_count);
+	let progress = if reverse { subpaths_count - progress } else { progress };
+	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+
+	vector_data.stroke_bezier_paths().nth(index).map_or(DVec2::ZERO, |mut subpath| {
+		subpath.apply_transform(vector_data_transform);
+
+		let t = if progress == subpaths_count { 1. } else { progress.fract() };
+		subpath.evaluate(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) })
+	})
+}
+
+/// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(name("Tangent on Path"), category("Vector"), path(graphene_core::vector))]
+async fn tangent_on_path(
+	_: impl Ctx,
+	/// The path to traverse.
+	vector_data: VectorDataTable,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progress: f64,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> f64 {
+	let euclidian = !parameterized_distance;
+
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
+	let progress = progress.clamp(0., subpaths_count);
+	let progress = if reverse { subpaths_count - progress } else { progress };
+	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+
+	vector_data.stroke_bezier_paths().nth(index).map_or(0., |mut subpath| {
+		subpath.apply_transform(vector_data_transform);
+
+		let t = if progress == subpaths_count { 1. } else { progress.fract() };
+		let mut tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		if tangent == DVec2::ZERO {
+			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
+			tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		}
+		if tangent == DVec2::ZERO {
+			return 0.;
+		}
+
+		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
+	})
+}
+
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn poisson_disk_points(
 	_: impl Ctx,
@@ -1224,17 +1328,23 @@ async fn poisson_disk_points(
 	if separation_disk_diameter <= 0.01 {
 		return VectorDataTable::new(result);
 	}
+	let path_with_bounding_boxes: Vec<_> = vector_data
+		.stroke_bezier_paths()
+		.filter_map(|mut subpath| {
+			// TODO: apply transform to points instead of modifying the paths
+			subpath.apply_transform(vector_data_transform);
+			subpath.loose_bounding_box().map(|bb| (subpath, bb))
+		})
+		.collect();
 
-	for mut subpath in vector_data.stroke_bezier_paths() {
+	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
 
-		subpath.apply_transform(vector_data_transform);
-
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>()) {
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 
@@ -1276,7 +1386,7 @@ async fn spline(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTabl
 
 	// Exit early if there are no points to generate splines from.
 	if vector_data.point_domain.positions().is_empty() {
-		return VectorDataTable::new(vector_data.clone());
+		return VectorDataTable::new(VectorData::empty());
 	}
 
 	let mut segment_domain = SegmentDomain::default();
@@ -1319,12 +1429,15 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 	let vector_data_transform = vector_data.transform();
 	let mut vector_data = vector_data.one_instance().instance.clone();
 
+	let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
+
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
 	let deltas = (0..vector_data.point_domain.positions().len())
 		.map(|_| {
 			let angle = rng.random::<f64>() * std::f64::consts::TAU;
-			DVec2::from_angle(angle) * rng.random::<f64>() * amount
+
+			inverse_transform.transform_vector2(DVec2::from_angle(angle) * rng.random::<f64>() * amount)
 		})
 		.collect::<Vec<_>>();
 	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
@@ -1335,21 +1448,19 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 		if !already_applied[*start] {
 			let start_position = vector_data.point_domain.positions()[*start];
-			let start_position = vector_data_transform.transform_point2(start_position);
 			vector_data.point_domain.set_position(*start, start_position + start_delta);
 			already_applied[*start] = true;
 		}
 		if !already_applied[*end] {
 			let end_position = vector_data.point_domain.positions()[*end];
-			let end_position = vector_data_transform.transform_point2(end_position);
 			vector_data.point_domain.set_position(*end, end_position + end_delta);
 			already_applied[*end] = true;
 		}
 
 		match handles {
 			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-				*handle_start = vector_data_transform.transform_point2(*handle_start) + start_delta;
-				*handle_end = vector_data_transform.transform_point2(*handle_end) + end_delta;
+				*handle_start += start_delta;
+				*handle_end += end_delta;
 			}
 			bezier_rs::BezierHandles::Quadratic { handle } => {
 				*handle = vector_data_transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
@@ -1360,19 +1471,13 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 	vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
 
-	VectorDataTable::new(vector_data)
+	let mut result = VectorDataTable::new(vector_data.clone());
+	*result.transform_mut() = vector_data_transform;
+	result
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn morph(
-	_: impl Ctx,
-	source: VectorDataTable,
-	#[expose] target: VectorDataTable,
-	#[range((0., 1.))]
-	#[default(0.5)]
-	time: Fraction,
-	#[min(0.)] start_index: IntegerCount,
-) -> VectorDataTable {
+async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> VectorDataTable {
 	let time = time.clamp(0., 1.);
 
 	let source_alpha_blending = source.one_instance().alpha_blending;
@@ -1743,9 +1848,10 @@ mod test {
 		let bounding_box = bounding_box.instances().next().unwrap().instance;
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
-		let sqrt2 = core::f64::consts::SQRT_2;
-		let sqrt2_bounding_box = [DVec2::new(-sqrt2, -sqrt2), DVec2::new(sqrt2, -sqrt2), DVec2::new(sqrt2, sqrt2), DVec2::new(-sqrt2, sqrt2)];
-		assert!(subpath.anchors()[..4].iter().zip(sqrt2_bounding_box).all(|(p1, p2)| p1.abs_diff_eq(p2, f64::EPSILON)));
+		let expected_bounding_box = [DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.)];
+		for i in 0..4 {
+			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
+		}
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
