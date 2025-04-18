@@ -539,7 +539,36 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 mod test_spline_tool {
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graphene_core::vector::VectorData;
 	use graphene_std::vector::PointId;
+
+	fn assert_point_positions(vector_data: &VectorData, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
+		let points_in_viewport: Vec<DVec2> = vector_data
+			.point_domain
+			.ids()
+			.iter()
+			.filter_map(|&point_id| {
+				let position = vector_data.point_domain.position_from_id(point_id)?;
+				Some(layer_to_viewport.transform_point2(position))
+			})
+			.collect();
+
+		// Verify each point position is close to the expected position
+		for (i, expected_point) in expected_points.iter().enumerate() {
+			let actual_point = points_in_viewport[i];
+			let distance = (actual_point - *expected_point).length();
+
+			assert!(
+				distance < epsilon,
+				"Point {} position mismatch: expected {:?}, got {:?} (distance: {})",
+				i,
+				expected_point,
+				actual_point,
+				distance
+			);
+		}
+	}
 
 	#[tokio::test]
 	async fn test_continue_drawing_from_existing_spline() {
@@ -615,36 +644,8 @@ mod test_spline_tool {
 		// Verify the positions of all points in the extended spline
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
-		let points_in_viewport: Vec<DVec2> = extended_vector_data
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = extended_vector_data.point_domain.position_from_id(point_id)?;
-				Some(layer_to_viewport.transform_point2(position))
-			})
-			.collect();
-
 		let all_expected_points = [initial_points[0], initial_points[1], initial_points[2], continuation_points[0], continuation_points[1]];
 
-		assert_eq!(
-			points_in_viewport.len(),
-			all_expected_points.len(),
-			"Expected {} points in extended spline, found {}",
-			all_expected_points.len(),
-			points_in_viewport.len()
-		);
-
-		for (i, (actual, expected)) in points_in_viewport.iter().zip(all_expected_points.iter()).enumerate() {
-			let distance = (*actual - *expected).length();
-			assert!(
-				distance < 1e-10,
-				"Point at index {} doesn't match: expected {:?}, got {:?} (distance: {})",
-				i,
-				expected,
-				actual,
-				distance
-			);
-		}
+		assert_point_positions(&extended_vector_data, layer_to_viewport, &all_expected_points, 1e-10);
 	}
 }
