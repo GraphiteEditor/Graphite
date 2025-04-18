@@ -1,4 +1,4 @@
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{Attribute, DeriveInput, LitStr, MetaList, Token};
@@ -100,6 +100,20 @@ fn derive_enum(name: Ident, input: syn::DataEnum) -> syn::Result<TokenStream> {
 		variants.last_mut().unwrap().push(Variant { name: va.ident.clone(), basic_rna })
 	}
 
+	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
+		syn::Error::new(
+			proc_macro2::Span::call_site(),
+			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
+		)
+	})?;
+	let crate_name = match crate_name {
+		proc_macro_crate::FoundCrate::Itself => quote!(crate),
+		proc_macro_crate::FoundCrate::Name(n) => {
+			let i = Ident::new(&n, Span::call_site());
+			quote! {#i}
+		}
+	};
+
 	let group: Vec<_> = variants
 		.iter()
 		.map(|vg| {
@@ -128,13 +142,13 @@ fn derive_enum(name: Ident, input: syn::DataEnum) -> syn::Result<TokenStream> {
 		})
 		.collect();
 	Ok(quote! {
-		impl crate::vector::misc::AsU32 for #name {
+		impl #crate_name::vector::misc::AsU32 for #name {
 			fn as_u32(&self) -> u32 {
 				*self as u32
 			}
 		}
 
-		impl crate::vector::misc::DropdownableStatic for #name {
+		impl #crate_name::vector::misc::DropdownableStatic for #name {
 			fn list() -> &'static [&'static [(Self, Option<&'static str>)]] {
 				&[ #(#group)* ]
 			}
