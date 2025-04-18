@@ -180,14 +180,13 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let operations = BooleanOperation::list();
-		let icons = BooleanOperation::icons();
-		operations.into_iter().zip(icons).map(move |(operation, icon)| {
-			IconButton::new(icon, 24)
+		let list = <BooleanOperation as graphene_core::vector::misc::DropdownableStatic>::list();
+		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, icon)| {
+			IconButton::new(icon.unwrap(), 24)
 				.tooltip(operation.to_string())
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
-					let group_folder_type = GroupFolderType::BooleanOperation(operation);
+					let group_folder_type = GroupFolderType::BooleanOperation(*operation);
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.widget_holder()

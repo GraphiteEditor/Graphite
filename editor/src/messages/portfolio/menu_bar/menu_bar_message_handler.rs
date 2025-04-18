@@ -414,16 +414,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								let operations = BooleanOperation::list();
-								let icons = BooleanOperation::icons();
-								operations
-									.into_iter()
-									.zip(icons)
+								let list = <BooleanOperation as graphene_core::vector::misc::DropdownableStatic>::list();
+								list.into_iter()
+									.map(|i| i.into_iter())
+									.flatten()
 									.map(move |(operation, icon)| MenuBarEntry {
 										label: operation.to_string(),
-										icon: Some(icon.into()),
+										icon: Some(icon.unwrap().into()),
 										action: MenuBarEntry::create_action(move |_| {
-											let group_folder_type = GroupFolderType::BooleanOperation(operation);
+											let group_folder_type = GroupFolderType::BooleanOperation(*operation);
 											DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 										}),
 										disabled: no_active_document || !has_selected_layers,

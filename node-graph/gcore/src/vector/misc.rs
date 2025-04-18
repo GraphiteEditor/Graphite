@@ -10,60 +10,23 @@ pub enum CentroidType {
 	Length,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::GrapheneRna)]
 pub enum BooleanOperation {
 	#[default]
+	#[rna(icon("BooleanUnion"))]
 	Union,
+
+	#[rna(icon("BooleanSubtractFront"))]
 	SubtractFront,
+
+	#[rna(icon("BooleanSubtractBack"))]
 	SubtractBack,
+
+	#[rna(icon("BooleanIntersect"))]
 	Intersect,
+
+	#[rna(icon("BooleanDifference"))]
 	Difference,
-}
-
-impl BooleanOperation {
-	pub fn list() -> [BooleanOperation; 5] {
-		[
-			BooleanOperation::Union,
-			BooleanOperation::SubtractFront,
-			BooleanOperation::SubtractBack,
-			BooleanOperation::Intersect,
-			BooleanOperation::Difference,
-		]
-	}
-
-	pub fn icons() -> [&'static str; 5] {
-		["BooleanUnion", "BooleanSubtractFront", "BooleanSubtractBack", "BooleanIntersect", "BooleanDifference"]
-	}
-}
-
-impl AsU32 for BooleanOperation {
-	fn as_u32(&self) -> u32 {
-		*self as u32
-	}
-}
-
-impl DropdownableStatic for BooleanOperation {
-	fn list() -> &'static [&'static [(Self, Option<&'static str>)]] {
-		&[&[
-			(BooleanOperation::Union, Some("BooleanUnion")),
-			(BooleanOperation::SubtractFront, Some("BooleanSubtractFront")),
-			(BooleanOperation::SubtractBack, Some("BooleanSubtractBack")),
-			(BooleanOperation::Intersect, Some("BooleanIntersect")),
-			(BooleanOperation::Difference, Some("BooleanDifference")),
-		]]
-	}
-}
-
-impl core::fmt::Display for BooleanOperation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			BooleanOperation::Union => write!(f, "Union"),
-			BooleanOperation::SubtractFront => write!(f, "Subtract Front"),
-			BooleanOperation::SubtractBack => write!(f, "Subtract Back"),
-			BooleanOperation::Intersect => write!(f, "Intersect"),
-			BooleanOperation::Difference => write!(f, "Difference"),
-		}
-	}
 }
 
 pub trait DropdownableStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {

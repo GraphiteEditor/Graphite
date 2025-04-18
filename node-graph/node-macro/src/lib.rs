@@ -10,8 +10,21 @@ use syn::{
 };
 
 mod codegen;
+mod derive_graphene_rna;
 mod parsing;
 mod validation;
+
+/// Generate meta-information for a type
+///
+/// Currently this only works for enums, and derives [`core::fmt::Display`].
+///
+/// `#[rna("Foo")]` on a variant overrides the default UI label (which is otherwise the name converted to title case).
+/// `#[rna(icon("tag"))]` sets the icon to use when a variant is shown in a menu or radio button.
+/// `#[rna(doc("blah blah"))]` sets help text for tooltips.
+#[proc_macro_derive(GrapheneRna, attributes(rna, menu_separator))]
+pub fn derive_graphene_rna(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_graphene_rna::derive_graphene_rna_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+}
 
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.
 ///

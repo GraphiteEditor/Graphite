@@ -34,7 +34,7 @@ use spirv_std::num_traits::float::Float;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::GrapheneRna)]
 pub enum LuminanceCalculation {
 	#[default]
 	SRGB,
@@ -42,36 +42,6 @@ pub enum LuminanceCalculation {
 	AverageChannels,
 	MinimumChannels,
 	MaximumChannels,
-}
-
-impl crate::vector::misc::AsU32 for LuminanceCalculation {
-	fn as_u32(&self) -> u32 {
-		*self as u32
-	}
-}
-
-impl crate::vector::misc::DropdownableStatic for LuminanceCalculation {
-	fn list() -> &'static [&'static [(Self, Option<&'static str>)]] {
-		&[&[
-			(LuminanceCalculation::SRGB, None),
-			(LuminanceCalculation::Perceptual, None),
-			(LuminanceCalculation::AverageChannels, None),
-			(LuminanceCalculation::MinimumChannels, None),
-			(LuminanceCalculation::MaximumChannels, None),
-		]]
-	}
-}
-
-impl core::fmt::Display for LuminanceCalculation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			LuminanceCalculation::SRGB => write!(f, "sRGB"),
-			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
-			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
-			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
-			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
-		}
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
