@@ -92,3 +92,12 @@ pub enum GridType {
 	Rectangular,
 	Isometric,
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum ArcType {
+	#[default]
+	Open,
+	Closed,
+	PieSlice,
+}

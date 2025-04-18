@@ -214,6 +214,7 @@ tagged_value! {
 	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
+	ArcType(graphene_core::vector::misc::ArcType),
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),

@@ -159,6 +159,7 @@ pub enum DocumentMessage {
 	SetViewMode {
 		view_mode: ViewMode,
 	},
+	AddTransaction,
 	StartTransaction,
 	EndTransaction,
 	CommitTransaction,
@@ -166,7 +167,6 @@ pub enum DocumentMessage {
 	RepeatedAbortTransaction {
 		undo_count: usize,
 	},
-	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
 		recursive: bool,
