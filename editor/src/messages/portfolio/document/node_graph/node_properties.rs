@@ -24,6 +24,7 @@ use graphene_std::application_io::TextureFrameTable;
 use graphene_std::ops::XY;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
+use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
 use graphene_std::{GraphicGroupTable, RasterFrame};
@@ -208,6 +209,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<GridType>() => grid_type_widget(document_node, node_id, index, name, description, true),
 						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, description, true),
 						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, description, true),
+						Some(x) if x == TypeId::of::<ArcType>() => arc_type_widget(document_node, node_id, index, name, description, true),
 						Some(x) if x == TypeId::of::<FillType>() => vec![
 							DropdownInput::new(vec![vec![
 								MenuListEntry::new("Solid")
@@ -1214,6 +1216,31 @@ pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries).selected_index(Some(line_join as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+pub fn arc_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, description: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, description, FrontendGraphDataType::General, blank_assist);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::ArcType(arc_type)) = input.as_non_exposed_value() {
+		let entries = [("Open", ArcType::Open), ("Closed", ArcType::Closed), ("Pie Slice", ArcType::PieSlice)]
+			.into_iter()
+			.map(|(name, val)| {
+				RadioEntryData::new(format!("{val:?}"))
+					.label(name)
+					.on_update(update_value(move |_| TaggedValue::ArcType(val), node_id, index))
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }
