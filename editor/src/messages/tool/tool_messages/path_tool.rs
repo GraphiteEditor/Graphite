@@ -974,8 +974,8 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				let display_anchors = overlay_context.overlays_visibility_settings.anchors;
-				let display_handles = overlay_context.overlays_visibility_settings.handles;
+				let display_anchors = overlay_context.visibility_settings.anchors();
+				let display_handles = overlay_context.visibility_settings.handles();
 				if !display_handles {
 					shape_editor.deselect_all_handles();
 				} else if !display_anchors {

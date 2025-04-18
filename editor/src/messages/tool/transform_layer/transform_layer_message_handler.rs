@@ -209,7 +209,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		match message {
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
-				if !overlay_context.overlays_visibility_settings.transform_measurement {
+				if !overlay_context.visibility_settings.transform_measurement() {
 					return;
 				}
 

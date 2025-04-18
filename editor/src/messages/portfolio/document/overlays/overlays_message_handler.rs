@@ -3,7 +3,7 @@ use super::utility_types::OverlaysVisibilitySettings;
 use crate::messages::prelude::*;
 
 pub struct OverlaysMessageData<'a> {
-	pub overlays_visibility_settings: OverlaysVisibilitySettings,
+	pub visibility_settings: OverlaysVisibilitySettings,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub device_pixel_ratio: f64,
 }
@@ -19,9 +19,7 @@ pub struct OverlaysMessageHandler {
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData {
-			overlays_visibility_settings, ipp, ..
-		} = data;
+		let OverlaysMessageData { visibility_settings, ipp, .. } = data;
 
 		match message {
 			#[cfg(target_arch = "wasm32")]
@@ -53,19 +51,19 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
 				let _ = context.reset_transform();
 
-				if overlays_visibility_settings.all {
+				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays(OverlayContext {
 						render_context: context.clone(),
 						size: size.as_dvec2(),
 						device_pixel_ratio,
-						overlays_visibility_settings: overlays_visibility_settings.clone(),
+						visibility_settings: visibility_settings.clone(),
 					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: context.clone(),
 							size: size.as_dvec2(),
 							device_pixel_ratio,
-							overlays_visibility_settings: overlays_visibility_settings.clone(),
+							visibility_settings: visibility_settings.clone(),
 						}));
 						// debug!("OverlaysMessageHandler: {:?}", message.clone());
 					}
@@ -73,7 +71,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visibility_settings:?} {ipp:?}",);
+				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {visibility_settings:?} {ipp:?}",);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

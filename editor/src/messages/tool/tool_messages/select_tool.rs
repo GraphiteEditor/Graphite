@@ -502,7 +502,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers, but not artboards
-				if overlay_context.overlays_visibility_settings.selection_outline {
+				if overlay_context.visibility_settings.selection_outline() {
 					for layer in document
 						.network_interface
 						.selected_nodes()
@@ -554,13 +554,13 @@ impl Fsm for SelectToolFsmState {
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
-						if overlay_context.overlays_visibility_settings.hover_outline {
+						if overlay_context.visibility_settings.hover_outline() {
 							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 						}
 
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-						if overlay_context.overlays_visibility_settings.quick_measurement && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
+						if overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
 							// Get all selected layers and compute their viewport-aligned AABB
 							let selected_bounds_viewport = document
 								.network_interface
@@ -592,8 +592,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let display_transform_cage = overlay_context.overlays_visibility_settings.transform_cage;
-				if display_transform_cage {
+				if overlay_context.visibility_settings.transform_cage() {
 					if let Some(bounds) = bounds {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
@@ -602,8 +601,7 @@ impl Fsm for SelectToolFsmState {
 						bounding_box_manager.transform_tampered = transform_tampered;
 						bounding_box_manager.render_overlays(&mut overlay_context, true);
 					}
-				}
-				else {
+				} else {
 					tool_data.bounding_box_manager.take();
 				}
 
@@ -634,7 +632,7 @@ impl Fsm for SelectToolFsmState {
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 
-				if display_transform_cage {
+				if overlay_context.visibility_settings.transform_cage() {
 					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
 						let edges = bounds.check_selected_edges(input.mouse.position);
 						let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
@@ -669,7 +667,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
 
 				// Update compass rose
-				if overlay_context.overlays_visibility_settings.compass_rose {
+				if overlay_context.visibility_settings.compass_rose() {
 					tool_data.compass_rose.refresh_position(document);
 					let compass_center = tool_data.compass_rose.compass_rose_position();
 					if !matches!(self, Self::Dragging { .. }) {
@@ -766,7 +764,7 @@ impl Fsm for SelectToolFsmState {
 						SelectionMode::Directional => unreachable!(),
 					});
 
-					if overlay_context.overlays_visibility_settings.selection_outline {
+					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected
 						for layer in layers_to_outline {
 							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));

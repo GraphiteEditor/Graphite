@@ -207,7 +207,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					message,
 					responses,
 					OverlaysMessageData {
-						overlays_visibility_settings,
+						visibility_settings: overlays_visibility_settings,
 						ipp,
 						device_pixel_ratio,
 					},
@@ -350,7 +350,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
-				if !overlay_context.overlays_visibility_settings.artboard_name {
+				if !overlay_context.visibility_settings.artboard_name() {
 					return;
 				}
 
@@ -1021,7 +1021,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
-				if !self.overlays_visibility_settings.selection_outline {
+				if !self.overlays_visibility_settings.selection_outline() {
 					return;
 				}
 
@@ -1145,19 +1145,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
+				let visibility_settings = &mut self.overlays_visibility_settings;
 				match overlays_type {
-					OverlaysType::All => self.overlays_visibility_settings.all = visible,
-					OverlaysType::ArtboardName => self.overlays_visibility_settings.artboard_name = visible,
-					OverlaysType::CompassRose => self.overlays_visibility_settings.compass_rose = visible,
-					OverlaysType::QuickMeasurement => self.overlays_visibility_settings.quick_measurement = visible,
-					OverlaysType::TransformMeasurement => self.overlays_visibility_settings.transform_measurement = visible,
-					OverlaysType::TransformCage => self.overlays_visibility_settings.transform_cage = visible,
-					OverlaysType::HoverOutline => self.overlays_visibility_settings.hover_outline = visible,
-					OverlaysType::SelectionOutline => self.overlays_visibility_settings.selection_outline = visible,
-					OverlaysType::Pivot => self.overlays_visibility_settings.pivot = visible,
-					OverlaysType::Path => self.overlays_visibility_settings.path = visible,
-					OverlaysType::Anchors => self.overlays_visibility_settings.anchors = visible,
-					OverlaysType::Handles => self.overlays_visibility_settings.handles = visible,
+					OverlaysType::All => visibility_settings.all = visible,
+					OverlaysType::ArtboardName => visibility_settings.artboard_name = visible,
+					OverlaysType::CompassRose => visibility_settings.compass_rose = visible,
+					OverlaysType::QuickMeasurement => visibility_settings.quick_measurement = visible,
+					OverlaysType::TransformMeasurement => visibility_settings.transform_measurement = visible,
+					OverlaysType::TransformCage => visibility_settings.transform_cage = visible,
+					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
+					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
+					OverlaysType::Pivot => visibility_settings.pivot = visible,
+					OverlaysType::Path => visibility_settings.path = visible,
+					OverlaysType::Anchors => visibility_settings.anchors = visible,
+					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);

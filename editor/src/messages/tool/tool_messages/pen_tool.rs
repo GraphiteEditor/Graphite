@@ -1521,8 +1521,8 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
-				let display_anchors = overlay_context.overlays_visibility_settings.anchors;
-				let display_handles = overlay_context.overlays_visibility_settings.handles;
+				let display_anchors = overlay_context.visibility_settings.anchors();
+				let display_handles = overlay_context.visibility_settings.handles();
 
 				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 

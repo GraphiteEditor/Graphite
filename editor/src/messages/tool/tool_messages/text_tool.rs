@@ -506,8 +506,7 @@ impl Fsm for TextToolFsmState {
 					return self;
 				}
 
-				let display_transform_cage = overlay_context.overlays_visibility_settings.transform_cage;
-				if display_transform_cage {
+				if overlay_context.visibility_settings.transform_cage() {
 					if let Some(bounds) = bounds {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 						bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
@@ -526,8 +525,7 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_overlays(&mut overlay_context, false);
 						tool_data.pivot.update_pivot(document, &mut overlay_context, None);
 					}
-				}
-				else {
+				} else {
 					tool_data.bounding_box_manager.take();
 				}
 

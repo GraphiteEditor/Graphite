@@ -82,7 +82,7 @@ impl Pivot {
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
-		if !overlay_context.overlays_visibility_settings.pivot {
+		if !overlay_context.visibility_settings.pivot() {
 			return;
 		}
 

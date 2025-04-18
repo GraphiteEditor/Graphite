@@ -225,7 +225,7 @@ impl Fsm for ArtboardToolFsmState {
 		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
-				let display_transform_cage = overlay_context.overlays_visibility_settings.transform_cage;
+				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
 				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
 					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
@@ -234,8 +234,7 @@ impl Fsm for ArtboardToolFsmState {
 
 						bounding_box_manager.render_overlays(&mut overlay_context, true);
 					}
-				}
-				else {
+				} else {
 					tool_data.bounding_box_manager.take();
 				}
 

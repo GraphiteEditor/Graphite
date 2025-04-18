@@ -112,9 +112,9 @@ fn overlay_bezier_handle_specific_point(
 }
 
 pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandles, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	let display_path = overlay_context.overlays_visibility_settings.path;
-	let display_handles = overlay_context.overlays_visibility_settings.handles;
-	let display_anchors = overlay_context.overlays_visibility_settings.anchors;
+	let display_path = overlay_context.visibility_settings.path();
+	let display_handles = overlay_context.visibility_settings.handles();
+	let display_anchors = overlay_context.visibility_settings.anchors();
 
 	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -174,7 +174,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 }
 
 pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
-	if !overlay_context.overlays_visibility_settings.anchors {
+	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}
 

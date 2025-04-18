@@ -71,6 +71,56 @@ impl Default for OverlaysVisibilitySettings {
 	}
 }
 
+impl OverlaysVisibilitySettings {
+	pub fn all(&self) -> bool {
+		self.all
+	}
+
+	pub fn artboard_name(&self) -> bool {
+		self.all && self.artboard_name
+	}
+
+	pub fn compass_rose(&self) -> bool {
+		self.all && self.compass_rose
+	}
+
+	pub fn quick_measurement(&self) -> bool {
+		self.all && self.quick_measurement
+	}
+
+	pub fn transform_measurement(&self) -> bool {
+		self.all && self.transform_measurement
+	}
+
+	pub fn transform_cage(&self) -> bool {
+		self.all && self.transform_cage
+	}
+
+	pub fn hover_outline(&self) -> bool {
+		self.all && self.hover_outline
+	}
+
+	pub fn selection_outline(&self) -> bool {
+		self.all && self.selection_outline
+	}
+
+	pub fn pivot(&self) -> bool {
+		self.all && self.pivot
+	}
+
+	pub fn path(&self) -> bool {
+		self.all && self.path
+	}
+
+	pub fn anchors(&self) -> bool {
+		self.all && self.anchors
+	}
+
+	pub fn handles(&self) -> bool {
+		self.all && self.handles
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
@@ -81,7 +131,7 @@ pub struct OverlayContext {
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
-	pub overlays_visibility_settings: OverlaysVisibilitySettings,
+	pub visibility_settings: OverlaysVisibilitySettings,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
