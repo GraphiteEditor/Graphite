@@ -140,7 +140,6 @@ pub(crate) fn property_from_type(
 					true,
 				)
 				.into(),
-				Some("AngularDistance") => number_widget(document_node, node_id, index, name, description, number_input.mode_range().min(min(0.)).max(max(360.)).unit("°"), true).into(),
 				Some("PixelLength") => number_widget(document_node, node_id, index, name, description, number_input.min(min(0.)).unit(" px"), true).into(),
 				Some("Length") => number_widget(document_node, node_id, index, name, description, number_input.min(min(0.)), true).into(),
 				Some("Fraction") => number_widget(document_node, node_id, index, name, description, number_input.mode_range().min(min(0.)).max(max(1.)), true).into(),

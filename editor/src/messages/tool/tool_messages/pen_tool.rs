@@ -1139,7 +1139,7 @@ impl PenToolData {
 		let extension_choice = should_extend(document, viewport, tolerance, selected_nodes.selected_layers(document.metadata()), preferences);
 		if let Some((layer, point, position)) = extension_choice {
 			self.current_layer = Some(layer);
-			self.extend_existing_path(document, layer, point, position, responses);
+			self.extend_existing_path(document, layer, point, position);
 			return;
 		}
 
@@ -1191,7 +1191,7 @@ impl PenToolData {
 	}
 
 	/// Perform extension of an existing path
-	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2, responses: &mut VecDeque<Message>) {
+	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
 		let vector_data = document.network_interface.compute_modified_vector(layer);
 		let (handle_start, in_segment) = if let Some(vector_data) = &vector_data {
 			vector_data

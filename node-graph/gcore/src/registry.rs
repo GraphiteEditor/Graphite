@@ -13,8 +13,6 @@ pub mod types {
 	pub type SignedPercentage = f64;
 	/// -180° - 180°
 	pub type Angle = f64;
-	/// 0° - 360°
-	pub type AngularDistance = f64;
 	/// Non-negative integer with px unit
 	pub type PixelLength = f64;
 	/// Non-negative
