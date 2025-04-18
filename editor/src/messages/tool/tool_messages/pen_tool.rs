@@ -358,6 +358,7 @@ struct PenToolData {
 
 	handle_mode: HandleMode,
 	prior_segment_layer: Option<LayerNodeIdentifier>,
+	current_layer: Option<LayerNodeIdentifier>,
 	prior_segment_endpoint: Option<PointId>,
 	prior_segment: Option<SegmentId>,
 	handle_type: TargetHandle,
@@ -607,9 +608,7 @@ impl PenToolData {
 
 		// Get close path
 		let mut end = None;
-		let selected_nodes = document.network_interface.selected_nodes();
-		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+		let layer = self.current_layer?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
@@ -1030,9 +1029,7 @@ impl PenToolData {
 		let relative = if self.path_closed { None } else { self.latest_point().map(|point| point.pos) };
 		self.next_point = self.compute_snapped_angle(snap_data, transform, false, mouse, relative, true);
 
-		let selected_nodes = document.network_interface.selected_nodes();
-		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none())?;
+		let layer = self.current_layer?;
 		let vector_data = document.network_interface.compute_modified_vector(layer)?;
 		let transform = document.metadata().document_to_viewport * transform;
 		for point in vector_data.extendable_points(preferences.vector_meshes) {
@@ -1141,6 +1138,7 @@ impl PenToolData {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		let extension_choice = should_extend(document, viewport, tolerance, selected_nodes.selected_layers(document.metadata()), preferences);
 		if let Some((layer, point, position)) = extension_choice {
+			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position, responses);
 			return;
 		}
@@ -1180,6 +1178,7 @@ impl PenToolData {
 
 		let parent = document.new_layer_bounding_artboard(input);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+		self.current_layer = Some(layer);
 		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 		self.prior_segment = None;
@@ -1235,8 +1234,6 @@ impl PenToolData {
 			in_segment,
 			handle_start,
 		});
-
-		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 		self.next_point = position;
 		self.next_handle_start = handle_start;
@@ -1367,9 +1364,7 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let selected_nodes = document.network_interface.selected_nodes();
-		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none());
+		let layer = tool_data.current_layer;
 		let mut transform = layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
@@ -1671,9 +1666,7 @@ impl Fsm for PenToolFsmState {
 						.descendants(document.metadata())
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 					if let Some((other_layer, _, _)) = should_extend(document, viewport, crate::consts::SNAP_POINT_TOLERANCE, layers, preferences) {
-						let selected_nodes = document.network_interface.selected_nodes();
-						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-						if let Some(current_layer) = selected_layers.next().filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer) {
+						if let Some(current_layer) = tool_data.current_layer.filter(|layer| *layer != other_layer) {
 							merge_layers(document, current_layer, other_layer, responses);
 						}
 					}
@@ -1946,7 +1939,6 @@ impl Fsm for PenToolFsmState {
 						responses.add(DocumentMessage::EndTransaction);
 					}
 				}
-
 				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
@@ -1955,6 +1947,17 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
+				if let Some((vector_data, layer)) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)).zip(layer) {
+					let single_point_in_layer = vector_data.point_domain.ids().len() == 1;
+
+					if single_point_in_layer {
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![layer.to_node()],
+							delete_children: true,
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
@@ -1975,8 +1978,7 @@ impl Fsm for PenToolFsmState {
 				}
 			}
 			(_, PenToolMessage::Abort) => {
-				let should_delete_layer = if layer.is_some() {
-					let vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
+				let should_delete_layer = if let Some(vector_data) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
 					vector_data.point_domain.ids().len() == 1
 				} else {
 					false
