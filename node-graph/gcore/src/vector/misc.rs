@@ -85,3 +85,19 @@ impl AsI64 for f64 {
 		*self as i64
 	}
 }
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum GridType {
+	#[default]
+	Rectangular,
+	Isometric,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum ArcType {
+	#[default]
+	Open,
+	Closed,
+	PieSlice,
+}
