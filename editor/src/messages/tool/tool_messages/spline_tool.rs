@@ -842,30 +842,6 @@ mod test_spline_tool {
 
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
-		let points_in_viewport: Vec<DVec2> = vector_data
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector_data.point_domain.position_from_id(point_id)?;
-				Some(layer_to_viewport.transform_point2(position))
-			})
-			.collect();
-
-		// Verify each point position is close to the expected position
-		let epsilon = 1e-10;
-		for (i, expected_point) in spline_points.iter().enumerate() {
-			let actual_point = points_in_viewport[i];
-			let distance = (actual_point - *expected_point).length();
-
-			assert!(
-				distance < epsilon,
-				"Point {} position mismatch: expected {:?}, got {:?} (distance: {})",
-				i,
-				expected_point,
-				actual_point,
-				distance
-			);
-		}
+		assert_point_positions(&vector_data, layer_to_viewport, &spline_points, 1e-10);
 	}
 }
