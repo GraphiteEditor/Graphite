@@ -297,15 +297,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick,
 			),
-			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
-				Enter,
-				MouseDown,
-				PointerMove,
-				Escape,
-				Delete,
-				RightClick,
-				GRS,
-			),
 		}
 	}
 }
@@ -342,12 +333,6 @@ enum PathToolFsmState {
 	Drawing {
 		selection_shape: SelectionShapeType,
 	},
-	InsertPoint,
-}
-
-enum InsertEndKind {
-	Abort,
-	Add { extend_selection: bool },
 }
 
 #[derive(Default)]
@@ -439,54 +424,6 @@ impl PathToolData {
 		self.selection_status = selection_status;
 	}
 
-	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
-		if self.segment.is_some() {
-			warn!("Segment was `Some(..)` before `start_insertion`")
-		}
-		self.segment = Some(segment);
-		responses.add(OverlaysMessage::Draw);
-		PathToolFsmState::InsertPoint
-	}
-
-	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler) -> PathToolFsmState {
-		if let Some(closed_segment) = &mut self.segment {
-			closed_segment.update_closest_point(document.metadata(), input.mouse.position);
-			if closed_segment.too_far(input.mouse.position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, document.metadata()) {
-				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
-			} else {
-				PathToolFsmState::InsertPoint
-			}
-		} else {
-			warn!("Segment was `None` on `update_insertion`");
-			PathToolFsmState::Ready
-		}
-	}
-
-	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
-		let mut commit_transaction = false;
-		self.delete_segment_pressed = false;
-		match self.segment.as_mut() {
-			None => {
-				warn!("Segment was `None` before `end_insertion`")
-			}
-			Some(closed_segment) => {
-				if let InsertEndKind::Add { extend_selection } = kind {
-					closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
-					commit_transaction = true;
-				}
-			}
-		}
-
-		self.segment = None;
-		if commit_transaction {
-			responses.add(DocumentMessage::EndTransaction);
-		} else {
-			responses.add(DocumentMessage::AbortTransaction);
-		}
-		responses.add(OverlaysMessage::Draw);
-		PathToolFsmState::Ready
-	}
-
 	#[allow(clippy::too_many_arguments)]
 	fn mouse_down(
 		&mut self,
@@ -564,11 +501,9 @@ impl PathToolData {
 			}
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
-		//We didn't found a point so we will see if there is a segment and then directly insert the point
+		//We didn't found a point so we will see if there is a segment to insert the point
 		else if let Some(closed_segment) = &mut self.segment {
 			responses.add(DocumentMessage::StartTransaction);
-			// self.segment = Some(closed_segment.clone()); //do we need this
-			//here replace start insertion wala logic
 
 			if self.delete_segment_pressed {
 				let segment = closed_segment.segment();
@@ -586,7 +521,7 @@ impl PathToolData {
 
 			PathToolFsmState::Ready
 		}
-		// We didn't find a point, so consider selecting the nearest shape instead
+		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
 			if extend_selection {
@@ -1132,97 +1067,12 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 					}
-					Self::InsertPoint => {
-						let state = tool_data.update_insertion(shape_editor, document, responses, input);
-
-						if let Some(closest_segment) = &tool_data.segment {
-							// Perpendicular line when inserting a point, and a cross when deleting a segment
-							let tangent = if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
-								(handle1 - handle2).try_normalize()
-							} else {
-								let layer = closest_segment.layer();
-								let points = closest_segment.points();
-								if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-									if let (Some(pos1), Some(pos2)) = (
-										ManipulatorPointId::Anchor(points[0]).get_position(&vector_data),
-										ManipulatorPointId::Anchor(points[1]).get_position(&vector_data),
-									) {
-										(pos1 - pos2).try_normalize()
-									} else {
-										None
-									}
-								} else {
-									None
-								}
-							}
-							.unwrap_or(DVec2::ZERO);
-							let perp = tangent.perp();
-							let point = closest_segment.closest_point_to_viewport();
-							if tool_data.delete_segment_pressed {
-								let degrees: f64 = 45.0;
-								let tilted_line = DVec2::from_angle(degrees.to_radians()).rotate(tangent);
-								let tilted_perp = tilted_line.perp();
-								overlay_context.line(point - tilted_line * SEGMENT_OVERLAY_SIZE, point + tilted_line * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.line(point - tilted_perp * SEGMENT_OVERLAY_SIZE, point + tilted_perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-							} else {
-								overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-							}
-						}
-
-						responses.add(PathToolMessage::SelectedPointUpdated);
-						return state;
-					} // _ => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				self
 			}
 
-			// `Self::InsertPoint` case:
-			(Self::InsertPoint, PathToolMessage::MouseDown { extend_selection, delete_segment, .. }) => {
-				//| PathToolMessage::Enter { extend_selection, .. } consider adding support for ctrl key in here
-				tool_data.double_click_handled = true;
-				let extend_selection = input.keyboard.get(extend_selection as usize);
-				let delete_segment = input.keyboard.get(delete_segment as usize);
-
-				if delete_segment {
-					if let Some(closest_segment) = &tool_data.segment {
-						let segment = closest_segment.segment();
-						let layer = closest_segment.layer();
-						let points = closest_segment.points();
-						if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-							shape_editor.dissolve_segment(responses, layer, &vector_data, segment, points);
-							responses.add(DocumentMessage::EndTransaction);
-						}
-					}
-					return PathToolFsmState::Ready;
-				} else {
-					tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { extend_selection })
-				}
-			}
-			(Self::InsertPoint, PathToolMessage::PointerMove { lock_angle, .. }) => {
-				let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				if lock_angle_state {
-					tool_data.delete_segment_pressed = true;
-				} else {
-					tool_data.delete_segment_pressed = false;
-				}
-
-				responses.add(OverlaysMessage::Draw);
-				// `tool_data.update_insertion` would be called on `OverlaysMessage::Draw`
-				// we anyway should to call it on `::Draw` because we can change scale by ctrl+scroll without `::PointerMove`
-
-				// If there is an anchor point very close to the current point then get out the InsertPoint mode
-				if shape_editor
-					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
-					.is_some()
-				{
-					return PathToolFsmState::Ready;
-				}
-				self
-			}
-			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
-			(Self::InsertPoint, PathToolMessage::GRS { key: _ }) => PathToolFsmState::InsertPoint,
 			// Mouse down
 			(
 				_,
@@ -1372,16 +1222,6 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { lock_angle, .. }) => {
-				// if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_TOLERANCE) {
-				// 	//there is some closed segment to update it to be the segment in the tool messages
-				// 	tool_data.segment = Some(closest_segment);
-				// 	let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				// 	if lock_angle_state {
-				// 		tool_data.delete_segment_pressed = true;
-				// 	}
-				// 	responses.add(OverlaysMessage::Draw)
-				// }
-
 				let lock_angle_state = input.keyboard.get(lock_angle as usize);
 				if lock_angle_state {
 					tool_data.delete_segment_pressed = true;
@@ -1389,46 +1229,28 @@ impl Fsm for PathToolFsmState {
 					tool_data.delete_segment_pressed = false;
 				}
 
-				// if selected something
-				//first if already close to a segment then update its closest point
+				// If there is a point nearby then remove the overlay
 				if shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
 					.is_some()
 				{
 					tool_data.segment = None;
 					responses.add(OverlaysMessage::Draw)
-				} else if let Some(closest_segment) = &mut tool_data.segment {
+				}
+				// If already hovering on a segment, then recalculate it's closest point
+				else if let Some(closest_segment) = &mut tool_data.segment {
 					closest_segment.update_closest_point(document.metadata(), input.mouse.position);
 					if closest_segment.too_far(input.mouse.position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, document.metadata()) {
 						tool_data.segment = None;
 					}
 					responses.add(OverlaysMessage::Draw)
 				}
-				// if not check that if there is some closest segment and update it in tool data
+				// If not check that if there is some closest segment or not
 				else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_TOLERANCE) {
 					tool_data.segment = Some(closest_segment);
 					responses.add(OverlaysMessage::Draw)
 				}
 				self
-
-				// 	// Check for a point in Selection threshold if it is there then don't change mode
-				// 	if shape_editor
-				// 		.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
-				// 		.is_some()
-				// 	{
-				// 		self
-				// 	}
-				// 	// Check for a segment nearby, if present then enter into insert point mode else go for ready
-				// 	else if let Some(closed_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_TOLERANCE) {
-				// 		let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				// 		if lock_angle_state {
-				// 			tool_data.delete_segment_pressed = true;
-				// 		}
-				// 		responses.add(DocumentMessage::StartTransaction);
-				// 		tool_data.start_insertion(responses, closed_segment)
-				// 	} else {
-				// 		self
-				// 	}
 			}
 			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
@@ -1808,10 +1630,6 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
 					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 				]),
-			]),
-			PathToolFsmState::InsertPoint => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point")]),
 			]),
 		};
 
