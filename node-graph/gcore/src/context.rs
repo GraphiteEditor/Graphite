@@ -328,6 +328,15 @@ impl OwnedContextImpl {
 		self.animation_time = Some(animation_time);
 		self
 	}
+	pub fn with_vararg(mut self, value: Box<dyn Any + Send + Sync>) -> Self {
+		assert!(self.varargs.is_none_or(|value| value.is_empty()));
+		self.varargs = Some(Arc::new([value]));
+		self
+	}
+	pub fn with_index(mut self, index: usize) -> Self {
+		self.index = Some(index);
+		self
+	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
 		Some(Arc::new(self))
 	}
