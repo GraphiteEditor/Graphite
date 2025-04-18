@@ -502,17 +502,19 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers, but not artboards
-				for layer in document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-				{
-					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+				if overlay_context.overlays_visibility_settings.selection_outline {
+					for layer in document
+						.network_interface
+						.selected_nodes()
+						.selected_visible_and_unlocked_layers(&document.network_interface)
+						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+					{
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
-					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-						let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
+						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+							overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
+						}
 					}
 				}
 
