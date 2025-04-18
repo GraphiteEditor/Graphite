@@ -412,7 +412,7 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 		} else {
 			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
 			let snapped_mid = snap.constrained_snap(&snap_data, &mid_point, constraint, config);
-			let best = if snap_data.document.snapping_state.path.being_drawn_line_midpoint && snapped_mid.other_snap_better(&snapped_mid) {
+			let best = if snap_data.document.snapping_state.path.line_midpoint && snapped_mid.other_snap_better(&snapped_mid) {
 				document_points[1] += (snapped_mid.snapped_point_document - mid_point.document_point) * 2.;
 				snapped_mid
 			} else {
@@ -431,7 +431,7 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 	} else {
 		let snapped = snap.free_snap(&snap_data, &near_point, config);
 		let snapped_mid = snap.free_snap(&snap_data, &mid_point, config);
-		let best = if snap_data.document.snapping_state.path.being_drawn_line_midpoint && snapped_mid.other_snap_better(&snapped_mid) {
+		let best = if snap_data.document.snapping_state.path.line_midpoint && snapped_mid.other_snap_better(&snapped_mid) {
 			document_points[1] += (snapped_mid.snapped_point_document - mid_point.document_point) * 2.;
 			snapped_mid
 		} else {
