@@ -65,7 +65,6 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 							device_pixel_ratio,
 							visibility_settings: visibility_settings.clone(),
 						}));
-						// debug!("OverlaysMessageHandler: {:?}", message.clone());
 					}
 				}
 			}

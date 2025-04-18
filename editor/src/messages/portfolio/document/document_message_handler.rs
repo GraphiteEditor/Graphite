@@ -1157,14 +1157,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
-					OverlaysType::Anchors => visibility_settings.anchors = visible,
+					OverlaysType::Anchors =>  {
+						visibility_settings.anchors = visible;
+						responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					},
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
-
-				// TODO: Updating the widgets is only needed for anchors and handles, find a better way to do this
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
@@ -1263,9 +1263,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			// TODO: ToggleOverlaysVisibility does not reflect as a good name for Overlays::All
 			DocumentMessage::ToggleOverlaysVisibility => {
-				self.overlays_visibility_settings.all = !self.overlays_visibility_settings.all;
+				self.overlays_visibility_settings.all = !self.overlays_visibility_settings.all();
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -2066,8 +2065,6 @@ impl DocumentMessageHandler {
 
 		let mut snapping_state = self.snapping_state.clone();
 		let mut snapping_state2 = self.snapping_state.clone();
-
-		debug!("overlays_visibility_settings: {:?}", self.overlays_visibility_settings);
 
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
