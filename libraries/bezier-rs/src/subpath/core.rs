@@ -294,19 +294,39 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians. Slice option makes it look like pie or pacman.
-	pub fn new_arc(radius: f64, angle_start: f64, angle_size: f64, closed: bool, slice: bool) -> Self {
+	pub fn new_arc(radius: f64, start_angle: f64, sweep_angle: f64, closed: bool, slice: bool) -> Self {
+		// Prevents glitches from numerical imprecision that have been observed during animation playback after about a minute
+		let start_angle = start_angle % (std::f64::consts::TAU * 2.);
+		let sweep_angle = sweep_angle % (std::f64::consts::TAU * 2.);
+
+		let original_start_angle = start_angle;
+		let sweep_angle_sign = sweep_angle.signum();
+
+		let mut start_angle = 0.;
+		let mut sweep_angle = sweep_angle.abs();
+
+		if (sweep_angle / std::f64::consts::TAU).floor() as u32 % 2 == 0 {
+			sweep_angle %= std::f64::consts::TAU;
+		} else {
+			start_angle = sweep_angle % std::f64::consts::TAU;
+			sweep_angle = std::f64::consts::TAU - start_angle;
+		}
+
+		sweep_angle *= sweep_angle_sign;
+		start_angle *= sweep_angle_sign;
+		start_angle += original_start_angle;
+
 		let center = DVec2::new(0., 0.);
-		let segments = (angle_size.abs() / (std::f64::consts::PI / 4.)).ceil() as usize;
-		let step = angle_size / segments as f64;
-		let half_step = step / 2.;
-		let factor = 4. / 3. * half_step.sin() / (1. + half_step.cos());
+		let segments = (sweep_angle.abs() / (std::f64::consts::PI / 4.)).ceil().max(1.) as usize;
+		let step = sweep_angle / segments as f64;
+		let factor = 4. / 3. * (step / 2.).sin() / (1. + (step / 2.).cos());
 
 		let mut manipulator_groups = Vec::with_capacity(segments);
 		let mut prev_in_handle = None;
 		let mut prev_end = DVec2::new(0., 0.);
 
 		for i in 0..segments {
-			let start_angle = angle_start + step * i as f64;
+			let start_angle = start_angle + step * i as f64;
 			let end_angle = start_angle + step;
 			let start_vec = DVec2::from_angle(start_angle);
 			let end_vec = DVec2::from_angle(end_angle);
