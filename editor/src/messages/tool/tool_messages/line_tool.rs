@@ -394,7 +394,7 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.drag_start]);
 	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.drag_start]);
-	let mid_point = SnapCandidatePoint::handle_neighbors((tool_data.drag_start + document_points[1]) / 2.0, [tool_data.drag_start]);
+	let mid_point = SnapCandidatePoint::handle_neighbors((tool_data.drag_start + document_points[1]) / 2., [tool_data.drag_start]);
 	let config = SnapTypeConfiguration::default();
 
 	if constrained {
@@ -412,12 +412,12 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 		} else {
 			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
 			let snapped_mid = snap.constrained_snap(&snap_data, &mid_point, constraint, config);
-			let best = if snapped_mid.other_snap_better(&snapped) {
+			let best = if snap_data.document.snapping_state.path.being_drawn_line_midpoint && snapped_mid.other_snap_better(&snapped_mid) {
+				document_points[1] += (snapped_mid.snapped_point_document - mid_point.document_point) * 2.;
+				snapped_mid
+			} else {
 				document_points[1] = snapped.snapped_point_document;
 				snapped.clone()
-			} else {
-				document_points[1] += (snapped_mid.snapped_point_document - mid_point.document_point) * 2.0;
-				snapped_mid
 			};
 			snap.update_indicator(best);
 		}
@@ -431,14 +431,13 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 	} else {
 		let snapped = snap.free_snap(&snap_data, &near_point, config);
 		let snapped_mid = snap.free_snap(&snap_data, &mid_point, config);
-		let best = if snapped_mid.other_snap_better(&snapped) {
+		let best = if snap_data.document.snapping_state.path.being_drawn_line_midpoint && snapped_mid.other_snap_better(&snapped_mid) {
+			document_points[1] += (snapped_mid.snapped_point_document - mid_point.document_point) * 2.;
+			snapped_mid
+		} else {
 			document_points[1] = snapped.snapped_point_document;
 			snapped.clone()
-		} else {
-			document_points[1] += (snapped_mid.snapped_point_document - mid_point.document_point) * 2.0;
-			snapped_mid
 		};
-		//document_points[1] = snapped.snapped_point_document;
 		snap.update_indicator(best);
 	}
 

@@ -144,6 +144,7 @@ pub struct PathSnapping {
 	pub path_intersection_point: bool,
 	pub align_with_anchor_point: bool, // TODO: Rename
 	pub perpendicular_from_endpoint: bool,
+	pub being_drawn_line_midpoint: bool,
 }
 
 impl Default for PathSnapping {
@@ -157,6 +158,7 @@ impl Default for PathSnapping {
 			path_intersection_point: true,
 			align_with_anchor_point: true,
 			perpendicular_from_endpoint: true,
+			being_drawn_line_midpoint: true,
 		}
 	}
 }
@@ -380,7 +382,7 @@ impl fmt::Display for SnapSource {
 }
 
 type GetSnapState = for<'a> fn(&'a mut SnappingState) -> &'a mut bool;
-pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
+pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 6] = [
 	(
 		"Align with Edges",
 		(|snapping_state| &mut snapping_state.bounding_box.align_with_edges) as GetSnapState,
@@ -406,6 +408,11 @@ pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
 		(|snapping_state| &mut snapping_state.bounding_box.distribute_evenly) as GetSnapState,
 		// TODO: Fix the bug/limitation that requires 'Center Points' and 'Corner Points' to be enabled
 		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers\n(due to a bug, 'Center Points' and 'Corner Points' must be enabled)",
+	),
+	(
+		"Being Drawn Line Midpoint",
+		(|snapping_state: &mut SnappingState| &mut snapping_state.path.being_drawn_line_midpoint) as GetSnapState,
+		"Snaps a being drawn lines's midpoint to a vector path)",
 	),
 ];
 pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
