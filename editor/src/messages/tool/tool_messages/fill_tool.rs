@@ -13,6 +13,7 @@ pub struct FillTool {
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,
+	WorkingColorChanged,
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
@@ -64,6 +65,7 @@ impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
+			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
@@ -94,21 +96,20 @@ impl Fsm for FillToolFsmState {
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
 				if !input.keyboard.get(Key::MouseMiddle as usize) {
-					let primary_color = global_tool_data.primary_color;
-					let preview_color = primary_color.to_gamma_srgb().to_css();
+					let preview_color = global_tool_data.primary_color;
 
 					// Get the layer the user is hovering over
 					let click = document.click(input);
 					if let Some(layer) = click {
-						overlay_context.strip_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), preview_color.as_str());
+						overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
 					}
 				}
 				self
 			}
-			(_, FillToolMessage::PointerMove) => {
+			(_, FillToolMessage::PointerMove | FillToolMessage::WorkingColorChanged) => {
 				// Generate the hover outline
 				responses.add(OverlaysMessage::Draw);
-				FillToolFsmState::Ready
+				self
 			}
 			(FillToolFsmState::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input) else {

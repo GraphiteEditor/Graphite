@@ -8,10 +8,13 @@ use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
+use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -562,30 +565,49 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
-	pub fn strip_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+		let pattern_width = 6;
+		let pattern_height = 6;
+		let pattern_canvas = OffscreenCanvas::new(pattern_width, pattern_height).unwrap();
+
+		let pattern_ctx: OffscreenCanvasRenderingContext2d = pattern_canvas
+			.get_context("2d")
+			.ok()
+			.flatten()
+			.expect("Failed to get canvas context")
+			.dyn_into()
+			.expect("Context should be a canvas 2d context");
+
+		let mut data = vec![0u8; (4 * pattern_width * pattern_height) as usize]; // 4x4 pixels, 4 components (RGBA) per pixel
+
+		let mut set_pixel = |x: usize, y: usize, color: &[u8; 4]| {
+			let index = (x + y * pattern_width as usize) * 4;
+			data[index] = color[0];
+			data[index + 1] = color[1];
+			data[index + 2] = color[2];
+			data[index + 3] = color[3];
+		};
+
+		let color = color.to_rgba8_srgb();
+		set_pixel(0, 0, &color);
+		set_pixel(0, 1, &color);
+		set_pixel(1, 0, &color);
+		set_pixel(1, 1, &color);
+
+		set_pixel(3, 3, &color);
+		set_pixel(3, 4, &color);
+		set_pixel(4, 3, &color);
+		set_pixel(4, 4, &color);
+
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), pattern_width, pattern_height).unwrap();
+		pattern_ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+
 		self.push_path(subpaths, transform);
 
-		// Canvas state must be saved before clipping
-		self.render_context.save();
-		self.render_context.clip();
-
-		self.render_context.begin_path();
-		self.render_context.set_line_width(1.0);
-		self.render_context.set_stroke_style_str(color);
-
-		// Draw the diagonal lines
-		let line_separation = 24 as f64; // in px
-		let max_dimension = if self.size.x > self.size.y { self.size.x } else { self.size.y };
-		let end = (max_dimension / line_separation * 2.0).ceil() as i32;
-		for n in 1..end {
-			let factor = n as f64;
-			self.render_context.move_to(line_separation * factor, 0.0);
-			self.render_context.line_to(0.0, line_separation * factor);
-			self.render_context.stroke();
-		}
-
-		// Undo the clipping
-		self.render_context.restore();
+		self.render_context.set_fill_style_canvas_pattern(&pattern);
+		self.render_context.set_transform(2.0, 0.0, 0.0, 2.0, 0.0, 0.0).expect("Failed to set transform");
+		self.render_context.fill();
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {
