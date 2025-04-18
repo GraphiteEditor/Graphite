@@ -58,7 +58,8 @@ pub enum NodeGraphMessage {
 	DuplicateSelectedNodes,
 	ExposeInput {
 		input_connector: InputConnector,
-		new_exposed: bool,
+		set_to_exposed: bool,
+		start_transaction: bool,
 	},
 	InsertNode {
 		node_id: NodeId,
