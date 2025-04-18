@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE,
-	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_TRANSPARENT, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
+	INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -17,8 +17,8 @@ use crate::messages::tool::common_functionality::shape_editor::{
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
-use graphene_core::{ChaCha20Rng, Rng, SeedableRng};
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
+use graphene_core::{ChaCha20Rng, Rng, SeedableRng};
 use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
 use std::vec;
 #[derive(Default)]
@@ -574,7 +574,6 @@ struct PathToolData {
 	last_clicked_point_was_selected: bool,
 	snapping_axis: Option<Axis>,
 
-
 	proportional_edit_center: Option<DVec2>,
 	proportional_affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
 	initial_point_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
@@ -583,7 +582,6 @@ struct PathToolData {
 
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
-
 }
 
 impl PathToolData {
@@ -699,10 +697,9 @@ impl PathToolData {
 		direct_insert_without_sliding: bool,
 		lasso_select: bool,
 
-		tool_options: &PathToolOptions,
+		_tool_options: &PathToolOptions,
 
 		handle_drag_from_anchor: bool,
-
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -739,9 +736,6 @@ impl PathToolData {
 				if dragging_only_handles && !self.handle_drag_toggle && !old_selection.is_empty() {
 					self.saved_points_before_handle_drag = old_selection;
 				}
-
-
-				self.start_dragging_point(selected_points, input, document, shape_editor, tool_options);
 
 				if handle_drag_from_anchor {
 					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
@@ -944,21 +938,7 @@ impl PathToolData {
 		}
 	}
 
-	fn start_dragging_point(
-		&mut self,
-		selected_points: SelectedPointsInfo,
-		input: &InputPreprocessorMessageHandler,
-		document: &DocumentMessageHandler,
-		shape_editor: &mut ShapeState,
-		tool_options: &PathToolOptions,
-	) {
-		if tool_options.proportional_editing_enabled {
-			self.total_delta = DVec2::ZERO;
-			self.initial_point_positions.clear();
-			self.store_initial_point_positions(document);
-			self.proportional_edit_center = shape_editor.selection_center(document);
-			self.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
-		}
+	fn start_dragging_point(&mut self, selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, shape_editor: &mut ShapeState) {
 		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
 		let mut unselected = Vec::new();
 		for (&layer, state) in &shape_editor.selected_shape_state {
@@ -1223,7 +1203,6 @@ impl PathToolData {
 						continue;
 					}
 
-
 					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
 						// Calculate displacement from initial position to target position
 						let displacement_document_space = self.total_delta * (*factor);
@@ -1310,10 +1289,7 @@ impl PathToolData {
 		let mut was_alt_dragging = false;
 
 		if self.snapping_axis.is_none() {
-
 			self.total_delta += snapped_delta;
-			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
-
 			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 				// Checking which direction the dragging begins
 				self.alt_dragging_from_anchor = true;
@@ -1367,8 +1343,6 @@ impl PathToolData {
 			};
 
 			self.total_delta += unsnapped_delta;
-			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
-
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, false, opposite, responses);
 
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
@@ -1649,8 +1623,6 @@ impl Fsm for PathToolFsmState {
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-
-
 				tool_data.mouse_down(
 					shape_editor,
 					document,
@@ -1659,10 +1631,9 @@ impl Fsm for PathToolFsmState {
 					extend_selection,
 					direct_insert_without_sliding,
 					lasso_select,
-          tool_options,
+					tool_options,
 					handle_drag_from_anchor,
 				)
-
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
