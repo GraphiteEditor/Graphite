@@ -315,7 +315,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}
-			NodeGraphMessage::ExposeInput { input_connector, new_exposed } => {
+			NodeGraphMessage::ExposeInput {
+				input_connector,
+				set_to_exposed,
+				start_transaction,
+			} => {
 				let InputConnector::Node { node_id, input_index } = input_connector else {
 					log::error!("Cannot expose/hide export");
 					return;
@@ -324,26 +328,43 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not find node {node_id} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				let Some(mut input) = node.inputs.get(input_index).cloned() else {
+				let Some(mut node_input) = node.inputs.get(input_index).cloned() else {
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = new_exposed;
-				} else if !new_exposed {
-					// If hiding an input that is not a value, then disconnect it. This will convert it to a value input.
-					responses.add(NodeGraphMessage::DisconnectInput { input_connector });
-					responses.add(NodeGraphMessage::ExposeInput { input_connector, new_exposed });
+
+				// If we're un-exposing an input that is not a value, then disconnect it. This will convert it to a value input,
+				// so we can come back to handle this message again to set the exposed value in the second run-through.
+				if !set_to_exposed && node_input.as_value().is_none() {
+					// Reversed order because we are pushing front
+					responses.add_front(NodeGraphMessage::ExposeInput {
+						input_connector,
+						set_to_exposed,
+						start_transaction: false,
+					});
+					responses.add_front(NodeGraphMessage::DisconnectInput { input_connector });
+					responses.add_front(DocumentMessage::StartTransaction);
 					return;
 				}
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Add a history step, but only do so if we didn't already start a transaction in the first run-through of this message in the above code
+				if start_transaction {
+					responses.add_front(DocumentMessage::StartTransaction);
+				}
 
+				// If this node's input is a value type, we set its chosen exposed state
+				if let NodeInput::Value { exposed, .. } = &mut node_input {
+					*exposed = set_to_exposed;
+				}
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
-					input,
+					input: node_input,
 				});
 
+				// Finish the history step
+				responses.add(DocumentMessage::CommitTransaction);
+
+				// Update the graph UI and re-render
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1272,7 +1293,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
-				if self.drag_start.is_some() || self.box_selection_start.is_some() {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
 					let _ = self.auto_panning.shift_viewport(ipp, responses);
 				} else {
 					// Auto-panning

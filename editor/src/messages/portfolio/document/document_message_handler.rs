@@ -1183,6 +1183,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.view_mode = view_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::AddTransaction => {
+				// Reverse order since they are added to the front
+				responses.add_front(DocumentMessage::CommitTransaction);
+				responses.add_front(DocumentMessage::StartTransaction);
+			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
 				self.network_interface.start_transaction();
@@ -1225,11 +1230,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::AddTransaction => {
-				// Reverse order since they are added to the front
-				responses.add_front(DocumentMessage::CommitTransaction);
-				responses.add_front(DocumentMessage::StartTransaction);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
