@@ -1161,6 +1161,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
+
+				// TODO: Updating the widgets is only needed for anchors and handles, find a better way to do this
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
@@ -2063,6 +2066,8 @@ impl DocumentMessageHandler {
 		let mut snapping_state = self.snapping_state.clone();
 		let mut snapping_state2 = self.snapping_state.clone();
 
+		debug!("overlays_visibility_settings: {:?}", self.overlays_visibility_settings);
+
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
 				.tooltip("Restart Animation")
@@ -2246,6 +2251,7 @@ impl DocumentMessageHandler {
 					LayoutGroup::Row {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.handles)
+								.disabled(!self.overlays_visibility_settings.anchors)
 								.tooltip("Enable or disable the handles overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
@@ -2255,7 +2261,7 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
-							TextLabel::new("Handles".to_string()).widget_holder(),
+							TextLabel::new("Handles".to_string()).disabled(!self.overlays_visibility_settings.anchors).widget_holder(),
 						],
 					},
 				])
@@ -2403,6 +2409,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
