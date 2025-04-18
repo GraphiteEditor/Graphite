@@ -1235,8 +1235,6 @@ impl PenToolData {
 			handle_start,
 		});
 
-		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
-
 		self.next_point = position;
 		self.next_handle_start = handle_start;
 		let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
