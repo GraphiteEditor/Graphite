@@ -1,12 +1,13 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
 use crate::raster::image::ImageFrameTable;
-use crate::registry::types::Percentage;
+use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
-use glam::DVec2;
+use dyn_any::DynAny;
+use glam::{DVec2, IVec2, UVec2};
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
@@ -284,6 +285,12 @@ fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)]
 	value.to_u64().unwrap()
 }
 
+/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
+	value.to_f64().unwrap()
+}
+
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
@@ -343,10 +350,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value == value
 }
@@ -356,10 +360,7 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 fn not_equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value != value
 }
@@ -412,6 +413,37 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 	color
 }
 
+// // Aims for interoperable compatibility with:
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+// #[node_macro::node(category("Raster: Adjustment"))]
+// async fn gradient_map<T: Adjust<Color>>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		Color,
+// 		ImageFrameTable<Color>,
+// 		GradientStops,
+// 	)]
+// 	mut image: T,
+// 	gradient: GradientStops,
+// 	reverse: bool,
+// ) -> T {
+// 	image.adjust(|color| {
+// 		let intensity = color.luminance_srgb();
+// 		let intensity = if reverse { 1. - intensity } else { intensity };
+// 		gradient.evaluate(intensity as f64)
+// 	});
+
+// 	image
+// }
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("General"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
+	let position = position.clamp(0., 1.);
+	gradient.evaluate(position)
+}
+
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
@@ -458,6 +490,32 @@ fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Colo
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
+}
+
+/// Obtain the X or Y component of a vector2.
+#[node_macro::node(name("Extract XY"), category("Math: Vector"))]
+fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: T, axis: XY) -> f64 {
+	match axis {
+		XY::X => vector.into().x,
+		XY::Y => vector.into().y,
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+pub enum XY {
+	#[default]
+	X,
+	Y,
+}
+impl core::fmt::Display for XY {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			XY::X => write!(f, "X"),
+			XY::Y => write!(f, "Y"),
+		}
+	}
 }
 
 // TODO: Rename to "Passthrough"
