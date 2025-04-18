@@ -1,4 +1,4 @@
-use super::misc::{AsU64, GridType};
+use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
 use crate::registry::types::{Angle, AngularDistance};
@@ -49,13 +49,16 @@ fn circle(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn arc(_: impl Ctx, _primary: (), #[default(50.)] radius: f64, start_angle: Angle, #[default(90.)] sweep_angle: AngularDistance, closed: bool, slice: bool) -> VectorDataTable {
+fn arc(_: impl Ctx, _primary: (), #[default(50.)] radius: f64, start_angle: Angle, #[default(90.)] sweep_angle: AngularDistance, arc_type: ArcType) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_arc(
 		radius,
 		start_angle / 360. * std::f64::consts::TAU,
 		sweep_angle / 360. * std::f64::consts::TAU,
-		closed,
-		slice,
+		match arc_type {
+			ArcType::Open => bezier_rs::ArcType::Open,
+			ArcType::Closed => bezier_rs::ArcType::Closed,
+			ArcType::PieSlice => bezier_rs::ArcType::PieSlice,
+		},
 	)))
 }
 

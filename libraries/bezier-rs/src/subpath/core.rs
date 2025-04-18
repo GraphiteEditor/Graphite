@@ -294,7 +294,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians. Slice option makes it look like pie or pacman.
-	pub fn new_arc(radius: f64, start_angle: f64, sweep_angle: f64, closed: bool, slice: bool) -> Self {
+	pub fn new_arc(radius: f64, start_angle: f64, sweep_angle: f64, arc_type: ArcType) -> Self {
 		// Prevents glitches from numerical imprecision that have been observed during animation playback after about a minute
 		let start_angle = start_angle % (std::f64::consts::TAU * 2.);
 		let sweep_angle = sweep_angle % (std::f64::consts::TAU * 2.);
@@ -315,6 +315,9 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		sweep_angle *= sweep_angle_sign;
 		start_angle *= sweep_angle_sign;
 		start_angle += original_start_angle;
+
+		let closed = arc_type == ArcType::Closed;
+		let slice = arc_type == ArcType::PieSlice;
 
 		let center = DVec2::new(0., 0.);
 		let segments = (sweep_angle.abs() / (std::f64::consts::PI / 4.)).ceil().max(1.) as usize;
