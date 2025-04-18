@@ -41,6 +41,10 @@ macro_rules! create_ids {
 					self.0 += 1;
 					*self
 				}
+
+				pub fn from_u64(id: u64) -> Self {
+					Self(id)
+				}
 			}
 		)*
 	};

@@ -1,7 +1,7 @@
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
+use super::{PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
@@ -13,6 +13,7 @@ use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
+use std::collections::{HashMap, HashSet};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -505,6 +506,377 @@ async fn round_corners(
 	result.upstream_graphic_group = upstream_graphics_group;
 	let mut result_table = VectorDataTable::new(result);
 	*result_table.transform_mut() = source_transform;
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn project(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[default(0.)]
+	#[range((-180., 180.))]
+	angle: Angle,
+) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance.clone();
+
+	// Convert angle to radians and get the projection direction vector
+	let angle_rad = angle.to_radians();
+	let direction = DVec2::new(angle_rad.cos(), angle_rad.sin());
+
+	// Create a perpendicular vector to the direction
+	let perpendicular = DVec2::new(-direction.y, direction.x);
+
+	let mut result = VectorData::empty();
+	result.style = vector_data.style.clone();
+
+	let mut initial_point_id: PointId = PointId::from_u64(0);
+
+	for mut subpath in vector_data.stroke_bezier_paths() {
+		subpath.apply_transform(vector_data_transform);
+
+		// Skip subpaths without enough points
+		if subpath.manipulator_groups().len() < 2 {
+			continue;
+		}
+
+		// Find the projection bounds along the perpendicular axis
+		let mut min_proj = f64::MAX;
+		let mut max_proj = f64::MIN;
+		let mut centroid = DVec2::ZERO;
+		let mut total_length = 0.0;
+
+		// Calculate centroid for positioning the projected line
+		for bezier in subpath.iter() {
+			let length = bezier.length(None);
+			if length > 0.0 {
+				let segment_centroid = bezier.length_centroid(None);
+				centroid += segment_centroid * length;
+				total_length += length;
+			}
+
+			// Sample multiple points along the curve to find projection bounds
+			for t in 0..=10 {
+				let t = t as f64 / 10.0;
+				let point = bezier.evaluate(TValue::Parametric(t));
+				let projection = point.dot(perpendicular);
+				min_proj = min_proj.min(projection);
+				max_proj = max_proj.max(projection);
+			}
+		}
+
+		if total_length > 0.0 {
+			centroid /= total_length;
+		} else {
+			// Use average position for point-like subpaths
+			centroid = subpath.manipulator_groups().iter().map(|group| group.anchor).sum::<DVec2>() / subpath.manipulator_groups().len() as f64;
+		}
+
+		// Calculate the average depth position along the projection direction
+		let depth_position = centroid.dot(direction);
+
+		// Create a line from min to max along the perpendicular axis
+		let start_point = direction * depth_position + perpendicular * min_proj;
+		let end_point = direction * depth_position + perpendicular * max_proj;
+
+		// Create a simple linear segment for the projection
+		// Have sane, increase IDs for the points, use id_count
+		let point_id_start = initial_point_id.next_id();
+		let point_id_end = initial_point_id.next_id();
+
+		result.point_domain.push(point_id_start, vector_data_transform.inverse().transform_point2(start_point));
+		result.point_domain.push(point_id_end, vector_data_transform.inverse().transform_point2(end_point));
+
+		let segment_id = SegmentId::generate();
+		let stroke_id = StrokeId::ZERO;
+		let start_index = result.point_domain.ids().len() - 2;
+		let end_index = result.point_domain.ids().len() - 1;
+
+		result.segment_domain.push(segment_id, start_index, end_index, bezier_rs::BezierHandles::Linear, stroke_id);
+	}
+
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn delete_points_by_id(_: impl Ctx, vector_data: VectorDataTable, #[default("0")] id_ranges: String, #[default(false)] preserve_connectivity: bool) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance.clone();
+
+	// Parse the ID ranges from the input string
+	let id_ranges = parse_id_ranges(&id_ranges);
+
+	// Create a set of point IDs to delete
+	let point_ids: Vec<PointId> = vector_data.point_domain.ids().to_vec();
+	let mut points_to_delete = HashSet::new();
+
+	for &(start, end) in &id_ranges {
+		// Adjust for 0-based indexing and limit to actual data size
+		let start_idx = start.saturating_sub(1);
+		let end_idx = end.saturating_sub(1).min(point_ids.len() - 1);
+
+		for idx in start_idx..=end_idx {
+			if idx < point_ids.len() {
+				points_to_delete.insert(point_ids[idx]);
+			}
+		}
+	}
+
+	if points_to_delete.is_empty() {
+		// No points to delete, return the original data
+		let mut result_table = VectorDataTable::new(vector_data);
+		*result_table.transform_mut() = vector_data_transform;
+		return result_table;
+	}
+
+	// Create a new vector data for the result
+	let mut result = VectorData::empty();
+	result.style = vector_data.style.clone();
+
+	if preserve_connectivity {
+		// Create a mapping of deleted points to their connected points
+		let mut connections = HashMap::new();
+
+		// Gather all connections from the original data
+		for segment in vector_data.segment_bezier_iter() {
+			let (_, _, start_id, end_id) = segment;
+
+			if points_to_delete.contains(&start_id) {
+				connections.entry(start_id).or_insert_with(HashSet::new).insert(end_id);
+			}
+
+			if points_to_delete.contains(&end_id) {
+				connections.entry(end_id).or_insert_with(HashSet::new).insert(start_id);
+			}
+		}
+
+		// Create new point domain with preserved points
+		for (i, &id) in point_ids.iter().enumerate() {
+			if !points_to_delete.contains(&id) {
+				let pos = vector_data.point_domain.positions()[i];
+				result.point_domain.push(id, pos);
+			}
+		}
+
+		// Process segments, creating new ones to maintain connectivity
+		for (segment_id, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+			let start_deleted = points_to_delete.contains(&start_id);
+			let end_deleted = points_to_delete.contains(&end_id);
+
+			if !start_deleted && !end_deleted {
+				// Keep segments between non-deleted points
+				let start_idx = result.point_domain.resolve_id(start_id).unwrap();
+				let end_idx = result.point_domain.resolve_id(end_id).unwrap();
+
+				result.segment_domain.push(segment_id, start_idx, end_idx, bezier.handles, StrokeId::ZERO);
+			} else if preserve_connectivity && (start_deleted != end_deleted) {
+				// Find replacement connections for deleted points
+				let mut new_connections = Vec::new();
+
+				if start_deleted {
+					if let Some(connected) = connections.get(&start_id) {
+						for &connected_id in connected {
+							if !points_to_delete.contains(&connected_id) && connected_id != end_id {
+								new_connections.push((connected_id, end_id));
+							}
+						}
+					}
+				} else {
+					// end_deleted
+					if let Some(connected) = connections.get(&end_id) {
+						for &connected_id in connected {
+							if !points_to_delete.contains(&connected_id) && connected_id != start_id {
+								new_connections.push((start_id, connected_id));
+							}
+						}
+					}
+				}
+
+				// Create new segments to maintain connectivity
+				for (new_start, new_end) in new_connections {
+					let start_idx = result.point_domain.resolve_id(new_start).unwrap();
+					let end_idx = result.point_domain.resolve_id(new_end).unwrap();
+
+					result.segment_domain.push(SegmentId::generate(), start_idx, end_idx, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+				}
+			}
+		}
+	} else {
+		// Simply remove the points and connected segments
+
+		// Create new point domain without deleted points
+		for (i, &id) in point_ids.iter().enumerate() {
+			if !points_to_delete.contains(&id) {
+				let pos = vector_data.point_domain.positions()[i];
+				result.point_domain.push(id, pos);
+			}
+		}
+
+		// Keep only segments that don't connect to deleted points
+		for (segment_id, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+			if !points_to_delete.contains(&start_id) && !points_to_delete.contains(&end_id) {
+				// Map to new indices in the result's point domain
+				let start_idx = result.point_domain.resolve_id(start_id).unwrap();
+				let end_idx = result.point_domain.resolve_id(end_id).unwrap();
+
+				result.segment_domain.push(segment_id, start_idx, end_idx, bezier.handles, StrokeId::ZERO);
+			}
+		}
+	}
+
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
+}
+
+// Parse the ID ranges from a string like "1-3, 5-7"
+fn parse_id_ranges(input: &str) -> Vec<(usize, usize)> {
+	let mut ranges = Vec::new();
+
+	for range_str in input.split(',') {
+		let range_str = range_str.trim();
+		if range_str.is_empty() {
+			continue;
+		}
+
+		if let Some(dash_pos) = range_str.find('-') {
+			// Handle range like "1-3"
+			let start_str = &range_str[..dash_pos].trim();
+			let end_str = &range_str[dash_pos + 1..].trim();
+
+			if let (Ok(start), Ok(end)) = (start_str.parse::<usize>(), end_str.parse::<usize>()) {
+				if start <= end {
+					ranges.push((start, end));
+				}
+			}
+		} else {
+			// Handle single number like "5"
+			if let Ok(num) = range_str.parse::<usize>() {
+				ranges.push((num, num));
+			}
+		}
+	}
+
+	ranges
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn local_transform<I: 'n + Send>(
+	_: impl Ctx,
+	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
+	#[default(1., 1.)] scale: DVec2,
+	#[range((-360., 360.))]
+	#[default(0.)]
+	rotation: Angle,
+	#[default(false)] keep_original: bool,
+) -> GraphicGroupTable
+where
+	Instances<I>: GraphicElementRendered,
+{
+	let mut result_table = GraphicGroupTable::default();
+
+	// Get the bounding box of the input
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else {
+		return result_table;
+	};
+
+	// Calculate the pivot point (center of the bounding box)
+	let pivot = (bounding_box[0] + bounding_box[1]) / 2.;
+
+	// 1. Translate to origin
+	// 2. Apply scale and rotation
+	// 3. Translate back
+	let local_transform = DAffine2::from_translation(pivot) * DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), DVec2::ZERO) * DAffine2::from_translation(-pivot);
+
+	// Add original instance if requested
+	if keep_original {
+		result_table.push(instance.to_graphic_element());
+	}
+
+	// Create and add transformed instance
+	let mut transformed_element = instance.to_graphic_element();
+	transformed_element.new_ids_from_hash(None);
+
+	// Apply the transformation to the transformed instance
+	let transformed_instance = result_table.push(transformed_element);
+	*transformed_instance.transform = local_transform;
+
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn center_instances(
+	_: impl Ctx,
+	graphic_group: GraphicGroupTable,
+	#[default(true)] center_x: bool,
+	#[default(true)] center_y: bool,
+	#[default(false)] align_to_first_instance: bool,
+) -> GraphicGroupTable {
+	// Create a new result table
+	let mut result_table = GraphicGroupTable::empty();
+
+	// Early return if no instances or no centering requested
+	if graphic_group.is_empty() || (!center_x && !center_y) {
+		return graphic_group;
+	}
+
+	// Calculate reference position - either the global center or first instance's center
+	let mut ref_center_x = 0.0;
+	let mut ref_center_y = 0.0;
+
+	if align_to_first_instance {
+		if let Some(first_instance) = graphic_group.instances().next() {
+			if let Some(bounds) = first_instance.instance.bounding_box(*first_instance.transform) {
+				ref_center_x = (bounds[0].x + bounds[1].x) / 2.0;
+				ref_center_y = (bounds[0].y + bounds[1].y) / 2.0;
+			}
+		}
+	} else {
+		// Calculate global center of all instances combined
+		if let Some(bounds) = graphic_group.bounding_box(DAffine2::IDENTITY) {
+			ref_center_x = (bounds[0].x + bounds[1].x) / 2.0;
+			ref_center_y = (bounds[0].y + bounds[1].y) / 2.0;
+		}
+	}
+
+	// Process each instance
+	for instance in graphic_group.instances() {
+		// Get the instance's bounding box
+		let Some(bounds) = instance.instance.bounding_box(*instance.transform) else {
+			// If no bounds, just copy the instance as is
+			result_table.push_instance(instance);
+			continue;
+		};
+
+		// Calculate the instance's current center
+		let instance_center_x = (bounds[0].x + bounds[1].x) / 2.0;
+		let instance_center_y = (bounds[0].y + bounds[1].y) / 2.0;
+
+		// Calculate the translation needed
+		let dx = if center_x { ref_center_x - instance_center_x } else { 0.0 };
+		let dy = if center_y { ref_center_y - instance_center_y } else { 0.0 };
+
+		// Skip if no translation needed
+		if dx.abs() < f64::EPSILON && dy.abs() < f64::EPSILON {
+			result_table.push_instance(instance);
+			continue;
+		}
+
+		// Create and apply the translation
+		let translation = DAffine2::from_translation(DVec2::new(dx, dy));
+
+		// Clone the instance and update its transform
+		let mut new_element = instance.instance.clone();
+		new_element.new_ids_from_hash(None);
+
+		let new_instance = result_table.push(new_element);
+		*new_instance.transform = translation * *instance.transform;
+		*new_instance.alpha_blending = *instance.alpha_blending;
+		*new_instance.source_node_id = *instance.source_node_id;
+	}
+
 	result_table
 }
 
