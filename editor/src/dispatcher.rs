@@ -167,7 +167,6 @@ impl Dispatcher {
 
 					// Send the information for tooltips and categories for each node/input.
 					queue.add(FrontendMessage::SendUIMetadata {
-						input_type_descriptions: Vec::new(),
 						node_descriptions: document_node_definitions::collect_node_descriptions(),
 						node_types: document_node_definitions::collect_node_types(),
 					});
