@@ -1519,7 +1519,10 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment"),
+					HintInfo::keys([Key::Control], "Delete Segment").prepend_plus(),
+				]),
 				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
