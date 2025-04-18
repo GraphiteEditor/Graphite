@@ -857,6 +857,7 @@ async fn box_pack(
 		// Add padding to the item size
 		let item_width = size.x + padding;
 		let item_height = size.y + padding;
+		let instance_size = DVec2::new(item_width, item_height);
 
 		// Check if we need to move to the next row
 		if current_x + item_width > container_origin.x + container_size.x {
@@ -884,7 +885,7 @@ async fn box_pack(
 		};
 
 		// Create a new transform that positions the instance correctly
-		let new_transform = DAffine2::from_translation(position + instance_center);
+		let new_transform = DAffine2::from_translation(position - instance_center + instance_size * 0.5);
 
 		// Add to the result
 		let pushed = result.push(instance);
