@@ -1,21 +1,26 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
+use crate::messages::portfolio::document::overlays::utility_functions::{path_endpoint_overlays, path_overlays};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use bezier_rs::{Bezier, BezierHandles};
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
+use spline_mode::*;
+use std::fmt;
+
+// TODO: Refactor the code into new module for drawing a path
+mod spline_mode;
 
 #[derive(Default)]
 pub struct PenTool {
@@ -29,6 +34,7 @@ pub struct PenOptions {
 	fill: ToolColorOptions,
 	stroke: ToolColorOptions,
 	pen_overlay_mode: PenOverlayMode,
+	tool_mode: ToolMode,
 }
 
 impl Default for PenOptions {
@@ -38,6 +44,7 @@ impl Default for PenOptions {
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
 			pen_overlay_mode: PenOverlayMode::FrontierHandles,
+			tool_mode: ToolMode::Path,
 		}
 	}
 }
@@ -80,6 +87,7 @@ pub enum PenToolMessage {
 	Redo,
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
+	ToolModeChanged,
 	RecalculateLatestPointsPosition,
 	RemovePreviousHandle,
 	GRS {
@@ -90,6 +98,8 @@ pub enum PenToolMessage {
 	FinalPosition {
 		final_position: DVec2,
 	},
+	/// Specific to spline mode.
+	SplineMergeEndpoints,
 	SwapHandles,
 }
 
@@ -100,6 +110,8 @@ enum PenToolFsmState {
 	DraggingHandle(HandleMode),
 	PlacingAnchor,
 	GRSHandle,
+	SplineDrawing,
+	SplineMergingEndpoints,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -117,6 +129,25 @@ pub enum PenOptionsUpdate {
 	StrokeColorType(ToolColorType),
 	WorkingColors(Option<Color>, Option<Color>),
 	OverlayModeType(PenOverlayMode),
+	ToolMode(ToolMode),
+}
+
+impl PenTool {
+	fn tool_mode_widget(&self) -> WidgetHolder {
+		let tool_mode_entries = [ToolMode::Path, ToolMode::Spline]
+			.iter()
+			.map(|mode| {
+				MenuListEntry::new(format!("{mode:?}"))
+					.label(mode.to_string())
+					.on_commit(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::ToolMode(*mode)).into())
+			})
+			.collect();
+
+		DropdownInput::new(vec![tool_mode_entries])
+			.selected_index(Some((self.options.tool_mode) as u32))
+			.tooltip(format!("Path Mode:\n\n{}\n{}", ToolMode::Path.description(), ToolMode::Spline.description()))
+			.widget_holder()
+	}
 }
 
 impl ToolMetadata for PenTool {
@@ -143,13 +174,15 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 
 impl LayoutHolder for PenTool {
 	fn layout(&self) -> Layout {
-		let mut widgets = self.options.fill.create_widgets(
+		let mut widgets = Vec::new();
+
+		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
 			true,
 			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
 			|color: &ColorInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
-		);
+		));
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
@@ -167,20 +200,26 @@ impl LayoutHolder for PenTool {
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
-		widgets.push(
-			RadioInput::new(vec![
-				RadioEntryData::new("all")
-					.icon("HandleVisibilityAll")
-					.tooltip("Show all handles regardless of selection")
-					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles)).into()),
-				RadioEntryData::new("frontier")
-					.icon("HandleVisibilityFrontier")
-					.tooltip("Show only handles at the frontiers of the segments connected to selected points")
-					.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles)).into()),
-			])
-			.selected_index(Some(self.options.pen_overlay_mode as u32))
-			.widget_holder(),
-		);
+		widgets.push(self.tool_mode_widget());
+
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+		if self.options.tool_mode == ToolMode::Path {
+			widgets.push(
+				RadioInput::new(vec![
+					RadioEntryData::new("all")
+						.icon("HandleVisibilityAll")
+						.tooltip("Show all handles regardless of selection")
+						.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles)).into()),
+					RadioEntryData::new("frontier")
+						.icon("HandleVisibilityFrontier")
+						.tooltip("Show only handles at the frontiers of the segments connected to selected points")
+						.on_update(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles)).into()),
+				])
+				.selected_index(Some(self.options.pen_overlay_mode as u32))
+				.widget_holder(),
+			);
+		}
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -215,6 +254,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				self.options.fill.primary_working_color = primary;
 				self.options.fill.secondary_working_color = secondary;
 			}
+			PenOptionsUpdate::ToolMode(tool_mode) => {
+				self.options.tool_mode = tool_mode;
+				responses.add(PenToolMessage::ToolModeChanged);
+			}
 		}
 
 		self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -240,6 +283,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				RemovePreviousHandle,
 				GRS,
 				SwapHandles
+			),
+			PenToolFsmState::SplineDrawing => actions!(PenToolMessageDiscriminant;
+				DragStop,
+				PointerMove,
+				Confirm,
+				Abort,
+			),
+			PenToolFsmState::SplineMergingEndpoints => actions!(PenToolMessageDiscriminant;
+				SplineMergeEndpoints,
 			),
 		}
 	}
@@ -283,6 +335,31 @@ enum HandleMode {
 	ColinearEquidistant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ToolMode {
+	#[default]
+	Path,
+	Spline,
+}
+
+impl fmt::Display for ToolMode {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ToolMode::Path => write!(f, "Path"),
+			ToolMode::Spline => write!(f, "Spline"),
+		}
+	}
+}
+
+impl ToolMode {
+	fn description(&self) -> &'static str {
+		match self {
+			ToolMode::Path => "Path mode is the standard Pen tool behavior for drawing Bézier paths.",
+			ToolMode::Spline => "Spline mode is for placing the control points of a spline curve.",
+		}
+	}
+}
+
 /// The type of handle which is dragged by the cursor (under the cursor).
 ///
 /// ![Terminology](https://files.keavon.com/-/EachNotedLovebird/capture.png)
@@ -324,6 +401,8 @@ enum TargetHandle {
 
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
+	spline_mode_tool_data: SplineModeToolData,
+
 	snap_manager: SnapManager,
 	latest_points: Vec<LastPoint>,
 	point_index: usize,
@@ -1379,6 +1458,141 @@ impl Fsm for PenToolFsmState {
 
 		let ToolMessage::Pen(event) = event else { return self };
 		match (self, event) {
+			(state, PenToolMessage::ToolModeChanged) => {
+				if !matches!(state, PenToolFsmState::Ready) {
+					responses.add(PenToolMessage::Abort);
+					responses.add(PenToolMessage::ToolModeChanged);
+					return state;
+				}
+				state
+			}
+			(PenToolFsmState::SplineDrawing, PenToolMessage::DragStop) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				if tool_data.current_layer.is_none() {
+					return PenToolFsmState::Ready;
+				};
+				// The first DragStop event will be ignored to prevent insertion of new point.
+				if tool_data.extend {
+					tool_data.extend = false;
+					return PenToolFsmState::SplineDrawing;
+				}
+
+				responses.add(DocumentMessage::StartTransaction);
+
+				tool_data.next_point = tool_data.snapped_point(document, input).snapped_point_document;
+				if tool_data.points.last().map_or(true, |last_pos| last_pos.1.distance(tool_data.next_point) > DRAG_THRESHOLD) {
+					let preview_point = tool_data.preview_point;
+					extend_spline(tool_data, false, responses);
+					tool_data.preview_point = preview_point;
+
+					if try_merging_latest_endpoint(document, tool_data, preferences).is_some() {
+						responses.add(PenToolMessage::Confirm);
+					}
+				}
+
+				PenToolFsmState::SplineDrawing
+			}
+			(
+				PenToolFsmState::SplineDrawing,
+				PenToolMessage::PointerMove {
+					snap_angle,
+					break_handle,
+					lock_angle,
+					colinear,
+					move_anchor_with_handles,
+				},
+			) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				let Some(layer) = tool_data.current_layer else { return PenToolFsmState::Ready };
+				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
+				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore, preferences);
+
+				// Endpoints snapping
+				if let Some((_, _, point)) = join_point {
+					tool_data.next_point = point;
+					tool_data.snap_manager.clear_indicator();
+				} else {
+					let snapped_point = tool_data.snapped_point(document, input);
+					tool_data.next_point = snapped_point.snapped_point_document;
+					tool_data.snap_manager.update_indicator(snapped_point);
+				}
+
+				extend_spline(tool_data, true, responses);
+
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+						move_anchor_with_handles,
+					}
+					.into(),
+					PenToolMessage::PointerMove {
+						snap_angle,
+						break_handle,
+						lock_angle,
+						colinear,
+						move_anchor_with_handles,
+					}
+					.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				PenToolFsmState::SplineDrawing
+			}
+			(PenToolFsmState::SplineDrawing, PenToolMessage::PointerOutsideViewport { .. }) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				// Auto-panning
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
+
+				PenToolFsmState::SplineDrawing
+			}
+			(PenToolFsmState::SplineDrawing, PenToolMessage::Confirm) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				if tool_data.points.len() >= 2 {
+					delete_preview(tool_data, responses);
+				}
+				responses.add(PenToolMessage::SplineMergeEndpoints);
+				PenToolFsmState::SplineMergingEndpoints
+			}
+			(PenToolFsmState::SplineDrawing, PenToolMessage::Abort) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				delete_preview(tool_data, responses);
+
+				responses.add(PenToolMessage::Abort);
+				PenToolFsmState::Ready
+			}
+			(PenToolFsmState::SplineMergingEndpoints, PenToolMessage::SplineMergeEndpoints) => {
+				let tool_data = &mut tool_data.spline_mode_tool_data;
+				let Some(current_layer) = tool_data.current_layer else { return PenToolFsmState::Ready };
+
+				if let Some(&layer) = tool_data.merge_layers.iter().last() {
+					merge_layers(document, current_layer, layer, responses);
+					tool_data.merge_layers.remove(&layer);
+
+					responses.add(PenToolMessage::SplineMergeEndpoints);
+					return PenToolFsmState::SplineMergingEndpoints;
+				}
+
+				let Some((start_endpoint, _)) = tool_data.points.first() else { return PenToolFsmState::Ready };
+				let Some((last_endpoint, _)) = tool_data.points.last() else { return PenToolFsmState::Ready };
+
+				if let Some((position, second_endpoint)) = tool_data.merge_endpoints.pop() {
+					let first_endpoint = match position {
+						EndpointPosition::Start => *start_endpoint,
+						EndpointPosition::End => *last_endpoint,
+					};
+					merge_points(document, current_layer, first_endpoint, second_endpoint, responses);
+
+					responses.add(PenToolMessage::SplineMergeEndpoints);
+					return PenToolFsmState::SplineMergingEndpoints;
+				}
+
+				responses.add(DocumentMessage::EndTransaction);
+				PenToolFsmState::Ready
+			}
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
 				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
 
@@ -1516,6 +1730,12 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
+				if tool_options.tool_mode == ToolMode::Spline {
+					let spline_tool_data = &mut tool_data.spline_mode_tool_data;
+					path_endpoint_overlays(document, shape_editor, &mut overlay_context, preferences);
+					spline_tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+					return self;
+				}
 				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 
 				let transform = document.metadata().document_to_viewport * transform;
@@ -1621,6 +1841,79 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected }) => {
+				if tool_options.tool_mode == ToolMode::Spline {
+					let tool_data = &mut tool_data.spline_mode_tool_data;
+					responses.add(DocumentMessage::StartTransaction);
+
+					tool_data.snap_manager.cleanup(responses);
+					tool_data.cleanup();
+					tool_data.weight = tool_options.line_weight;
+
+					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+
+					let layers = LayerNodeIdentifier::ROOT_PARENT
+						.descendants(document.metadata())
+						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+
+					// Extend an endpoint of the selected path
+					if let Some((layer, point, position)) = should_extend(document, viewport, SNAP_POINT_TOLERANCE, layers, preferences) {
+						if find_spline(document, layer).is_some() {
+							// If the point is the part of Spline then we extend it.
+							tool_data.current_layer = Some(layer);
+							tool_data.points.push((point, position));
+							tool_data.next_point = position;
+							tool_data.extend = true;
+
+							extend_spline(tool_data, true, responses);
+
+							return PenToolFsmState::SplineDrawing;
+						} else {
+							tool_data.merge_layers.insert(layer);
+							tool_data.merge_endpoints.push((EndpointPosition::Start, point));
+						}
+					}
+
+					let selected_nodes = document.network_interface.selected_nodes();
+					let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
+					let selected_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
+
+					let append_to_selected_layer = input.keyboard.key(append_to_selected);
+
+					// Create new path in the selected layer when shift is down
+					match (selected_layer, append_to_selected_layer) {
+						(Some(layer), true) => {
+							tool_data.current_layer = Some(layer);
+
+							let transform = document.metadata().transform_to_viewport(layer);
+							let position = transform.inverse().transform_point2(input.mouse.position);
+							tool_data.next_point = position;
+
+							return PenToolFsmState::SplineDrawing;
+						}
+						_ => {}
+					}
+
+					responses.add(DocumentMessage::DeselectAllLayers);
+
+					let parent = document.new_layer_bounding_artboard(input);
+
+					let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+					let path_node = path_node_type.default_node_template();
+					let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
+					let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
+					let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
+
+					let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
+					tool_options.fill.apply_fill(layer, responses);
+					tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
+					tool_data.current_layer = Some(layer);
+
+					responses.add(Message::StartBuffer);
+
+					return PenToolFsmState::SplineDrawing;
+				}
 				responses.add(DocumentMessage::StartTransaction);
 				tool_data.handle_mode = HandleMode::Free;
 
@@ -2079,6 +2372,12 @@ impl Fsm for PenToolFsmState {
 				dragging_hint_data.0.push(HintGroup(hold_group));
 				dragging_hint_data
 			}
+			PenToolFsmState::SplineDrawing => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
+				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
+			]),
+			PenToolFsmState::SplineMergingEndpoints => HintData(vec![]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
