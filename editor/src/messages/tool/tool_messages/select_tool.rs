@@ -717,24 +717,25 @@ impl Fsm for SelectToolFsmState {
 						let angle = -mouse_position.angle_to(DVec2::X);
 						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-            let extension = tool_data.drag_current - tool_data.drag_start;
-            let origin = compass_center - extension;
-            let viewport_diagonal = input.viewport_bounds.size().length();
-
-            let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
-            let perp = edge.perp();
-
-            let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
-              (COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
-            } else {
-              (COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
-            };
-            let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-            perp_color.insert(0, '#');
-            let perp_color = perp_color.as_str();
-            overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
-            overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
-				  }
+			            let extension = tool_data.drag_current - tool_data.drag_start;
+			            let origin = compass_center - extension;
+			            let viewport_diagonal = input.viewport_bounds.size().length();
+			
+			            let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
+			            let perp = edge.perp();
+			
+			            let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
+			              (COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
+			            } else {
+			              (COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
+			            };
+			            let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+			            perp_color.insert(0, '#');
+			            let perp_color = perp_color.as_str();
+			            overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
+			            overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
+				  	}
+				}
 
 				// Check if the tool is in selection mode
 				if let Self::Drawing { selection_shape, .. } = self {
