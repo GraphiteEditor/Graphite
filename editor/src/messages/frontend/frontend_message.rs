@@ -44,8 +44,6 @@ pub enum FrontendMessage {
 
 	// Send prefix: Send global, static data to the frontend that is never updated
 	SendUIMetadata {
-		#[serde(rename = "inputTypeDescriptions")]
-		input_type_descriptions: Vec<(String, String)>,
 		#[serde(rename = "nodeDescriptions")]
 		node_descriptions: Vec<(String, String)>,
 		#[serde(rename = "nodeTypes")]
