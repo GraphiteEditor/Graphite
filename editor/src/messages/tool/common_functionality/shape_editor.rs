@@ -203,6 +203,34 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	/// Calculates the center point of all selected manipulator points (anchors and handles)
+	pub fn selection_center(&self, document: &DocumentMessageHandler) -> Option<DVec2> {
+		let mut total = DVec2::ZERO;
+		let mut count = 0;
+
+		// Iterate through all selected layers and their selection states
+		for (&layer, state) in &self.selected_shape_state {
+			// Get the transform from layer space to document space
+			let transform = document.metadata().transform_to_document(layer);
+
+			// Get the vector data for this layer
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+				// Process each selected point in this layer
+				for point in state.selected() {
+					// Get the position in layer space coordinates
+					if let Some(position) = point.get_position(&vector_data) {
+						// Convert to document space and accumulate
+						total += transform.transform_point2(position);
+						count += 1;
+					}
+				}
+			}
+		}
+
+		// Return average position if we have any points
+		if count > 0 { Some(total / count as f64) } else { None }
+	}
+
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self

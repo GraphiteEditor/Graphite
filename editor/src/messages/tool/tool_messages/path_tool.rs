@@ -1,14 +1,15 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE,
-	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_TRANSPARENT, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE,
+	INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
+use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::document::utility_types::transformation::Axis;
+use crate::messages::portfolio::document::utility_types::transformation::{Axis, TransformType};
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
@@ -17,9 +18,9 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
+use graphene_core::{ChaCha20Rng, Rng, SeedableRng};
 use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
 use std::vec;
-
 #[derive(Default)]
 pub struct PathTool {
 	fsm_state: PathToolFsmState,
@@ -27,9 +28,40 @@ pub struct PathTool {
 	options: PathToolOptions,
 }
 
-#[derive(Default)]
 pub struct PathToolOptions {
 	path_overlay_mode: PathOverlayMode,
+	proportional_editing_enabled: bool,
+	proportional_falloff_type: ProportionalFalloffType,
+	proportional_radius: i32,
+}
+impl Default for PathToolOptions {
+	fn default() -> Self {
+		Self {
+			path_overlay_mode: PathOverlayMode::default(),
+			proportional_editing_enabled: false,
+			proportional_falloff_type: ProportionalFalloffType::default(),
+			proportional_radius: 100,
+		}
+	}
+}
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ProportionalFalloffType {
+	#[default]
+	Smooth = 0,
+	Sphere = 1,
+	Root = 2,
+	InverseSquare = 3,
+	Sharp = 4,
+	Linear = 5,
+	Constant = 6,
+	Random = 7,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ProportionalEditData {
+	pub center: DVec2,
+	pub affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
+	pub falloff_type: ProportionalFalloffType,
+	pub radius: i32,
 }
 
 #[impl_message(Message, ToolMessage, Path)]
@@ -97,6 +129,8 @@ pub enum PathToolMessage {
 	},
 	SwapSelectedHandles,
 	UpdateOptions(PathOptionsUpdate),
+	ToggleProportionalEditing,
+	AdjustProportionalRadius,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -110,6 +144,9 @@ pub enum PathOverlayMode {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
+	ProportionalEditingEnabled(bool),
+	ProportionalFalloffType(ProportionalFalloffType),
+	ProportionalRadius(i32),
 }
 
 impl ToolMetadata for PathTool {
@@ -122,6 +159,67 @@ impl ToolMetadata for PathTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Path
 	}
+}
+pub fn proportional_edit_options(options: &PathToolOptions) -> Vec<LayoutGroup> {
+	let mut widgets = Vec::new();
+
+	// Header row with title
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![TextLabel::new("Proportional Editing").bold(true).widget_holder()],
+	});
+
+	// Falloff type row
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Falloff").table_align(true).min_width(80).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![vec![
+				MenuListEntry::new("Smooth")
+					.label("Smooth")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Smooth)).into()),
+				MenuListEntry::new("Sphere")
+					.label("Sphere")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sphere)).into()),
+				MenuListEntry::new("Root")
+					.label("Root")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Root)).into()),
+				MenuListEntry::new("Inverse Square")
+					.label("Inverse Square")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::InverseSquare)).into()),
+				MenuListEntry::new("Sharp")
+					.label("Sharp")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Sharp)).into()),
+				MenuListEntry::new("Linear")
+					.label("Linear")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Linear)).into()),
+				MenuListEntry::new("Constant")
+					.label("Constant")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Constant)).into()),
+				MenuListEntry::new("Random")
+					.label("Random")
+					.on_commit(|_| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalFalloffType(ProportionalFalloffType::Random)).into()),
+			]])
+			.min_width(120)
+			.selected_index(Some(options.proportional_falloff_type as u32))
+			.widget_holder(),
+		],
+	});
+
+	// Radius row
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Radius").table_align(true).min_width(80).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(options.proportional_radius as f64))
+				.unit(" px")
+				.min(1.0)
+				.min_width(120)
+				.on_update(|number_input| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalRadius(number_input.value.unwrap_or(0.) as i32)).into())
+				.widget_holder(),
+		],
+	});
+
+	widgets
 }
 
 impl LayoutHolder for PathTool {
@@ -208,6 +306,15 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		let proportional_edit_trigger = CheckboxInput::new(self.options.proportional_editing_enabled)
+			// TODO: Replace placeholder icon with a proper one
+			.icon("Empty12px")
+			.tooltip("Proportional Editing")
+			.tooltip_shortcut(action_keys!(PathToolMessageDiscriminant::ToggleProportionalEditing))
+			.on_update(|checkbox| PathToolMessage::UpdateOptions(PathOptionsUpdate::ProportionalEditingEnabled(checkbox.checked)).into())
+			.widget_holder();
+		let proportional_edit_dropdown = PopoverButton::new().popover_layout(proportional_edit_options(&self.options)).widget_holder();
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
@@ -217,8 +324,11 @@ impl LayoutHolder for PathTool {
 				colinear_handle_checkbox,
 				related_seperator,
 				colinear_handles_label,
-				unrelated_seperator,
+				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
+				unrelated_seperator,
+				proportional_edit_trigger,
+				proportional_edit_dropdown,
 			],
 		}]))
 	}
@@ -234,7 +344,86 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 					self.options.path_overlay_mode = overlay_mode_type;
 					responses.add(OverlaysMessage::Draw);
 				}
+				PathOptionsUpdate::ProportionalEditingEnabled(enabled) => {
+					self.options.proportional_editing_enabled = enabled;
+
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::ProportionalFalloffType(falloff_type) => {
+					self.options.proportional_falloff_type = falloff_type.clone();
+					self.tool_data
+						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+
+					if self.options.proportional_editing_enabled {
+						let proportional_data = ProportionalEditData {
+							center: self.tool_data.proportional_edit_center.unwrap_or_default(),
+							affected_points: self.tool_data.proportional_affected_points.clone(),
+							falloff_type: self.options.proportional_falloff_type,
+							radius: self.options.proportional_radius,
+						};
+						responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
+					}
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::ProportionalRadius(radius) => {
+					self.options.proportional_radius = radius.max(1).min(1000);
+					self.tool_data
+						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+					responses.add(OverlaysMessage::Draw);
+				}
 			},
+			ToolMessage::Path(PathToolMessage::ToggleProportionalEditing) => {
+				self.options.proportional_editing_enabled ^= true;
+
+				responses.add(OverlaysMessage::Draw);
+			}
+			ToolMessage::Path(PathToolMessage::AdjustProportionalRadius) => {
+				if self.options.proportional_editing_enabled {
+					// Get the current radius and scroll delta
+					let current_radius = self.options.proportional_radius as f64;
+					let scroll_delta = (tool_data.input.mouse.scroll_delta.y as f64).min(1.0).max(-1.0);
+
+					//base factor that determines how aggressive the scaling is
+					let base_factor = 0.15; //  sensitivity
+
+					// Calculate new radius using logarithmic scaling
+					let scale_factor = if scroll_delta > 0.0 {
+						1.0 + (base_factor * scroll_delta)
+					} else {
+						1.0 / (1.0 + (base_factor * -scroll_delta))
+					};
+
+					let new_radius = (current_radius * scale_factor).round() as i32;
+
+					// Ensure the radius stays within reasonable bounds
+					self.options.proportional_radius = new_radius.max(1);
+
+					// Store previous affected points
+					let previous_affected = self.tool_data.proportional_affected_points.clone();
+
+					self.tool_data
+						.calculate_proportional_affected_points(&tool_data.document, &tool_data.shape_editor, self.options.proportional_radius, self.options.proportional_falloff_type);
+					if self.tool_data.is_dragging {
+						// Reset points no longer affected
+						self.tool_data.reset_removed_points(&previous_affected, tool_data.document, tool_data.shape_editor, responses);
+
+						// Update current points
+						self.tool_data.update_proportional_positions(tool_data.document, tool_data.shape_editor, responses);
+					}
+					// Create updated proportional edit data
+					let proportional_data = ProportionalEditData {
+						center: self.tool_data.proportional_edit_center.unwrap_or_default(),
+						affected_points: self.tool_data.proportional_affected_points.clone(),
+						falloff_type: self.options.proportional_falloff_type,
+						radius: self.options.proportional_radius,
+					};
+
+					// Send the updated data to any active GRS operation
+					responses.add(TransformLayerMessage::UpdateProportionalEditData(proportional_data));
+
+					responses.add(OverlaysMessage::Draw);
+				}
+			}
 			ToolMessage::Path(PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
 				tool_data.shape_editor.close_selected_path(tool_data.document, responses);
@@ -273,6 +462,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				ClosePath,
+				ToggleProportionalEditing,
+				AdjustProportionalRadius,
+				GRS
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -284,6 +476,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 				SwapSelectedHandles,
+				AdjustProportionalRadius,
+				GRS
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
@@ -295,6 +489,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 				Escape,
 				RightClick,
+				AdjustProportionalRadius,
 			),
 			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -378,6 +573,13 @@ struct PathToolData {
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
 	snapping_axis: Option<Axis>,
+
+	proportional_edit_center: Option<DVec2>,
+	proportional_affected_points: HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>,
+	initial_point_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+	total_delta: DVec2,
+	is_dragging: bool,
+
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
 }
@@ -494,6 +696,9 @@ impl PathToolData {
 		extend_selection: bool,
 		direct_insert_without_sliding: bool,
 		lasso_select: bool,
+
+		_tool_options: &PathToolOptions,
+
 		handle_drag_from_anchor: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
@@ -558,6 +763,7 @@ impl PathToolData {
 				}
 
 				self.start_dragging_point(selected_points, input, document, shape_editor);
+
 				responses.add(OverlaysMessage::Draw);
 			}
 			PathToolFsmState::Dragging(self.dragging_state)
@@ -594,6 +800,141 @@ impl PathToolData {
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 			PathToolFsmState::Drawing { selection_shape }
+		}
+	}
+	fn calculate_proportional_affected_points(&mut self, document: &DocumentMessageHandler, shape_editor: &ShapeState, radius: i32, proportional_falloff_type: ProportionalFalloffType) {
+		self.proportional_affected_points.clear();
+
+		let radius = radius as f64;
+
+		// If initial positions haven't been stored yet, do it now
+		if self.initial_point_positions.is_empty() {
+			self.store_initial_point_positions(document);
+		}
+
+		// Collect all selected points with their initial world positions
+		let mut selected_points_world_pos = Vec::new();
+		let selected_point_ids: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+		// Extract initial positions of selected points
+		for (_layer, points_map) in &self.initial_point_positions {
+			for &point_id in &selected_point_ids {
+				if let Some(&world_pos) = points_map.get(&point_id) {
+					selected_points_world_pos.push(world_pos);
+				}
+			}
+		}
+
+		// Find all affected points using initial positions
+		for (layer, points_map) in &self.initial_point_positions {
+			let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+			let mut layer_affected_points = Vec::new();
+
+			// Check each point in the layer
+			for (&point_id, &initial_position) in points_map {
+				if !selected_points.contains(&point_id) {
+					// Find the smallest distance to any selected point using initial positions
+					let min_distance = selected_points_world_pos
+						.iter()
+						.map(|&selected_pos| initial_position.distance(selected_pos))
+						.filter(|&distance| distance <= radius)
+						.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+					if let Some(distance) = min_distance {
+						let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
+						layer_affected_points.push((point_id, factor));
+					}
+				}
+			}
+
+			if !layer_affected_points.is_empty() {
+				self.proportional_affected_points.insert(*layer, layer_affected_points);
+			}
+		}
+
+		// // find all the affected points ( THIS WORKS BASED ON CURRENT AFFECTED POINT LOCATION -> ORIGINAL SELECTED POINT LOCATION FOR FALLOFF CALCULATION)
+		// for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+		// 	if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+		// 		let transform = document.metadata().transform_to_document(layer);
+		// 		let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+		// 		let mut layer_affected_points = Vec::new();
+
+		// 		//  each point in the layer
+		// 		for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+		// 			if !selected_points.contains(&point_id) {
+		// 				let position = vector_data.point_domain.positions()[i];
+		// 				let world_pos = transform.transform_point2(position);
+
+		// 				// Find the smallest distance to any selected point
+		// 				let min_distance = selected_points_world_pos
+		// 					.iter()
+		// 					.map(|&selected_pos| world_pos.distance(selected_pos)) // Difference here
+		// 					.filter(|&distance| distance <= radius)
+		// 					.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+		// 				if let Some(distance) = min_distance {
+		// 					let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
+		// 					layer_affected_points.push((point_id, factor));
+		// 				}
+		// 			}
+		// 		}
+
+		// 		if !layer_affected_points.is_empty() {
+		// 			self.proportional_affected_points.insert(layer, layer_affected_points);
+		// 		}
+		// 	}
+		// }
+
+		// Find all affected points using initial positions  ( THIS WORKS BASED ON INITIAL AFFECTED POINT LOCATION -> ORIGINAL SELECTED POINT LOCATION FOR FALLOFF CALCULATION)
+		for (layer, points_map) in &self.initial_point_positions {
+			let selected_points: HashSet<_> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+			let mut layer_affected_points = Vec::new();
+
+			// Check each point in the layer
+			for (&point_id, &initial_position) in points_map {
+				if !selected_points.contains(&point_id) {
+					// Find the smallest distance to any selected point using initial positions
+					let min_distance = selected_points_world_pos
+						.iter()
+						.map(|&selected_pos| initial_position.distance(selected_pos))
+						.filter(|&distance| distance <= radius)
+						.min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+					if let Some(distance) = min_distance {
+						let factor = self.calculate_falloff_factor(distance, radius, proportional_falloff_type);
+						layer_affected_points.push((point_id, factor));
+					}
+				}
+			}
+
+			if !layer_affected_points.is_empty() {
+				self.proportional_affected_points.insert(*layer, layer_affected_points);
+			}
+		}
+	}
+	fn store_initial_point_positions(&mut self, document: &DocumentMessageHandler) {
+		self.initial_point_positions.clear();
+
+		// Store positions of all points in selected layers
+		for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+				let transform = document.metadata().transform_to_document(layer);
+				let mut layer_points = HashMap::new();
+
+				// Store all point positions in document space
+				for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+					let position = vector_data.point_domain.positions()[i];
+					let world_pos = transform.transform_point2(position);
+					layer_points.insert(point_id, world_pos);
+				}
+
+				if !layer_points.is_empty() {
+					self.initial_point_positions.insert(layer, layer_points);
+				}
+			}
 		}
 	}
 
@@ -822,6 +1163,62 @@ impl PathToolData {
 
 		self.snapping_axis = None;
 	}
+	fn reset_removed_points(&self, previous: &HashMap<LayerNodeIdentifier, Vec<(PointId, f64)>>, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>) {
+		for (layer, prev_points) in previous {
+			let current_points = self
+				.proportional_affected_points
+				.get(layer)
+				.map(|v| v.iter().map(|(id, _)| *id).collect::<HashSet<_>>())
+				.unwrap_or_default();
+
+			for (point_id, _) in prev_points {
+				if !current_points.contains(point_id) {
+					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
+						let inverse_transform = document.metadata().transform_to_document(*layer).inverse();
+						let target_layer_pos = inverse_transform.transform_point2(*initial_doc_pos);
+
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
+							if let Some(current_layer_pos) = vector_data.point_domain.position_from_id(*point_id) {
+								let delta = target_layer_pos - current_layer_pos;
+								shape_editor.move_anchor(*point_id, &vector_data, delta, *layer, None, responses);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	fn update_proportional_positions(&self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>) {
+		// Get a set of all selected point IDs across all layers
+		let selected_points: HashSet<PointId> = shape_editor.selected_points().filter_map(|point| point.as_anchor()).collect();
+
+		for (layer, affected_points) in &self.proportional_affected_points {
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(*layer) {
+				let transform = document.metadata().transform_to_document(*layer);
+				let inverse_transform = transform.inverse();
+
+				for (point_id, factor) in affected_points {
+					// Skip this point if it's in the selected_points set
+					if selected_points.contains(point_id) {
+						continue;
+					}
+
+					if let Some(initial_doc_pos) = self.initial_point_positions.get(layer).and_then(|pts| pts.get(point_id)) {
+						// Calculate displacement from initial position to target position
+						let displacement_document_space = self.total_delta * (*factor);
+						let target_document_space_position = *initial_doc_pos + displacement_document_space;
+						let target_layer_space_position = inverse_transform.transform_point2(target_document_space_position);
+
+						// Get current position and calculate delta
+						if let Some(current_layer_space_position) = vector_data.point_domain.position_from_id(*point_id) {
+							let delta = target_layer_space_position - current_layer_space_position;
+							shape_editor.move_anchor(*point_id, &vector_data, delta, *layer, None, responses);
+						}
+					}
+				}
+			}
+		}
+	}
 
 	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector_data: &VectorData) -> Option<DVec2> {
 		let other_point = vector_data.other_point(segment, point)?;
@@ -850,7 +1247,9 @@ impl PathToolData {
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
+		tool_options: &PathToolOptions,
 	) {
+		self.is_dragging = true;
 		// First check if selection is not just a single handle point
 		let selected_points = shape_editor.selected_points();
 		let single_handle_selected = selected_points.count() == 1
@@ -890,6 +1289,7 @@ impl PathToolData {
 		let mut was_alt_dragging = false;
 
 		if self.snapping_axis.is_none() {
+			self.total_delta += snapped_delta;
 			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 				// Checking which direction the dragging begins
 				self.alt_dragging_from_anchor = true;
@@ -932,6 +1332,7 @@ impl PathToolData {
 				self.alt_clicked_on_anchor = false;
 			}
 			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, responses);
+
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -940,8 +1341,32 @@ impl PathToolData {
 				Axis::Y => DVec2::new(0., unsnapped_delta.y),
 				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
+
+			self.total_delta += unsnapped_delta;
 			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, false, opposite, responses);
+
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
+		}
+		// Accumulate total displacement
+
+		if tool_options.proportional_editing_enabled && !self.proportional_affected_points.is_empty() {
+			self.update_proportional_positions(document, shape_editor, responses);
+			// for (&layer, affected_points) in &self.proportional_affected_points {
+			// 	if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+			// 		let inverse_transform = document.metadata().transform_to_document(layer).inverse();
+
+			// 		for &(point_id, factor) in affected_points {
+			// 			// Scale the delta by the influence factor
+			// 			let scaled_delta = (snapped_delta * factor) / (tool_options.proportional_falloff_strength as f64);
+
+			// 			// Convert to document space
+			// 			let document_delta = document_to_viewport.inverse().transform_vector2(scaled_delta);
+
+			// 			// Apply the movement
+			// 			shape_editor.move_anchor(point_id, &vector_data, inverse_transform.transform_vector2(document_delta), layer, None, responses);
+			// 		}
+			// 	}
+			// }
 		}
 
 		if snap_angle && self.snapping_axis.is_some() {
@@ -952,6 +1377,38 @@ impl PathToolData {
 				self.stop_snap_along_axis(shape_editor, document, input, responses);
 				self.start_snap_along_axis(shape_editor, document, input, responses);
 			}
+		}
+	}
+	fn calculate_falloff_factor(&self, distance: f64, radius: f64, falloff_type: ProportionalFalloffType) -> f64 {
+		// Handle edge cases
+		if distance >= radius {
+			return 0.0;
+		}
+		if distance <= 0.001 {
+			return 1.0;
+		}
+
+		let normalized_distance = distance / radius;
+
+		match falloff_type {
+			ProportionalFalloffType::Constant => 1.0,
+			ProportionalFalloffType::Linear => 1.0 - normalized_distance,
+			ProportionalFalloffType::Sharp => (1.0 - normalized_distance).powi(2),
+			ProportionalFalloffType::Root => (1.0 - normalized_distance).sqrt(),
+			ProportionalFalloffType::Sphere => (1.0 - normalized_distance.powi(2)).sqrt(),
+			// ProportionalFalloffType::Smooth => 3.0 * normalized_distance.powi(2) - 2.0 * normalized_distance.powi(3),
+			// Modified Smooth: starts higher at distance=0 and provides a more gradual falloff
+			ProportionalFalloffType::Smooth => 1.0 - (normalized_distance.powi(2) * (3.0 - 2.0 * normalized_distance)),
+			ProportionalFalloffType::Random => {
+				// Seed RNG with position-based value for consistency
+				let seed = (distance * 1000.0) as u64;
+				let mut rng = ChaCha20Rng::seed_from_u64(seed);
+				rng.random_range(0.0..1.0) * (1.0 - normalized_distance)
+			}
+			// ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 10.0 + 0.1),
+			// Modified InverseSquare: reduces the steepness and maximum value
+			// ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 3.0 + 0.5),
+			ProportionalFalloffType::InverseSquare => 1.0 / (normalized_distance.powi(2) * 2.0 + 1.0),
 		}
 	}
 }
@@ -976,7 +1433,6 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				// TODO: find the segment ids of which the selected points are a part of
-
 				match tool_options.path_overlay_mode {
 					PathOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1054,7 +1510,14 @@ impl Fsm for PathToolFsmState {
 					}
 					Self::Dragging(_) => {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+						if tool_options.proportional_editing_enabled && tool_data.is_dragging {
+							if let Some(center) = tool_data.proportional_edit_center {
+								let viewport_center = document.metadata().document_to_viewport.transform_point2(center);
+								let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * tool_options.proportional_radius as f64).x;
 
+								overlay_context.circle(viewport_center, radius_viewport, Some(COLOR_OVERLAY_TRANSPARENT), Some(COLOR_OVERLAY_BLUE));
+							}
+						}
 						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
@@ -1114,7 +1577,34 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
-			(Self::InsertPoint, PathToolMessage::GRS { key: _ }) => PathToolFsmState::InsertPoint,
+			(_, PathToolMessage::GRS { key }) => {
+				// Calculate proportional editing center and affected points
+				tool_data.initial_point_positions.clear();
+				tool_data.proportional_edit_center = shape_editor.selection_center(document);
+				tool_data.calculate_proportional_affected_points(document, shape_editor, tool_options.proportional_radius, tool_options.proportional_falloff_type);
+
+				// Create proportional data to pass to transform layer
+				let mut proportional_data = Some(ProportionalEditData {
+					center: tool_data.proportional_edit_center.unwrap_or_default(),
+					affected_points: tool_data.proportional_affected_points.clone(),
+					falloff_type: tool_options.proportional_falloff_type,
+					radius: tool_options.proportional_radius,
+				});
+				if !tool_options.proportional_editing_enabled {
+					proportional_data = None;
+				}
+				// Dispatch transform operation with proportional data
+				responses.add(TransformLayerMessage::BeginGRS {
+					transform_type: match key {
+						Key::KeyG => TransformType::Grab,
+						Key::KeyR => TransformType::Rotate,
+						Key::KeyS => TransformType::Scale,
+						_ => TransformType::Grab,
+					},
+					proportional_edit_data: proportional_data,
+				});
+				self
+			}
 			// Mouse down
 			(
 				_,
@@ -1141,6 +1631,7 @@ impl Fsm for PathToolFsmState {
 					extend_selection,
 					direct_insert_without_sliding,
 					lasso_select,
+					tool_options,
 					handle_drag_from_anchor,
 				)
 			}
@@ -1247,6 +1738,7 @@ impl Fsm for PathToolFsmState {
 						tool_action_data.document,
 						input,
 						responses,
+						tool_options,
 					);
 				}
 
@@ -1351,6 +1843,8 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				tool_data.is_dragging = false;
+				tool_data.initial_point_positions.clear();
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
@@ -1363,6 +1857,8 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::Drawing { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				tool_data.is_dragging = false;
+				tool_data.initial_point_positions.clear();
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
@@ -1390,6 +1886,8 @@ impl Fsm for PathToolFsmState {
 						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Lasso(&tool_data.lasso_polygon), select_kind),
 					}
 				}
+				tool_data.is_dragging = false;
+				tool_data.initial_point_positions.clear();
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
@@ -1448,7 +1946,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.snapping_axis.is_some() {
 					tool_data.snapping_axis = None;
 				}
-
+				tool_data.is_dragging = false;
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);

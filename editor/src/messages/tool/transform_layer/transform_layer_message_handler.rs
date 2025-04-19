@@ -1,17 +1,19 @@
-use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, SLOWING_DIVISOR};
+use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_TRANSPARENT, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::tool_messages::path_tool::ProportionalEditData;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
-use graphene_std::vector::{VectorData, VectorModificationType};
+use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
@@ -49,6 +51,10 @@ pub struct TransformLayerMessageHandler {
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
+
+	// Path tool ( proportional edit )
+	initial_positions: HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+	proportional_edit_data: Option<ProportionalEditData>,
 }
 
 impl TransformLayerMessageHandler {
@@ -58,6 +64,53 @@ impl TransformLayerMessageHandler {
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
 		self.transform_operation.hints(responses, self.local);
+	}
+	pub fn calculate_total_transformation_vp(&self, document_to_viewport: DAffine2) -> DAffine2 {
+		let pivot_vp = document_to_viewport.transform_point2(self.local_pivot);
+		let local_axis_transform_angle = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).to_angle();
+
+		match self.transform_operation {
+			TransformOperation::Grabbing(translation) => {
+				let total_delta_doc = translation.to_dvec(self.initial_transform, self.increments);
+				let translate = DAffine2::from_translation(document_to_viewport.transform_vector2(total_delta_doc));
+				if self.local {
+					let resolved_angle = if local_axis_transform_angle > 0. {
+						local_axis_transform_angle
+					} else {
+						local_axis_transform_angle - std::f64::consts::PI
+					};
+					DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
+				} else {
+					translate
+				}
+			}
+			TransformOperation::Rotating(rotation) => {
+				let total_angle = rotation.to_f64(self.increments);
+				let pivot_transform = DAffine2::from_translation(pivot_vp);
+				pivot_transform * DAffine2::from_angle(total_angle) * pivot_transform.inverse()
+			}
+			TransformOperation::Scaling(scale) => {
+				let total_scale_vec = scale.to_dvec(self.increments);
+				let pivot_transform = DAffine2::from_translation(pivot_vp);
+				if self.local {
+					pivot_transform
+						* DAffine2::from_angle(local_axis_transform_angle)
+						* DAffine2::from_scale(total_scale_vec)
+						* DAffine2::from_angle(-local_axis_transform_angle)
+						* pivot_transform.inverse()
+				} else {
+					pivot_transform * DAffine2::from_scale(total_scale_vec) * pivot_transform.inverse()
+				}
+			}
+			TransformOperation::None => DAffine2::IDENTITY,
+		}
+	}
+
+	// Apply proportional editing with the given transformation
+	fn apply_proportional_editing(&mut self, total_transformation_vp: DAffine2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if let Some(prop_data) = &self.proportional_edit_data {
+			apply_proportional_edit(&self.initial_positions, prop_data, total_transformation_vp, &document.network_interface, document.metadata(), responses);
+		}
 	}
 }
 
@@ -105,7 +158,70 @@ fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: 
 		_ => edge,
 	}
 }
+fn apply_proportional_edit(
+	initial_positions: &HashMap<LayerNodeIdentifier, HashMap<PointId, DVec2>>,
+	proportional_data: &ProportionalEditData,
+	total_transformation_vp: DAffine2,
+	network_interface: &NodeNetworkInterface,
+	document_metadata: &DocumentMetadata,
+	responses: &mut VecDeque<Message>,
+) {
+	// Iterate through layers that have initial positions
+	for (layer, layer_initial_positions) in initial_positions {
+		// Get current vector data for position comparison
+		let Some(current_vector_data) = network_interface.compute_modified_vector(*layer) else {
+			continue;
+		};
 
+		let viewspace = document_metadata.transform_to_viewport(*layer);
+
+		// Create a lookup map for affected points
+		let affected_points_map: HashMap<PointId, f64> = proportional_data
+			.affected_points
+			.get(layer)
+			.map(|points| points.iter().map(|(id, factor)| (*id, *factor)).collect())
+			.unwrap_or_default();
+
+		// Process ALL points that were stored in initial positions
+		for (point_id, initial_pos_local) in layer_initial_positions {
+			let Some(current_pos_local) = current_vector_data.point_domain.position_from_id(*point_id) else {
+				continue;
+			};
+
+			// Transform initial position to viewport space
+			let initial_pos_vp = viewspace.transform_point2(*initial_pos_local);
+
+			if let Some(factor) = affected_points_map.get(point_id) {
+				// AFFECTED POINT: Apply proportional transformation
+				let target_pos_fully_transformed_vp = total_transformation_vp.transform_point2(initial_pos_vp);
+				let full_intended_delta_vp = target_pos_fully_transformed_vp - initial_pos_vp;
+
+				let scaled_intended_delta_vp = full_intended_delta_vp * (*factor);
+
+				let target_pos_proportional_vp = initial_pos_vp + scaled_intended_delta_vp;
+				let target_pos_proportional_local = viewspace.inverse().transform_point2(target_pos_proportional_vp);
+
+				let final_delta_local = target_pos_proportional_local - current_pos_local;
+
+				if final_delta_local.length_squared() > 1e-10 {
+					let modification_type = VectorModificationType::ApplyPointDelta {
+						point: *point_id,
+						delta: final_delta_local,
+					};
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				}
+			} else {
+				// NOT AFFECTED: Reset to original position
+				let reset_delta = *initial_pos_local - current_pos_local;
+
+				if reset_delta.length_squared() > 1e-10 {
+					let modification_type = VectorModificationType::ApplyPointDelta { point: *point_id, delta: reset_delta };
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				}
+			}
+		}
+	}
+}
 fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	for &layer in selected_layers {
 		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -207,8 +323,31 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		};
 
 		match message {
+			TransformLayerMessage::UpdateProportionalEditData(proportional_data) => {
+				// Only update if we're in a transform operation with proportional editing
+				if let Some(current_proportional_data) = &mut self.proportional_edit_data {
+					// Update all fields from the new data
+					current_proportional_data.center = proportional_data.center;
+					current_proportional_data.affected_points = proportional_data.affected_points;
+					current_proportional_data.falloff_type = proportional_data.falloff_type;
+					current_proportional_data.radius = proportional_data.radius;
+
+					// TODO: Essentialy a hack to trigger redraw for updated values
+					responses.add(TransformLayerMessage::PointerMove {
+						slow_key: SLOW_KEY,
+						increments_key: INCREMENTS_KEY,
+					});
+					responses.add(OverlaysMessage::Draw);
+				}
+			}
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
+				if let Some(proportional_data) = &self.proportional_edit_data {
+					let viewport_center = document.metadata().document_to_viewport.transform_point2(proportional_data.center);
+					let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * proportional_data.radius as f64).x;
+
+					overlay_context.circle(viewport_center, radius_viewport, Some(COLOR_OVERLAY_TRANSPARENT), Some(COLOR_OVERLAY_BLUE));
+				}
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -345,6 +484,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				}
 
 				if final_transform {
+					self.proportional_edit_data = None;
+					self.initial_positions.clear();
 					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 				}
 			}
@@ -382,7 +523,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					increments_key: INCREMENTS_KEY,
 				});
 			}
-			TransformLayerMessage::BeginGRS { transform_type } => {
+			TransformLayerMessage::BeginGRS {
+				transform_type,
+				proportional_edit_data,
+			} => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				if (using_path_tool && selected_points.is_empty())
 					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
@@ -391,11 +535,36 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				{
 					return;
 				}
-
 				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
 					selected.original_transforms.clear();
 					return;
 				};
+				self.proportional_edit_data = proportional_edit_data;
+				self.initial_positions.clear();
+
+				if let Some(_prop_data) = &self.proportional_edit_data {
+					// Store positions of ALL points in selected layers, not just affected points
+					for &layer in &selected_layers {
+						if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+							let layer_initial_positions = self.initial_positions.entry(layer).or_default();
+
+							// Get all selected points in this layer to exclude them
+							let selected_points: HashSet<PointId> = shape_editor
+								.selected_points_in_layer(layer)
+								.map(|points| points.iter().filter_map(|p| p.as_anchor()).collect())
+								.unwrap_or_default();
+
+							// Store point positions ONLY for unselected points
+							for (i, &point_id) in vector_data.point_domain.ids().iter().enumerate() {
+								// Skip points that are selected by the user
+								if !selected_points.contains(&point_id) {
+									let pos_local = vector_data.point_domain.positions()[i];
+									layer_initial_positions.insert(point_id, pos_local);
+								}
+							}
+						}
+					}
+				}
 
 				if let [point] = selected_points.as_slice() {
 					if matches!(point, ManipulatorPointId::Anchor(_)) {
@@ -403,7 +572,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let handle1_length = handle1.length(&vector_data);
 							let handle2_length = handle2.length(&vector_data);
 
-							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+							// Check if proportional editing is enabled
+							let proportional_editing_enabled = self.proportional_edit_data.is_some();
+
+							// Only restrict R and S operations if proportional editing is NOT enabled
+							if !proportional_editing_enabled
+								&& ((handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool))
+							{
 								// G should work for this point but not R and S
 								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
 									selected.original_transforms.clear();
@@ -476,7 +651,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.operation_count = 0;
 					responses.add(ToolMessage::UpdateHints);
 				}
-
+				self.proportional_edit_data = None;
+				self.initial_positions.clear();
 				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
 			}
 			TransformLayerMessage::ConstrainX => {
@@ -612,13 +788,75 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						}
 					};
 				}
+				let pivot_vp = document_to_viewport.transform_point2(self.local_pivot);
+				let local_axis_transform_angle = (self.layer_bounding_box.0[1] - self.layer_bounding_box.0[0]).to_angle();
+				let total_transformation_vp = match self.transform_operation {
+					TransformOperation::Grabbing(translation) => {
+						let total_delta_doc = translation.to_dvec(self.initial_transform, self.increments);
+						let translate = DAffine2::from_translation(document_to_viewport.transform_vector2(total_delta_doc));
+						if self.local {
+							let resolved_angle = if local_axis_transform_angle > 0. {
+								local_axis_transform_angle
+							} else {
+								local_axis_transform_angle - std::f64::consts::PI
+							};
+							DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
+						} else {
+							translate
+						}
+					}
+					TransformOperation::Rotating(rotation) => {
+						let total_angle = rotation.to_f64(self.increments);
+						let pivot_transform = DAffine2::from_translation(pivot_vp);
+						pivot_transform * DAffine2::from_angle(total_angle) * pivot_transform.inverse()
+					}
+					TransformOperation::Scaling(scale) => {
+						let total_scale_vec = scale.to_dvec(self.increments);
+						let pivot_transform = DAffine2::from_translation(pivot_vp);
+						if self.local {
+							pivot_transform
+								* DAffine2::from_angle(local_axis_transform_angle)
+								* DAffine2::from_scale(total_scale_vec)
+								* DAffine2::from_angle(-local_axis_transform_angle)
+								* pivot_transform.inverse()
+						} else {
+							pivot_transform * DAffine2::from_scale(total_scale_vec) * pivot_transform.inverse()
+						}
+					}
+					TransformOperation::None => DAffine2::IDENTITY,
+				};
 
+				// selected.apply_transformation(total_transformation_vp, Some(self.transform_operation));
+
+				if let Some(prop_data) = &self.proportional_edit_data {
+					apply_proportional_edit(&self.initial_positions, prop_data, total_transformation_vp, &document.network_interface, document.metadata(), responses);
+				}
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
 				let target_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
+			TransformLayerMessage::TypeDecimalPoint => {
+				let pivot = document_to_viewport.transform_point2(self.local_pivot);
+				if self.transform_operation.can_begin_typing() {
+					self.transform_operation.grs_typed(
+						self.typing.type_decimal_point(),
+						&mut selected,
+						self.increments,
+						self.local,
+						self.layer_bounding_box,
+						document_to_viewport,
+						pivot,
+						self.initial_transform,
+					);
+
+					// Apply proportional editing
+					let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+					self.apply_proportional_editing(total_transformation_vp, document, responses);
+				}
+			}
+
 			TransformLayerMessage::TypeBackspace => {
 				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.typing.digits.is_empty() && self.typing.negative {
@@ -636,22 +874,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					pivot,
 					self.initial_transform,
 				);
+
+				// Apply proportional editing
+				let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+				self.apply_proportional_editing(total_transformation_vp, document, responses);
 			}
-			TransformLayerMessage::TypeDecimalPoint => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
-				if self.transform_operation.can_begin_typing() {
-					self.transform_operation.grs_typed(
-						self.typing.type_decimal_point(),
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						pivot,
-						self.initial_transform,
-					)
-				}
-			}
+
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
 					let pivot = document_to_viewport.transform_point2(self.local_pivot);
@@ -664,7 +892,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 						document_to_viewport,
 						pivot,
 						self.initial_transform,
-					)
+					);
+
+					// Calculate total transformation and apply proportional editing
+					let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+					self.apply_proportional_editing(total_transformation_vp, document, responses);
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
@@ -682,7 +914,11 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					document_to_viewport,
 					pivot,
 					self.initial_transform,
-				)
+				);
+
+				// Apply proportional editing
+				let total_transformation_vp = self.calculate_total_transformation_vp(document_to_viewport);
+				self.apply_proportional_editing(total_transformation_vp, document, responses);
 			}
 		}
 	}
@@ -703,6 +939,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				TypeNegate,
 				ConstrainX,
 				ConstrainY,
+				UpdateProportionalEditData
 			);
 			common.extend(active);
 		}
