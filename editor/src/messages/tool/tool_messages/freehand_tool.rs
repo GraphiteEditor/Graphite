@@ -345,6 +345,8 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 mod test_freehand {
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_width;
+	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
 	use graphene_core::vector::VectorData;
@@ -679,6 +681,56 @@ mod test_freehand {
 			initial_segment_count + expected_new_segments,
 			"Expected {} total segments after append",
 			initial_segment_count + expected_new_segments
+		);
+	}
+
+	#[tokio::test]
+	async fn test_line_weight_affects_stroke_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_tool(ToolType::Freehand).await;
+
+		let custom_line_weight = 5.0;
+		editor
+			.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::LineWeight(custom_line_weight))))
+			.await;
+
+		let points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+
+		let first_point = points[0];
+		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(first_point.x, first_point.y, ModifierKeys::empty()).await;
+
+		for &point in &points[1..] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		}
+
+		let last_point = points[points.len() - 1];
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: last_point,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let stroke_width = get_stroke_width(layer, &document.network_interface);
+
+		assert!(stroke_width.is_some(), "Stroke width should be available on the created path");
+
+		assert_eq!(
+			stroke_width.unwrap(),
+			custom_line_weight,
+			"Stroke width should match the custom line weight (expected {}, got {})",
+			custom_line_weight,
+			stroke_width.unwrap()
 		);
 	}
 }
