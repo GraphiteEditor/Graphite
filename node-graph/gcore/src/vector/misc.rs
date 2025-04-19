@@ -20,6 +20,7 @@ pub enum BooleanOperation {
 	#[icon("BooleanSubtractFront")]
 	SubtractFront,
 
+	/// Output shape contains points which are contained by the front shape but *not* by the back shape.
 	#[icon("BooleanSubtractBack")]
 	SubtractBack,
 
@@ -32,7 +33,7 @@ pub enum BooleanOperation {
 
 pub trait ChoiceTypeStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
 	const WIDGET_HINT: ChoiceWidgetHint;
-	fn list() -> &'static [&'static [(Self, Option<&'static str>)]];
+	fn list() -> &'static [&'static [(Self, crate::registry::VariantMetadata)]];
 }
 
 pub enum ChoiceWidgetHint {

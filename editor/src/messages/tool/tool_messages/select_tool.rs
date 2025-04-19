@@ -181,9 +181,14 @@ impl SelectTool {
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
 		let list = <BooleanOperation as graphene_core::vector::misc::ChoiceTypeStatic>::list();
-		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, icon)| {
-			IconButton::new(icon.unwrap(), 24)
-				.tooltip(operation.to_string())
+		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, info)| {
+			let mut tooltip = info.label.to_string();
+			if let Some(doc) = info.docstring.as_deref() {
+				tooltip.push_str("\n\n");
+				tooltip.push_str(doc);
+			}
+			IconButton::new(info.icon.as_deref().unwrap(), 24)
+				.tooltip(tooltip)
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
 					let group_folder_type = GroupFolderType::BooleanOperation(*operation);

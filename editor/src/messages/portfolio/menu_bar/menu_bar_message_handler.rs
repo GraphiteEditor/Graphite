@@ -418,9 +418,9 @@ impl LayoutHolder for MenuBarMessageHandler {
 								list.into_iter()
 									.map(|i| i.into_iter())
 									.flatten()
-									.map(move |(operation, icon)| MenuBarEntry {
-										label: operation.to_string(),
-										icon: Some(icon.unwrap().into()),
+									.map(move |(operation, info)| MenuBarEntry {
+										label: info.label.to_string(),
+										icon: info.icon.as_ref().map(|i| i.to_string()),
 										action: MenuBarEntry::create_action(move |_| {
 											let group_folder_type = GroupFolderType::BooleanOperation(*operation);
 											DocumentMessage::GroupSelectedLayers { group_folder_type }.into()

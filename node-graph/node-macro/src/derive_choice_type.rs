@@ -120,11 +120,25 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 				.iter()
 				.map(|v| {
 					let vname = &v.name;
-					let icon = match &v.basic_item.icon {
-						Some(s) => quote! { Some(#s) },
+					let vname_str = v.name.to_string();
+					let label = &v.basic_item.label;
+					let docstring = match &v.basic_item.description {
+						Some(s) => {
+							let s = s.trim();
+							quote! { Some(::alloc::borrow::Cow::Borrowed(#s)) }
+						}
 						None => quote! { None },
 					};
-					quote! { ( #name::#vname, #icon), }
+					let icon = match &v.basic_item.icon {
+						Some(s) => quote! { Some(::alloc::borrow::Cow::Borrowed(#s)) },
+						None => quote! { None },
+					};
+					quote! { ( #name::#vname, #crate_name::registry::VariantMetadata {
+						name: ::alloc::borrow::Cow::Borrowed(#vname_str),
+						label: ::alloc::borrow::Cow::Borrowed(#label),
+						docstring: #docstring,
+						icon: #icon,
+					}), }
 				})
 				.collect::<Vec<_>>();
 			quote! { &[ #(#items)* ], }
@@ -153,7 +167,7 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 
 		impl #crate_name::vector::misc::ChoiceTypeStatic for #name {
 			const WIDGET_HINT: #crate_name::vector::misc::ChoiceWidgetHint = #crate_name::vector::misc::ChoiceWidgetHint::#widget_hint;
-			fn list() -> &'static [&'static [(Self, Option<&'static str>)]] {
+			fn list() -> &'static [&'static [(Self, #crate_name::registry::VariantMetadata)]] {
 				&[ #(#group)* ]
 			}
 		}

@@ -16,6 +16,7 @@ use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
+use graphene_core::registry::VariantMetadata;
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
@@ -93,7 +94,7 @@ trait ChoiceSource {
 	fn into_index(v: Self::Value) -> Option<u32>;
 	fn into_tagged_value(v: Self::Value) -> TaggedValue;
 	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value>;
-	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = (Self::Value, String, String, Option<String>)>>;
+	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>>;
 	fn widget_hint() -> graphene_core::vector::misc::ChoiceWidgetHint;
 }
 
@@ -116,10 +117,8 @@ where
 		let v_ref: Option<&Self::Value> = tv.map(|tv| tv.try_into().ok()).flatten();
 		v_ref.map(|vr| *vr)
 	}
-	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = (Self::Value, String, String, Option<String>)>> {
-		T::list()
-			.into_iter()
-			.map(|cat| cat.into_iter().map(|(item, icon)| (*item, format!("{item:?}"), format!("{item}"), icon.map(String::from))))
+	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>> {
+		T::list().into_iter().map(|i| i.into_iter())
 	}
 	fn widget_hint() -> graphene_core::vector::misc::ChoiceWidgetHint {
 		T::WIDGET_HINT
@@ -150,12 +149,18 @@ fn choice_widget<E: ChoiceSource>(list: E, document_node: &DocumentNode, node_id
 
 fn radio_buttons<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> WidgetHolder {
 	let items = E::enumerate()
+		.into_iter()
 		.flatten()
-		.map(|(item, valstr, label, icon)| {
-			let red = RadioEntryData::new(valstr)
-				.on_update(update_value(move |_| E::into_tagged_value(item), node_id, index))
+		.map(|(item, var_meta)| {
+			let red = RadioEntryData::new(var_meta.name.as_ref())
+				.on_update(update_value(move |_| E::into_tagged_value(*item), node_id, index))
 				.on_commit(commit_value);
-			let red = if let Some(icon) = icon { red.icon(icon).tooltip(label) } else { red.label(label) };
+			let red = match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
+				(None, None) => red.label(var_meta.label.as_ref()),
+				(None, Some(doc)) => red.label(var_meta.label.as_ref()).tooltip(doc),
+				(Some(icon), None) => red.icon(icon).tooltip(var_meta.label.as_ref()),
+				(Some(icon), Some(doc)) => red.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
+			};
 			red
 		})
 		.collect();
@@ -165,12 +170,14 @@ fn radio_buttons<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, curre
 
 fn dropdown<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> WidgetHolder {
 	let items = E::enumerate()
+		.into_iter()
 		.map(|category| {
 			category
-				.map(|(item, valstr, label, _)| {
-					MenuListEntry::new(valstr)
-						.label(label)
-						.on_update(update_value(move |_| E::into_tagged_value(item), node_id, index))
+				.into_iter()
+				.map(|(item, var_meta)| {
+					MenuListEntry::new(var_meta.name.as_ref())
+						.label(var_meta.label.as_ref())
+						.on_update(update_value(move |_| E::into_tagged_value(*item), node_id, index))
 						.on_commit(commit_value)
 				})
 				.collect()
