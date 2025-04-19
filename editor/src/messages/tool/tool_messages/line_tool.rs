@@ -473,7 +473,11 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100., 50.) }).await;
-		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: (30. as f64).to_radians() }).await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: (30. as f64).to_radians(),
+			})
+			.await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			let document = editor.active_document();

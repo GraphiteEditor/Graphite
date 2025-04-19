@@ -1059,7 +1059,11 @@ mod test_transform_layer {
 
 		// Rotate the document view (45 degrees)
 		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
-		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: (45. as f64).to_radians() }).await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: (45. as f64).to_radians(),
+			})
+			.await;
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
