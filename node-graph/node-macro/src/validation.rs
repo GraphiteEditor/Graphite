@@ -9,6 +9,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		// Add more validators here as needed
 		validate_implementations_for_generics,
 		validate_primary_input_expose,
+		validate_min_max,
 	];
 
 	for validator in validators {
@@ -16,6 +17,73 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	}
 
 	Ok(())
+}
+
+fn validate_min_max(parsed: &ParsedNodeFn) {
+	for field in &parsed.fields {
+		match field {
+			ParsedField::Regular {
+				number_hard_max,
+				number_hard_min,
+				number_soft_max,
+				number_soft_min,
+				pat_ident,
+				..
+			} => {
+				match (number_soft_min, number_hard_min) {
+					(Some(soft_min), Some(hard_min)) => {
+						let soft_min_value: f64 = soft_min.base10_parse().unwrap_or_default();
+						let hard_min_value: f64 = hard_min.base10_parse().unwrap_or_default();
+						if soft_min_value == hard_min_value {
+							emit_error!(
+								pat_ident.span(),
+								"Unnecessary #[soft_min] attribute on `{}` as #[hard_min] equals to it.",
+								pat_ident.ident;
+								help = "You can safely remove the #[soft_min] attribute from this field.";
+								note = "The #[hard_min] also limits the range to same without #[soft_min]",
+							);
+						} else if soft_min_value < hard_min_value {
+							emit_error!(
+								pat_ident.span(),
+								"The #[soft_min] attribute exists on `{}` and is lower than #[hard_min].",
+								pat_ident.ident;
+								help = "You probably meant to reverse the two macros";
+								note = "Allowing the possible range in slider to be more than #[hard_min] doesn't make sense",
+							);
+						}
+					}
+					_ => (),
+				}
+
+				match (number_soft_max, number_hard_max) {
+					(Some(soft_max), Some(hard_max)) => {
+						let soft_max_value: f64 = soft_max.base10_parse().unwrap_or_default();
+						let hard_max_value: f64 = hard_max.base10_parse().unwrap_or_default();
+						if soft_max_value == hard_max_value {
+							emit_error!(
+								pat_ident.span(),
+								"Unnecessary #[soft_max] attribute on `{}` as #[hard_max] equals to it.",
+								pat_ident.ident;
+								help = "You can safely remove the #[soft_max] attribute from this field.";
+								note = "The #[hard_max] also limits the range to same without #[soft_max]",
+							);
+						} else if soft_max_value < hard_max_value {
+							emit_error!(
+								pat_ident.span(),
+								"The #[soft_max] attribute exists on `{}` and is greater than #[hard_max].",
+								pat_ident.ident;
+								help = "You probably meant to reverse the two macros";
+								note = "Allowing the possible range in slider to be more than #[hard_max] doesn't make sense",
+							);
+						}
+					}
+					_ => (),
+				}
+			}
+
+			_ => (),
+		}
+	}
 }
 
 fn validate_primary_input_expose(parsed: &ParsedNodeFn) {

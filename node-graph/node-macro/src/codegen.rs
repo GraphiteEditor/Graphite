@@ -135,10 +135,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { number_soft_min, number_hard_min, .. } => match (number_soft_min, number_hard_min) {
-				(Some(soft_min), None) => quote!(Some(#soft_min)),
+				(Some(soft_min), _) => quote!(Some(#soft_min)),
 				(None, Some(hard_min)) => quote!(Some(#hard_min)),
 				(None, None) => quote!(None),
-				(Some(soft_min), Some(hard_min)) => quote!(#graphene_core::num_traits::clamp_min(#soft_min, #hard_min)),
 			},
 			_ => quote!(None),
 		})
@@ -147,10 +146,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { number_soft_max, number_hard_max, .. } => match (number_soft_max, number_hard_max) {
-				(Some(soft_max), None) => quote!(Some(#soft_max)),
+				(Some(soft_max), _) => quote!(Some(#soft_max)),
 				(None, Some(hard_max)) => quote!(Some(#hard_max)),
 				(None, None) => quote!(None),
-				(Some(soft_max), Some(hard_max)) => quote!(#graphene_core::num_traits::clamp_max(#soft_max, #hard_max)),
 			},
 			_ => quote!(None),
 		})
