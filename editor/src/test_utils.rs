@@ -231,6 +231,15 @@ impl EditorTestUtils {
 		})
 		.await;
 	}
+	pub async fn draw_spline(&mut self, points: &[DVec2]) {
+		self.select_tool(ToolType::Spline).await;
+
+		for &point in points {
+			self.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+
+		self.press(Key::Enter, ModifierKeys::empty()).await;
+	}
 	pub async fn get_selected_layer(&mut self) -> Option<LayerNodeIdentifier> {
 		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
 	}
