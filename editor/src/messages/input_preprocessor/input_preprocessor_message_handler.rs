@@ -5,6 +5,7 @@ use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use glam::DVec2;
 
+#[derive(ExtractField)]
 pub struct InputPreprocessorMessageData {
 	pub keyboard_platform: KeyboardPlatformLayout,
 }

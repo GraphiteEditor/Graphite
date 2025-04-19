@@ -2,6 +2,7 @@ use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArt
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct DialogMessageData<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,

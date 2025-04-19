@@ -35,6 +35,7 @@ use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
+#[derive(ExtractField)]
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,

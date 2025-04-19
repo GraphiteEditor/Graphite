@@ -24,7 +24,7 @@ use graphene_core::*;
 use renderer::Quad;
 use std::cmp::Ordering;
 
-#[derive(Debug)]
+#[derive(Debug, ExtractField)]
 pub struct NodeGraphHandlerData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],

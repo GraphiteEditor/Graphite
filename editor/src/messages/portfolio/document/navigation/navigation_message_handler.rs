@@ -13,6 +13,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 
+#[derive(ExtractField)]
 pub struct NavigationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub breadcrumb_network_path: &'a [NodeId],

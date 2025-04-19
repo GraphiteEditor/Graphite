@@ -3,6 +3,7 @@
 mod as_message;
 mod combined_message_attrs;
 mod discriminant;
+mod extract_fields;
 mod helper_structs;
 mod helpers;
 mod hierarchical_tree;
@@ -13,6 +14,7 @@ mod widget_builder;
 use crate::as_message::derive_as_message_impl;
 use crate::combined_message_attrs::combined_message_attrs_impl;
 use crate::discriminant::derive_discriminant_impl;
+use crate::extract_fields::derive_extract_field_impl;
 use crate::helper_structs::AttrInnerSingleString;
 use crate::hint::derive_hint_impl;
 use crate::transitive_child::derive_transitive_child_impl;
@@ -286,6 +288,11 @@ pub fn derive_widget_builder(input_item: TokenStream) -> TokenStream {
 #[proc_macro_derive(HierarchicalTree)]
 pub fn derive_hierarchical_tree(input_item: TokenStream) -> TokenStream {
 	TokenStream::from(generate_hierarchical_tree(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+}
+
+#[proc_macro_derive(ExtractField)]
+pub fn derive_extract_field(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_extract_field_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 #[cfg(test)]

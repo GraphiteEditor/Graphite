@@ -11,6 +11,7 @@ use graphene_core::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
 
+#[derive(ExtractField)]
 pub struct ToolMessageData<'a> {
 	pub document_id: DocumentId,
 	pub document: &'a mut DocumentMessageHandler,
@@ -325,5 +326,15 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 		list.extend(self.transform_layer_handler.actions());
 
 		list
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn print_field() {
+		ToolMessageData::print_field_types();
 	}
 }

@@ -28,6 +28,7 @@ use interpreted_executor::dynamic_executor::IntrospectError;
 use std::sync::Arc;
 use std::vec;
 
+#[derive(ExtractField)]
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,

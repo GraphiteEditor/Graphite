@@ -1,6 +1,7 @@
 use super::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct OverlaysMessageData<'a> {
 	pub overlays_visible: bool,
 	pub ipp: &'a InputPreprocessorMessageHandler,
