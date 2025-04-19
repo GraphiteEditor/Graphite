@@ -1399,7 +1399,7 @@ async fn posterize<T: Adjust<Color>>(
 	)]
 	mut input: T,
 	#[default(4)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	levels: u32,
 ) -> T {
 	input.adjust(|color| {

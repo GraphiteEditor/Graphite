@@ -134,14 +134,22 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let number_min_values: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular { number_min: Some(number_min), .. } => quote!(Some(#number_min)),
+			ParsedField::Regular { number_soft_min, number_hard_min, .. } => match (number_soft_min, number_hard_min) {
+				(Some(soft_min), _) => quote!(Some(#soft_min)),
+				(None, Some(hard_min)) => quote!(Some(#hard_min)),
+				(None, None) => quote!(None),
+			},
 			_ => quote!(None),
 		})
 		.collect();
 	let number_max_values: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular { number_max: Some(number_max), .. } => quote!(Some(#number_max)),
+			ParsedField::Regular { number_soft_max, number_hard_max, .. } => match (number_soft_max, number_hard_max) {
+				(Some(soft_max), _) => quote!(Some(#soft_max)),
+				(None, Some(hard_max)) => quote!(Some(#hard_max)),
+				(None, None) => quote!(None),
+			},
 			_ => quote!(None),
 		})
 		.collect();
@@ -172,6 +180,33 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		ParsedField::Node { pat_ident, .. } => {
 			let name = &pat_ident.ident;
 			quote! { let #name = &self.#name; }
+		}
+	});
+
+	let min_max_args = fields.iter().map(|field| match field {
+		ParsedField::Regular {
+			pat_ident,
+			number_hard_min,
+			number_hard_max,
+			..
+		} => {
+			let name = &pat_ident.ident;
+			let mut tokens = quote!();
+			if let Some(min) = number_hard_min {
+				tokens.extend(quote! {
+					let #name = #graphene_core::num_traits::clamp_min(#name, #graphene_core::num_traits::FromPrimitive::from_f64(#min).unwrap());
+				});
+			}
+
+			if let Some(max) = number_hard_max {
+				tokens.extend(quote! {
+					let #name = #graphene_core::num_traits::clamp_max(#name, #graphene_core::num_traits::FromPrimitive::from_f64(#max).unwrap());
+				});
+			}
+			tokens
+		}
+		ParsedField::Node { .. } => {
+			quote!()
 		}
 	});
 
@@ -237,6 +272,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		fn eval(&'n self, __input: #input_type) -> Self::Output {
 			Box::pin(async move {
 				#(#eval_args)*
+				#(#min_max_args)*
 				self::#fn_name(__input #(, #field_names)*) #await_keyword
 			})
 		}

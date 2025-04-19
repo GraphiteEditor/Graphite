@@ -389,7 +389,7 @@ where
 async fn round_corners(
 	_: impl Ctx,
 	source: VectorDataTable,
-	#[min(0.)]
+	#[hard_min(0.)]
 	#[default(10.)]
 	radius: PixelLength,
 	#[range((0., 1.))]
@@ -498,7 +498,7 @@ async fn spatial_merge_by_distance(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(0.1)]
-	#[min(0.0001)]
+	#[hard_min(0.0001)]
 	distance: f64,
 ) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
@@ -708,7 +708,7 @@ async fn remove_handles(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(10.)]
-	#[min(0.)]
+	#[soft_min(0.)]
 	max_handle_distance: f64,
 ) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
@@ -1315,7 +1315,7 @@ async fn poisson_disk_points(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(10.)]
-	#[min(0.01)]
+	#[hard_min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
 ) -> VectorDataTable {

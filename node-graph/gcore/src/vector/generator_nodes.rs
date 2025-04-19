@@ -1,6 +1,7 @@
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
+use crate::graphene_core::num_traits::FromPrimitive;
 use crate::registry::types::Angle;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
@@ -97,11 +98,11 @@ fn rectangle<T: CornerRadius>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon<T: AsU64>(
+fn regular_polygon<T: AsU64 + std::cmp::PartialOrd + FromPrimitive>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
-	#[min(3.)]
+	#[hard_min(3.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[default(50)] radius: f64,
@@ -112,11 +113,11 @@ fn regular_polygon<T: AsU64>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn star<T: AsU64>(
+fn star<T: AsU64 + std::cmp::PartialOrd + FromPrimitive>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[default(50)] radius: f64,
