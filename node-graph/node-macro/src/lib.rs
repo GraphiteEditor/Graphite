@@ -10,7 +10,7 @@ use syn::{
 };
 
 mod codegen;
-mod derive_choicetype;
+mod derive_choice_type;
 mod parsing;
 mod validation;
 
@@ -23,7 +23,7 @@ mod validation;
 /// Doc comments on a variant become tooltip text.
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
 pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
-	TokenStream::from(derive_choicetype::derive_choicetype_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+	TokenStream::from(derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.

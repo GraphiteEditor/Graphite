@@ -3,7 +3,7 @@ use quote::quote;
 use syn::parse::Parse;
 use syn::{Attribute, DeriveInput, Expr, LitStr, Meta};
 
-pub fn derive_choicetype_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
+pub fn derive_choice_type_impl(input_item: TokenStream) -> syn::Result<TokenStream> {
 	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
 
 	match input.data {
