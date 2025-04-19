@@ -2,18 +2,14 @@ use crate::application::Editor;
 use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
-use crate::messages::portfolio::document::graph_operation::transform_utils;
-use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
-use crate::test_utils::test_prelude::LayerNodeIdentifier;
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use graph_craft::document::DocumentNode;
-use graph_craft::document::value::TaggedValue;
 use graphene_core::InputAccessor;
 use graphene_core::raster::color::Color;
 
@@ -233,37 +229,6 @@ impl EditorTestUtils {
 			parent_and_insert_index: None,
 		})
 		.await;
-	}
-	pub async fn draw_spline(&mut self, points: &[DVec2]) {
-		self.select_tool(ToolType::Spline).await;
-
-		for &point in points {
-			self.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
-		}
-
-		self.press(Key::Enter, ModifierKeys::empty()).await;
-	}
-	pub async fn get_rectangle_dimensions(&mut self, layer: LayerNodeIdentifier) -> Option<(f64, f64)> {
-		let rectangle_node_id = {
-			let network_interface = &self.active_document().network_interface;
-			ModifyInputsContext::locate_node_in_layer_chain("Rectangle", layer, network_interface)?
-		};
-
-		let document_node = self.active_document().network_interface.document_network().nodes.get(&rectangle_node_id)?;
-		let width = if let Some(&TaggedValue::F64(width)) = document_node.inputs[1].as_value() { width } else { 1.0 };
-		let height = if let Some(&TaggedValue::F64(height)) = document_node.inputs[2].as_value() { height } else { 1.0 };
-		Some((width, height))
-	}
-
-	pub async fn get_layer_transform(&mut self, layer: LayerNodeIdentifier) -> Option<DAffine2> {
-		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, &self.active_document().network_interface)?;
-
-		let document_node = self.active_document().network_interface.document_network().nodes.get(&transform_node_id)?;
-		Some(transform_utils::get_current_transform(&document_node.inputs))
-	}
-
-	pub fn get_viewport_position(&self) -> DVec2 {
-		self.active_document().metadata().document_to_viewport.translation
 	}
 }
 
