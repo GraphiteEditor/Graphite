@@ -194,6 +194,7 @@ tagged_value! {
 	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
 	// ImaginateController(ImaginateController),
 	Fill(graphene_core::vector::style::Fill),
+	VecFill(Vec<graphene_core::vector::style::Fill>),
 	Stroke(graphene_core::vector::style::Stroke),
 	F64Array4([f64; 4]),
 	// TODO: Eventually remove this alias document upgrade code
@@ -449,6 +450,12 @@ mod fake_hash {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.0.to_bits().hash(state);
 			self.1.hash(state)
+		}
+	}
+	impl<T: FakeHash, U: FakeHash> FakeHash for (T, U) {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.0.hash(state);
+			self.1.hash(state);
 		}
 	}
 }

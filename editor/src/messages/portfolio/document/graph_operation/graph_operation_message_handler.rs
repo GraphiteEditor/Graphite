@@ -36,6 +36,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		let network_interface = data.network_interface;
 
 		match message {
+			GraphOperationMessage::FillRaster { layer, fills, start_pos, tolerance } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.fill_raster(fills, start_pos, tolerance);
+				}
+			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.fill_set(fill);
