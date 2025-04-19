@@ -437,7 +437,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Alternatively, this can be interpreted as limiting the angle that the miter can form.
 	/// When the limit is exceeded, no manipulator group will be returned.
 	/// This value should be greater than 0. If not, the default of 4 will be used.
-	pub(crate) fn miter_line_join(&self, other: &Subpath<PointId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<PointId>> {
+	pub fn miter_line_join(&self, other: &Subpath<PointId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<PointId>> {
 		let miter_limit = match miter_limit {
 			Some(miter_limit) if miter_limit > f64::EPSILON => miter_limit,
 			_ => 4.,
@@ -491,7 +491,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// - The `out_handle` for the last manipulator group of `self`
 	/// - The new manipulator group to be added
 	/// - The `in_handle` for the first manipulator group of `other`
-	pub(crate) fn round_line_join(&self, other: &Subpath<PointId>, center: DVec2) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
+	pub fn round_line_join(&self, other: &Subpath<PointId>, center: DVec2) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 

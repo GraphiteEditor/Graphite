@@ -1,3 +1,4 @@
+use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
@@ -979,7 +980,8 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 		subpath.apply_transform(vector_data_transform);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let mut subpath_out = subpath.offset(
+		let mut subpath_out = offset_subpath(
+			&subpath,
 			-distance,
 			match line_join {
 				LineJoin::Miter => Join::Miter(Some(miter_limit)),

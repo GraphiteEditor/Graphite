@@ -1,4 +1,5 @@
 use super::*;
+use crate::BezierHandles;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{Cap, Join, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
@@ -307,7 +308,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	// at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
 	/// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
 	/// Assumes that the Subpaths represents simple Bezier segments, and clips the Subpaths at the last intersection of the first Subpath, and first intersection of the last Subpath.
-	fn clip_simple_subpaths(subpath1: &Subpath<PointId>, subpath2: &Subpath<PointId>) -> Option<(Subpath<PointId>, Subpath<PointId>)> {
+	pub fn clip_simple_subpaths(subpath1: &Subpath<PointId>, subpath2: &Subpath<PointId>) -> Option<(Subpath<PointId>, Subpath<PointId>)> {
 		// Split the first subpath at its last intersection
 		let intersections1 = subpath1.subpath_intersections(subpath2, None, None);
 		if intersections1.is_empty() {
@@ -366,6 +367,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			.map(|bezier| bezier.offset(distance))
 			.filter(|subpath| subpath.len() >= 2) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
 			.collect::<Vec<Subpath<PointId>>>();
+
 		let mut drop_common_point = vec![true; self.len()];
 
 		// Clip or join consecutive Subpaths
