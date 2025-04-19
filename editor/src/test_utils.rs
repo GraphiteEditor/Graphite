@@ -46,7 +46,7 @@ impl EditorTestUtils {
 
 			let viewport_resolution = glam::UVec2::ONE;
 			exector
-				.submit_current_node_graph_evaluation(document, viewport_resolution)
+				.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default())
 				.expect("submit_current_node_graph_evaluation failed");
 			runtime.run().await;
 
@@ -217,6 +217,10 @@ impl EditorTestUtils {
 		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
 	}
 
+	pub async fn select_secondary_color(&mut self, color: Color) {
+		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+	}
+
 	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(PortfolioMessage::PasteImage {
 			name: None,
@@ -225,6 +229,15 @@ impl EditorTestUtils {
 			parent_and_insert_index: None,
 		})
 		.await;
+	}
+	pub async fn draw_spline(&mut self, points: &[DVec2]) {
+		self.select_tool(ToolType::Spline).await;
+
+		for &point in points {
+			self.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+
+		self.press(Key::Enter, ModifierKeys::empty()).await;
 	}
 }
 

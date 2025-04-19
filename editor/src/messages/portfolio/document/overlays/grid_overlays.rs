@@ -36,7 +36,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color));
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
 		}
 	}
 }
@@ -105,7 +105,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
-		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color));
+		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
 	}
 
 	for (tan, multiply) in [(tan_a, -1.), (tan_b, 1.)] {
@@ -119,7 +119,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
 			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
 			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color));
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
 		}
 	}
 }
@@ -166,6 +166,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&grid_color),
+			None,
 			Some(1.),
 			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length() - 1.),
 			None,
@@ -175,7 +176,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 
 pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	match document.snapping_state.grid.grid_type {
-		GridType::Rectangle { spacing } => {
+		GridType::Rectangular { spacing } => {
 			if document.snapping_state.grid.dot_display {
 				grid_overlay_rectangular_dot(document, overlay_context, spacing)
 			} else {
@@ -237,14 +238,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			RadioInput::new(vec![
 				RadioEntryData::new("rectangular")
 					.label("Rectangular")
-					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGLE)),
+					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGULAR)),
 				RadioEntryData::new("isometric")
 					.label("Isometric")
 					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::ISOMETRIC)),
 			])
 			.min_width(200)
 			.selected_index(Some(match grid.grid_type {
-				GridType::Rectangle { .. } => 0,
+				GridType::Rectangular { .. } => 0,
 				GridType::Isometric { .. } => 1,
 			}))
 			.widget_holder(),
@@ -290,7 +291,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	});
 
 	match grid.grid_type {
-		GridType::Rectangle { spacing } => widgets.push(LayoutGroup::Row {
+		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::Row {
 			widgets: vec![
 				TextLabel::new("Spacing").table_align(true).widget_holder(),
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -299,7 +300,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.unit(" px")
 					.min(0.)
 					.min_width(98)
-					.on_update(update_origin(grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.x)))
+					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(spacing.y))
@@ -307,7 +308,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.unit(" px")
 					.min(0.)
 					.min_width(98)
-					.on_update(update_origin(grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.y)))
+					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
 					.widget_holder(),
 			],
 		}),

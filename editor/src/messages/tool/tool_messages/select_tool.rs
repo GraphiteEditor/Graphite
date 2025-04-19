@@ -2,8 +2,8 @@
 
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
-	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT, SELECTION_DRAG_ANGLE,
+	SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -594,7 +594,7 @@ impl Fsm for SelectToolFsmState {
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;
-					bounding_box_manager.render_overlays(&mut overlay_context);
+					bounding_box_manager.render_overlays(&mut overlay_context, true);
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -656,7 +656,7 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, angle);
+				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
 
 				// Update compass rose
 				tool_data.compass_rose.refresh_position(document);
@@ -696,7 +696,7 @@ impl Fsm for SelectToolFsmState {
 								&format!("#{}", color_string)
 							};
 							let line_center = tool_data.line_center;
-							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color));
+							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 						}
 					}
 				}
@@ -707,22 +707,23 @@ impl Fsm for SelectToolFsmState {
 					let angle = -mouse_position.angle_to(DVec2::X);
 					let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-					let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-						.unwrap()
-						.with_alpha(0.25)
-						.to_rgba_hex_srgb();
-					other.insert(0, '#');
-					let other = other.as_str();
-
 					let extension = tool_data.drag_current - tool_data.drag_start;
 					let origin = compass_center - extension;
 					let viewport_diagonal = input.viewport_bounds.size().length();
 
-					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
+					let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
 					let perp = edge.perp();
 
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE));
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other));
+					let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
+						(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
+					} else {
+						(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
+					};
+					let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+					perp_color.insert(0, '#');
+					let perp_color = perp_color.as_str();
+					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
+					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
 				}
 
 				// Check if the tool is in selection mode
@@ -1269,18 +1270,6 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				tool_data.axis_align = false;
-				tool_data.snap_manager.cleanup(responses);
-				responses.add_front(response);
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
 			(SelectToolFsmState::Dragging { has_dragged, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
@@ -1337,44 +1326,25 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
+			(
+				SelectToolFsmState::ResizingBounds
+				| SelectToolFsmState::SkewingBounds { .. }
+				| SelectToolFsmState::RotatingBounds
+				| SelectToolFsmState::Dragging { .. }
+				| SelectToolFsmState::DraggingPivot,
+				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
+			) => {
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
+				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
-
+				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
+				if !matches!(self, SelectToolFsmState::DraggingPivot) {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.original_transforms.clear();
+					}
 				}
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
-			(SelectToolFsmState::RotatingBounds, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				responses.add(response);
-
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
-				}
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
-				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
-					true => DocumentMessage::AbortTransaction,
-					false => DocumentMessage::EndTransaction,
-				};
-				responses.add(response);
-
-				tool_data.snap_manager.cleanup(responses);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1528,11 +1498,10 @@ impl Fsm for SelectToolFsmState {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
-					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup({
-						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()];
+						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()];
 						if *selection == NestedSelectionBehavior::Shallowest {
-							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen Selection")]);
+							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen")]);
 						}
 						hints
 					}),
@@ -1542,6 +1511,8 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 						HintInfo::keys([Key::Control], "Lasso").prepend_plus(),
 					]),
+					// TODO: Make all the following hints only appear if there is at least one selected layer
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
@@ -1577,7 +1548,7 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
 					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
-					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
+					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend")])
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}

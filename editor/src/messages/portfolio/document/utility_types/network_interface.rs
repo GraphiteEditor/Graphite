@@ -654,7 +654,7 @@ impl NodeNetworkInterface {
 							let input_type = self.input_type(&InputConnector::node(*node_id, iterator_index), network_path).0;
 							// Value inputs are stored as concrete, so they are compared to the nested type. Node inputs are stored as fn, so they are compared to the entire type.
 							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
-							node_io.inputs[iterator_index].clone().nested_type() == input_type || node_io.inputs[iterator_index] == input_type
+							node_io.inputs[iterator_index].clone().nested_type() == &input_type || node_io.inputs[iterator_index] == input_type
 						});
 						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
 					})
@@ -818,6 +818,7 @@ impl NodeNetworkInterface {
 							FrontendGraphOutput {
 								data_type,
 								name: import_name,
+								description: String::new(),
 								resolved_type: Some(format!("{input_type:?} from {type_source:?}")),
 								connected_to,
 							},
@@ -902,6 +903,7 @@ impl NodeNetworkInterface {
 						FrontendGraphInput {
 							data_type: frontend_data_type,
 							name: export_name,
+							description: String::new(),
 							resolved_type: input_type.map(|(export_type, source)| format!("{export_type:?} from {source:?}")),
 							valid_types: self.valid_input_types(&InputConnector::Export(*export_index), network_path).iter().map(|ty| ty.to_string()).collect(),
 							connected_to,
@@ -1132,6 +1134,14 @@ impl NodeNetworkInterface {
 		value.as_str()
 	}
 
+	pub fn input_description(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&str> {
+		let Some(value) = self.input_metadata(node_id, index, "input_description", network_path) else {
+			log::error!("Could not get input_description for node {node_id} index {index}");
+			return None;
+		};
+		value.as_str()
+	}
+
 	pub fn input_properties_row(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&PropertiesRow> {
 		self.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
@@ -1145,16 +1155,7 @@ impl NodeNetworkInterface {
 		input_row.input_data.get(field)
 	}
 
-	// Use frontend display name instead
-	fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get node_metadata in display_name");
-			return "".to_string();
-		};
-		node_metadata.persistent_metadata.display_name.clone()
-	}
-
-	pub fn frontend_display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
+	pub fn display_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		let is_layer = self
 			.node_metadata(node_id, network_path)
 			.expect("Could not get persistent node metadata in untitled_layer_label")
@@ -1165,15 +1166,28 @@ impl NodeNetworkInterface {
 			return "".to_string();
 		};
 
-		if self.display_name(node_id, network_path).is_empty() {
+		let display_name = if let Some(node_metadata) = self.node_metadata(node_id, network_path) {
+			node_metadata.persistent_metadata.display_name.clone()
+		} else {
+			log::error!("Could not get node_metadata in display_name");
+			String::new()
+		};
+
+		if display_name.is_empty() {
 			if is_layer && *reference == Some("Merge".to_string()) {
 				"Untitled Layer".to_string()
 			} else {
-				reference.clone().unwrap_or("Untitled node".to_string())
+				reference.clone().unwrap_or("Untitled Node".to_string())
 			}
 		} else {
-			self.display_name(node_id, network_path)
+			display_name
 		}
+	}
+
+	pub fn description(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
+		self.get_node_definition(network_path, *node_id)
+			.and_then(|node_definition| Some(node_definition.description.to_string()))
+			.unwrap_or_default()
 	}
 
 	pub fn is_locked(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -1472,7 +1486,7 @@ impl NodeNetworkInterface {
 			_ => {}
 		};
 
-		let name = self.frontend_display_name(node_id, network_path);
+		let name = self.display_name(node_id, network_path);
 
 		div.set_text_content(Some(&name));
 
@@ -3415,9 +3429,9 @@ impl NodeNetworkInterface {
 			return;
 		};
 		if insert_index == -1 {
-			node_metadata.persistent_metadata.input_properties.push(input_name.into());
+			node_metadata.persistent_metadata.input_properties.push((input_name, "TODO").into());
 		} else {
-			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, input_name.into());
+			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, (input_name, "TODO").into());
 		}
 
 		// Clear the reference to the nodes definition
@@ -6159,7 +6173,7 @@ pub enum WidgetOverride {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesRow {
 	/// A general datastore than can store key value pairs of any types for any input
-	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Object variant
+	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Value::Object variant
 	pub input_data: HashMap<String, Value>,
 	// An input can override a widget, which would otherwise be automatically generated from the type
 	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
@@ -6168,20 +6182,21 @@ pub struct PropertiesRow {
 
 impl Default for PropertiesRow {
 	fn default() -> Self {
-		"".into()
+		("", "TODO").into()
 	}
 }
 
-impl From<&str> for PropertiesRow {
-	fn from(input_name: &str) -> Self {
-		PropertiesRow::with_override(input_name, WidgetOverride::None)
+impl From<(&str, &str)> for PropertiesRow {
+	fn from(input_name_and_description: (&str, &str)) -> Self {
+		PropertiesRow::with_override(input_name_and_description.0, input_name_and_description.1, WidgetOverride::None)
 	}
 }
 
 impl PropertiesRow {
-	pub fn with_override(input_name: &str, widget_override: WidgetOverride) -> Self {
+	pub fn with_override(input_name: &str, input_description: &str, widget_override: WidgetOverride) -> Self {
 		let mut input_data = HashMap::new();
 		input_data.insert("input_name".to_string(), Value::String(input_name.to_string()));
+		input_data.insert("input_description".to_string(), Value::String(input_description.to_string()));
 		match widget_override {
 			WidgetOverride::None => PropertiesRow { input_data, widget_override: None },
 			WidgetOverride::Hidden => PropertiesRow {
@@ -6351,7 +6366,7 @@ impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMe
 			.as_ref()
 			.and_then(|reference| resolve_document_node_type(reference))
 			.map(|definition| definition.node_template.persistent_node_metadata.input_properties.clone())
-			.unwrap_or(old.input_names.into_iter().map(|name| name.as_str().into()).collect());
+			.unwrap_or(old.input_names.into_iter().map(|name| (name.as_str(), "TODO").into()).collect());
 
 		DocumentNodePersistentMetadata {
 			reference: old.reference,

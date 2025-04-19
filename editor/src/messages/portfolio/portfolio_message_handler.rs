@@ -5,6 +5,7 @@ use super::spreadsheet::SpreadsheetMessageHandler;
 use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
+use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
@@ -27,8 +28,6 @@ use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
-use interpreted_executor::dynamic_executor::IntrospectError;
-use std::sync::Arc;
 use std::vec;
 
 pub struct PortfolioMessageData<'a> {
@@ -36,6 +35,9 @@ pub struct PortfolioMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
+	pub reset_node_definitions_on_open: bool,
+	pub timing_information: TimingInformation,
+	pub animation: &'a AnimationMessageHandler,
 }
 
 #[derive(Debug, Default)]
@@ -51,6 +53,8 @@ pub struct PortfolioMessageHandler {
 	pub selection_mode: SelectionMode,
 	/// The spreadsheet UI allows for instance data to be previewed.
 	pub spreadsheet: SpreadsheetMessageHandler,
+	device_pixel_ratio: Option<f64>,
+	pub reset_node_definitions_on_open: bool,
 }
 
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
@@ -60,6 +64,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			preferences,
 			current_tool,
 			message_logging_verbosity,
+			reset_node_definitions_on_open,
+			timing_information,
+			animation,
 		} = data;
 
 		match message {
@@ -73,6 +80,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.menu_bar_message_handler.has_selection_history = (false, false);
 				self.menu_bar_message_handler.spreadsheet_view_open = self.spreadsheet.spreadsheet_view_open;
 				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
+				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					self.menu_bar_message_handler.has_active_document = true;
@@ -102,6 +110,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							executor: &mut self.executor,
 							current_tool,
 							preferences,
+							device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -118,6 +127,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						executor: &mut self.executor,
 						current_tool,
 						preferences,
+						device_pixel_ratio: self.device_pixel_ratio.unwrap_or(1.),
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -310,6 +320,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let _ = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						ipp.viewport_bounds.size().as_uvec2(),
+						timing_information,
 						inspect_node,
 						true,
 					);
@@ -404,6 +415,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				});
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
+			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
+				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
+				responses.add(MenuBarMessage::SendLayout);
+			}
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id,
 				document_name,
@@ -415,8 +430,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this document upgrade code
 				// This big code block contains lots of hacky code for upgrading old documents to the new format
 
-				// It can be helpful to temporarily set `replace_implementations_from_definition` to true if it's desired to upgrade a piece of artwork to use fresh copies of all nodes
-				let replace_implementations_from_definition = document_serialized_content.contains("node_output_index");
+				// Upgrade a document being opened to use fresh copies of all nodes
+				let replace_implementations_from_definition = reset_node_definitions_on_open || document_serialized_content.contains("node_output_index");
 				// Upgrade layer implementation from https://github.com/GraphiteEditor/Graphite/pull/1946 (see also `fn fix_nodes()` in `main.rs` of Graphene CLI)
 				let upgrade_from_before_returning_nested_click_targets =
 					document_serialized_content.contains("graphene_core::ConstructLayerNode") || document_serialized_content.contains("graphene_core::AddArtboardNode");
@@ -801,9 +816,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 					}
 
+					// Upgrade the Mirror node to add the `keep_original` boolean input
+					if reference == "Mirror" && inputs_count == 3 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+					}
+
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" && upgrade_from_before_returning_nested_click_targets {
-						let label = document.network_interface.frontend_display_name(node_id, network_path);
+						let label = document.network_interface.display_name(node_id, network_path);
 						document
 							.network_interface
 							.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
@@ -1102,6 +1133,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.active_panel = panel;
 				responses.add(DocumentMessage::SetActivePanel { active_panel: self.active_panel });
 			}
+			PortfolioMessage::SetDevicePixelRatio { ratio } => {
+				self.device_pixel_ratio = Some(ratio);
+				responses.add(OverlaysMessage::Draw);
+			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
@@ -1172,11 +1207,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					});
 				}
 			}
+			PortfolioMessage::SubmitActiveGraphRender => {
+				if let Some(document_id) = self.active_document_id {
+					responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+				}
+			}
 			PortfolioMessage::SubmitGraphRender { document_id, ignore_hash } => {
 				let inspect_node = self.inspect_node_id();
 				let result = self.executor.submit_node_graph_evaluation(
 					self.documents.get_mut(&document_id).expect("Tried to render non-existent document"),
 					ipp.viewport_bounds.size().as_uvec2(),
+					timing_information,
 					inspect_node,
 					ignore_hash,
 				);
@@ -1198,7 +1239,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
-					document.update_document_widgets(responses);
+					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
 				}
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
@@ -1257,10 +1298,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 impl PortfolioMessageHandler {
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
 		Self { executor, ..Default::default() }
-	}
-
-	pub async fn introspect_node(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync>, IntrospectError> {
-		self.executor.introspect_node(node_path).await
 	}
 
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
@@ -1365,16 +1402,19 @@ impl PortfolioMessageHandler {
 
 	/// Get the id of the node that should be used as the target for the spreadsheet
 	pub fn inspect_node_id(&self) -> Option<NodeId> {
+		// Spreadsheet not open, skipping
 		if !self.spreadsheet.spreadsheet_view_open {
-			warn!("Spreadsheet not open, skipping…");
 			return None;
 		}
+
 		let document = self.documents.get(&self.active_document_id?)?;
 		let selected_nodes = document.network_interface.selected_nodes().0;
+
+		// Selected nodes != 1, skipping
 		if selected_nodes.len() != 1 {
-			warn!("selected nodes != 1, skipping…");
 			return None;
 		}
+
 		selected_nodes.first().copied()
 	}
 }

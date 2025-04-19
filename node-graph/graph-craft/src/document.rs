@@ -30,61 +30,6 @@ fn return_true() -> bool {
 	true
 }
 
-// TODO: Eventually remove this document upgrade code
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(untagged))]
-enum NodeInputVersions {
-	OldNodeInput(OldNodeInput),
-	NodeInput(NodeInput),
-}
-
-// TODO: Eventually remove this document upgrade code
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-pub enum OldNodeInput {
-	/// A reference to another node in the same network from which this node can receive its input.
-	Node { node_id: NodeId, output_index: usize, lambda: bool },
-
-	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: TaggedValue, exposed: bool },
-
-	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
-	Network(Type),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
-}
-
-// TODO: Eventually remove this document upgrade code
-#[cfg(feature = "serde")]
-fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
-where
-	D: serde::Deserializer<'de>,
-{
-	use serde::Deserialize;
-	let input_versions = Vec::<NodeInputVersions>::deserialize(deserializer)?;
-
-	let inputs = input_versions
-		.into_iter()
-		.map(|old_input| {
-			let old_input = match old_input {
-				NodeInputVersions::OldNodeInput(old_input) => old_input,
-				NodeInputVersions::NodeInput(node_input) => return node_input,
-			};
-			match old_input {
-				OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
-				OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
-				OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
-				OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
-			}
-		})
-		.collect();
-
-	Ok(inputs)
-}
-
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
@@ -99,7 +44,7 @@ pub struct DocumentNode {
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input)
 	/// by using network.update_click_target(node_id).
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_inputs"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
 	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
@@ -281,21 +226,16 @@ impl DocumentNode {
 		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
 		let input_source = &mut self.original_location.inputs_source;
 		for source in source {
-			input_source.insert(source, index + self.original_location.skip_inputs - skip);
+			input_source.insert(source, (index + self.original_location.skip_inputs).saturating_sub(skip));
 		}
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
-		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
+		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
-		// TODO replace with proper generics removal
-		let identifier = match fqn.name.clone().split_once('<') {
-			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
-			_ => ProtoNodeIdentifier { name: fqn.name },
-		};
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {
@@ -640,7 +580,7 @@ pub struct OldDocumentNode {
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_inputs"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
 	// TODO: Remove once this references its definition instead (see above TODO).
@@ -750,7 +690,8 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias document upgrade code
+	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	pub exports: Vec<NodeInput>,
 	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,

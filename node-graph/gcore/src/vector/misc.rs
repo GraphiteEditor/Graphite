@@ -47,3 +47,57 @@ impl core::fmt::Display for BooleanOperation {
 		}
 	}
 }
+
+pub trait AsU64 {
+	fn as_u64(&self) -> u64;
+}
+impl AsU64 for u32 {
+	fn as_u64(&self) -> u64 {
+		*self as u64
+	}
+}
+impl AsU64 for u64 {
+	fn as_u64(&self) -> u64 {
+		*self
+	}
+}
+impl AsU64 for f64 {
+	fn as_u64(&self) -> u64 {
+		*self as u64
+	}
+}
+
+pub trait AsI64 {
+	fn as_i64(&self) -> i64;
+}
+impl AsI64 for u32 {
+	fn as_i64(&self) -> i64 {
+		*self as i64
+	}
+}
+impl AsI64 for u64 {
+	fn as_i64(&self) -> i64 {
+		*self as i64
+	}
+}
+impl AsI64 for f64 {
+	fn as_i64(&self) -> i64 {
+		*self as i64
+	}
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum GridType {
+	#[default]
+	Rectangular,
+	Isometric,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum ArcType {
+	#[default]
+	Open,
+	Closed,
+	PieSlice,
+}

@@ -24,14 +24,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
-// /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
-// /// This avoids creating a json with a list millions of numbers long.
-// #[wasm_bindgen(module = "/../src/editor.ts")]
-// extern "C" {
-// 	// fn dispatchTauri(message: String) -> String;
-// 	fn dispatchTauri(message: String);
-// }
-
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen(js_name = setRandomSeed)]
@@ -138,18 +130,23 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
+			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
-						let micros: f64 = timestamp * 1000.;
-						let timestamp = Duration::from_micros(micros.round() as u64);
-
-						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
+							timestamp: js_sys::Date::now() as u64,
+						}) {
 							handle.send_frontend_message_to_js(message);
 						}
 
+						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
+							handle.send_frontend_message_to_js(message);
+						}
+
+						// Used by auto-panning, but this could possibly be refactored in the future, see:
+						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
 						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
 							handle.send_frontend_message_to_js(message);
 						}
@@ -178,21 +175,6 @@ impl EditorHandle {
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
 	}
-
-	// #[wasm_bindgen(js_name = tauriResponse)]
-	// pub fn tauri_response(&self, _message: JsValue) {
-	// 	#[cfg(feature = "tauri")]
-	// 	match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
-	// 		Ok(response) => {
-	// 			for message in response {
-	// 				self.send_frontend_message_to_js(message);
-	// 			}
-	// 		}
-	// 		Err(error) => {
-	// 			log::error!("tauri response: {error:?}\n{_message:?}");
-	// 		}
-	// 	}
-	// }
 
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
@@ -353,7 +335,7 @@ impl EditorHandle {
 	/// Inform the overlays system of the current device pixel ratio
 	#[wasm_bindgen(js_name = setDevicePixelRatio)]
 	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
+		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -826,7 +808,13 @@ impl EditorHandle {
 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, None, true)
+			.submit_node_graph_evaluation(
+				portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(),
+				glam::UVec2::ONE,
+				Default::default(),
+				None,
+				true,
+			)
 			.unwrap();
 		editor::node_graph_executor::run_node_graph().await;
 
