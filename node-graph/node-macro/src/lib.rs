@@ -10,20 +10,20 @@ use syn::{
 };
 
 mod codegen;
-mod derive_graphene_rna;
+mod derive_choicetype;
 mod parsing;
 mod validation;
 
-/// Generate meta-information for a type
+/// Generate meta-information for an enum.
 ///
-/// Currently this only works for enums, and derives [`core::fmt::Display`].
+/// `#[widget(F)]` on a type indicates the type of widget to use to display/edit the type, currently `Radio` and `Dropdown` are supported.
 ///
-/// `#[rna("Foo")]` on a variant overrides the default UI label (which is otherwise the name converted to title case).
-/// `#[rna(icon("tag"))]` sets the icon to use when a variant is shown in a menu or radio button.
-/// `#[rna(doc("blah blah"))]` sets help text for tooltips.
-#[proc_macro_derive(GrapheneRna, attributes(rna, menu_separator))]
-pub fn derive_graphene_rna(input_item: TokenStream) -> TokenStream {
-	TokenStream::from(derive_graphene_rna::derive_graphene_rna_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+/// `#[label("Foo")]` on a variant overrides the default UI label (which is otherwise the name converted to title case). Default or not, labels are collected as the [`core::fmt::Display`] implementation.
+/// `#[icon("tag"))]` sets the icon to use when a variant is shown in a menu or radio button.
+/// Doc comments on a variant become tooltip text.
+#[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
+pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
+	TokenStream::from(derive_choicetype::derive_choicetype_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
 }
 
 /// A macro used to construct a proto node implementation from the given struct and the decorated function.

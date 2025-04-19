@@ -180,7 +180,7 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let list = <BooleanOperation as graphene_core::vector::misc::DropdownableStatic>::list();
+		let list = <BooleanOperation as graphene_core::vector::misc::ChoiceTypeStatic>::list();
 		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, icon)| {
 			IconButton::new(icon.unwrap(), 24)
 				.tooltip(operation.to_string())

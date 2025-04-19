@@ -10,27 +10,34 @@ pub enum CentroidType {
 	Length,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::GrapheneRna)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum BooleanOperation {
 	#[default]
-	#[rna(icon("BooleanUnion"))]
+	#[icon("BooleanUnion")]
 	Union,
 
-	#[rna(icon("BooleanSubtractFront"))]
+	#[icon("BooleanSubtractFront")]
 	SubtractFront,
 
-	#[rna(icon("BooleanSubtractBack"))]
+	#[icon("BooleanSubtractBack")]
 	SubtractBack,
 
-	#[rna(icon("BooleanIntersect"))]
+	#[icon("BooleanIntersect")]
 	Intersect,
 
-	#[rna(icon("BooleanDifference"))]
+	#[icon("BooleanDifference")]
 	Difference,
 }
 
-pub trait DropdownableStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
+pub trait ChoiceTypeStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
+	const WIDGET_HINT: ChoiceWidgetHint;
 	fn list() -> &'static [&'static [(Self, Option<&'static str>)]];
+}
+
+pub enum ChoiceWidgetHint {
+	Dropdown,
+	RadioButtons,
 }
 
 pub trait AsU32 {

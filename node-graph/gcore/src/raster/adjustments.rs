@@ -34,7 +34,8 @@ use spirv_std::num_traits::float::Float;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::GrapheneRna)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
 	SRGB,

@@ -96,10 +96,10 @@ trait DropdownSource {
 	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = (Self::Value, String, String, Option<String>)>>;
 }
 
-struct DropdownSourceStatic<T: graphene_core::vector::misc::DropdownableStatic>(std::marker::PhantomData<T>);
+struct DropdownSourceStatic<T: graphene_core::vector::misc::ChoiceTypeStatic>(std::marker::PhantomData<T>);
 impl<T> DropdownSource for DropdownSourceStatic<T>
 where
-	T: graphene_core::vector::misc::DropdownableStatic + 'static,
+	T: graphene_core::vector::misc::ChoiceTypeStatic + 'static,
 	for<'a> &'a T: TryFrom<&'a TaggedValue>,
 	TaggedValue: From<T>,
 {
@@ -122,7 +122,7 @@ where
 	}
 }
 
-fn enum_source<E: graphene_core::vector::misc::DropdownableStatic>() -> DropdownSourceStatic<E> {
+fn enum_source<E: graphene_core::vector::misc::ChoiceTypeStatic>() -> DropdownSourceStatic<E> {
 	DropdownSourceStatic(std::marker::PhantomData)
 }
 
