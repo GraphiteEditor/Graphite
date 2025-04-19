@@ -2785,6 +2785,7 @@ mod document_message_handler_tests {
 		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
 		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
 	}
+
 	#[tokio::test]
 	async fn test_layer_rearrangement() {
 		let mut editor = EditorTestUtils::create();
@@ -2831,6 +2832,7 @@ mod document_message_handler_tests {
 		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
 		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
 	}
+
 	#[tokio::test]
 	async fn test_move_folder_into_itself_doesnt_crash() {
 		let mut editor = EditorTestUtils::create();
@@ -2897,5 +2899,78 @@ mod document_message_handler_tests {
 
 		let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
 		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
+	}
+
+	#[tokio::test]
+	async fn test_moving_layers_retains_transforms() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+		let folder2 = editor.active_document().metadata().all_layers().next().unwrap();
+		let folder1 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+		// Applying transform to folder1 (translation)
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(100.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Applying different transform to folder2 (translation)
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder2.to_node()] }).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(200.0, 100.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Creating rectangle in folder1
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Moving the rectangle to folder1 to ensure it's inside
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50.0, 25.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Rectangle's viewport position before moving
+		let document = editor.active_document();
+		let rect_bbox_before = document.metadata().bounding_box_viewport(rect_layer).unwrap();
+
+		// Moving rectangle from folder1 --> folder2
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+		// Rectangle's viewport position after moving
+		let document = editor.active_document();
+		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
+
+		// Verifing the rectangle maintains approximately the same position in viewport space
+		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.0;
+		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.0;
+		let distance = before_center.distance(after_center);
+
+		assert!(distance < 1.0, "Rectangle should maintain its viewport position after moving between transformed groups");
 	}
 }
