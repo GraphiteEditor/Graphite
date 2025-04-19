@@ -3,7 +3,6 @@ use crate::BezierHandles;
 use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{Cap, Join, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
-use kurbo;
 use std::vec;
 
 /// Helper function to ensure the index and t value pair is mapped within a maximum index value.
@@ -309,7 +308,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	// at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
 	/// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
 	/// Assumes that the Subpaths represents simple Bezier segments, and clips the Subpaths at the last intersection of the first Subpath, and first intersection of the last Subpath.
-	fn clip_simple_subpaths(subpath1: &Subpath<PointId>, subpath2: &Subpath<PointId>) -> Option<(Subpath<PointId>, Subpath<PointId>)> {
+	pub fn clip_simple_subpaths(subpath1: &Subpath<PointId>, subpath2: &Subpath<PointId>) -> Option<(Subpath<PointId>, Subpath<PointId>)> {
 		// Split the first subpath at its last intersection
 		let intersections1 = subpath1.subpath_intersections(subpath2, None, None);
 		if intersections1.is_empty() {
@@ -365,27 +364,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		let mut subpaths = self
 			.iter()
 			.filter(|bezier| !bezier.is_point())
-			.map(|bezier| bezier.to_cubic())
-			.map(|cubic| {
-				let Bezier { start, end, handles } = cubic;
-				let BezierHandles::Cubic { handle_start, handle_end } = handles else { unreachable!()};
-
-				let cubic_bez = kurbo::CubicBez::new((start.x, start.y), (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), (end.x, end.y));
-				let cubic_offset = kurbo::offset::CubicOffset::new_regularized(cubic_bez, distance, 0.5);
-				let offset_bezpath = kurbo::fit_to_bezpath(&cubic_offset, 1e-3);
-
-				let beziers = offset_bezpath.segments().fold(Vec::new(), |mut acc, seg| {
-					let bezier = match seg {
-						kurbo::PathSeg::Line(line) => Bezier::from_linear_coordinates(line.p0.x, line.p0.x, line.p1.x, line.p1.y),
-						kurbo::PathSeg::Quad(quad_bez) => Bezier::from_quadratic_coordinates(quad_bez.p0.x, quad_bez.p0.y, quad_bez.p1.x, quad_bez.p1.y,quad_bez.p1.x, quad_bez.p1.y),
-						kurbo::PathSeg::Cubic(cubic_bez) => Bezier::from_cubic_coordinates(cubic_bez.p0.x, cubic_bez.p0.y,cubic_bez.p1.x, cubic_bez.p1.y, cubic_bez.p2.x, cubic_bez.p2.y,cubic_bez.p3.x, cubic_bez.p3.y),
-					};
-					acc.push(bezier);
-					acc
-				});
-
-				Subpath::from_beziers(&beziers, false)
-			})
+			.map(|bezier| bezier.offset(distance))
 			.filter(|subpath| subpath.len() >= 2) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
 			.collect::<Vec<Subpath<PointId>>>();
 
