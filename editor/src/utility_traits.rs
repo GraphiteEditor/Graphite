@@ -45,3 +45,7 @@ pub trait TransitiveChild: Into<Self::Parent> + Into<Self::TopParent> {
 pub trait Hint {
 	fn hints(&self) -> HashMap<String, String>;
 }
+
+pub trait HierarchicalTree {
+	fn build_message_tree() -> DebugMessageTree;
+}

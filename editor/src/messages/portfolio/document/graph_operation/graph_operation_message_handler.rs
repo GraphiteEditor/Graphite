@@ -20,6 +20,7 @@ struct ArtboardInfo {
 	merge_node: NodeId,
 }
 
+#[derive(ExtractField)]
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,

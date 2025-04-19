@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 use glam::DVec2;
 use std::time::Duration;
 
+#[derive(ExtractField)]
 pub struct InputPreprocessorMessageData {
 	pub keyboard_platform: KeyboardPlatformLayout,
 }

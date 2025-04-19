@@ -26,6 +26,7 @@ use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::vec;
 
+#[derive(ExtractField)]
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,

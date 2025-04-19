@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::GraphWireSt
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct PreferencesDialogMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }

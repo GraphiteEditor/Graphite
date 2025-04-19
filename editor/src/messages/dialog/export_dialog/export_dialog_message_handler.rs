@@ -3,6 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct ExportDialogMessageData<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 }

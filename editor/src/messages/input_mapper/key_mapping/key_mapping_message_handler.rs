@@ -2,6 +2,7 @@ use crate::messages::input_mapper::input_mapper_message_handler::InputMapperMess
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct KeyMappingMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub actions: ActionList,

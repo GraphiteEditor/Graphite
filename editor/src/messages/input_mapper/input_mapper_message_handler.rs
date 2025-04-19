@@ -5,6 +5,7 @@ use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use std::fmt::Write;
 
+#[derive(ExtractField)]
 pub struct InputMapperMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub actions: ActionList,

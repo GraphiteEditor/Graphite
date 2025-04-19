@@ -45,3 +45,38 @@ impl specta::Type for MessageDiscriminant {
 		specta::DataType::Any
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn generate_message_tree() {
+		let res = Message::build_message_tree();
+		println!("{}", res.name());
+		if let Some(variants) = res.variants() {
+			for (i, variant) in variants.iter().enumerate() {
+				let is_last = i == variants.len() - 1;
+				print_tree_node(variant, "", is_last);
+			}
+		}
+	}
+
+	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool) {
+		// Print the current node
+		let branch = if is_last { "└── " } else { "├── " };
+		println!("{}{}{}", prefix, branch, tree.name());
+
+		// Prepare prefix for children
+		let child_prefix = if is_last { format!("{}    ", prefix) } else { format!("{}│   ", prefix) };
+
+		// Print children if any
+		if let Some(variants) = tree.variants() {
+			let len = variants.len();
+			for (i, variant) in variants.iter().enumerate() {
+				let is_last_child = i == len - 1;
+				print_tree_node(variant, &child_prefix, is_last_child);
+			}
+		}
+	}
+}
