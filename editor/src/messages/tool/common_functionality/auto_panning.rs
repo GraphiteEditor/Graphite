@@ -86,3 +86,149 @@ impl AutoPanning {
 		Some(delta)
 	}
 }
+
+#[cfg(test)]
+mod test_auto_panning {
+	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
+	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
+	use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn test_select_tool_drawing_box_auto_panning() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 50.0, 50.0, 150.0, 150.0, ModifierKeys::empty()).await;
+		editor.select_tool(ToolType::Select).await;
+		// Starting selection box inside viewport
+		editor.left_mousedown(100.0, 100.0, ModifierKeys::empty()).await;
+		// Moving cursor far outside viewport to trigger auto-panning
+		editor.move_mouse(2000.0, 100.0, ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		let pointer_keys = SelectToolPointerKeys {
+			axis_align: Key::Shift,
+			snap_angle: Key::Control,
+			center: Key::Alt,
+			duplicate: Key::Alt,
+		};
+
+		// Sending multiple pointer outside events to simulate auto-panning over time
+		for _ in 0..5 {
+			editor.handle_message(SelectToolMessage::PointerOutsideViewport(pointer_keys.clone())).await;
+		}
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(2000.0, 100.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let document = editor.active_document();
+		let selected_node_count = document.network_interface.selected_nodes().selected_nodes_ref().len();
+		assert!(selected_node_count > 0, "Selection should have included at least one object");
+	}
+
+	#[tokio::test]
+	async fn test_select_tool_dragging_auto_panning() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 50.0, 50.0, 150.0, 150.0, ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let initial_transform = editor.active_document().metadata().transform_to_viewport(layer);
+		// Select and start dragging the rectangle
+		editor.select_tool(ToolType::Select).await;
+		editor.left_mousedown(100.0, 100.0, ModifierKeys::empty()).await;
+
+		// Moving cursor outside viewport to trigger auto-panning
+		editor.move_mouse(2000.0, 100.0, ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		let pointer_keys = SelectToolPointerKeys {
+			axis_align: Key::Shift,
+			snap_angle: Key::Control,
+			center: Key::Alt,
+			duplicate: Key::Alt,
+		};
+
+		// Sending multiple outside viewport events to simulate continuous auto-panning
+		for _ in 0..5 {
+			editor.handle_message(SelectToolMessage::PointerOutsideViewport(pointer_keys.clone())).await;
+		}
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(2000.0, 100.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Verifying the rectngle has moved significantly due to auto-panning
+		let final_transform = editor.active_document().metadata().transform_to_viewport(layer);
+		let translation_diff = (final_transform.translation - initial_transform.translation).length();
+
+		assert!(translation_diff > 10.0, "Rectangle should have moved significantly due to auto-panning (moved by {})", translation_diff);
+	}
+
+	#[tokio::test]
+	async fn test_select_tool_resizing_auto_panning() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 50.0, 50.0, 150.0, 150.0, ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let initial_transform = editor.active_document().metadata().transform_to_viewport(layer);
+
+		editor.select_tool(ToolType::Select).await;
+		editor.left_mousedown(150.0, 150.0, ModifierKeys::empty()).await; // Click near edge for resize handle
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(150.0, 150.0),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+
+		// Moving cursor to trigger auto-panning
+		editor.move_mouse(2000.0, 2000.0, ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		let pointer_keys = SelectToolPointerKeys {
+			axis_align: Key::Shift,
+			snap_angle: Key::Control,
+			center: Key::Alt,
+			duplicate: Key::Alt,
+		};
+
+		// Simulatiing auto-panning for several frames
+		for _ in 0..5 {
+			editor.handle_message(SelectToolMessage::PointerOutsideViewport(pointer_keys.clone())).await;
+		}
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Verifying the transform has changed (scale component should be different)
+		let final_transform = editor.active_document().metadata().transform_to_viewport(layer);
+
+		// Comparing transform matrices to detect scale changes
+		let initial_scale = initial_transform.matrix2.determinant().sqrt();
+		let final_scale = final_transform.matrix2.determinant().sqrt();
+		let scale_ratio = final_scale / initial_scale;
+
+		assert!(
+			scale_ratio > 1.1 || scale_ratio < 0.9,
+			"Rectangle should have been resized due to auto-panning (scale ratio: {})",
+			scale_ratio
+		);
+	}
+}
