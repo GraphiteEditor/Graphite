@@ -537,7 +537,6 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 
 #[cfg(test)]
 mod test_spline_tool {
-	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -648,29 +647,6 @@ mod test_spline_tool {
 		let all_expected_points = [initial_points[0], initial_points[1], initial_points[2], continuation_points[0], continuation_points[1]];
 
 		assert_point_positions(&extended_vector_data, layer_to_viewport, &all_expected_points, 1e-10);
-	}
-	//--------------
-	// Helper function to get spline points after drawing
-	async fn get_spline_points(editor: &mut EditorTestUtils) -> Option<Vec<DVec2>> {
-		let document = editor.active_document();
-		let network_interface = &document.network_interface;
-		let layer = network_interface.selected_nodes().selected_visible_and_unlocked_layers(network_interface).next()?;
-		println!("Found layer: {:?}", layer);
-		let vector_data = network_interface.compute_modified_vector(layer)?;
-		let points: Vec<DVec2> = vector_data.point_domain.positions().iter().cloned().collect();
-		println!("Found points: {:?}", points);
-		Some(points)
-	}
-
-	fn assert_points_match_expected(actual_points: &[DVec2], expected_points: &[DVec2]) {
-		assert!(actual_points.len() >= expected_points.len(), "Spline should have at least {} points", expected_points.len());
-
-		for (i, (point, expected)) in actual_points.iter().zip(expected_points.iter()).enumerate() {
-			assert!(
-				(*point - *expected).length() < 1e-10,
-				"Point {i} should be close to expected position. Got: {point:?}, expected: {expected:?}"
-			);
-		}
 	}
 
 	#[tokio::test]
