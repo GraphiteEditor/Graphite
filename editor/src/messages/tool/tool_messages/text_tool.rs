@@ -506,23 +506,25 @@ impl Fsm for TextToolFsmState {
 					return self;
 				}
 
-				if let Some(bounds) = bounds {
-					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
-					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
-					bounding_box_manager.transform = layer_transform;
+				if overlay_context.visibility_settings.transform_cage() {
+					if let Some(bounds) = bounds {
+						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+						bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
+						bounding_box_manager.transform = layer_transform;
 
-					bounding_box_manager.render_quad(&mut overlay_context);
-					// Draw red overlay if text is clipped
-					let transformed_quad = layer_transform * bounds;
-					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
-						let buzz_face = font_cache.get(font).map(|data| load_face(data));
-						if lines_clipping(text.as_str(), buzz_face, typesetting) {
-							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+						bounding_box_manager.render_quad(&mut overlay_context);
+						// Draw red overlay if text is clipped
+						let transformed_quad = layer_transform * bounds;
+						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
+							let buzz_face = font_cache.get(font).map(|data| load_face(data));
+							if lines_clipping(text.as_str(), buzz_face, typesetting) {
+								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+							}
 						}
-					}
 
-					bounding_box_manager.render_overlays(&mut overlay_context, false);
-					tool_data.pivot.update_pivot(document, &mut overlay_context, None);
+						bounding_box_manager.render_overlays(&mut overlay_context, false);
+						tool_data.pivot.update_pivot(document, &mut overlay_context, None);
+					}
 				} else {
 					tool_data.bounding_box_manager.take();
 				}

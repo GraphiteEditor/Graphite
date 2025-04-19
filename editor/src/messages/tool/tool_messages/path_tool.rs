@@ -975,6 +975,14 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				let display_anchors = overlay_context.visibility_settings.anchors();
+				let display_handles = overlay_context.visibility_settings.handles();
+				if !display_handles {
+					shape_editor.deselect_all_handles();
+				} else if !display_anchors {
+					shape_editor.deselect_all_anchors();
+				}
+
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -1082,12 +1090,16 @@ impl Fsm for PathToolFsmState {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input);
 
 						if let Some(closest_segment) = &tool_data.segment {
-							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
+							if display_anchors {
+								overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_BLUE));
+							}
 							if let (Some(handle1), Some(handle2)) = closest_segment.handle_positions(document.metadata()) {
 								overlay_context.line(closest_segment.closest_point_to_viewport(), handle1, Some(COLOR_OVERLAY_BLUE), None);
 								overlay_context.line(closest_segment.closest_point_to_viewport(), handle2, Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
-								overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+								if display_handles {
+									overlay_context.manipulator_handle(handle1, false, Some(COLOR_OVERLAY_BLUE));
+									overlay_context.manipulator_handle(handle2, false, Some(COLOR_OVERLAY_BLUE));
+								}
 							}
 						}
 
