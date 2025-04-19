@@ -648,4 +648,155 @@ mod test_spline_tool {
 
 		assert_point_positions(&extended_vector_data, layer_to_viewport, &all_expected_points, 1e-10);
 	}
+
+	#[tokio::test]
+	async fn test_spline_with_zoomed_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Zooming the viewport
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
+
+		// Selecting the spline tool
+		editor.select_tool(ToolType::Spline).await;
+
+		// Adding points by clicking at different positions
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+
+		// Finish the spline
+		editor.handle_message(SplineToolMessage::Confirm).await;
+
+		// Evaluate the graph to ensure everything is processed
+		editor.eval_graph().await;
+
+		// Get the layer and vector data
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let layer = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.next()
+			.expect("Should have a selected layer");
+		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+
+		// Expected points in viewport coordinates
+		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+
+		// Assert all points are correctly positioned
+		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_panned_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let pan_amount = DVec2::new(200.0, 150.0);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
+
+		editor.select_tool(ToolType::Spline).await;
+
+		// Add points by clicking at different positions
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+
+		editor.handle_message(SplineToolMessage::Confirm).await;
+
+		// Evaluating the graph to ensure everything is processed
+		editor.eval_graph().await;
+
+		// Get the layer and vector data
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let layer = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.next()
+			.expect("Should have a selected layer");
+		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+
+		// Expected points in viewport coordinates
+		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+
+		// Assert all points are correctly positioned
+		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_tilted_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Tilt/rotate the viewport (45 degrees)
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
+		editor.select_tool(ToolType::Spline).await;
+
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+
+		editor.handle_message(SplineToolMessage::Confirm).await;
+
+		// Evaluating the graph to ensure everything is processed
+		editor.eval_graph().await;
+
+		// Get the layer and vector data
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let layer = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.next()
+			.expect("Should have a selected layer");
+		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+
+		// Expected points in viewport coordinates
+		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+
+		// Assert all points are correctly positioned
+		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+	}
+
+	#[tokio::test]
+	async fn test_spline_with_combined_transformations() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Applying multiple transformations
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 1.5 }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100.0, 75.0) }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30.0_f64.to_radians() }).await;
+
+		editor.select_tool(ToolType::Spline).await;
+
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(50.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(100.0, 50.0), ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
+
+		editor.handle_message(SplineToolMessage::Confirm).await;
+		editor.eval_graph().await;
+
+		// Get the layer and vector data
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let layer = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.next()
+			.expect("Should have a selected layer");
+		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+
+		// Expected points in viewport coordinates
+		let expected_points = vec![DVec2::new(50.0, 50.0), DVec2::new(100.0, 50.0), DVec2::new(150.0, 100.0)];
+
+		// Assert all points are correctly positioned
+		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+	}
 }
