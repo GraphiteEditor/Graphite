@@ -955,6 +955,12 @@ impl Color {
 		}
 	}
 
+	/// Produces a CSS color in the format `rgb(red green blue / alpha%)`.
+	/// To get the expected color you might have to use `to_gamma_srgb`.
+	pub fn to_css(&self) -> String {
+		format!("rgb({} {} {} / {}%)", self.red * 255.0, self.green * 255.0, self.blue * 255.0, self.alpha * 100.0)
+	}
+
 	#[inline(always)]
 	pub fn srgb_to_linear(channel: f32) -> f32 {
 		if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) }

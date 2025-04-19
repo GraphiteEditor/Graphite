@@ -544,6 +544,84 @@ impl RegionDomain {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HalfEdge {
+	pub id: SegmentId,
+	pub start: usize,
+	pub end: usize,
+	pub reverse: bool,
+}
+
+impl HalfEdge {
+	pub fn new(id: SegmentId, start: usize, end: usize, reverse: bool) -> Self {
+		Self { id, start, end, reverse }
+	}
+
+	pub fn reversed(&self) -> Self {
+		Self {
+			id: self.id,
+			start: self.start,
+			end: self.end,
+			reverse: !self.reverse,
+		}
+	}
+
+	pub fn normalize_direction(&self) -> Self {
+		if self.reverse {
+			Self {
+				id: self.id,
+				start: self.end,
+				end: self.start,
+				reverse: false,
+			}
+		} else {
+			self.clone()
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Subpath_ {
+	pub edges: Vec<HalfEdge>,
+}
+
+impl Subpath_ {
+	pub fn new(segments: Vec<HalfEdge>) -> Self {
+		Self { edges: segments }
+	}
+
+	pub fn first_segment(&self) -> Option<&HalfEdge> {
+		self.edges.first()
+	}
+
+	pub fn last_segment(&self) -> Option<&HalfEdge> {
+		self.edges.last()
+	}
+
+	pub fn push(&mut self, segment: HalfEdge) {
+		self.edges.push(segment);
+	}
+
+	pub fn insert(&mut self, index: usize, segment: HalfEdge) {
+		self.edges.insert(index, segment);
+	}
+
+	pub fn is_closed(&self) -> bool {
+		match (self.edges.first(), self.edges.last()) {
+			(Some(first), Some(last)) => first.start == last.end,
+			_ => false,
+		}
+	}
+
+	pub fn from_segment(segment: HalfEdge) -> Self {
+		Self { edges: vec![segment] }
+	}
+
+	pub fn contains(&self, segment_id: SegmentId) -> bool {
+		self.edges.iter().any(|s| s.id == segment_id)
+	}
+}
+
 impl VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles.
 	fn segment_to_bezier_with_index(&self, start: usize, end: usize, handles: bezier_rs::BezierHandles) -> bezier_rs::Bezier {
@@ -581,6 +659,132 @@ impl VectorData {
 			.zip(self.segment_domain.start_point())
 			.zip(self.segment_domain.end_point())
 			.map(to_bezier)
+	}
+
+	pub fn auto_join_paths(&self) -> Vec<Subpath_> {
+		let segments = self.segment_domain.iter().map(|(id, start, end, _)| HalfEdge::new(id, start, end, false));
+
+		let mut paths: Vec<Subpath_> = Vec::new();
+		let mut current_path: Option<&mut Subpath_> = None;
+		let mut previous: Option<(usize, usize)> = None;
+
+		// First pass. Generates subpaths from continuous segments.
+		for seg_ref in segments {
+			let start = seg_ref.start;
+			let end = seg_ref.end;
+
+			if let Some((_, prev_end)) = previous {
+				if start == prev_end {
+					if let Some(path) = current_path.as_mut() {
+						path.push(seg_ref);
+					}
+				} else {
+					paths.push(Subpath_::from_segment(seg_ref));
+					current_path = paths.last_mut();
+				}
+			} else {
+				paths.push(Subpath_::from_segment(seg_ref));
+				current_path = paths.last_mut();
+			}
+
+			previous = Some((start, end));
+		}
+
+		// Print the paths
+		// debug!("Paths: {:?}", paths);
+
+		// Second pass. Tries to join paths together.
+		let mut joined_paths: Vec<Subpath_> = Vec::new();
+
+		loop {
+			let mut previous_subpath: Option<&mut Subpath_> = None;
+			let paths_length = paths.len();
+
+			for current_subpath in paths.into_iter() {
+				if previous_subpath.is_none() {
+					joined_paths.push(current_subpath);
+					previous_subpath = Some(joined_paths.last_mut().unwrap());
+					continue;
+				}
+
+				// Take ownership of the previous subpath
+				let prev: &mut Subpath_ = previous_subpath.unwrap();
+				let prev_last = prev.last_segment().unwrap();
+				let prev_first = prev.first_segment().unwrap();
+				let cur_last = current_subpath.last_segment().unwrap();
+				let cur_first = current_subpath.first_segment().unwrap();
+
+				if prev_last.end == cur_first.start {
+					for segment in current_subpath.edges {
+						prev.push(segment.normalize_direction());
+					}
+				} else if prev_first.start == cur_last.end {
+					for segment in current_subpath.edges.into_iter().rev() {
+						prev.insert(0, segment.normalize_direction());
+					}
+				} else if prev_last.end == cur_last.end {
+					for segment in current_subpath.edges.into_iter().rev() {
+						prev.push(segment.reversed().normalize_direction());
+					}
+				} else if prev_first.start == cur_first.start {
+					for segment in current_subpath.edges {
+						prev.insert(0, segment.reversed().normalize_direction());
+					}
+				} else {
+					joined_paths.push(current_subpath);
+					previous_subpath = Some(joined_paths.last_mut().unwrap());
+					continue;
+				}
+
+				// Return ownership
+				previous_subpath = Some(prev);
+			}
+
+			if paths_length == joined_paths.len() {
+				break;
+			};
+
+			paths = joined_paths; // Move
+			joined_paths = Vec::new(); // Reset for next iteration
+		}
+
+		joined_paths
+	}
+
+	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.
+	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, usize, usize)>) -> Option<bezier_rs::Subpath<PointId>> {
+		let mut first_point = None;
+		let mut groups = Vec::new();
+		let mut last: Option<(usize, bezier_rs::BezierHandles)> = None;
+
+		for (handle, start, end) in segments {
+			first_point = Some(first_point.unwrap_or(start));
+
+			groups.push(bezier_rs::ManipulatorGroup {
+				anchor: self.point_domain.positions()[start],
+				in_handle: last.and_then(|(_, handle)| handle.end()),
+				out_handle: handle.start(),
+				id: self.point_domain.ids()[start],
+			});
+
+			last = Some((end, handle));
+		}
+
+		let closed = groups.len() > 1 && last.map(|(point, _)| point) == first_point;
+
+		if let Some((end, last_handle)) = last {
+			if closed {
+				groups[0].in_handle = last_handle.end();
+			} else {
+				groups.push(bezier_rs::ManipulatorGroup {
+					anchor: self.point_domain.positions()[end],
+					in_handle: last_handle.end(),
+					out_handle: None,
+					id: self.point_domain.ids()[end],
+				});
+			}
+		}
+		Some(bezier_rs::Subpath::new(groups, closed))
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the segments are not continuous.
