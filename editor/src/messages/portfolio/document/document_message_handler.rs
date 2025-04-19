@@ -353,7 +353,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
 
-					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
+					let name = self.network_interface.display_name(&layer.to_node(), &[]);
 
 					let transform = self.metadata().document_to_viewport
 						* DAffine2::from_translation(bounds[0].min(bounds[1]))
@@ -579,37 +579,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 				}
 			}
-			DocumentMessage::ImaginateGenerate { imaginate_node } => {
-				let random_value = generate_uuid();
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 17,
-					value: graph_craft::document::value::TaggedValue::U64(random_value),
-				});
+			// DocumentMessage::ImaginateGenerate { imaginate_node } => {
+			// 	let random_value = generate_uuid();
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 17,
+			// 		value: graph_craft::document::value::TaggedValue::U64(random_value),
+			// 	});
 
-				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
-			}
-			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
-				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
-				// outside of this range can get rounded in f64
-				let random_bits = generate_uuid();
-				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
+			// 	responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+			// }
+			// DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
+			// 	// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+			// 	// outside of this range can get rounded in f64
+			// 	let random_bits = generate_uuid();
+			// 	let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 
-				responses.add(DocumentMessage::AddTransaction);
-				// Set a random seed input
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 3,
-					value: graph_craft::document::value::TaggedValue::F64(random_value),
-				});
+			// 	responses.add(DocumentMessage::AddTransaction);
+			// 	// Set a random seed input
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 3,
+			// 		value: graph_craft::document::value::TaggedValue::F64(random_value),
+			// 	});
 
-				// Generate the image
-				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
-				}
-			}
+			// 	// Generate the image
+			// 	if then_generate {
+			// 		responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
+			// 	}
+			// }
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
@@ -1155,6 +1155,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.view_mode = view_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::AddTransaction => {
+				// Reverse order since they are added to the front
+				responses.add_front(DocumentMessage::CommitTransaction);
+				responses.add_front(DocumentMessage::StartTransaction);
+			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
 				self.network_interface.start_transaction();
@@ -1197,11 +1202,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::AddTransaction => {
-				// Reverse order since they are added to the front
-				responses.add_front(DocumentMessage::CommitTransaction);
-				responses.add_front(DocumentMessage::StartTransaction);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
@@ -2705,5 +2705,197 @@ impl Iterator for ClickXRayIter<'_> {
 		}
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
+	}
+}
+
+#[cfg(test)]
+mod document_message_handler_tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn test_layer_selection_with_shift_and_ctrl() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+
+		// Case 1: Basic selection (no modifier)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[0].to_node(),
+				ctrl: false,
+				shift: false,
+			})
+			.await;
+		// Fresh document reference for verification
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+
+		// Case 2: Ctrl + click to add another layer
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[2].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 3: Shift + click to select a range
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: false,
+				shift: true,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		// We expect 2 layers to be selected (layers 1 and 2) - not 3
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 4: Ctrl + click to toggle selection (deselect)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+
+		// Final fresh document reference
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+	}
+	#[tokio::test]
+	async fn test_layer_rearrangement() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Create three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		// Helper function to identify layers by bounds
+		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
+			let document = editor.active_document();
+			for layer in document.metadata().all_layers() {
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
+					if (bbox[0].x - min_x).abs() < 1.0 && (bbox[0].y - min_y).abs() < 1.0 {
+						return Some(layer);
+					}
+				}
+			}
+			None
+		}
+
+		async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
+			let document = editor.active_document();
+			let parent = layer.parent(document.metadata())?;
+			parent.children(document.metadata()).position(|child| child == layer)
+		}
+
+		let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
+		let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
+
+		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+
+		// Test 1: Lower the top layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersLower).await;
+		let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		assert!(new_index_top > initial_index_top, "Top layer should have moved down");
+
+		// Test 2: Raise the middle layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
+		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
+	}
+	#[tokio::test]
+	async fn test_move_folder_into_itself_doesnt_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Creating a parent folder
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let parent_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Creating a child folder inside the parent folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let child_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Attempt to move parent folder into child folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: child_folder,
+				insert_index: 0,
+			})
+			.await;
+
+		// The operation completed without crashing
+		// Verifying application still functions by performing another operation
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		assert!(true, "Application didn't crash after folder move operation");
+	}
+	#[tokio::test]
+	async fn test_moving_folder_with_children() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Creating two folders at root level
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+		let folder1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let folder2 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// First move rectangle into folder1
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+		// Verifying rectagle is now in folder1
+		let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
+		assert_eq!(rect_parent, folder1, "Rectangle should be inside folder1");
+
+		// Moving folder1 into folder2
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+		// Verifing hirarchy: folder2 > folder1 > rectangle
+		let document = editor.active_document();
+		let folder1_parent = folder1.parent(document.metadata()).unwrap();
+		assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
+
+		// Verifing rectangle moved with its parent
+		let rect_parent = rect_layer.parent(document.metadata()).unwrap();
+		assert_eq!(rect_parent, folder1, "Rectangle should still be inside folder1");
+
+		let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
+		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
 	}
 }
