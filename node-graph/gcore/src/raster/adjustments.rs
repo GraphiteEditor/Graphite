@@ -34,7 +34,8 @@ use spirv_std::num_traits::float::Float;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
 	SRGB,
@@ -42,30 +43,6 @@ pub enum LuminanceCalculation {
 	AverageChannels,
 	MinimumChannels,
 	MaximumChannels,
-}
-
-impl LuminanceCalculation {
-	pub fn list() -> [LuminanceCalculation; 5] {
-		[
-			LuminanceCalculation::SRGB,
-			LuminanceCalculation::Perceptual,
-			LuminanceCalculation::AverageChannels,
-			LuminanceCalculation::MinimumChannels,
-			LuminanceCalculation::MaximumChannels,
-		]
-	}
-}
-
-impl core::fmt::Display for LuminanceCalculation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			LuminanceCalculation::SRGB => write!(f, "sRGB"),
-			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
-			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
-			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
-			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
-		}
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

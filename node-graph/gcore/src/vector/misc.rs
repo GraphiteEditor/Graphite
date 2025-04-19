@@ -10,41 +10,43 @@ pub enum CentroidType {
 	Length,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum BooleanOperation {
 	#[default]
+	#[icon("BooleanUnion")]
 	Union,
+
+	#[icon("BooleanSubtractFront")]
 	SubtractFront,
+
+	/// Output shape contains points which are contained by the front shape but *not* by the back shape.
+	#[icon("BooleanSubtractBack")]
 	SubtractBack,
+
+	#[icon("BooleanIntersect")]
 	Intersect,
+
+	#[icon("BooleanDifference")]
 	Difference,
 }
 
-impl BooleanOperation {
-	pub fn list() -> [BooleanOperation; 5] {
-		[
-			BooleanOperation::Union,
-			BooleanOperation::SubtractFront,
-			BooleanOperation::SubtractBack,
-			BooleanOperation::Intersect,
-			BooleanOperation::Difference,
-		]
-	}
-
-	pub fn icons() -> [&'static str; 5] {
-		["BooleanUnion", "BooleanSubtractFront", "BooleanSubtractBack", "BooleanIntersect", "BooleanDifference"]
-	}
+pub trait ChoiceTypeStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
+	const WIDGET_HINT: ChoiceWidgetHint;
+	fn list() -> &'static [&'static [(Self, crate::registry::VariantMetadata)]];
 }
 
-impl core::fmt::Display for BooleanOperation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			BooleanOperation::Union => write!(f, "Union"),
-			BooleanOperation::SubtractFront => write!(f, "Subtract Front"),
-			BooleanOperation::SubtractBack => write!(f, "Subtract Back"),
-			BooleanOperation::Intersect => write!(f, "Intersect"),
-			BooleanOperation::Difference => write!(f, "Difference"),
-		}
+pub enum ChoiceWidgetHint {
+	Dropdown,
+	RadioButtons,
+}
+
+pub trait AsU32 {
+	fn as_u32(&self) -> u32;
+}
+impl AsU32 for u32 {
+	fn as_u32(&self) -> u32 {
+		*self as u32
 	}
 }
 
