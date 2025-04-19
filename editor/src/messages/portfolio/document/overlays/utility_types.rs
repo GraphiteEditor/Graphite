@@ -117,7 +117,7 @@ impl OverlaysVisibilitySettings {
 	}
 
 	pub fn handles(&self) -> bool {
-		self.all && self.handles
+		self.all && self.anchors && self.handles
 	}
 }
 
