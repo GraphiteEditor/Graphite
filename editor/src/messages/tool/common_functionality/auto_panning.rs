@@ -231,4 +231,151 @@ mod test_auto_panning {
 			scale_ratio
 		);
 	}
+
+	#[tokio::test]
+	async fn test_artboard_tool_drawing_auto_panning() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_tool(ToolType::Artboard).await;
+		editor.left_mousedown(100., 100., ModifierKeys::empty()).await;
+
+		// Moving cursor outside viewport to trigger auto-panning
+		editor.move_mouse(2000., 100., ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		// Sending pointer outside event multiple times to simulate auto-panning
+		for _ in 0..5 {
+			editor
+				.handle_message(ArtboardToolMessage::PointerOutsideViewport {
+					constrain_axis_or_aspect: Key::Shift,
+					center: Key::Alt,
+				})
+				.await;
+		}
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(2000., 100.),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Verifying that an artboard was created with significant width due to auto-panning
+		let artboards = get_artboards(&mut editor).await;
+		assert!(!artboards.is_empty(), "Artboard should have been created");
+		assert!(
+			artboards[0].dimensions.x > 200,
+			"Artboard should have significant width due to auto-panning: {}",
+			artboards[0].dimensions.x
+		);
+	}
+
+	#[tokio::test]
+	async fn test_artboard_tool_dragging_auto_panning() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 50., 50., 150., 150., ModifierKeys::empty()).await;
+
+		let artboards = get_artboards(&mut editor).await;
+		assert!(!artboards.is_empty(), "Artboard should have been created");
+		let initial_location = artboards[0].location;
+
+		editor.select_tool(ToolType::Artboard).await;
+		editor.left_mousedown(100., 100., ModifierKeys::empty()).await;
+
+		// Moving cursor outside viewport to trigger auto-panning
+		editor.move_mouse(2000., 100., ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		// Sending pointer outside event multiple times to simulate auto-panning
+		for _ in 0..5 {
+			editor
+				.handle_message(ArtboardToolMessage::PointerOutsideViewport {
+					constrain_axis_or_aspect: Key::Shift,
+					center: Key::Alt,
+				})
+				.await;
+		}
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(2000., 100.),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Verifying the artboard moved due to auto-panning
+		let artboards = get_artboards(&mut editor).await;
+		let final_location = artboards[0].location;
+
+		assert!(
+			(final_location.x - initial_location.x).abs() > 10 || (final_location.y - initial_location.y).abs() > 10,
+			"Artboard should have moved significantly due to auto-panning: {:?} -> {:?}",
+			initial_location,
+			final_location
+		);
+	}
+
+	#[tokio::test]
+	async fn test_artboard_tool_resizing_auto_panning() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 50., 50., 150., 150., ModifierKeys::empty()).await;
+
+		let artboards = get_artboards(&mut editor).await;
+		assert!(!artboards.is_empty(), "Artboard should have been created");
+		let initial_dimensions = artboards[0].dimensions;
+
+		// Selecting the artboard and click on edge to prepare for resizing
+		editor.select_tool(ToolType::Artboard).await;
+		editor.left_mousedown(150., 150., ModifierKeys::empty()).await;
+
+		// Moving cursor outside viewport to trigger auto-panning
+		editor.move_mouse(2000., 2000., ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		// Sending pointer outside event multiple times to simulate auto-panning
+		for _ in 0..5 {
+			editor
+				.handle_message(ArtboardToolMessage::PointerOutsideViewport {
+					constrain_axis_or_aspect: Key::Shift,
+					center: Key::Alt,
+				})
+				.await;
+		}
+
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: DVec2::new(2000., 2000.),
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		// Verifying the artboard was resized due to auto-panning
+		let artboards = get_artboards(&mut editor).await;
+		let final_dimensions = artboards[0].dimensions;
+
+		assert!(
+			final_dimensions.x > initial_dimensions.x || final_dimensions.y > initial_dimensions.y,
+			"Artboard should have been resized due to auto-panning: {:?} -> {:?}",
+			initial_dimensions,
+			final_dimensions
+		);
+	}
+
+	// Helper function to get artboards
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_core::Artboard> {
+		let instrumented = editor.eval_graph().await;
+		instrumented.grab_all_input::<graphene_core::append_artboard::ArtboardInput>(&editor.runtime).collect()
+	}
 }
