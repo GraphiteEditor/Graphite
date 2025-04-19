@@ -293,6 +293,66 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		Self::new(manipulator_groups, true)
 	}
 
+	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians. Slice option makes it look like pie or pacman.
+	pub fn new_arc(radius: f64, start_angle: f64, sweep_angle: f64, arc_type: ArcType) -> Self {
+		// Prevents glitches from numerical imprecision that have been observed during animation playback after about a minute
+		let start_angle = start_angle % (std::f64::consts::TAU * 2.);
+		let sweep_angle = sweep_angle % (std::f64::consts::TAU * 2.);
+
+		let original_start_angle = start_angle;
+		let sweep_angle_sign = sweep_angle.signum();
+
+		let mut start_angle = 0.;
+		let mut sweep_angle = sweep_angle.abs();
+
+		if (sweep_angle / std::f64::consts::TAU).floor() as u32 % 2 == 0 {
+			sweep_angle %= std::f64::consts::TAU;
+		} else {
+			start_angle = sweep_angle % std::f64::consts::TAU;
+			sweep_angle = std::f64::consts::TAU - start_angle;
+		}
+
+		sweep_angle *= sweep_angle_sign;
+		start_angle *= sweep_angle_sign;
+		start_angle += original_start_angle;
+
+		let closed = arc_type == ArcType::Closed;
+		let slice = arc_type == ArcType::PieSlice;
+
+		let center = DVec2::new(0., 0.);
+		let segments = (sweep_angle.abs() / (std::f64::consts::PI / 4.)).ceil().max(1.) as usize;
+		let step = sweep_angle / segments as f64;
+		let factor = 4. / 3. * (step / 2.).sin() / (1. + (step / 2.).cos());
+
+		let mut manipulator_groups = Vec::with_capacity(segments);
+		let mut prev_in_handle = None;
+		let mut prev_end = DVec2::new(0., 0.);
+
+		for i in 0..segments {
+			let start_angle = start_angle + step * i as f64;
+			let end_angle = start_angle + step;
+			let start_vec = DVec2::from_angle(start_angle);
+			let end_vec = DVec2::from_angle(end_angle);
+
+			let start = center + radius * start_vec;
+			let end = center + radius * end_vec;
+
+			let handle_start = start + start_vec.perp() * radius * factor;
+			let handle_end = end - end_vec.perp() * radius * factor;
+
+			manipulator_groups.push(ManipulatorGroup::new(start, prev_in_handle, Some(handle_start)));
+			prev_in_handle = Some(handle_end);
+			prev_end = end;
+		}
+		manipulator_groups.push(ManipulatorGroup::new(prev_end, prev_in_handle, None));
+
+		if slice {
+			manipulator_groups.push(ManipulatorGroup::new(center, None, None));
+		}
+
+		Self::new(manipulator_groups, closed || slice)
+	}
+
 	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
 	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
 		let sides = sides.max(3);
