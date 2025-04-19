@@ -67,7 +67,7 @@ serde = { workspace = true, optional = true, features = ["derive"] }
 ctor = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
-bezier-rs = { workspace = true, optional = true }
+bezier-rs = { workspace = true, optional = true, features = ["log"] }
 kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 vello = { workspace = true, optional = true }

@@ -220,9 +220,9 @@ pub enum ApplicationError {
 	InvalidUrl,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphUpdateMessage {
-	ImaginateStatusUpdate,
+	// ImaginateStatusUpdate,
 }
 
 pub trait NodeGraphUpdateSender {
@@ -236,11 +236,11 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 }
 
 pub trait GetEditorPreferences {
-	fn hostname(&self) -> &str;
+	// fn hostname(&self) -> &str;
 	fn use_vello(&self) -> bool;
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ExportFormat {
 	#[default]
 	Svg,
@@ -251,13 +251,13 @@ pub enum ExportFormat {
 	Canvas,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct TimingInformation {
 	pub time: f64,
 	pub animation_time: Duration,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
@@ -278,9 +278,9 @@ impl NodeGraphUpdateSender for Logger {
 struct DummyPreferences;
 
 impl GetEditorPreferences for DummyPreferences {
-	fn hostname(&self) -> &str {
-		"dummy_endpoint"
-	}
+	// fn hostname(&self) -> &str {
+	// 	"dummy_endpoint"
+	// }
 
 	fn use_vello(&self) -> bool {
 		false

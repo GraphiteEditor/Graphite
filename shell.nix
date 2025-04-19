@@ -49,9 +49,6 @@ in
       wasm-bindgen-cli
       vulkan-loader
       libxkbcommon
-      llvm
-      gcc-unwrapped.lib
-      llvmPackages.libcxxStdenv
       pkg-config
       # used for profiling
       gnuplot
@@ -59,11 +56,18 @@ in
       cargo-flamegraph
 
       # For Tauri
-      openssl
+      at-spi2-atk
+      atkmm
+      cairo
+      gdk-pixbuf
       glib
       gtk3
-      libsoup
-      webkitgtk
+      harfbuzz
+      librsvg
+      libsoup_3
+      pango
+      webkitgtk_4_1
+      openssl
 
       # For Rawkit tests
       libraw

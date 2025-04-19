@@ -167,7 +167,6 @@ impl Dispatcher {
 
 					// Send the information for tooltips and categories for each node/input.
 					queue.add(FrontendMessage::SendUIMetadata {
-						input_type_descriptions: Vec::new(),
 						node_descriptions: document_node_definitions::collect_node_descriptions(),
 						node_types: document_node_definitions::collect_node_types(),
 					});
@@ -233,6 +232,7 @@ impl Dispatcher {
 					let preferences = &self.message_handlers.preferences_message_handler;
 					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
 					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 					let timing_information = self.message_handlers.animation_message_handler.timing_information();
 					let animation = &self.message_handlers.animation_message_handler;
 
@@ -244,6 +244,7 @@ impl Dispatcher {
 							preferences,
 							current_tool,
 							message_logging_verbosity,
+							reset_node_definitions_on_open,
 							timing_information,
 							animation,
 						},

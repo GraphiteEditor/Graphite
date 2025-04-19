@@ -1,7 +1,6 @@
 mod quad;
 mod rect;
 
-use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
@@ -89,7 +88,7 @@ impl ClickTarget {
 		// This bounding box is not very accurate as it is the axis aligned version of the transformed bounding box. However it is fast.
 		if !self
 			.bounding_box
-			.is_some_and(|loose| (loose[0] - loose[1]).abs().cmpgt(DVec2::splat(1e-4)).all() && intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
+			.is_some_and(|loose| (loose[0] - loose[1]).abs().cmpgt(DVec2::splat(1e-4)).any() && intersects((layer_transform * Quad::from_box(loose)).bounding_box(), target_bounds))
 		{
 			return false;
 		}
@@ -465,6 +464,7 @@ impl GraphicElementRendered for VectorDataTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 		use crate::vector::style::{GradientType, LineCap, LineJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
