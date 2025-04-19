@@ -98,12 +98,12 @@ mod test_auto_panning {
 	async fn test_select_tool_drawing_box_auto_panning() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 50.0, 50.0, 150.0, 150.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
 		editor.select_tool(ToolType::Select).await;
 		// Starting selection box inside viewport
-		editor.left_mousedown(100.0, 100.0, ModifierKeys::empty()).await;
+		editor.left_mousedown(100., 100., ModifierKeys::empty()).await;
 		// Moving cursor far outside viewport to trigger auto-panning
-		editor.move_mouse(2000.0, 100.0, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.move_mouse(2000., 100., ModifierKeys::empty(), MouseKeys::LEFT).await;
 
 		let pointer_keys = SelectToolPointerKeys {
 			axis_align: Key::Shift,
@@ -120,7 +120,7 @@ mod test_auto_panning {
 		editor
 			.mouseup(
 				EditorMouseState {
-					editor_position: DVec2::new(2000.0, 100.0),
+					editor_position: DVec2::new(2000., 100.),
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
 				},
@@ -137,15 +137,15 @@ mod test_auto_panning {
 	async fn test_select_tool_dragging_auto_panning() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 50.0, 50.0, 150.0, 150.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
 		let layer = editor.active_document().metadata().all_layers().next().unwrap();
 		let initial_transform = editor.active_document().metadata().transform_to_viewport(layer);
 		// Select and start dragging the rectangle
 		editor.select_tool(ToolType::Select).await;
-		editor.left_mousedown(100.0, 100.0, ModifierKeys::empty()).await;
+		editor.left_mousedown(100., 100., ModifierKeys::empty()).await;
 
 		// Moving cursor outside viewport to trigger auto-panning
-		editor.move_mouse(2000.0, 100.0, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.move_mouse(2000., 100., ModifierKeys::empty(), MouseKeys::LEFT).await;
 
 		let pointer_keys = SelectToolPointerKeys {
 			axis_align: Key::Shift,
@@ -162,7 +162,7 @@ mod test_auto_panning {
 		editor
 			.mouseup(
 				EditorMouseState {
-					editor_position: DVec2::new(2000.0, 100.0),
+					editor_position: DVec2::new(2000., 100.),
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
 				},
@@ -174,23 +174,23 @@ mod test_auto_panning {
 		let final_transform = editor.active_document().metadata().transform_to_viewport(layer);
 		let translation_diff = (final_transform.translation - initial_transform.translation).length();
 
-		assert!(translation_diff > 10.0, "Rectangle should have moved significantly due to auto-panning (moved by {})", translation_diff);
+		assert!(translation_diff > 10., "Rectangle should have moved significantly due to auto-panning (moved by {})", translation_diff);
 	}
 
 	#[tokio::test]
 	async fn test_select_tool_resizing_auto_panning() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 50.0, 50.0, 150.0, 150.0, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
 		let layer = editor.active_document().metadata().all_layers().next().unwrap();
 		let initial_transform = editor.active_document().metadata().transform_to_viewport(layer);
 
 		editor.select_tool(ToolType::Select).await;
-		editor.left_mousedown(150.0, 150.0, ModifierKeys::empty()).await; // Click near edge for resize handle
+		editor.left_mousedown(150., 150., ModifierKeys::empty()).await; // Click near edge for resize handle
 		editor
 			.mouseup(
 				EditorMouseState {
-					editor_position: DVec2::new(150.0, 150.0),
+					editor_position: DVec2::new(150., 150.),
 					mouse_keys: MouseKeys::empty(),
 					scroll_delta: ScrollDelta::default(),
 				},
@@ -201,7 +201,7 @@ mod test_auto_panning {
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
 
 		// Moving cursor to trigger auto-panning
-		editor.move_mouse(2000.0, 2000.0, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.move_mouse(2000., 2000., ModifierKeys::empty(), MouseKeys::LEFT).await;
 
 		let pointer_keys = SelectToolPointerKeys {
 			axis_align: Key::Shift,
