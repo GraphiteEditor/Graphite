@@ -48,6 +48,7 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	#[serde(rename = "validTypes")]
@@ -61,6 +62,7 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	#[serde(rename = "connectedTo")]
