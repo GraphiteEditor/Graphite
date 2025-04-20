@@ -29,8 +29,8 @@ fn segment_to_bezier(seg: kurbo::PathSeg) -> bezier_rs::Bezier {
 /// Reduces the segments of the subpath into simple subcurves, then offset each subcurve a set `distance` away.
 /// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 pub fn offset_subpath(subpath: &Subpath<PointId>, distance: f64, join: Join) -> Subpath<PointId> {
-	// An offset at a distance 0 from the curve is simply the same curve
-	// An offset of a single point is not defined
+	// An offset at a distance 0 from the curve is simply the same curve.
+	// An offset of a single point is not defined.
 	if distance == 0. || subpath.len() <= 1 || subpath.len_segments() < 1 {
 		return subpath.clone();
 	}
@@ -105,7 +105,7 @@ pub fn offset_subpath(subpath: &Subpath<PointId>, distance: f64, join: Join) -> 
 					let (out_handle, round_point, in_handle) = subpaths[i].round_line_join(&subpaths[j], subpath.manipulator_groups()[j].anchor);
 					let last_index = subpaths[i].manipulator_groups().len() - 1;
 					subpaths[i].manipulator_groups_mut()[last_index].out_handle = Some(out_handle);
-					subpaths[i].manipulator_groups_mut().push(round_point.clone());
+					subpaths[i].manipulator_groups_mut().push(round_point);
 					subpaths[j].manipulator_groups_mut()[0].in_handle = Some(in_handle);
 				}
 			}
