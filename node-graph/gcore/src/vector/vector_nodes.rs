@@ -2,7 +2,7 @@ use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
-use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Percentage, PixelLength, SeedValue};
+use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
@@ -51,7 +51,6 @@ async fn assign_colors<T>(
 	gradient: GradientStops,
 	/// Whether to reverse the gradient.
 	reverse: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")]
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: bool,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
@@ -268,18 +267,33 @@ where
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Copy to Points"), category("Vector"), path(graphene_core::vector))]
 async fn copy_to_points<I: 'n + Send>(
 	_: impl Ctx,
 	points: VectorDataTable,
 	#[expose]
+	/// Artwork to be copied and placed at each point.
 	#[implementations(VectorDataTable, GraphicGroupTable)]
 	instance: Instances<I>,
-	#[default(1)] random_scale_min: f64,
-	#[default(1)] random_scale_max: f64,
+	/// Minimum range of randomized sizes given to each instance.
+	#[default(1)]
+	#[range((0., 2.))]
+	#[unit("x")]
+	random_scale_min: Multiplier,
+	/// Maximum range of randomized sizes given to each instance.
+	#[default(1)]
+	#[range((0., 2.))]
+	#[unit("x")]
+	random_scale_max: Multiplier,
+	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
+	#[range((-50., 50.))]
 	random_scale_bias: f64,
+	/// Seed to determine unique variations on all the randomized instance sizes.
 	random_scale_seed: SeedValue,
+	/// Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise.
+	#[range((0., 360.))]
 	random_rotation: Angle,
+	/// Seed to determine unique variations on all the randomized instance angles.
 	random_rotation_seed: SeedValue,
 ) -> GraphicGroupTable
 where
@@ -1245,7 +1259,7 @@ async fn position_on_path(
 	/// The path to traverse.
 	vector_data: VectorDataTable,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progress: f64,
+	progress: Fraction,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1277,7 +1291,7 @@ async fn tangent_on_path(
 	/// The path to traverse.
 	vector_data: VectorDataTable,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progress: f64,
+	progress: Fraction,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
