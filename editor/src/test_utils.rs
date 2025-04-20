@@ -243,6 +243,18 @@ impl EditorTestUtils {
 	pub async fn get_selected_layer(&mut self) -> Option<LayerNodeIdentifier> {
 		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
 	}
+
+	pub async fn double_click(&mut self, position: DVec2) {
+		self.handle_message(InputPreprocessorMessage::DoubleClick {
+			editor_mouse_state: EditorMouseState {
+				editor_position: position,
+				mouse_keys: MouseKeys::LEFT,
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys: ModifierKeys::empty(),
+		})
+		.await;
+	}
 }
 
 pub trait FrontendMessageTestUtils {
