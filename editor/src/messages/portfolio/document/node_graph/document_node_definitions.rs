@@ -3025,7 +3025,7 @@ fn static_input_properties() -> InputProperties {
 				.input_metadata(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
 
-			Ok(vec![node_properties::vec2_widget(
+			Ok(vec![node_properties::vector2_widget(
 				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 				x,
 				y,
@@ -3050,7 +3050,7 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let noise_type_row = node_properties::noise_type(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true));
+			let noise_type_row = node_properties::noise_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true));
 			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
 		}),
 	);
@@ -3059,7 +3059,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let domain_warp_type = node_properties::domain_warp_type(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
+			let domain_warp_type = node_properties::domain_warp_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
 			Ok(vec![domain_warp_type])
 		}),
 	);
@@ -3080,7 +3080,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_type_row = node_properties::fractal_type(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
+			let fractal_type_row = node_properties::fractal_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
 			Ok(vec![fractal_type_row])
 		}),
 	);
@@ -3171,7 +3171,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_distance_function_row = node_properties::cellular_distance_function(
+			let cellular_distance_function_row = node_properties::cellular_distance_function_widget(
 				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 				!coherent_noise_active || !cellular_noise_active,
 			);
@@ -3183,7 +3183,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_return_type = node_properties::cellular_return_type(
+			let cellular_return_type = node_properties::cellular_return_type_widget(
 				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 				!coherent_noise_active || !cellular_noise_active,
 			);
@@ -3294,7 +3294,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::vec_dvec2_input(
+				widgets: node_properties::array_of_vector2_widget(
 					ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 					TextInput::default().centered(true),
 				),
