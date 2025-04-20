@@ -94,7 +94,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: Fr
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	let description = Some(description).filter(|&description| description != "TODO").unwrap_or_default();
+	let description = if description != "TODO" { description } else { "" };
 	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).tooltip(description).widget_holder()];
 	if blank_assist {
 		add_blank_assist(&mut widgets);
@@ -1499,29 +1499,18 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		}
 	};
 
-	// Channel values
-	let (r, g, b, c) = match (is_monochrome, is_output_channel) {
-		(true, _) => ((2, "Red", 40.), (3, "Green", 40.), (4, "Blue", 20.), (5, "Constant", 0.)),
-		(false, RedGreenBlue::Red) => ((6, "(Red) Red", 100.), (7, "(Red) Green", 0.), (8, "(Red) Blue", 0.), (9, "(Red) Constant", 0.)),
-		(false, RedGreenBlue::Green) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
-		(false, RedGreenBlue::Blue) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
+	// Output Channel modes
+	let (red_output_index, green_output_index, blue_output_index, constant_output_index) = match (is_monochrome, is_output_channel) {
+		(true, _) => (2, 3, 4, 5),
+		(false, RedGreenBlue::Red) => (6, 7, 8, 9),
+		(false, RedGreenBlue::Green) => (10, 11, 12, 13),
+		(false, RedGreenBlue::Blue) => (14, 15, 16, 17),
 	};
-	let red = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, r.0, r.1, "TODO", true),
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(r.2)).unit("%"),
-	);
-	let green = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, g.0, g.1, "TODO", true),
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(g.2)).unit("%"),
-	);
-	let blue = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, b.0, b.1, "TODO", true),
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(b.2)).unit("%"),
-	);
-	let constant = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, c.0, c.1, "TODO", true),
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(c.2)).unit("%"),
-	);
+	let number_input = NumberInput::default().mode_range().min(-200.).max(200.).unit("%");
+	let red = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, red_output_index, true, context), number_input.clone());
+	let green = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, green_output_index, true, context), number_input.clone());
+	let blue = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, blue_output_index, true, context), number_input.clone());
+	let constant = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, constant_output_index, true, context), number_input);
 
 	// Monochrome
 	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
@@ -1584,33 +1573,22 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	};
 
 	// CMYK
-	let (c, m, y, k) = match colors_choice_index {
-		SelectiveColorChoice::Reds => ((2, "(Reds) Cyan"), (3, "(Reds) Magenta"), (4, "(Reds) Yellow"), (5, "(Reds) Black")),
-		SelectiveColorChoice::Yellows => ((6, "(Yellows) Cyan"), (7, "(Yellows) Magenta"), (8, "(Yellows) Yellow"), (9, "(Yellows) Black")),
-		SelectiveColorChoice::Greens => ((10, "(Greens) Cyan"), (11, "(Greens) Magenta"), (12, "(Greens) Yellow"), (13, "(Greens) Black")),
-		SelectiveColorChoice::Cyans => ((14, "(Cyans) Cyan"), (15, "(Cyans) Magenta"), (16, "(Cyans) Yellow"), (17, "(Cyans) Black")),
-		SelectiveColorChoice::Blues => ((18, "(Blues) Cyan"), (19, "(Blues) Magenta"), (20, "(Blues) Yellow"), (21, "(Blues) Black")),
-		SelectiveColorChoice::Magentas => ((22, "(Magentas) Cyan"), (23, "(Magentas) Magenta"), (24, "(Magentas) Yellow"), (25, "(Magentas) Black")),
-		SelectiveColorChoice::Whites => ((26, "(Whites) Cyan"), (27, "(Whites) Magenta"), (28, "(Whites) Yellow"), (29, "(Whites) Black")),
-		SelectiveColorChoice::Neutrals => ((30, "(Neutrals) Cyan"), (31, "(Neutrals) Magenta"), (32, "(Neutrals) Yellow"), (33, "(Neutrals) Black")),
-		SelectiveColorChoice::Blacks => ((34, "(Blacks) Cyan"), (35, "(Blacks) Magenta"), (36, "(Blacks) Yellow"), (37, "(Blacks) Black")),
+	let (c_index, m_index, y_index, k_index) = match colors_choice_index {
+		SelectiveColorChoice::Reds => (2, 3, 4, 5),
+		SelectiveColorChoice::Yellows => (6, 7, 8, 9),
+		SelectiveColorChoice::Greens => (10, 11, 12, 13),
+		SelectiveColorChoice::Cyans => (14, 15, 16, 17),
+		SelectiveColorChoice::Blues => (18, 19, 20, 21),
+		SelectiveColorChoice::Magentas => (22, 23, 24, 25),
+		SelectiveColorChoice::Whites => (26, 27, 28, 29),
+		SelectiveColorChoice::Neutrals => (30, 31, 32, 33),
+		SelectiveColorChoice::Blacks => (34, 35, 36, 37),
 	};
-	let cyan = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, c.0, c.1, "TODO", true),
-		NumberInput::default().mode_range().min(-100.).max(100.).unit("%"),
-	);
-	let magenta = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, m.0, m.1, "TODO", true),
-		NumberInput::default().mode_range().min(-100.).max(100.).unit("%"),
-	);
-	let yellow = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, y.0, y.1, "TODO", true),
-		NumberInput::default().mode_range().min(-100.).max(100.).unit("%"),
-	);
-	let black = number_widget(
-		ParameterWidgetsInfo::new(document_node, node_id, k.0, k.1, "TODO", true),
-		NumberInput::default().mode_range().min(-100.).max(100.).unit("%"),
-	);
+	let number_input = NumberInput::default().mode_range().min(-100.).max(100.).unit("%");
+	let cyan = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, c_index, true, context), number_input.clone());
+	let magenta = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, m_index, true, context), number_input.clone());
+	let yellow = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, y_index, true, context), number_input.clone());
+	let black = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, k_index, true, context), number_input);
 
 	// Mode
 	let mode_index = 1;

@@ -125,7 +125,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("The identity node passes its data through. You can use this to organize your node graph."),
+			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
 			properties: Some("identity_properties"),
 		},
 		// TODO: Auto-generate this from its proto node macro
@@ -856,7 +856,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.enumerate()
 						.map(|(id, node)| (NodeId(id as u64), node))
 						.collect(),
-
 						..Default::default()
 					}),
 					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
@@ -1488,7 +1487,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
@@ -2267,7 +2265,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
@@ -2366,7 +2363,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
@@ -2485,45 +2481,41 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					input_properties: vec![
-						("Vector Data", "TODO").into(),
+						("Vector Data", "The shape to be resampled and converted into a polyline.").into(),
 						PropertiesRow::with_override(
 							"Spacing",
-							"TODO",
+							"Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(1.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
-						)
-						.with_tooltip("Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled)"),
+						),
 						PropertiesRow::with_override(
 							"Start Offset",
-							"TODO",
+							"Exclude some distance from the start of the path before the first instance.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
-						)
-						.with_tooltip("Exclude some distance from the start of the path before the first instance"),
+						),
 						PropertiesRow::with_override(
 							"Stop Offset",
-							"TODO",
+							"Exclude some distance from the end of the path after the last instance.",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
-						)
-						.with_tooltip("Exclude some distance from the end of the path after the last instance"),
-						Into::<PropertiesRow>::into(("Adaptive Spacing", "TODO")).with_tooltip("Round 'Spacing' to a nearby value that divides into the path length evenly"),
+						),
+						Into::<PropertiesRow>::into(("Adaptive Spacing", "Round 'Spacing' to a nearby value that divides into the path length evenly.")),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
-
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed("Convert vector geometry into a polyline composed of evenly spaced points."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -2648,7 +2640,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
@@ -3520,7 +3511,7 @@ pub fn collect_node_descriptions() -> Vec<(String, String)> {
 		.map(|definition| {
 			(
 				definition.identifier.to_string(),
-				Some(definition.description.to_string()).filter(|description| description != "TODO").unwrap_or_default(),
+				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
 			)
 		})
 		.collect()

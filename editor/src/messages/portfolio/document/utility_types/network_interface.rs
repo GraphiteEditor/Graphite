@@ -3410,7 +3410,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
-	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, network_path: &[NodeId]) {
+	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, input_description: &str, network_path: &[NodeId]) {
 		let mut encapsulating_network_path = network_path.to_vec();
 		let Some(node_id) = encapsulating_network_path.pop() else {
 			log::error!("Cannot add import for document network");
@@ -3444,10 +3444,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node_metadata in insert_input");
 			return;
 		};
+		let new_input = (input_name, input_description).into();
 		if insert_index == -1 {
-			node_metadata.persistent_metadata.input_properties.push((input_name, "TODO").into());
+			node_metadata.persistent_metadata.input_properties.push(new_input);
 		} else {
-			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, (input_name, "TODO").into());
+			node_metadata.persistent_metadata.input_properties.insert(insert_index as usize, new_input);
 		}
 
 		// Clear the reference to the nodes definition
@@ -6399,7 +6400,7 @@ impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMe
 			.as_ref()
 			.and_then(|reference| resolve_document_node_type(reference))
 			.map(|definition| definition.node_template.persistent_node_metadata.input_properties.clone())
-			.unwrap_or(old.input_names.into_iter().map(|name| (name.as_str(), "TODO").into()).collect());
+			.unwrap_or(old.input_names.into_iter().map(|name| (name.as_str(), "").into()).collect());
 
 		DocumentNodePersistentMetadata {
 			reference: old.reference,
