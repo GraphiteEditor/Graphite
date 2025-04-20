@@ -16,7 +16,7 @@ use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_core::registry::VariantMetadata;
+use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
@@ -95,13 +95,13 @@ trait ChoiceSource {
 	fn into_tagged_value(v: Self::Value) -> TaggedValue;
 	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value>;
 	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>>;
-	fn widget_hint() -> graphene_core::vector::misc::ChoiceWidgetHint;
+	fn widget_hint() -> ChoiceWidgetHint;
 }
 
-struct ChoiceSourceStatic<T: graphene_core::vector::misc::ChoiceTypeStatic>(std::marker::PhantomData<T>);
+struct ChoiceSourceStatic<T: ChoiceTypeStatic>(std::marker::PhantomData<T>);
 impl<T> ChoiceSource for ChoiceSourceStatic<T>
 where
-	T: graphene_core::vector::misc::ChoiceTypeStatic + 'static,
+	T: ChoiceTypeStatic + 'static,
 	for<'a> &'a T: TryFrom<&'a TaggedValue>,
 	TaggedValue: From<T>,
 {
@@ -120,12 +120,12 @@ where
 	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>> {
 		T::list().into_iter().map(|i| i.into_iter())
 	}
-	fn widget_hint() -> graphene_core::vector::misc::ChoiceWidgetHint {
+	fn widget_hint() -> ChoiceWidgetHint {
 		T::WIDGET_HINT
 	}
 }
 
-fn enum_source<E: graphene_core::vector::misc::ChoiceTypeStatic>() -> ChoiceSourceStatic<E> {
+fn enum_source<E: ChoiceTypeStatic>() -> ChoiceSourceStatic<E> {
 	ChoiceSourceStatic(std::marker::PhantomData)
 }
 
@@ -139,8 +139,8 @@ fn choice_widget<E: ChoiceSource>(list: E, document_node: &DocumentNode, node_id
 
 	if let Some(current) = E::from_tagged_value(input.as_non_exposed_value()) {
 		let widget = match E::widget_hint() {
-			graphene_std::vector::misc::ChoiceWidgetHint::Dropdown => dropdown(list, node_id, index, current),
-			graphene_std::vector::misc::ChoiceWidgetHint::RadioButtons => radio_buttons(list, node_id, index, current),
+			ChoiceWidgetHint::Dropdown => dropdown(list, node_id, index, current),
+			ChoiceWidgetHint::RadioButtons => radio_buttons(list, node_id, index, current),
 		};
 		widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), widget]);
 	}

@@ -31,16 +31,6 @@ pub enum BooleanOperation {
 	Difference,
 }
 
-pub trait ChoiceTypeStatic: Sized + Copy + AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
-	const WIDGET_HINT: ChoiceWidgetHint;
-	fn list() -> &'static [&'static [(Self, crate::registry::VariantMetadata)]];
-}
-
-pub enum ChoiceWidgetHint {
-	Dropdown,
-	RadioButtons,
-}
-
 pub trait AsU32 {
 	fn as_u32(&self) -> u32;
 }

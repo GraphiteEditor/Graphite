@@ -165,8 +165,8 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 			}
 		}
 
-		impl #crate_name::vector::misc::ChoiceTypeStatic for #name {
-			const WIDGET_HINT: #crate_name::vector::misc::ChoiceWidgetHint = #crate_name::vector::misc::ChoiceWidgetHint::#widget_hint;
+		impl #crate_name::registry::ChoiceTypeStatic for #name {
+			const WIDGET_HINT: #crate_name::registry::ChoiceWidgetHint = #crate_name::registry::ChoiceWidgetHint::#widget_hint;
 			fn list() -> &'static [&'static [(Self, #crate_name::registry::VariantMetadata)]] {
 				&[ #(#group)* ]
 			}
