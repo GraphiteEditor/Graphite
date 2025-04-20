@@ -842,7 +842,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.replace_implementation(node_id, network_path, new_image_node.document_node.implementation);
 
 						// Insert a new empty input for the image
-						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", &[*node_id]);
+						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", "", &[*node_id]);
 						document.network_interface.set_reference(node_id, network_path, Some("Image".to_string()));
 					}
 
