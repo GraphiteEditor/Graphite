@@ -78,6 +78,7 @@ pub enum PathToolMessage {
 		move_anchor_with_handles: Key,
 		snap_angle: Key,
 		lock_angle: Key,
+		delete_segment: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
@@ -85,6 +86,7 @@ pub enum PathToolMessage {
 		move_anchor_with_handles: Key,
 		snap_angle: Key,
 		lock_angle: Key,
+		delete_segment: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -1076,6 +1078,7 @@ impl Fsm for PathToolFsmState {
 					move_anchor_with_handles,
 					snap_angle,
 					lock_angle,
+					delete_segment,
 				},
 			) => {
 				tool_data.previous_mouse_position = input.mouse.position;
@@ -1094,6 +1097,7 @@ impl Fsm for PathToolFsmState {
 						move_anchor_with_handles,
 						snap_angle,
 						lock_angle,
+						delete_segment,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1102,6 +1106,7 @@ impl Fsm for PathToolFsmState {
 						move_anchor_with_handles,
 						snap_angle,
 						lock_angle,
+						delete_segment,
 					}
 					.into(),
 				];
@@ -1117,6 +1122,7 @@ impl Fsm for PathToolFsmState {
 					move_anchor_with_handles,
 					snap_angle,
 					lock_angle,
+					delete_segment,
 				},
 			) => {
 				let mut selected_only_handles = true;
@@ -1182,6 +1188,7 @@ impl Fsm for PathToolFsmState {
 						move_anchor_with_handles,
 						snap_angle,
 						lock_angle,
+						delete_segment,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1190,6 +1197,7 @@ impl Fsm for PathToolFsmState {
 						move_anchor_with_handles,
 						snap_angle,
 						lock_angle,
+						delete_segment,
 					}
 					.into(),
 				];
@@ -1197,9 +1205,8 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
-			(PathToolFsmState::Ready, PathToolMessage::PointerMove { lock_angle, .. }) => {
-				let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				tool_data.delete_segment_pressed = lock_angle_state;
+			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
+				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
 
 				// If there is a point nearby then remove the overlay
 				if shape_editor
@@ -1248,6 +1255,7 @@ impl Fsm for PathToolFsmState {
 					move_anchor_with_handles,
 					snap_angle,
 					lock_angle,
+					delete_segment,
 				},
 			) => {
 				// Auto-panning
@@ -1258,6 +1266,7 @@ impl Fsm for PathToolFsmState {
 						move_anchor_with_handles,
 						snap_angle,
 						lock_angle,
+						delete_segment,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1266,6 +1275,7 @@ impl Fsm for PathToolFsmState {
 						move_anchor_with_handles,
 						snap_angle,
 						lock_angle,
+						delete_segment,
 					}
 					.into(),
 				];
