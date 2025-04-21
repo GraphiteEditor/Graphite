@@ -21,9 +21,9 @@ async fn blur(_: impl Ctx, image_frame: ImageFrameTable<Color>, #[range((0., 100
 		// Minimum blur radius
 		image.clone()
 	} else if box_blur {
-		gaussian_blur_algorithm(image, radius, gamma)
-	} else {
 		box_blur_algorithm(image, radius, gamma)
+	} else {
+		gaussian_blur_algorithm(image, radius, gamma)
 	};
 
 	let mut result = ImageFrameTable::new(blurred_image);
@@ -70,8 +70,8 @@ fn gaussian_kernel(radius: f64) -> Vec<f64> {
 }
 
 fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
-	if !gamma {
-		convert_color_space(&mut original_buffer, ConvertFunction::ToLinear)
+	if gamma {
+		convert_color_space(&mut original_buffer, ConvertFunction::ToGamma)
 	}
 
 	let (width, height) = original_buffer.dimensions();
@@ -121,16 +121,16 @@ fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma
 		}
 	}
 
-	if !gamma {
-		convert_color_space(&mut y_axis, ConvertFunction::ToGamma);
+	if gamma {
+		convert_color_space(&mut y_axis, ConvertFunction::ToLinear);
 	}
 
 	y_axis
 }
 
 fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
-	if !gamma {
-		convert_color_space(&mut original_buffer, ConvertFunction::ToLinear)
+	if gamma {
+		convert_color_space(&mut original_buffer, ConvertFunction::ToGamma)
 	}
 
 	let (width, height) = original_buffer.dimensions();
@@ -166,8 +166,8 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 		}
 	}
 
-	if !gamma {
-		convert_color_space(&mut y_axis, ConvertFunction::ToGamma);
+	if gamma {
+		convert_color_space(&mut y_axis, ConvertFunction::ToLinear);
 	}
 
 	y_axis
