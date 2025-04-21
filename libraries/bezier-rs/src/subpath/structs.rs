@@ -137,3 +137,10 @@ pub enum AppendType {
 	IgnoreStart,
 	SmoothJoin(f64),
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub enum ArcType {
+	Open,
+	Closed,
+	PieSlice,
+}

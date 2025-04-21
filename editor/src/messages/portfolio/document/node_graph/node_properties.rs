@@ -17,15 +17,18 @@ use graphene_core::raster::{
 	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
+use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
+use graphene_std::ops::XY;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::misc::BooleanOperation;
+use graphene_std::vector::misc::ArcType;
+use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::{GraphicGroupTable, RasterFrame};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterFrame};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -51,13 +54,19 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
-		.tooltip("Expose this parameter input in node graph")
+		.tooltip("Expose this parameter as a node input in the graph")
 		.on_update(move |_parameter| {
-			NodeGraphMessage::ExposeInput {
-				input_connector: InputConnector::node(node_id, index),
-				new_exposed: !exposed,
-			}
-			.into()
+			Message::Batched(Box::new([
+				NodeGraphMessage::ExposeInput {
+					input_connector: InputConnector::node(node_id, index),
+					set_to_exposed: !exposed,
+					start_transaction: true,
+				}
+				.into(),
+				DocumentMessage::GraphViewOverlay { open: true }.into(),
+				NavigationMessage::FitViewportToSelection.into(),
+				DocumentMessage::ZoomCanvasTo100Percent.into(),
+			]))
 		})
 		.widget_holder()
 }
@@ -72,12 +81,22 @@ pub fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	]);
 }
 
-pub fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
+pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo {
+		document_node,
+		node_id,
+		index,
+		name,
+		description,
+		blank_assist,
+	} = parameter_widgets_info;
+
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).widget_holder()];
+	let description = if description != "TODO" { description } else { "" };
+	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).tooltip(description).widget_holder()];
 	if blank_assist {
 		add_blank_assist(&mut widgets);
 	}
@@ -92,10 +111,6 @@ pub(crate) fn property_from_type(
 	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
-	let Some(name) = context.network_interface.input_name(&node_id, index, context.selection_network_path) else {
-		log::warn!("A widget failed to be built for node {node_id}, index {index} because the input name could not be determined");
-		return Err(vec![]);
-	};
 	let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the network could not be determined");
 		return Err(vec![]);
@@ -104,6 +119,9 @@ pub(crate) fn property_from_type(
 		log::warn!("A widget failed to be built for node {node_id}, index {index} because the document node does not exist");
 		return Err(vec![]);
 	};
+
+	let name = context.network_interface.input_name(node_id, index, context.selection_network_path).unwrap_or_default();
+	let description = context.network_interface.input_description(node_id, index, context.selection_network_path).unwrap_or_default();
 
 	let (mut number_min, mut number_max, range) = number_options;
 	let mut number_input = NumberInput::default();
@@ -116,138 +134,69 @@ pub(crate) fn property_from_type(
 	let min = |x: f64| number_min.unwrap_or(x);
 	let max = |x: f64| number_max.unwrap_or(x);
 
+	let default_info = ParameterWidgetsInfo::new(document_node, node_id, index, name, description, true);
+
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(0.)).max(max(100.)), true).into(),
-				Some("SignedPercentage") => number_widget(document_node, node_id, index, name, number_input.percentage().min(min(-100.)).max(max(100.)), true).into(),
-				Some("Angle") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°"), true).into(),
-				Some("PixelLength") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)).unit(" px"), true).into(),
-				Some("Length") => number_widget(document_node, node_id, index, name, number_input.min(min(0.)), true).into(),
-				Some("Fraction") => number_widget(document_node, node_id, index, name, number_input.mode_range().min(min(0.)).max(max(1.)), true).into(),
-				Some("IntegerCount") => number_widget(document_node, node_id, index, name, number_input.int().min(min(1.)), true).into(),
-				Some("SeedValue") => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
-				Some("Resolution") => vec2_widget(document_node, node_id, index, name, "W", "H", " px", Some(64.), add_blank_assist),
+				Some("Percentage") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
+				Some("SignedPercentage") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
+				Some("Angle") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°")).into(),
+				Some("Multiplier") => number_widget(default_info, number_input.unit("x")).into(),
+				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(" px")).into(),
+				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
+				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
+				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
+				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
+				Some("Resolution") => vector2_widget(default_info, "W", "H", " px", Some(64.)),
 
 				// For all other types, use TypeId-based matching
 				_ => {
 					use std::any::TypeId;
 					match concrete_type.id {
-						Some(x) if x == TypeId::of::<bool>() => bool_widget(document_node, node_id, index, name, CheckboxInput::default(), true).into(),
-						Some(x) if x == TypeId::of::<f64>() => number_widget(document_node, node_id, index, name, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY)), true).into(),
-						Some(x) if x == TypeId::of::<u32>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX))), true).into(),
-						Some(x) if x == TypeId::of::<u64>() => number_widget(document_node, node_id, index, name, number_input.int().min(min(0.)), true).into(),
-						Some(x) if x == TypeId::of::<String>() => text_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<Color>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(false), true),
-						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(true), true),
-						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-						Some(x) if x == TypeId::of::<UVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", Some(0.), add_blank_assist),
-						Some(x) if x == TypeId::of::<IVec2>() => vec2_widget(document_node, node_id, index, name, "X", "Y", "", None, add_blank_assist),
-						Some(x) if x == TypeId::of::<Vec<f64>>() => vec_f64_input(document_node, node_id, index, name, TextInput::default(), true).into(),
-						Some(x) if x == TypeId::of::<Vec<DVec2>>() => vec_dvec2_input(document_node, node_id, index, name, TextInput::default(), true).into(),
-						Some(x) if x == TypeId::of::<Font>() => {
-							let (font_widgets, style_widgets) = font_inputs(document_node, node_id, index, name, false);
-							font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
-						}
-						Some(x) if x == TypeId::of::<Curve>() => curves_widget(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(document_node, node_id, index, name, ColorInput::default().allow_none(false), true),
-						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => {
-							raster_widget(document_node, node_id, index, name, true).into()
-						}
-						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(document_node, node_id, index, name, true).into(),
-						Some(x) if x == TypeId::of::<Footprint>() => {
-							let widgets = footprint_widget(document_node, node_id, index);
-							let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
-							extra_widgets = rest.to_vec();
-							last.clone()
-						}
-						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<RedGreenBlue>() => color_channel(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_channel(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<NoiseType>() => noise_type(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<FractalType>() => fractal_type(document_node, node_id, index, name, true, false),
-						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function(document_node, node_id, index, name, true, false),
-						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type(document_node, node_id, index, name, true, false),
-						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type(document_node, node_id, index, name, true, false),
-						Some(x) if x == TypeId::of::<RelativeAbsolute>() => vec![
-							DropdownInput::new(vec![vec![
-								MenuListEntry::new("Relative")
-									.label("Relative")
-									.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
-								MenuListEntry::new("Absolute")
-									.label("Absolute")
-									.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
-							]])
-							.widget_holder(),
-						]
-						.into(),
-						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<FillType>() => vec![
-							DropdownInput::new(vec![vec![
-								MenuListEntry::new("Solid")
-									.label("Solid")
-									.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
-								MenuListEntry::new("Gradient")
-									.label("Gradient")
-									.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
-							]])
-							.widget_holder(),
-						]
-						.into(),
-						Some(x) if x == TypeId::of::<GradientType>() => vec![
-							DropdownInput::new(vec![vec![
-								MenuListEntry::new("Linear")
-									.label("Linear")
-									.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
-								MenuListEntry::new("Radial")
-									.label("Radial")
-									.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
-							]])
-							.widget_holder(),
-						]
-						.into(),
-						Some(x) if x == TypeId::of::<BooleanOperation>() => boolean_operation_radio_buttons(document_node, node_id, index, name, true),
-						Some(x) if x == TypeId::of::<CentroidType>() => centroid_widget(document_node, node_id, index),
-						Some(x) if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation(document_node, node_id, index, name, true),
-						// Some(x) if x == TypeId::of::<ImaginateSamplingMethod>() => vec![
-						// 	DropdownInput::new(
-						// 		ImaginateSamplingMethod::list()
-						// 			.into_iter()
-						// 			.map(|method| {
-						// 				vec![MenuListEntry::new(format!("{:?}", method)).label(method.to_string()).on_update(update_value(
-						// 					move |_| TaggedValue::ImaginateSamplingMethod(method),
-						// 					node_id,
-						// 					index,
-						// 				))]
-						// 			})
-						// 			.collect(),
-						// 	)
-						// 	.widget_holder(),
-						// ]
-						// .into(),
-						// Some(x) if x == TypeId::of::<ImaginateMaskStartingFill>() => vec![
-						// 	DropdownInput::new(
-						// 		ImaginateMaskStartingFill::list()
-						// 			.into_iter()
-						// 			.map(|fill| {
-						// 				vec![MenuListEntry::new(format!("{:?}", fill)).label(fill.to_string()).on_update(update_value(
-						// 					move |_| TaggedValue::ImaginateMaskStartingFill(fill),
-						// 					node_id,
-						// 					index,
-						// 				))]
-						// 			})
-						// 			.collect(),
-						// 	)
-						// 	.widget_holder(),
-						// ]
-						// .into(),
+						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
+						Some(x) if x == TypeId::of::<f64>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
+						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX)))).into(),
+						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
+						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<DVec2>() => vector2_widget(default_info, "X", "Y", "", None),
+						Some(x) if x == TypeId::of::<UVec2>() => vector2_widget(default_info, "X", "Y", "", Some(0.)),
+						Some(x) if x == TypeId::of::<IVec2>() => vector2_widget(default_info, "X", "Y", "", None),
+						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
+						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vector2_widget(default_info, TextInput::default()).into(),
+						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
+						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => raster_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
+						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
+						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode_widget(default_info),
+						Some(x) if x == TypeId::of::<RedGreenBlue>() => rgb_widget(default_info),
+						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_widget(default_info),
+						Some(x) if x == TypeId::of::<XY>() => xy_widget(default_info),
+						Some(x) if x == TypeId::of::<NoiseType>() => noise_type_widget(default_info),
+						Some(x) if x == TypeId::of::<FractalType>() => fractal_type_widget(default_info, false),
+						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function_widget(default_info, false),
+						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type_widget(default_info, false),
+						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type_widget(default_info, false),
+						Some(x) if x == TypeId::of::<RelativeAbsolute>() => relative_absolute_widget(default_info),
+						Some(x) if x == TypeId::of::<GridType>() => grid_type_widget(default_info),
+						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(default_info),
+						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(default_info),
+						Some(x) if x == TypeId::of::<ArcType>() => arc_type_widget(default_info),
+						Some(x) if x == TypeId::of::<FillType>() => fill_type_widget(default_info),
+						Some(x) if x == TypeId::of::<GradientType>() => gradient_type_widget(default_info),
+						Some(x) if x == TypeId::of::<BooleanOperation>() => boolean_operation_widget(default_info),
+						Some(x) if x == TypeId::of::<CentroidType>() => centroid_type_widget(default_info),
+						Some(x) if x == TypeId::of::<LuminanceCalculation>() => luminance_calculation_widget(default_info),
 						_ => {
-							let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, true);
+							let mut widgets = start_widgets(default_info, FrontendGraphDataType::General);
 							widgets.extend_from_slice(&[
 								Separator::new(SeparatorType::Unrelated).widget_holder(),
 								TextLabel::new("-")
@@ -274,8 +223,10 @@ pub(crate) fn property_from_type(
 	Ok(extra_widgets)
 }
 
-pub fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -293,8 +244,10 @@ pub fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	widgets
 }
 
-pub fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn text_area_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -312,8 +265,10 @@ pub fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 	widgets
 }
 
-pub fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, checkbox_input: CheckboxInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn bool_widget(parameter_widgets_info: ParameterWidgetsInfo, checkbox_input: CheckboxInput) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -332,8 +287,10 @@ pub fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	widgets
 }
 
-pub fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
-	let mut location_widgets = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, true);
+pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widgets: &mut Vec<LayoutGroup>) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut location_widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 	let mut scale_widgets = vec![TextLabel::new("").widget_holder()];
@@ -346,7 +303,7 @@ pub fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
+		return Vec::new().into();
 	};
 	if let Some(&TaggedValue::Footprint(footprint)) = input.as_non_exposed_value() {
 		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
@@ -466,27 +423,20 @@ pub fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 		);
 	}
 
-	vec![
+	let widgets = vec![
 		LayoutGroup::Row { widgets: location_widgets },
 		LayoutGroup::Row { widgets: scale_widgets },
 		LayoutGroup::Row { widgets: resolution_widgets },
-	]
+	];
+	let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
+	*extra_widgets = rest.to_vec();
+	last.clone()
 }
 
-pub fn vec2_widget(
-	document_node: &DocumentNode,
-	node_id: NodeId,
-	index: usize,
-	name: &str,
-	x: &str,
-	y: &str,
-	unit: &str,
-	min: Option<f64>,
-	mut assist: impl FnMut(&mut Vec<WidgetHolder>),
-) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, false);
+pub fn vector2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
-	assist(&mut widgets);
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Number);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -567,14 +517,38 @@ pub fn vec2_widget(
 					.widget_holder(),
 			]);
 		}
+		Some(&TaggedValue::F64(value)) => {
+			widgets.extend_from_slice(&[
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				NumberInput::new(Some(value))
+					.label(x)
+					.unit(unit)
+					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value)), node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				NumberInput::new(Some(value))
+					.label(y)
+					.unit(unit)
+					.min(min.unwrap_or(-((1_u64 << f64::MANTISSA_DIGITS) as f64)))
+					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
+					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap())), node_id, index))
+					.on_commit(commit_value)
+					.widget_holder(),
+			]);
+		}
 		_ => {}
 	}
 
 	LayoutGroup::Row { widgets }
 }
 
-pub fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_input: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
+pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text_input: TextInput) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Number);
 
 	let from_string = |string: &str| {
 		string
@@ -602,8 +576,10 @@ pub fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize
 	widgets
 }
 
-pub fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
+pub fn array_of_vector2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Number);
 
 	let from_string = |string: &str| {
 		string
@@ -631,8 +607,10 @@ pub fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usi
 	widgets
 }
 
-pub fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
-	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut first_widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let mut second_widgets = None;
 
 	let from_font_input = |font: &FontInput| TaggedValue::Font(Font::new(font.font_family.clone(), font.font_style.clone()));
@@ -665,8 +643,8 @@ pub fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	(first_widgets, second_widgets)
 }
 
-pub fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::VectorData, blank_assist);
+pub fn vector_data_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::VectorData);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Vector data is supplied through the node graph").widget_holder());
@@ -674,8 +652,8 @@ pub fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 	widgets
 }
 
-pub fn raster_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Raster, blank_assist);
+pub fn raster_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Raster);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Raster data is supplied through the node graph").widget_holder());
@@ -683,8 +661,8 @@ pub fn raster_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 	widgets
 }
 
-pub fn group_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Group, blank_assist);
+pub fn group_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Group);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Group data is supplied through the node graph").widget_holder());
@@ -692,8 +670,10 @@ pub fn group_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	widgets
 }
 
-pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
+pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Number);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -745,6 +725,15 @@ pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 					.widget_holder(),
 			]);
 		}
+		Some(&TaggedValue::DVec2(dvec2)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
+				.value(Some(dvec2.y))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
 		_ => {}
 	}
 
@@ -752,8 +741,10 @@ pub fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn rgb_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -779,8 +770,10 @@ pub fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
-pub fn real_time_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn real_time_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -813,8 +806,10 @@ pub fn real_time_mode(document_node: &DocumentNode, node_id: NodeId, index: usiz
 	LayoutGroup::Row { widgets }.with_tooltip("Real Time Mode")
 }
 
-pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn rgba_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -840,9 +835,40 @@ pub fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
+pub fn xy_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::XY(mode)) = input.as_non_exposed_value() {
+		let calculation_modes = [XY::X, XY::Y];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::XY(method), node_id, index))
+					.on_commit(commit_value),
+			);
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("X or Y Component of Vector2")
+}
+
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn noise_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -867,8 +893,10 @@ pub fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, n
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn fractal_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -893,8 +921,10 @@ pub fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn cellular_distance_function_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -922,8 +952,10 @@ pub fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId,
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn cellular_return_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -948,8 +980,10 @@ pub fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn domain_warp_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -974,8 +1008,28 @@ pub fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: us
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn relative_absolute_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	vec![
+		DropdownInput::new(vec![vec![
+			MenuListEntry::new("Relative")
+				.label("Relative")
+				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
+			MenuListEntry::new("Absolute")
+				.label("Absolute")
+				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
+		]])
+		.widget_holder(),
+	]
+	.into()
+}
+
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
+pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -1007,8 +1061,10 @@ pub fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, n
 }
 
 // TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
-pub fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn luminance_calculation_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -1034,8 +1090,10 @@ pub fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, inde
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
 }
 
-pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn boolean_operation_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1064,8 +1122,37 @@ pub fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: No
 	LayoutGroup::Row { widgets }
 }
 
-pub fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn grid_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::GridType(grid_type)) = input.as_non_exposed_value() {
+		let entries = [("Rectangular", GridType::Rectangular), ("Isometric", GridType::Isometric)]
+			.into_iter()
+			.map(|(name, val)| {
+				RadioEntryData::new(format!("{val:?}"))
+					.label(name)
+					.on_update(update_value(move |_| TaggedValue::GridType(val), node_id, index))
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+pub fn line_cap_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -1089,8 +1176,10 @@ pub fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usi
 	LayoutGroup::Row { widgets }
 }
 
-pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn line_join_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -1114,8 +1203,71 @@ pub fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 	LayoutGroup::Row { widgets }
 }
 
-pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_button: ColorInput, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn arc_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return LayoutGroup::Row { widgets: vec![] };
+	};
+	if let Some(&TaggedValue::ArcType(arc_type)) = input.as_non_exposed_value() {
+		let entries = [("Open", ArcType::Open), ("Closed", ArcType::Closed), ("Pie Slice", ArcType::PieSlice)]
+			.into_iter()
+			.map(|(name, val)| {
+				RadioEntryData::new(format!("{val:?}"))
+					.label(name)
+					.on_update(update_value(move |_| TaggedValue::ArcType(val), node_id, index))
+					.on_commit(commit_value)
+			})
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
+}
+
+pub fn fill_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	vec![
+		DropdownInput::new(vec![vec![
+			MenuListEntry::new("Solid")
+				.label("Solid")
+				.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
+			MenuListEntry::new("Gradient")
+				.label("Gradient")
+				.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+		]])
+		.widget_holder(),
+	]
+	.into()
+}
+
+pub fn gradient_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	vec![
+		DropdownInput::new(vec![vec![
+			MenuListEntry::new("Linear")
+				.label("Linear")
+				.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
+			MenuListEntry::new("Radial")
+				.label("Radial")
+				.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+		]])
+		.widget_holder(),
+	]
+	.into()
+}
+
+pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: ColorInput) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 
 	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Properties panel
 	let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] else {
@@ -1161,8 +1313,15 @@ pub fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	LayoutGroup::Row { widgets }
 }
 
-pub fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let (font_widgets, style_widgets) = font_inputs(parameter_widgets_info);
+	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
+}
+
+pub fn curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1180,8 +1339,10 @@ pub fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize
 	LayoutGroup::Row { widgets }
 }
 
-pub fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, "Centroid Type", FrontendGraphDataType::General, true);
+pub fn centroid_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
@@ -1221,13 +1382,15 @@ pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext
 	network.nodes.get(&node_id).ok_or(format!("node {node_id} not found in get_document_node"))
 }
 
-pub fn query_node_and_input_name<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str), String> {
-	let document_node = get_document_node(node_id, context)?;
-	let input_name = context
-		.network_interface
-		.input_name(&node_id, input_index, context.selection_network_path)
-		.ok_or("input name not found in noise_properties_scale")?;
-	Ok((document_node, input_name))
+pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str, &'a str), String> {
+	let node_id2 = node_id.clone();
+	let document_node = get_document_node(node_id2, context)?;
+	let input_name = context.network_interface.input_name(node_id, input_index, context.selection_network_path).unwrap_or_else(|| {
+		log::warn!("input name not found in query_node_and_input_info");
+		""
+	});
+	let input_description = context.network_interface.input_description(node_id, input_index, context.selection_network_path).unwrap_or_default();
+	Ok((document_node, input_name, input_description))
 }
 
 pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
@@ -1283,7 +1446,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 
 	// Monochrome
 	let monochrome_index = 1;
-	let monochrome = bool_widget(document_node, node_id, monochrome_index, "Monochrome", CheckboxInput::default(), true);
+	let monochrome = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, monochrome_index, true, context), CheckboxInput::default());
 	let is_monochrome = match document_node.inputs[monochrome_index].as_value() {
 		Some(TaggedValue::Bool(monochrome_choice)) => *monochrome_choice,
 		_ => false,
@@ -1324,45 +1487,18 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		}
 	};
 
-	// Channel values
-	let (r, g, b, c) = match (is_monochrome, is_output_channel) {
-		(true, _) => ((2, "Red", 40.), (3, "Green", 40.), (4, "Blue", 20.), (5, "Constant", 0.)),
-		(false, RedGreenBlue::Red) => ((6, "(Red) Red", 100.), (7, "(Red) Green", 0.), (8, "(Red) Blue", 0.), (9, "(Red) Constant", 0.)),
-		(false, RedGreenBlue::Green) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
-		(false, RedGreenBlue::Blue) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
+	// Output Channel modes
+	let (red_output_index, green_output_index, blue_output_index, constant_output_index) = match (is_monochrome, is_output_channel) {
+		(true, _) => (2, 3, 4, 5),
+		(false, RedGreenBlue::Red) => (6, 7, 8, 9),
+		(false, RedGreenBlue::Green) => (10, 11, 12, 13),
+		(false, RedGreenBlue::Blue) => (14, 15, 16, 17),
 	};
-	let red = number_widget(
-		document_node,
-		node_id,
-		r.0,
-		r.1,
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(r.2)).unit("%"),
-		true,
-	);
-	let green = number_widget(
-		document_node,
-		node_id,
-		g.0,
-		g.1,
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(g.2)).unit("%"),
-		true,
-	);
-	let blue = number_widget(
-		document_node,
-		node_id,
-		b.0,
-		b.1,
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(b.2)).unit("%"),
-		true,
-	);
-	let constant = number_widget(
-		document_node,
-		node_id,
-		c.0,
-		c.1,
-		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(c.2)).unit("%"),
-		true,
-	);
+	let number_input = NumberInput::default().mode_range().min(-200.).max(200.).unit("%");
+	let red = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, red_output_index, true, context), number_input.clone());
+	let green = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, green_output_index, true, context), number_input.clone());
+	let blue = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, blue_output_index, true, context), number_input.clone());
+	let constant = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, constant_output_index, true, context), number_input);
 
 	// Monochrome
 	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
@@ -1425,25 +1561,26 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	};
 
 	// CMYK
-	let (c, m, y, k) = match colors_choice_index {
-		SelectiveColorChoice::Reds => ((2, "(Reds) Cyan"), (3, "(Reds) Magenta"), (4, "(Reds) Yellow"), (5, "(Reds) Black")),
-		SelectiveColorChoice::Yellows => ((6, "(Yellows) Cyan"), (7, "(Yellows) Magenta"), (8, "(Yellows) Yellow"), (9, "(Yellows) Black")),
-		SelectiveColorChoice::Greens => ((10, "(Greens) Cyan"), (11, "(Greens) Magenta"), (12, "(Greens) Yellow"), (13, "(Greens) Black")),
-		SelectiveColorChoice::Cyans => ((14, "(Cyans) Cyan"), (15, "(Cyans) Magenta"), (16, "(Cyans) Yellow"), (17, "(Cyans) Black")),
-		SelectiveColorChoice::Blues => ((18, "(Blues) Cyan"), (19, "(Blues) Magenta"), (20, "(Blues) Yellow"), (21, "(Blues) Black")),
-		SelectiveColorChoice::Magentas => ((22, "(Magentas) Cyan"), (23, "(Magentas) Magenta"), (24, "(Magentas) Yellow"), (25, "(Magentas) Black")),
-		SelectiveColorChoice::Whites => ((26, "(Whites) Cyan"), (27, "(Whites) Magenta"), (28, "(Whites) Yellow"), (29, "(Whites) Black")),
-		SelectiveColorChoice::Neutrals => ((30, "(Neutrals) Cyan"), (31, "(Neutrals) Magenta"), (32, "(Neutrals) Yellow"), (33, "(Neutrals) Black")),
-		SelectiveColorChoice::Blacks => ((34, "(Blacks) Cyan"), (35, "(Blacks) Magenta"), (36, "(Blacks) Yellow"), (37, "(Blacks) Black")),
+	let (c_index, m_index, y_index, k_index) = match colors_choice_index {
+		SelectiveColorChoice::Reds => (2, 3, 4, 5),
+		SelectiveColorChoice::Yellows => (6, 7, 8, 9),
+		SelectiveColorChoice::Greens => (10, 11, 12, 13),
+		SelectiveColorChoice::Cyans => (14, 15, 16, 17),
+		SelectiveColorChoice::Blues => (18, 19, 20, 21),
+		SelectiveColorChoice::Magentas => (22, 23, 24, 25),
+		SelectiveColorChoice::Whites => (26, 27, 28, 29),
+		SelectiveColorChoice::Neutrals => (30, 31, 32, 33),
+		SelectiveColorChoice::Blacks => (34, 35, 36, 37),
 	};
-	let cyan = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
-	let magenta = number_widget(document_node, node_id, m.0, m.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
-	let yellow = number_widget(document_node, node_id, y.0, y.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
-	let black = number_widget(document_node, node_id, k.0, k.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
+	let number_input = NumberInput::default().mode_range().min(-100.).max(100.).unit("%");
+	let cyan = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, c_index, true, context), number_input.clone());
+	let magenta = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, m_index, true, context), number_input.clone());
+	let yellow = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, y_index, true, context), number_input.clone());
+	let black = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, k_index, true, context), number_input);
 
 	// Mode
 	let mode_index = 1;
-	let mut mode = start_widgets(document_node, node_id, mode_index, "Mode", FrontendGraphDataType::General, true);
+	let mut mode = start_widgets(ParameterWidgetsInfo::from_index(document_node, node_id, mode_index, true, context), FrontendGraphDataType::General);
 	mode.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 	let Some(input) = document_node.inputs.get(mode_index) else {
@@ -1478,10 +1615,59 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 }
 
 #[cfg(feature = "gpu")]
-pub(crate) fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let map = text_widget(document_node, node_id, 1, "Map", true);
+pub(crate) fn _gpu_map_properties(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<LayoutGroup> {
+	let map = text_widget(parameter_widgets_info);
 
 	vec![LayoutGroup::Row { widgets: map }]
+}
+
+pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let grid_type_index = grid::GridTypeInput::INDEX;
+	let spacing_index = grid::SpacingInput::<f64>::INDEX;
+	let angles_index = grid::AnglesInput::INDEX;
+	let rows_index = grid::RowsInput::INDEX;
+	let columns_index = grid::ColumnsInput::INDEX;
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in exposure_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let grid_type = grid_type_widget(ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context));
+
+	let mut widgets = vec![grid_type];
+
+	let Some(grid_type_input) = document_node.inputs.get(grid_type_index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
+		match grid_type {
+			GridType::Rectangular => {
+				let spacing = vector2_widget(ParameterWidgetsInfo::from_index(document_node, node_id, spacing_index, true, context), "W", "H", " px", Some(0.));
+				widgets.push(spacing);
+			}
+			GridType::Isometric => {
+				let spacing = LayoutGroup::Row {
+					widgets: number_widget(
+						ParameterWidgetsInfo::from_index(document_node, node_id, spacing_index, true, context),
+						NumberInput::default().label("H").min(0.).unit(" px"),
+					),
+				};
+				let angles = vector2_widget(ParameterWidgetsInfo::from_index(document_node, node_id, angles_index, true, context), "", "", "°", None);
+				widgets.extend([spacing, angles]);
+			}
+		}
+	}
+
+	let rows = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, rows_index, true, context), NumberInput::default().min(1.));
+	let columns = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, columns_index, true, context), NumberInput::default().min(1.));
+
+	widgets.extend([LayoutGroup::Row { widgets: rows }, LayoutGroup::Row { widgets: columns }]);
+
+	widgets
 }
 
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1492,10 +1678,12 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 			return Vec::new();
 		}
 	};
-	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
-	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
-	let gamma_input = NumberInput::default().min(0.01).max(9.99).increment_step(0.1);
-	let gamma_correction = number_widget(document_node, node_id, 3, "Gamma Correction", gamma_input, true);
+	let exposure = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, 1, true, context), NumberInput::default().min(-20.).max(20.));
+	let offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, 2, true, context), NumberInput::default().min(-0.5).max(0.5));
+	let gamma_correction = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, 3, true, context),
+		NumberInput::default().min(0.01).max(9.99).increment_step(0.1),
+	);
 
 	vec![
 		LayoutGroup::Row { widgets: exposure },
@@ -1519,13 +1707,16 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	let clamped_index = 5;
 
 	// Size X
-	let size_x = number_widget(document_node, node_id, size_x_index, "Size X", NumberInput::default(), true);
+	let size_x = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, size_x_index, true, context), NumberInput::default());
 
 	// Size Y
-	let size_y = number_widget(document_node, node_id, size_y_index, "Size Y", NumberInput::default(), true);
+	let size_y = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, size_y_index, true, context), NumberInput::default());
 
 	// Corner Radius
-	let mut corner_radius_row_1 = start_widgets(document_node, node_id, corner_radius_index, "Corner Radius", FrontendGraphDataType::Number, true);
+	let mut corner_radius_row_1 = start_widgets(
+		ParameterWidgetsInfo::from_index(document_node, node_id, corner_radius_index, true, context),
+		FrontendGraphDataType::Number,
+	);
 	corner_radius_row_1.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 	let mut corner_radius_row_2 = vec![Separator::new(SeparatorType::Unrelated).widget_holder()];
@@ -1625,7 +1816,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	}
 
 	// Clamped
-	let clamped = bool_widget(document_node, node_id, clamped_index, "Clamped", CheckboxInput::default(), true);
+	let clamped = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, clamped_index, true, context), CheckboxInput::default());
 
 	vec![
 		LayoutGroup::Row { widgets: size_x },
@@ -1635,509 +1826,6 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 		LayoutGroup::Row { widgets: clamped },
 	]
 }
-
-// pub(crate) fn imaginate_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-// 	let imaginate_node = [context.selection_network_path, &[node_id]].concat();
-
-// 	let resolve_input = |name: &str| {
-// 		IMAGINATE_NODE
-// 			.default_node_template()
-// 			.persistent_node_metadata
-// 			.input_properties
-// 			.iter()
-// 			.position(|row| row.input_data.get("input_name").and_then(|v| v.as_str()) == Some(name))
-// 			.unwrap_or_else(|| panic!("Input {name} not found"))
-// 	};
-// 	let seed_index = resolve_input("Seed");
-// 	let resolution_index = resolve_input("Resolution");
-// 	let samples_index = resolve_input("Samples");
-// 	let sampling_method_index = resolve_input("Sampling Method");
-// 	let text_guidance_index = resolve_input("Prompt Guidance");
-// 	let text_index = resolve_input("Prompt");
-// 	let neg_index = resolve_input("Negative Prompt");
-// 	let base_img_index = resolve_input("Adapt Input Image");
-// 	let img_creativity_index = resolve_input("Image Creativity");
-// 	// let mask_index = resolve_input("Masking Layer");
-// 	// let inpaint_index = resolve_input("Inpaint");
-// 	// let mask_blur_index = resolve_input("Mask Blur");
-// 	// let mask_fill_index = resolve_input("Mask Starting Fill");
-// 	let faces_index = resolve_input("Improve Faces");
-// 	let tiling_index = resolve_input("Tiling");
-
-// 	let document_node = match get_document_node(node_id, context) {
-// 		Ok(document_node) => document_node,
-// 		Err(err) => {
-// 			log::error!("Could not get document node in imaginate_properties: {err}");
-// 			return Vec::new();
-// 		}
-// 	};
-// 	let controller = &document_node.inputs[resolve_input("Controller")];
-
-// 	let server_status = {
-// 		let server_status = context.persistent_data.imaginate.server_status();
-// 		let status_text = server_status.to_text();
-// 		let mut widgets = vec![
-// 			TextLabel::new("Server").widget_holder(),
-// 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 			IconButton::new("Settings", 24)
-// 				.tooltip("Preferences: Imaginate")
-// 				.on_update(|_| DialogMessage::RequestPreferencesDialog.into())
-// 				.widget_holder(),
-// 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 			TextLabel::new(status_text).bold(true).widget_holder(),
-// 			Separator::new(SeparatorType::Related).widget_holder(),
-// 			IconButton::new("Reload", 24)
-// 				.tooltip("Refresh connection status")
-// 				.on_update(|_| PortfolioMessage::ImaginateCheckServerStatus.into())
-// 				.widget_holder(),
-// 		];
-// 		if let ImaginateServerStatus::Unavailable | ImaginateServerStatus::Failed(_) = server_status {
-// 			widgets.extend([
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				TextButton::new("Server Help")
-// 					.tooltip("Learn how to connect Imaginate to an image generation server")
-// 					.on_update(|_| {
-// 						FrontendMessage::TriggerVisitLink {
-// 							url: "https://github.com/GraphiteEditor/Graphite/discussions/1089".to_string(),
-// 						}
-// 						.into()
-// 					})
-// 					.widget_holder(),
-// 			]);
-// 		}
-// 		LayoutGroup::Row { widgets }.with_tooltip("Connection status to the server that computes generated images")
-// 	};
-
-// 	let Some(TaggedValue::ImaginateController(controller)) = controller.as_value() else {
-// 		panic!("Invalid output status input")
-// 	};
-// 	let imaginate_status = controller.get_status();
-
-// 	let use_base_image = if let Some(&TaggedValue::Bool(use_base_image)) = &document_node.inputs[base_img_index].as_value() {
-// 		use_base_image
-// 	} else {
-// 		true
-// 	};
-
-// 	let transform_not_connected = false;
-
-// 	let progress = {
-// 		let mut widgets = vec![TextLabel::new("Progress").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-// 		add_blank_assist(&mut widgets);
-// 		let status = imaginate_status.to_text();
-// 		widgets.push(TextLabel::new(status.as_ref()).bold(true).widget_holder());
-// 		LayoutGroup::Row { widgets }.with_tooltip(match imaginate_status {
-// 			ImaginateStatus::Failed(_) => status.as_ref(),
-// 			_ => "When generating, the percentage represents how many sampling steps have so far been processed out of the target number",
-// 		})
-// 	};
-
-// 	let image_controls = {
-// 		let mut widgets = vec![TextLabel::new("Image").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-
-// 		match &imaginate_status {
-// 			ImaginateStatus::Beginning | ImaginateStatus::Uploading => {
-// 				add_blank_assist(&mut widgets);
-// 				widgets.push(TextButton::new("Beginning...").tooltip("Sending image generation request to the server").disabled(true).widget_holder());
-// 			}
-// 			ImaginateStatus::Generating(_) => {
-// 				add_blank_assist(&mut widgets);
-// 				widgets.push(
-// 					TextButton::new("Terminate")
-// 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
-// 						.on_update({
-// 							let controller = controller.clone();
-// 							move |_| {
-// 								controller.request_termination();
-// 								Message::NoOp
-// 							}
-// 						})
-// 						.widget_holder(),
-// 				);
-// 			}
-// 			ImaginateStatus::Terminating => {
-// 				add_blank_assist(&mut widgets);
-// 				widgets.push(
-// 					TextButton::new("Terminating...")
-// 						.tooltip("Waiting on the final image generated after termination")
-// 						.disabled(true)
-// 						.widget_holder(),
-// 				);
-// 			}
-// 			ImaginateStatus::Ready | ImaginateStatus::ReadyDone | ImaginateStatus::Terminated | ImaginateStatus::Failed(_) => widgets.extend_from_slice(&[
-// 				IconButton::new("Random", 24)
-// 					.tooltip("Generate with a new random seed")
-// 					.on_update({
-// 						let imaginate_node = imaginate_node.clone();
-// 						let controller = controller.clone();
-// 						move |_| {
-// 							controller.trigger_regenerate();
-// 							DocumentMessage::ImaginateRandom {
-// 								imaginate_node: imaginate_node.clone(),
-// 								then_generate: true,
-// 							}
-// 							.into()
-// 						}
-// 					})
-// 					.widget_holder(),
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				TextButton::new("Generate")
-// 					.tooltip("Fill layer frame by generating a new image")
-// 					.on_update({
-// 						let controller = controller.clone();
-// 						let imaginate_node = imaginate_node.clone();
-// 						move |_| {
-// 							controller.trigger_regenerate();
-// 							DocumentMessage::ImaginateGenerate {
-// 								imaginate_node: imaginate_node.clone(),
-// 							}
-// 							.into()
-// 						}
-// 					})
-// 					.widget_holder(),
-// 				Separator::new(SeparatorType::Related).widget_holder(),
-// 				TextButton::new("Clear")
-// 					.tooltip("Remove generated image from the layer frame")
-// 					.disabled(!matches!(imaginate_status, ImaginateStatus::ReadyDone))
-// 					.on_update({
-// 						let controller = controller.clone();
-// 						let imaginate_node = imaginate_node.clone();
-// 						move |_| {
-// 							controller.set_status(ImaginateStatus::Ready);
-// 							DocumentMessage::ImaginateGenerate {
-// 								imaginate_node: imaginate_node.clone(),
-// 							}
-// 							.into()
-// 						}
-// 					})
-// 					.widget_holder(),
-// 			]),
-// 		}
-// 		LayoutGroup::Row { widgets }.with_tooltip("Buttons that control the image generation process")
-// 	};
-
-// 	// Requires custom layout for the regenerate button
-// 	let seed = {
-// 		let mut widgets = start_widgets(document_node, node_id, seed_index, "Seed", FrontendGraphDataType::Number, false);
-
-// 		let Some(input) = document_node.inputs.get(seed_index) else {
-// 			log::warn!("A widget failed to be built because its node's input index is invalid.");
-// 			return vec![];
-// 		};
-// 		if let Some(&TaggedValue::F64(seed)) = &input.as_non_exposed_value() {
-// 			widgets.extend_from_slice(&[
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				IconButton::new("Resync", 24)
-// 					.tooltip("Set a new random seed")
-// 					.on_update({
-// 						let imaginate_node = imaginate_node.clone();
-// 						move |_| {
-// 							DocumentMessage::ImaginateRandom {
-// 								imaginate_node: imaginate_node.clone(),
-// 								then_generate: false,
-// 							}
-// 							.into()
-// 						}
-// 					})
-// 					.widget_holder(),
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				NumberInput::new(Some(seed))
-// 					.int()
-// 					.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
-// 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-// 					.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index))
-// 					.on_commit(commit_value)
-// 					.mode(NumberInputMode::Increment)
-// 					.widget_holder(),
-// 			])
-// 		}
-// 		// Note: Limited by f64. You cannot even have all the possible u64 values :)
-// 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
-// 	};
-
-// 	// let transform = context
-// 	// 	.executor
-// 	// 	.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
-// 	// 	.unwrap_or_default();
-// 	let image_size = context
-// 		.executor
-// 		.introspect_node_in_network(
-// 			context.network_interface.document_network().unwrap(),
-// 			&imaginate_node,
-// 			|network| {
-// 				network
-// 					.nodes
-// 					.iter()
-// 					.find(|node| {
-// 						node.1
-// 							.inputs
-// 							.iter()
-// 							.any(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
-// 					})
-// 					.map(|(node_id, _)| node_id)
-// 					.copied()
-// 			},
-// 			|frame: &IORecord<(), ImageFrame<Color>>| (frame.output.image.width, frame.output.image.height),
-// 		)
-// 		.unwrap_or_default();
-
-// 	let document_node = match get_document_node(node_id, context) {
-// 		Ok(document_node) => document_node,
-// 		Err(err) => {
-// 			log::error!("Could not get document node in imaginate_properties: {err}");
-// 			return Vec::new();
-// 		}
-// 	};
-
-// 	let resolution = {
-// 		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Number, false);
-
-// 		let round = |size: DVec2| {
-// 			let (x, y) = graphene_std::imaginate::pick_safe_imaginate_resolution(size.into());
-// 			DVec2::new(x as f64, y as f64)
-// 		};
-
-// 		let Some(input) = document_node.inputs.get(resolution_index) else {
-// 			log::warn!("A widget failed to be built because its node's input index is invalid.");
-// 			return vec![];
-// 		};
-// 		if let Some(&TaggedValue::OptionalDVec2(vec2)) = &input.as_non_exposed_value() {
-// 			let dimensions_is_auto = vec2.is_none();
-// 			let vec2 = vec2.unwrap_or_else(|| round((image_size.0 as f64, image_size.1 as f64).into()));
-
-// 			widgets.extend_from_slice(&[
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				IconButton::new("FrameAll", 24)
-// 					.tooltip("Set the layer dimensions to this resolution")
-// 					.on_update(move |_| DialogMessage::RequestComingSoonDialog { issue: None }.into())
-// 					.widget_holder(),
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)
-// 					.icon("Edit12px")
-// 					.tooltip({
-// 						let message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64)";
-// 						let manual_message = "Set a custom resolution instead of using the input's dimensions (rounded to the nearest 64).\n\
-// 							\n\
-// 							(Resolution must be set manually while the 'Transform' input is disconnected.)";
-
-// 						if transform_not_connected {
-// 							manual_message
-// 						} else {
-// 							message
-// 						}
-// 					})
-// 					.disabled(transform_not_connected)
-// 					.on_update(update_value(
-// 						move |checkbox_input: &CheckboxInput| TaggedValue::OptionalDVec2(if checkbox_input.checked { Some(vec2) } else { None }),
-// 						node_id,
-// 						resolution_index,
-// 					))
-// 					.on_commit(commit_value)
-// 					.widget_holder(),
-// 				Separator::new(SeparatorType::Related).widget_holder(),
-// 				NumberInput::new(Some(vec2.x))
-// 					.label("W")
-// 					.min(64.)
-// 					.step(64.)
-// 					.unit(" px")
-// 					.disabled(dimensions_is_auto && !transform_not_connected)
-// 					.on_update(update_value(
-// 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(Some(round(DVec2::new(number_input.value.unwrap(), vec2.y)))),
-// 						node_id,
-// 						resolution_index,
-// 					))
-// 					.on_commit(commit_value)
-// 					.widget_holder(),
-// 				Separator::new(SeparatorType::Related).widget_holder(),
-// 				NumberInput::new(Some(vec2.y))
-// 					.label("H")
-// 					.min(64.)
-// 					.step(64.)
-// 					.unit(" px")
-// 					.disabled(dimensions_is_auto && !transform_not_connected)
-// 					.on_update(update_value(
-// 						move |number_input: &NumberInput| TaggedValue::OptionalDVec2(Some(round(DVec2::new(vec2.x, number_input.value.unwrap())))),
-// 						node_id,
-// 						resolution_index,
-// 					))
-// 					.on_commit(commit_value)
-// 					.widget_holder(),
-// 			])
-// 		}
-// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 			"Width and height of the image that will be generated. Larger resolutions take longer to compute.\n\
-// 			\n\
-// 			512x512 yields optimal results because the AI is trained to understand that scale best. Larger sizes may tend to integrate the prompt's subject more than once. Small sizes are often incoherent.\n\
-// 			\n\
-// 			Dimensions must be a multiple of 64, so these are set by rounding the layer dimensions. A resolution exceeding 1 megapixel is reduced below that limit because larger sizes may exceed available GPU memory on the server.")
-// 	};
-
-// 	let sampling_steps = {
-// 		let widgets = number_widget(document_node, node_id, samples_index, "Sampling Steps", NumberInput::default().min(0.).max(150.).int(), true);
-// 		LayoutGroup::Row { widgets }.with_tooltip("Number of iterations to improve the image generation quality, with diminishing returns around 40 when using the Euler A sampling method")
-// 	};
-
-// 	let sampling_method = {
-// 		let mut widgets = start_widgets(document_node, node_id, sampling_method_index, "Sampling Method", FrontendGraphDataType::General, true);
-
-// 		let Some(input) = document_node.inputs.get(sampling_method_index) else {
-// 			log::warn!("A widget failed to be built because its node's input index is invalid.");
-// 			return vec![];
-// 		};
-// 		if let Some(&TaggedValue::ImaginateSamplingMethod(sampling_method)) = &input.as_non_exposed_value() {
-// 			let sampling_methods = ImaginateSamplingMethod::list();
-// 			let mut entries = Vec::with_capacity(sampling_methods.len());
-// 			for method in sampling_methods {
-// 				entries.push(
-// 					MenuListEntry::new(format!("{method:?}"))
-// 						.label(method.to_string())
-// 						.on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index))
-// 						.on_commit(commit_value),
-// 				);
-// 			}
-// 			let entries = vec![entries];
-
-// 			widgets.extend_from_slice(&[
-// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 				DropdownInput::new(entries).selected_index(Some(sampling_method as u32)).widget_holder(),
-// 			]);
-// 		}
-// 		LayoutGroup::Row { widgets }.with_tooltip("Algorithm used to generate the image during each sampling step")
-// 	};
-
-// 	let text_guidance = {
-// 		let widgets = number_widget(document_node, node_id, text_guidance_index, "Prompt Guidance", NumberInput::default().min(0.).max(30.), true);
-// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 			"Amplification of the text prompt's influence over the outcome. At 0, the prompt is entirely ignored.\n\
-// 			\n\
-// 			Lower values are more creative and exploratory. Higher values are more literal and uninspired.\n\
-// 			\n\
-// 			This parameter is otherwise known as CFG (classifier-free guidance).",
-// 		)
-// 	};
-
-// 	let text_prompt = {
-// 		let widgets = text_area_widget(document_node, node_id, text_index, "Prompt", true);
-// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 			"Description of the desired image subject and style.\n\
-// 			\n\
-// 			Include an artist name like \"Rembrandt\" or art medium like \"watercolor\" or \"photography\" to influence the look. List multiple to meld styles.\n\
-// 			\n\
-// 			To boost (or lessen) the importance of a word or phrase, wrap it in parentheses ending with a colon and a multiplier, for example:\n\
-// 			\"Colorless green ideas (sleep:1.3) furiously\"",
-// 		)
-// 	};
-// 	let negative_prompt = {
-// 		let widgets = text_area_widget(document_node, node_id, neg_index, "Negative Prompt", true);
-// 		LayoutGroup::Row { widgets }.with_tooltip("A negative text prompt can be used to list things like objects or colors to avoid")
-// 	};
-// 	let base_image = {
-// 		let widgets = bool_widget(document_node, node_id, base_img_index, "Adapt Input Image", CheckboxInput::default(), true);
-// 		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon the bitmap data plugged into this node")
-// 	};
-// 	let image_creativity = {
-// 		let props = NumberInput::default().percentage().disabled(!use_base_image);
-// 		let widgets = number_widget(document_node, node_id, img_creativity_index, "Image Creativity", props, true);
-// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 			"Strength of the artistic liberties allowing changes from the input image. The image is unchanged at 0% and completely different at 100%.\n\
-// 			\n\
-// 			This parameter is otherwise known as denoising strength.",
-// 		)
-// 	};
-
-// 	let mut layout = vec![
-// 		server_status,
-// 		progress,
-// 		image_controls,
-// 		seed,
-// 		resolution,
-// 		sampling_steps,
-// 		sampling_method,
-// 		text_guidance,
-// 		text_prompt,
-// 		negative_prompt,
-// 		base_image,
-// 		image_creativity,
-// 		// layer_mask,
-// 	];
-
-// 	// if use_base_image && layer_reference_input_layer_is_some {
-// 	// 	let in_paint = {
-// 	// 		let mut widgets = start_widgets(document_node, node_id, inpaint_index, "Inpaint", FrontendGraphDataType::Boolean, true);
-
-// 	// 		if let Some(& TaggedValue::Bool(in_paint)
-// 	//)/ 		} = &document_node.inputs[inpaint_index].as_non_exposed_value()
-// 	// 		{
-// 	// 			widgets.extend_from_slice(&[
-// 	// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 	// 				RadioInput::new(
-// 	// 					[(true, "Inpaint"), (false, "Outpaint")]
-// 	// 						.into_iter()
-// 	// 						.map(|(paint, name)| RadioEntryData::new(name).label(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
-// 	// 						.collect(),
-// 	// 				)
-// 	// 				.selected_index(Some(1 - in_paint as u32))
-// 	// 				.widget_holder(),
-// 	// 			]);
-// 	// 		}
-// 	// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 	// 			"Constrain image generation to the interior (inpaint) or exterior (outpaint) of the mask, while referencing the other unchanged parts as context imagery.\n\
-// 	// 			\n\
-// 	// 			An unwanted part of an image can be replaced by drawing around it with a black shape and inpainting with that mask layer.\n\
-// 	// 			\n\
-// 	// 			An image can be uncropped by resizing the Imaginate layer to the target bounds and outpainting with a black rectangle mask matching the original image bounds.",
-// 	// 		)
-// 	// 	};
-
-// 	// 	let blur_radius = {
-// 	// 		let number_props = NumberInput::default().unit(" px").min(0.).max(25.).int();
-// 	// 		let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", number_props, true);
-// 	// 		LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
-// 	// 	};
-
-// 	// 	let mask_starting_fill = {
-// 	// 		let mut widgets = start_widgets(document_node, node_id, mask_fill_index, "Mask Starting Fill", FrontendGraphDataType::General, true);
-
-// 	// 		if let Some(& TaggedValue::ImaginateMaskStartingFill(starting_fill)
-// 	//)/ 		} = &document_node.inputs[mask_fill_index].as_non_exposed_value()
-// 	// 		{
-// 	// 			let mask_fill_content_modes = ImaginateMaskStartingFill::list();
-// 	// 			let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
-// 	// 			for mode in mask_fill_content_modes {
-// 	// 				entries.push(MenuListEntry::new(format!("{mode:?}")).label(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
-// 	// 			}
-// 	// 			let entries = vec![entries];
-
-// 	// 			widgets.extend_from_slice(&[
-// 	// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-// 	// 				DropdownInput::new(entries).selected_index(Some(starting_fill as u32)).widget_holder(),
-// 	// 			]);
-// 	// 		}
-// 	// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 	// 			"Begin in/outpainting the masked areas using this fill content as the starting input image.\n\
-// 	// 			\n\
-// 	// 			Each option can be visualized by generating with 'Sampling Steps' set to 0.",
-// 	// 		)
-// 	// 	};
-// 	// 	layout.extend_from_slice(&[in_paint, blur_radius, mask_starting_fill]);
-// 	// }
-
-// 	let improve_faces = {
-// 		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces", CheckboxInput::default(), true);
-// 		LayoutGroup::Row { widgets }.with_tooltip(
-// 			"Postprocess human (or human-like) faces to look subtly less distorted.\n\
-// 			\n\
-// 			This filter can be used on its own by enabling 'Adapt Input Image' and setting 'Sampling Steps' to 0.",
-// 		)
-// 	};
-// 	let tiling = {
-// 		let widgets = bool_widget(document_node, node_id, tiling_index, "Tiling", CheckboxInput::default(), true);
-// 		LayoutGroup::Row { widgets }.with_tooltip("Generate the image so its edges loop seamlessly to make repeatable patterns or textures")
-// 	};
-// 	layout.extend_from_slice(&[improve_faces, tiling]);
-
-// 	layout
-// }
 
 pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
@@ -2185,11 +1873,12 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 								break 'early_return default.clone();
 							}
 						}
+
 						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
 							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
 							return Vec::new();
 						};
-						let proto_node_identifier = proto_node_identifier.clone();
+
 						let mut input_types = implementations
 							.keys()
 							.filter_map(|item| item.inputs.get(input_index))
@@ -2197,10 +1886,11 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
+
 						let Some(input_type) = input_type else {
-							log::error!("Could not get input type for protonode {proto_node_identifier:?} at index {input_index:?}");
 							return Vec::new();
 						};
+
 						input_type.clone()
 					}
 					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
@@ -2208,6 +1898,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 				property_from_type(node_id, input_index, &input_type, number_options, context).unwrap_or_else(|value| value)
 			});
+
 			layout.extend(row);
 		}
 	}
@@ -2220,7 +1911,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		.reference(&node_id, context.selection_network_path)
 		.cloned()
 		.unwrap_or_default() // If there is an error getting the reference, default to empty string
-		.or_else(||{
+		.or_else(|| {
 			// If there is no reference, try to get the proto node name
 			context.network_interface.implementation(&node_id, context.selection_network_path).and_then(|implementation|{
 				if let DocumentNodeImplementation::ProtoNode(protonode) = implementation {
@@ -2231,10 +1922,12 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 			})
 		})
 		.unwrap_or("Custom Node".to_string());
+	let description = context.network_interface.description(&node_id, context.selection_network_path);
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	LayoutGroup::Section {
 		name,
+		description,
 		visible,
 		pinned,
 		id: node_id.0,
@@ -2255,7 +1948,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let backup_color_index = 2;
 	let backup_gradient_index = 3;
 
-	let mut widgets_first_row = start_widgets(document_node, node_id, fill_index, "Fill", FrontendGraphDataType::General, true);
+	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::from_index(document_node, node_id, fill_index, true, context), FrontendGraphDataType::General);
 
 	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), &Some(&TaggedValue::OptionalColor(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
 		&document_node.inputs[fill_index].as_value(),
@@ -2441,24 +2134,32 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_join_index = 6;
 	let miter_limit_index = 7;
 
-	let color = color_widget(document_node, node_id, color_index, "Color", ColorInput::default(), true);
-	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit(" px").min(0.), true);
+	let color = color_widget(ParameterWidgetsInfo::from_index(document_node, node_id, color_index, true, context), ColorInput::default());
+	let weight = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, weight_index, true, context),
+		NumberInput::default().unit(" px").min(0.),
+	);
 
 	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
 		Some(TaggedValue::VecF64(x)) => x,
 		_ => &vec![],
 	};
-	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
+	let dash_lengths = array_of_number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, dash_lengths_index, true, context),
+		TextInput::default().centered(true),
+	);
 	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
-	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", number_input, true);
-	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
-	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
+	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, dash_offset_index, true, context), number_input);
+	let line_cap = line_cap_widget(ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context));
+	let line_join = line_join_widget(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,
 	};
-	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
-	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
+	let miter_limit = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context),
+		NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter),
+	);
 
 	vec![
 		color,
@@ -2484,16 +2185,16 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let miter_limit_index = 3;
 
 	let number_input = NumberInput::default().unit(" px");
-	let distance = number_widget(document_node, node_id, distance_index, "Offset", number_input, true);
+	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, distance_index, true, context), number_input);
 
-	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);
+	let line_join = line_join_widget(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,
 	};
 
 	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
-	let miter_limit = number_widget(document_node, node_id, miter_limit_index, "Miter Limit", number_input, true);
+	let miter_limit = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context), number_input);
 
 	vec![LayoutGroup::Row { widgets: distance }, line_join, LayoutGroup::Row { widgets: miter_limit }]
 }
@@ -2511,7 +2212,10 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 	let operation_b_index = 2;
 
 	let expression = (|| {
-		let mut widgets = start_widgets(document_node, node_id, expression_index, "Expression", FrontendGraphDataType::General, true);
+		let mut widgets = start_widgets(
+			ParameterWidgetsInfo::from_index(document_node, node_id, expression_index, true, context),
+			FrontendGraphDataType::General,
+		);
 
 		let Some(input) = document_node.inputs.get(expression_index) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -2545,7 +2249,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		}
 		widgets
 	})();
-	let operand_b = number_widget(document_node, node_id, operation_b_index, "Operand B", NumberInput::default(), true);
+	let operand_b = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, operation_b_index, true, context), NumberInput::default());
 	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_holder()];
 
 	vec![
@@ -2553,4 +2257,40 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		LayoutGroup::Row { widgets: operand_b }.with_tooltip(r#"The value of "B" when calculating the expression"#),
 		LayoutGroup::Row { widgets: operand_a_hint }.with_tooltip(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected"#),
 	]
+}
+
+pub struct ParameterWidgetsInfo<'a> {
+	document_node: &'a DocumentNode,
+	node_id: NodeId,
+	index: usize,
+	name: &'a str,
+	description: &'a str,
+	blank_assist: bool,
+}
+
+impl<'a> ParameterWidgetsInfo<'a> {
+	pub fn new(document_node: &'a DocumentNode, node_id: NodeId, index: usize, name: &'a str, description: &'a str, blank_assist: bool) -> ParameterWidgetsInfo<'a> {
+		ParameterWidgetsInfo {
+			document_node,
+			node_id,
+			index,
+			name,
+			description,
+			blank_assist,
+		}
+	}
+
+	pub fn from_index(document_node: &'a DocumentNode, node_id: NodeId, index: usize, blank_assist: bool, context: &'a NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+		let name = context.network_interface.input_name(node_id, index, context.selection_network_path).unwrap_or_default();
+		let description = context.network_interface.input_description(node_id, index, context.selection_network_path).unwrap_or_default();
+
+		Self {
+			document_node,
+			node_id,
+			index,
+			name,
+			description,
+			blank_assist,
+		}
+	}
 }

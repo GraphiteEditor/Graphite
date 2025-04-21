@@ -146,13 +146,14 @@ impl DocumentMetadata {
 
 		let bounds_size = bounds_max - bounds_min;
 		let bounds_midpoint = bounds_min.midpoint(bounds_max);
+		const BOX_NUDGE: f64 = 5e-9;
 		if bounds_size.x < 1e-10 {
-			bounds_max.x = bounds_midpoint.x + 0.5;
-			bounds_min.x = bounds_midpoint.x - 0.5;
+			bounds_max.x = bounds_midpoint.x + BOX_NUDGE;
+			bounds_min.x = bounds_midpoint.x - BOX_NUDGE;
 		}
 		if bounds_size.y < 1e-10 {
-			bounds_max.y = bounds_midpoint.y + 0.5;
-			bounds_min.y = bounds_midpoint.y - 0.5;
+			bounds_max.y = bounds_midpoint.y + BOX_NUDGE;
+			bounds_min.y = bounds_midpoint.y - BOX_NUDGE;
 		}
 
 		[bounds_min, bounds_max]
