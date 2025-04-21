@@ -207,7 +207,7 @@
 		const LINE_WIDTH = 2;
 
 		// Calculate coordinates for input and output connectors
-		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
@@ -475,7 +475,7 @@
 		const outConnectorX = (outX - containerBounds.x) / $nodeGraph.transform.scale;
 		const outConnectorY = (outY - containerBounds.y) / $nodeGraph.transform.scale;
 
-		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
