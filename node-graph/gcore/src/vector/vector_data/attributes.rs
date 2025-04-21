@@ -645,7 +645,7 @@ impl VectorData {
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
-	pub fn stroke_bezier_paths(&self) -> StrokePathIter<'_> {
+	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = bezier_rs::Subpath<PointId>> {
 		let mut points = vec![StrokePathIterPointMetadata::default(); self.point_domain.ids().len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			points[start].set(StrokePathIterPointSegmentMetadata::new(segment_index, false));
@@ -658,6 +658,8 @@ impl VectorData {
 			skip: 0,
 			done_one: false,
 		}
+		.into_iter()
+		.map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
 	}
 
 	/// Construct an iterator [`bezier_rs::ManipulatorGroup`] for stroke.
@@ -746,7 +748,7 @@ pub struct StrokePathIter<'a> {
 }
 
 impl Iterator for StrokePathIter<'_> {
-	type Item = bezier_rs::Subpath<PointId>;
+	type Item = (Vec<bezier_rs::ManipulatorGroup<PointId>>, bool);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let current_start = if let Some((index, _)) = self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() == 1) {
@@ -805,7 +807,7 @@ impl Iterator for StrokePathIter<'_> {
 			}
 		}
 
-		Some(bezier_rs::Subpath::new(groups, closed))
+		Some((groups, closed))
 	}
 }
 
