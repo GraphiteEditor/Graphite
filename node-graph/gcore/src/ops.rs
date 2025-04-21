@@ -503,7 +503,8 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum XY {
 	#[default]
 	X,

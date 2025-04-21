@@ -18,7 +18,7 @@ mod validation;
 ///
 /// `#[widget(F)]` on a type indicates the type of widget to use to display/edit the type, currently `Radio` and `Dropdown` are supported.
 ///
-/// `#[label("Foo")]` on a variant overrides the default UI label (which is otherwise the name converted to title case). Default or not, labels are collected as the [`core::fmt::Display`] implementation.
+/// `#[label("Foo")]` on a variant overrides the default UI label (which is otherwise the name converted to title case).
 /// `#[icon("tag"))]` sets the icon to use when a variant is shown in a menu or radio button.
 /// Doc comments on a variant become tooltip text.
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]

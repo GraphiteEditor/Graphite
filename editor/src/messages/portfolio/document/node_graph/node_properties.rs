@@ -287,14 +287,14 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type_widget(default_info, false),
 						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type_widget(default_info, false),
 						Some(x) if x == TypeId::of::<RelativeAbsolute>() => relative_absolute_widget(default_info),
-						Some(x) if x == TypeId::of::<GridType>() => grid_type_widget(default_info),
-						Some(x) if x == TypeId::of::<LineCap>() => line_cap_widget(default_info),
-						Some(x) if x == TypeId::of::<LineJoin>() => line_join_widget(default_info),
-						Some(x) if x == TypeId::of::<ArcType>() => arc_type_widget(default_info),
+						Some(x) if x == TypeId::of::<GridType>() => choice_widget(enum_source::<GridType>(), default_info),
+						Some(x) if x == TypeId::of::<LineCap>() => choice_widget(enum_source::<LineCap>(), default_info),
+						Some(x) if x == TypeId::of::<LineJoin>() => choice_widget(enum_source::<LineJoin>(), default_info),
+						Some(x) if x == TypeId::of::<ArcType>() => choice_widget(enum_source::<ArcType>(), default_info),
 						Some(x) if x == TypeId::of::<FillType>() => fill_type_widget(default_info),
 						Some(x) if x == TypeId::of::<GradientType>() => gradient_type_widget(default_info),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => choice_widget(enum_source::<BooleanOperation>(), default_info),
-						Some(x) if x == TypeId::of::<CentroidType>() => centroid_type_widget(default_info),
+						Some(x) if x == TypeId::of::<CentroidType>() => choice_widget(enum_source::<CentroidType>(), default_info),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => choice_widget(enum_source::<LuminanceCalculation>(), default_info),
 						_ => {
 							let mut widgets = start_widgets(default_info, FrontendGraphDataType::General);
@@ -937,60 +937,13 @@ pub fn rgba_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup 
 }
 
 pub fn xy_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::XY(mode)) = input.as_non_exposed_value() {
-		let calculation_modes = [XY::X, XY::Y];
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(
-				MenuListEntry::new(format!("{method:?}"))
-					.label(method.to_string())
-					.on_update(update_value(move |_| TaggedValue::XY(method), node_id, index))
-					.on_commit(commit_value),
-			);
-		}
-		let entries = vec![entries];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("X or Y Component of Vector2")
+	// TODO: Put tooltips in choice_widget
+	choice_widget(enum_source::<XY>(), parameter_widgets_info).with_tooltip("X or Y Component of Vector2")
 }
 
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
 pub fn noise_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::NoiseType(noise_type)) = input.as_non_exposed_value() {
-		let entries = NoiseType::list()
-			.iter()
-			.map(|noise_type| {
-				MenuListEntry::new(format!("{noise_type:?}"))
-					.label(noise_type.to_string())
-					.on_update(update_value(move |_| TaggedValue::NoiseType(*noise_type), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(vec![entries]).selected_index(Some(noise_type as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Style of noise pattern")
+	// TODO: Put tooltips in choice_widget
+	choice_widget(enum_source::<NoiseType>(), parameter_widgets_info).with_tooltip("Style of noise pattern")
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
@@ -1092,10 +1045,12 @@ pub fn domain_warp_type_widget(parameter_widgets_info: ParameterWidgetsInfo, dis
 	if let Some(&TaggedValue::DomainWarpType(domain_warp_type)) = input.as_non_exposed_value() {
 		let entries = DomainWarpType::list()
 			.iter()
-			.map(|domain_warp_type| {
-				MenuListEntry::new(format!("{domain_warp_type:?}"))
-					.label(domain_warp_type.to_string())
-					.on_update(update_value(move |_| TaggedValue::DomainWarpType(*domain_warp_type), node_id, index))
+			.map(|i| i.into_iter())
+			.flatten()
+			.map(|(item, info)| {
+				MenuListEntry::new(info.name.as_ref())
+					.label(info.label.as_ref())
+					.on_update(update_value(move |_| TaggedValue::DomainWarpType(*item), node_id, index))
 					.on_commit(commit_value)
 			})
 			.collect();
@@ -1159,114 +1114,6 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
-}
-
-pub fn grid_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::GridType(grid_type)) = input.as_non_exposed_value() {
-		let entries = [("Rectangular", GridType::Rectangular), ("Isometric", GridType::Isometric)]
-			.into_iter()
-			.map(|(name, val)| {
-				RadioEntryData::new(format!("{val:?}"))
-					.label(name)
-					.on_update(update_value(move |_| TaggedValue::GridType(val), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
-}
-
-pub fn line_cap_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::LineCap(line_cap)) = input.as_non_exposed_value() {
-		let entries = [("Butt", LineCap::Butt), ("Round", LineCap::Round), ("Square", LineCap::Square)]
-			.into_iter()
-			.map(|(name, val)| {
-				RadioEntryData::new(format!("{val:?}"))
-					.label(name)
-					.on_update(update_value(move |_| TaggedValue::LineCap(val), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(line_cap as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
-}
-
-pub fn line_join_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::LineJoin(line_join)) = input.as_non_exposed_value() {
-		let entries = [("Miter", LineJoin::Miter), ("Bevel", LineJoin::Bevel), ("Round", LineJoin::Round)]
-			.into_iter()
-			.map(|(name, val)| {
-				RadioEntryData::new(format!("{val:?}"))
-					.label(name)
-					.on_update(update_value(move |_| TaggedValue::LineJoin(val), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(line_join as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
-}
-
-pub fn arc_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::ArcType(arc_type)) = input.as_non_exposed_value() {
-		let entries = [("Open", ArcType::Open), ("Closed", ArcType::Closed), ("Pie Slice", ArcType::PieSlice)]
-			.into_iter()
-			.map(|(name, val)| {
-				RadioEntryData::new(format!("{val:?}"))
-					.label(name)
-					.on_update(update_value(move |_| TaggedValue::ArcType(val), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
 }
 
 pub fn fill_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
@@ -1374,41 +1221,6 @@ pub fn curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup
 				.on_commit(commit_value)
 				.widget_holder(),
 		])
-	}
-	LayoutGroup::Row { widgets }
-}
-
-pub fn centroid_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::CentroidType(centroid_type)) = input.as_non_exposed_value() {
-		let entries = vec![
-			RadioEntryData::new("area")
-				.label("Area")
-				.tooltip("Center of mass for the interior area of the shape")
-				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Area), node_id, index))
-				.on_commit(commit_value),
-			RadioEntryData::new("length")
-				.label("Length")
-				.tooltip("Center of mass for the perimeter arc length of the shape")
-				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Length), node_id, index))
-				.on_commit(commit_value),
-		];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries)
-				.selected_index(match centroid_type {
-					CentroidType::Area => Some(0),
-					CentroidType::Length => Some(1),
-				})
-				.widget_holder(),
-		]);
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -1674,7 +1486,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let grid_type = grid_type_widget(ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context));
+	let grid_type = choice_widget(enum_source::<GridType>(), ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context));
 
 	let mut widgets = vec![grid_type];
 
@@ -2189,8 +2001,8 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	);
 	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
 	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, dash_offset_index, true, context), number_input);
-	let line_cap = line_cap_widget(ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context));
-	let line_join = line_join_widget(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
+	let line_cap = choice_widget(enum_source::<LineCap>(), ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context));
+	let line_join = choice_widget(enum_source::<LineJoin>(), ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,
@@ -2226,7 +2038,7 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let number_input = NumberInput::default().unit(" px");
 	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, distance_index, true, context), number_input);
 
-	let line_join = line_join_widget(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
+	let line_join = choice_widget(enum_source::<LineJoin>(), ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,

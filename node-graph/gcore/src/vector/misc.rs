@@ -1,7 +1,8 @@
 use dyn_any::DynAny;
 
 /// Represents different ways of calculating the centroid.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum CentroidType {
 	/// The center of mass for the area of a solid shape's interior, as if made out of an infinitely flat material.
 	#[default]
@@ -78,7 +79,8 @@ impl AsI64 for f64 {
 	}
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum GridType {
 	#[default]
 	Rectangular,
@@ -86,7 +88,8 @@ pub enum GridType {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum ArcType {
 	#[default]
 	Open,

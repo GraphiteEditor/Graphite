@@ -54,7 +54,7 @@ pub struct FieldMetadata {
 	pub number_mode_range: Option<(f64, f64)>,
 }
 
-pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + std::fmt::Display + std::fmt::Debug + Send + Sync {
+pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
 	const WIDGET_HINT: ChoiceWidgetHint;
 	fn list() -> &'static [&'static [(Self, VariantMetadata)]];
 }

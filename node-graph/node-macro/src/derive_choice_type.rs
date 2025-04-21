@@ -144,16 +144,6 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 			quote! { &[ #(#items)* ], }
 		})
 		.collect();
-	let display_arm: Vec<_> = variants
-		.iter()
-		.map(|vg| vg.iter())
-		.flatten()
-		.map(|v| {
-			let vn = &v.name;
-			let vl = &v.basic_item.label;
-			quote! { #name::#vn => write!(f, #vl), }
-		})
-		.collect();
 	let widget_hint = match enum_info.widget_hint {
 		WidgetHint::Radio => quote! { RadioButtons },
 		WidgetHint::Dropdown => quote! { Dropdown },
@@ -169,14 +159,6 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 			const WIDGET_HINT: #crate_name::registry::ChoiceWidgetHint = #crate_name::registry::ChoiceWidgetHint::#widget_hint;
 			fn list() -> &'static [&'static [(Self, #crate_name::registry::VariantMetadata)]] {
 				&[ #(#group)* ]
-			}
-		}
-
-		impl core::fmt::Display for #name {
-			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-				match self {
-					#( #display_arm )*
-				}
 			}
 		}
 	})

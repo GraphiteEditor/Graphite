@@ -865,44 +865,22 @@ impl core::fmt::Display for RedGreenBlueAlpha {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum NoiseType {
 	#[default]
 	Perlin,
+
+	#[label("OpenSimplex2")]
 	OpenSimplex2,
+
+	#[label("OpenSimplex2S")]
 	OpenSimplex2S,
+
 	Cellular,
 	ValueCubic,
 	Value,
 	WhiteNoise,
-}
-
-impl core::fmt::Display for NoiseType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			NoiseType::Perlin => write!(f, "Perlin"),
-			NoiseType::OpenSimplex2 => write!(f, "OpenSimplex2"),
-			NoiseType::OpenSimplex2S => write!(f, "OpenSimplex2S"),
-			NoiseType::Cellular => write!(f, "Cellular"),
-			NoiseType::ValueCubic => write!(f, "Value Cubic"),
-			NoiseType::Value => write!(f, "Value"),
-			NoiseType::WhiteNoise => write!(f, "White Noise"),
-		}
-	}
-}
-
-impl NoiseType {
-	pub fn list() -> &'static [NoiseType; 7] {
-		&[
-			NoiseType::Perlin,
-			NoiseType::OpenSimplex2,
-			NoiseType::OpenSimplex2S,
-			NoiseType::Cellular,
-			NoiseType::ValueCubic,
-			NoiseType::Value,
-			NoiseType::WhiteNoise,
-		]
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1021,30 +999,19 @@ impl CellularReturnType {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum DomainWarpType {
 	#[default]
 	None,
+
+	#[label("OpenSimplex2")]
 	OpenSimplex2,
+
+	#[label("OpenSimplex2 Reduced")]
 	OpenSimplex2Reduced,
+
 	BasicGrid,
-}
-
-impl core::fmt::Display for DomainWarpType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			DomainWarpType::None => write!(f, "None"),
-			DomainWarpType::OpenSimplex2 => write!(f, "OpenSimplex2"),
-			DomainWarpType::OpenSimplex2Reduced => write!(f, "OpenSimplex2 Reduced"),
-			DomainWarpType::BasicGrid => write!(f, "Basic Grid"),
-		}
-	}
-}
-
-impl DomainWarpType {
-	pub fn list() -> &'static [DomainWarpType; 4] {
-		&[DomainWarpType::None, DomainWarpType::OpenSimplex2, DomainWarpType::OpenSimplex2Reduced, DomainWarpType::BasicGrid]
-	}
 }
 
 // Aims for interoperable compatibility with:
