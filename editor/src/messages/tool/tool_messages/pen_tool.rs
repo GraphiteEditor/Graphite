@@ -1677,7 +1677,7 @@ impl Fsm for PenToolFsmState {
 						if let Some(current_layer) = selected_layers
 							.next()
 							.filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer)
-							.or(tool_data.current_layer.filter((|layer| *layer != other_layer)))
+							.or(tool_data.current_layer.filter(|layer| *layer != other_layer))
 						{
 							merge_layers(document, current_layer, other_layer, responses);
 						}
