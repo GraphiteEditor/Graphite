@@ -566,8 +566,8 @@ impl OverlayContext {
 	}
 
 	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		let pattern_width = 6;
-		let pattern_height = 6;
+		let pattern_width = 4;
+		let pattern_height = 4;
 		let pattern_canvas = OffscreenCanvas::new(pattern_width, pattern_height).unwrap();
 
 		let pattern_ctx: OffscreenCanvasRenderingContext2d = pattern_canvas
@@ -590,14 +590,7 @@ impl OverlayContext {
 
 		let color = color.to_rgba8_srgb();
 		set_pixel(0, 0, &color);
-		set_pixel(0, 1, &color);
-		set_pixel(1, 0, &color);
-		set_pixel(1, 1, &color);
-
-		set_pixel(3, 3, &color);
-		set_pixel(3, 4, &color);
-		set_pixel(4, 3, &color);
-		set_pixel(4, 4, &color);
+		set_pixel(2, 2, &color);
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), pattern_width, pattern_height).unwrap();
 		pattern_ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
@@ -606,7 +599,6 @@ impl OverlayContext {
 		self.push_path(subpaths, transform);
 
 		self.render_context.set_fill_style_canvas_pattern(&pattern);
-		self.render_context.set_transform(2.0, 0.0, 0.0, 2.0, 0.0, 0.0).expect("Failed to set transform");
 		self.render_context.fill();
 	}
 
