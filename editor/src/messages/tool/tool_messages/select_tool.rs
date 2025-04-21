@@ -29,6 +29,7 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
+use std::collections::HashSet;
 use std::fmt;
 
 #[derive(Default)]
@@ -1590,16 +1591,56 @@ fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifi
 }
 
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	for layer in selected {
-		let ancestor = layer
-			.ancestors(document.metadata())
-			.filter(not_artboard(document))
-			.find(|&ancestor| document.network_interface.selected_nodes().selected_layers_contains(ancestor, document.metadata()));
-
-		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
-		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
-		tool_data.layers_dragging.push(new_selected);
+	if selected.is_empty() {
+		return;
 	}
+
+	let clicked_layer = document.find_deepest(&selected).unwrap_or_else(|| {
+		LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.next()
+			.expect("ROOT_PARENT should have at least one layer when clicking")
+	});
+
+	let selected_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+	let metadata = document.metadata();
+
+	let final_selection: Option<Vec<LayerNodeIdentifier>> = (!selected_layers.is_empty() && selected_layers != vec![LayerNodeIdentifier::ROOT_PARENT]).then_some(()).and_then(|_| {
+		let mut relevant_layers = selected_layers;
+		if !relevant_layers.contains(&clicked_layer) {
+			relevant_layers.push(clicked_layer);
+		}
+		clicked_layer
+			.ancestors(metadata)
+			.filter(not_artboard(document))
+			.find(|&potential_lca| {
+				relevant_layers
+					.iter()
+					.all(|layer| *layer == potential_lca || layer.ancestors(metadata).any(|ancestor| ancestor == potential_lca))
+			})
+			.map(|lca| {
+				let direct_children_of_lca: Vec<_> = lca.children(metadata).collect();
+				let mut relevant_siblings = HashSet::new();
+				for layer_to_check in &relevant_layers {
+					if *layer_to_check == lca {
+						relevant_siblings.clear();
+						relevant_siblings.insert(lca);
+						break;
+					}
+					if let Some(relevant_child) = direct_children_of_lca
+						.iter()
+						.find(|&&child| *layer_to_check == child || layer_to_check.ancestors(metadata).any(|ancestor| ancestor == child))
+					{
+						relevant_siblings.insert(*relevant_child);
+					}
+				}
+				relevant_siblings.into_iter().collect()
+			})
+	});
+
+	let new_selected = final_selection.unwrap_or_else(|| vec![clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer)]);
+	tool_data.layers_dragging.clear();
+	tool_data.layers_dragging.extend(new_selected);
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
