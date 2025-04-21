@@ -389,7 +389,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	///
 	/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
 	/// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
-	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64) -> Vec<DVec2> {
+	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64, subpaths: &[(Self, [DVec2; 2])], subpath_index: usize) -> Vec<DVec2> {
 		let Some(bounding_box) = self.bounding_box() else { return Vec::new() };
 		let (offset_x, offset_y) = bounding_box[0].into();
 		let (width, height) = (bounding_box[1] - bounding_box[0]).into();
@@ -400,7 +400,23 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		shape.set_closed(true);
 		shape.apply_transform(DAffine2::from_translation((-offset_x, -offset_y).into()));
 
-		let point_in_shape_checker = |point: DVec2| shape.winding_order(point) != 0;
+		let point_in_shape_checker = |point: DVec2| {
+			// Check against all paths the point is contained in to compute the correct winding number
+			let mut number = 0;
+			for (i, (shape, bb)) in subpaths.iter().enumerate() {
+				let point = point + bounding_box[0];
+				if bb[0].x > point.x || bb[0].y > point.y || bb[1].x < point.x || bb[1].y < point.y {
+					continue;
+				}
+				let winding = shape.winding_order(point);
+
+				if i == subpath_index && winding == 0 {
+					return false;
+				}
+				number += winding;
+			}
+			number != 0
+		};
 
 		let square_edges_intersect_shape_checker = |corner1: DVec2, size: f64| {
 			let corner2 = corner1 + DVec2::splat(size);
@@ -421,7 +437,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Alternatively, this can be interpreted as limiting the angle that the miter can form.
 	/// When the limit is exceeded, no manipulator group will be returned.
 	/// This value should be greater than 0. If not, the default of 4 will be used.
-	pub(crate) fn miter_line_join(&self, other: &Subpath<PointId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<PointId>> {
+	pub fn miter_line_join(&self, other: &Subpath<PointId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<PointId>> {
 		let miter_limit = match miter_limit {
 			Some(miter_limit) if miter_limit > f64::EPSILON => miter_limit,
 			_ => 4.,
@@ -475,7 +491,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// - The `out_handle` for the last manipulator group of `self`
 	/// - The new manipulator group to be added
 	/// - The `in_handle` for the first manipulator group of `other`
-	pub(crate) fn round_line_join(&self, other: &Subpath<PointId>, center: DVec2) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
+	pub fn round_line_join(&self, other: &Subpath<PointId>, center: DVec2) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 

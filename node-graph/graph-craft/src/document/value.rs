@@ -49,14 +49,24 @@ macro_rules! tagged_value {
 			}
 		}
 		impl<'a> TaggedValue {
-			/// Converts to a Box<dyn DynAny> - this isn't very neat but I'm not sure of a better approach
-			pub fn to_any(self) -> DAny<'a> {
+			/// Converts to a Box<dyn DynAny>
+			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
 					Self::EditorApi(x) => Box::new(x),
+				}
+			}
+			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
+			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
+				match self {
+					Self::None => Arc::new(()),
+					$( Self::$identifier(x) => Arc::new(x), )*
+					Self::RenderOutput(x) => Arc::new(x),
+					Self::SurfaceFrame(x) => Arc::new(x),
+					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
 			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
@@ -82,6 +92,18 @@ macro_rules! tagged_value {
 
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
+				}
+			}
+			/// Attempts to downcast the dynamic type to a tagged value
+			pub fn try_from_std_any_ref(input: &(dyn std::any::Any)) -> Result<Self, String> {
+				use std::any::TypeId;
+
+				match input.type_id() {
+					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
+					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
+					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(graphene_core::SurfaceFrame::clone(input.downcast_ref().unwrap()))),
+					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
 			pub fn from_type(input: &Type) -> Option<Self> {
@@ -135,16 +157,16 @@ macro_rules! tagged_value {
 
 tagged_value! {
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
 	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
 	VectorData(graphene_core::vector::VectorDataTable),
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
 	GraphicGroup(graphene_core::GraphicGroupTable),
 	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	GraphicElement(graphene_core::GraphicElement),
 	Artboard(graphene_core::Artboard),
@@ -180,6 +202,7 @@ tagged_value! {
 	VecU64(Vec<u64>),
 	NodePath(Vec<NodeId>),
 	VecDVec2(Vec<DVec2>),
+	XY(graphene_core::ops::XY),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),
@@ -190,6 +213,8 @@ tagged_value! {
 	DomainWarpType(graphene_core::raster::DomainWarpType),
 	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
+	GridType(graphene_core::vector::misc::GridType),
+	ArcType(graphene_core::vector::misc::ArcType),
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),
@@ -332,7 +357,7 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
 
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		Box::pin(async move { self.value.clone().into_inner().to_any() })
+		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
 	}
 }
 impl UpcastNode {

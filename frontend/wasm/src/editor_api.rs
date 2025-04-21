@@ -24,14 +24,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
-// /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
-// /// This avoids creating a json with a list millions of numbers long.
-// #[wasm_bindgen(module = "/../src/editor.ts")]
-// extern "C" {
-// 	// fn dispatchTauri(message: String) -> String;
-// 	fn dispatchTauri(message: String);
-// }
-
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen(js_name = setRandomSeed)]
@@ -183,21 +175,6 @@ impl EditorHandle {
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
 	}
-
-	// #[wasm_bindgen(js_name = tauriResponse)]
-	// pub fn tauri_response(&self, _message: JsValue) {
-	// 	#[cfg(feature = "tauri")]
-	// 	match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
-	// 		Ok(response) => {
-	// 			for message in response {
-	// 				self.send_frontend_message_to_js(message);
-	// 			}
-	// 		}
-	// 		Err(error) => {
-	// 			log::error!("tauri response: {error:?}\n{_message:?}");
-	// 		}
-	// 	}
-	// }
 
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
@@ -823,7 +800,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", &[node_id]);
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", "", &[node_id]);
 				}
 			}
 		}
