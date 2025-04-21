@@ -1,4 +1,6 @@
 use dyn_any::DynAny;
+use glam::DVec2;
+use kurbo::Point;
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
@@ -100,4 +102,8 @@ pub enum ArcType {
 	Open,
 	Closed,
 	PieSlice,
+}
+
+pub fn point_to_dvec2(point: Point) -> DVec2 {
+	DVec2 { x: point.x, y: point.y }
 }
