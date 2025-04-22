@@ -12,6 +12,7 @@ use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, Graph
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
+use kurbo::StrokeOptLevel;
 use rand::{Rng, SeedableRng};
 
 /// Implemented for types that can be converted to an iterator of vector data.
@@ -1036,7 +1037,7 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 		LineCap::Square => kurbo::Cap::Square,
 	};
 	let style = kurbo::Stroke::new(stroke.weight).with_caps(cap).with_join(join);
-	let opts = kurbo::StrokeOpts::default();
+	let opts = kurbo::StrokeOpts::default().opt_level(StrokeOptLevel::Optimized);
 
 	// 0.25 is balanced between performace and accuracy of the curve.
 	const STROKE_TOLERANCE: f64 = 0.25;
