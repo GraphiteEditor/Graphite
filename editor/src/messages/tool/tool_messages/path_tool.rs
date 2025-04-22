@@ -17,7 +17,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
-use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData, VectorData};
+use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
 use std::vec;
 
 #[derive(Default)]
@@ -967,7 +967,7 @@ impl PathToolData {
 				self.temporary_colinear_handles = false;
 				skip_opposite = true;
 			}
-			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, opposite, skip_opposite, responses);
+			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -1453,55 +1453,53 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if tool_data.handle_drag_toggle && drag_occurred {
-					if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
-						// the handles which are temporarily made colinear when ctrl-dragging from the anchor need to revert back
-						if tool_data.temporary_colinear_handles {
-							shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
-							tool_data.temporary_colinear_handles = false;
-						}
-						shape_editor.deselect_all_points();
-						shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
-
-						tool_data.saved_points_before_handle_drag.clear();
-						tool_data.handle_drag_toggle = false;
+					// the handles which are temporarily made colinear when ctrl-dragging from the anchor need to revert back
+					if tool_data.temporary_colinear_handles {
+						shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+						tool_data.temporary_colinear_handles = false;
 					}
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 
-					tool_data.alt_dragging_from_anchor = false;
-					tool_data.alt_clicked_on_anchor = false;
-
-					if tool_data.select_anchor_toggled {
-						shape_editor.deselect_all_points();
-						shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
-						tool_data.remove_saved_points();
-						tool_data.select_anchor_toggled = false;
-					}
-
-					if let Some((layer, nearest_point)) = nearest_point {
-						if !drag_occurred && !extend_selection {
-							let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
-							if clicked_selected {
-								shape_editor.deselect_all_points();
-								shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
-								responses.add(OverlaysMessage::Draw);
-							}
-						}
-					}
-					// Deselect all points if the user clicks the filled region of the shape
-					else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
-						shape_editor.deselect_all_points();
-					}
-
-					if tool_data.snapping_axis.is_some() {
-						tool_data.snapping_axis = None;
-					}
-
-					responses.add(DocumentMessage::EndTransaction);
-					responses.add(PathToolMessage::SelectedPointUpdated);
-					tool_data.snap_manager.cleanup(responses);
-					tool_data.opposite_handle_position = None;
-
-					PathToolFsmState::Ready
+					tool_data.saved_points_before_handle_drag.clear();
+					tool_data.handle_drag_toggle = false;
 				}
+
+				tool_data.alt_dragging_from_anchor = false;
+				tool_data.alt_clicked_on_anchor = false;
+
+				if tool_data.select_anchor_toggled {
+					shape_editor.deselect_all_points();
+					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
+					tool_data.remove_saved_points();
+					tool_data.select_anchor_toggled = false;
+				}
+
+				if let Some((layer, nearest_point)) = nearest_point {
+					if !drag_occurred && !extend_selection {
+						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
+						if clicked_selected {
+							shape_editor.deselect_all_points();
+							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
+							responses.add(OverlaysMessage::Draw);
+						}
+					}
+				}
+				// Deselect all points if the user clicks the filled region of the shape
+				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					shape_editor.deselect_all_points();
+				}
+
+				if tool_data.snapping_axis.is_some() {
+					tool_data.snapping_axis = None;
+				}
+
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(PathToolMessage::SelectedPointUpdated);
+				tool_data.snap_manager.cleanup(responses);
+				tool_data.opposite_handle_position = None;
+
+				PathToolFsmState::Ready
 			}
 
 			// Delete key
