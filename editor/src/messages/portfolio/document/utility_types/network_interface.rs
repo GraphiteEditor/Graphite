@@ -1370,7 +1370,7 @@ impl NodeNetworkInterface {
 			selected_nodes
 				.selected_layers(self.document_metadata())
 				.map(|layer| {
-					let mut layer_path = layer.ancestors(&self.document_metadata).collect::<Vec<_>>();
+					let mut layer_path = layer.ancestors(self.document_metadata()).collect::<Vec<_>>();
 					layer_path.reverse();
 					layer_path
 				})
@@ -1429,36 +1429,123 @@ impl NodeNetworkInterface {
 			.and_then(|layer| layer.last().copied())
 	}
 
-	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes<'a>(&'a self, mut node_ids: Vec<NodeId>, network_path: &'a [NodeId], mut flow_type: FlowType) -> impl Iterator<Item = NodeId> + 'a {
-		let (Some(network), Some(network_metadata)) = (self.nested_network(network_path), self.network_metadata(network_path)) else {
-			log::error!("Could not get network or network_metadata in upstream_flow_back_from_nodes");
-			return FlowIter {
-				stack: Vec::new(),
-				network: &self.network,
-				network_metadata: &self.network_metadata,
-				flow_type: FlowType::UpstreamFlow,
+	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
+	pub fn delete_nodes(&mut self, nodes_to_delete: Vec<NodeId>, delete_children: bool, network_path: &[NodeId]) {
+		let Some(outward_wires) = self.outward_wires(network_path).cloned() else {
+			log::error!("Could not get outward wires in delete_nodes");
+			return;
+		};
+
+		let mut delete_nodes = HashSet::new();
+		for node_id in &nodes_to_delete {
+			delete_nodes.insert(*node_id);
+
+			if !delete_children {
+				continue;
 			};
-		};
-		if matches!(flow_type, FlowType::LayerChildrenUpstreamFlow) {
-			node_ids = node_ids
-				.iter()
-				.filter_map(move |node_id| {
-					if self.is_layer(node_id, network_path) {
-						network.nodes.get(node_id).and_then(|node| node.inputs.get(1)).and_then(|input| input.as_node())
-					} else {
-						Some(*node_id)
+
+			for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::LayerChildrenUpstreamFlow) {\n\t\t\t\t// Skip the original node since we're already deleting it\n\t\t\t\tif upstream_id == *node_id {\n\t\t\t\t\tcontinue;\n\t\t\t\t}\n\t\t\t\t
+				// Skip the original node since we're already deleting it
+				if upstream_id == *node_id {
+					continue;
+				}
+				
+				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.
+				// If the traversal find as child node of a node in the `delete_nodes` set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
+				let mut stack = vec![OutputConnector::node(upstream_id, 0)];
+				let mut can_delete = true;
+				
+				// Check if this upstream node is connected to any node that's not in the delete set
+				while let Some(current_node) = stack.pop() {
+					let current_node_id = current_node.node_id().expect("The current node in the delete stack cannot be the export");
+					
+					// Get all downstream connections from this node
+					let Some(downstream_nodes) = outward_wires.get(&current_node) else { continue };
+					
+					for downstream_node in downstream_nodes {
+						if let InputConnector::Node { node_id: downstream_id, .. } = downstream_node {
+							// If the downstream node is not in the delete set, this upstream node is connected to something we're keeping
+							if !delete_nodes.contains(downstream_id) && !nodes_to_delete.contains(downstream_id) {
+								can_delete = false;
+								break;
+							}
+							
+							let downstream_node_output = OutputConnector::node(*downstream_id, 0);
+							if !delete_nodes.contains(downstream_id) {
+								stack.push(downstream_node_output);
+							}
+							// Continue traversing over the downstream sibling, if the current node is a sibling to a node that will be deleted and it is a layer
+							else {
+								for deleted_node_id in &nodes_to_delete {
+									let Some(downstream_node) = self.document_node(deleted_node_id, network_path) else { continue };
+									let Some(input) = downstream_node.inputs.first() else { continue };
+
+									if let NodeInput::Node { node_id, .. } = input {
+										if *node_id == current_node_id {
+											stack.push(OutputConnector::node(*deleted_node_id, 0));
+										}
+									}
+								}
+							}
+						}
+						// If the traversal reaches the export, then the current node is not a sole dependent
+						else {
+							can_delete = false;
+						}
 					}
-				})
-				.collect::<Vec<_>>();
-			flow_type = FlowType::UpstreamFlow;
-		};
-		FlowIter {
-			stack: node_ids,
-			network,
-			network_metadata,
-			flow_type,
+					
+					if !can_delete {
+						break;
+					}
+				}
+				
+				if can_delete {
+					delete_nodes.insert(upstream_id);
+				}
+			}
 		}
+
+		for delete_node_id in &delete_nodes {
+			let upstream_chain_nodes = self
+				.upstream_flow_back_from_nodes(vec![*delete_node_id], network_path, FlowType::PrimaryFlow)
+				.skip(1)
+				.take_while(|upstream_node| self.is_chain(upstream_node, network_path))
+				.collect::<Vec<_>>();
+
+			if !self.remove_references_from_network(delete_node_id, network_path) {
+				log::error!("could not remove references from network");
+				continue;
+			}
+
+			for input_index in 0..self.number_of_displayed_inputs(delete_node_id, network_path) {
+				self.disconnect_input(&InputConnector::node(*delete_node_id, input_index), network_path);
+			}
+
+			let Some(network) = self.network_mut(network_path) else {
+				log::error!("Could not get nested network in delete_nodes");
+				continue;
+			};
+
+			network.nodes.remove(delete_node_id);
+			self.transaction_modified();
+
+			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+				log::error!("Could not get nested network_metadata in delete_nodes");
+				continue;
+			};
+			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
+			for previous_chain_node in upstream_chain_nodes {
+				self.set_chain_position(&previous_chain_node, network_path);
+			}
+		}
+		self.unload_all_nodes_bounding_box(network_path);
+		// Instead of unloaded all node click targets, just unload the nodes upstream from the deleted nodes. unload_upstream_node_click_targets will not work since the nodes have been deleted.
+		self.unload_all_nodes_click_targets(network_path);
+		let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
+			return;
+		};
+		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
 	}
 
 	pub fn upstream_output_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<OutputConnector> {
@@ -4187,16 +4274,32 @@ impl NodeNetworkInterface {
 				continue;
 			};
 
-			for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::LayerChildrenUpstreamFlow) {
+			for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::LayerChildrenUpstreamFlow) {\n\t\t\t\t// Skip the original node since we're already deleting it\n\t\t\t\tif upstream_id == *node_id {\n\t\t\t\t\tcontinue;\n\t\t\t\t}\n\t\t\t\t
+				// Skip the original node since we're already deleting it
+				if upstream_id == *node_id {
+					continue;
+				}
+				
 				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.
 				// If the traversal find as child node of a node in the `delete_nodes` set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
 				let mut stack = vec![OutputConnector::node(upstream_id, 0)];
 				let mut can_delete = true;
+				
+				// Check if this upstream node is connected to any node that's not in the delete set
 				while let Some(current_node) = stack.pop() {
 					let current_node_id = current_node.node_id().expect("The current node in the delete stack cannot be the export");
+					
+					// Get all downstream connections from this node
 					let Some(downstream_nodes) = outward_wires.get(&current_node) else { continue };
+					
 					for downstream_node in downstream_nodes {
 						if let InputConnector::Node { node_id: downstream_id, .. } = downstream_node {
+							// If the downstream node is not in the delete set, this upstream node is connected to something we're keeping
+							if !delete_nodes.contains(downstream_id) && !nodes_to_delete.contains(downstream_id) {
+								can_delete = false;
+								break;
+							}
+							
 							let downstream_node_output = OutputConnector::node(*downstream_id, 0);
 							if !delete_nodes.contains(downstream_id) {
 								stack.push(downstream_node_output);
@@ -4220,7 +4323,12 @@ impl NodeNetworkInterface {
 							can_delete = false;
 						}
 					}
+					
+					if !can_delete {
+						break;
+					}
 				}
+				
 				if can_delete {
 					delete_nodes.insert(upstream_id);
 				}
@@ -4270,81 +4378,6 @@ impl NodeNetworkInterface {
 		selected_nodes.retain_selected_nodes(|node_id| !nodes_to_delete.contains(node_id));
 	}
 
-	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
-	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		// TODO: Add more logic to support retaining preview when removing references. Since there are so many edge cases/possible crashes, for now the preview is ended.
-		self.stop_previewing(network_path);
-
-		// Check whether the being-deleted node's first (primary) input is a node
-		let reconnect_to_input = self.document_node(node_id, network_path).and_then(|node| {
-			node.inputs
-				.iter()
-				.find(|input| input.is_exposed_to_frontend(network_path.is_empty()))
-				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Network { .. }))
-				.cloned()
-		});
-		// Get all upstream references
-		let number_of_outputs = self.number_of_outputs(node_id, network_path);
-		let Some(all_outward_wires) = self.outward_wires(network_path) else {
-			log::error!("Could not get outward wires in remove_references_from_network");
-			return false;
-		};
-		let mut downstream_inputs_to_disconnect = Vec::new();
-		for output_index in 0..number_of_outputs {
-			if let Some(outward_wires) = all_outward_wires.get(&OutputConnector::node(*node_id, output_index)) {
-				downstream_inputs_to_disconnect.extend(outward_wires.clone());
-			}
-		}
-
-		let mut reconnect_node = None;
-
-		for downstream_input in &downstream_inputs_to_disconnect {
-			self.disconnect_input(downstream_input, network_path);
-			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
-			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
-				if let Some(reconnect_input) = &reconnect_to_input {
-					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
-					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
-					self.set_input(downstream_input, reconnect_input.clone(), network_path);
-				}
-			}
-		}
-
-		// Shift the reconnected node up to collapse space
-		if let Some(reconnect_node) = &reconnect_node {
-			let Some(reconnected_node_position) = self.position(reconnect_node, network_path) else {
-				log::error!("Could not get reconnected node position in remove_references_from_network");
-				return false;
-			};
-			let Some(disconnected_node_position) = self.position(node_id, network_path) else {
-				log::error!("Could not get disconnected node position in remove_references_from_network");
-				return false;
-			};
-			let max_shift_distance = reconnected_node_position.y - disconnected_node_position.y;
-
-			let upstream_nodes = self.upstream_flow_back_from_nodes(vec![*reconnect_node], network_path, FlowType::PrimaryFlow).collect::<Vec<_>>();
-
-			// Select the reconnect node to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in remove_references_from_network");
-				return false;
-			};
-
-			let old_selected_nodes = selected_nodes.replace_with(upstream_nodes);
-
-			// Shift up until there is either a collision or the disconnected node position is reached
-			let mut current_shift_distance = 0;
-			while self.check_collision_with_stack_dependents(reconnect_node, -1, network_path).is_empty() && max_shift_distance > current_shift_distance {
-				self.shift_selected_nodes(Direction::Up, false, network_path);
-				current_shift_distance += 1;
-			}
-
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
-		}
-
-		true
-	}
-
 	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
@@ -4371,22 +4404,6 @@ impl NodeNetworkInterface {
 		};
 		network_metadata.persistent_metadata.previewing = Previewing::No;
 	}
-
-	// /// Sets the root node only if a node is being previewed
-	// pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
-	// 	if let Previewing::Yes { root_node_to_restore } = self.previewing {
-	// 		// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
-	// 		if let Some(root_node_to_restore) = root_node_to_restore {
-	// 			if root_node_to_restore.id != node_id {
-	// 				self.start_previewing(node_id, output_index);
-	// 			} else {
-	// 				self.stop_preview();
-	// 			}
-	// 		} else {
-	// 			self.stop_preview();
-	// 		}
-	// 	}
-	// }
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -5852,756 +5869,3 @@ pub struct Ports {
 	output_ports: Vec<(usize, ClickTarget)>,
 }
 
-impl Default for Ports {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-impl Ports {
-	pub fn new() -> Ports {
-		Ports {
-			input_ports: Vec::new(),
-			output_ports: Vec::new(),
-		}
-	}
-
-	pub fn click_targets(&self) -> impl Iterator<Item = &ClickTarget> {
-		self.input_ports
-			.iter()
-			.map(|(_, click_target)| click_target)
-			.chain(self.output_ports.iter().map(|(_, click_target)| click_target))
-	}
-
-	pub fn input_ports(&self) -> impl Iterator<Item = &(usize, ClickTarget)> {
-		self.input_ports.iter()
-	}
-
-	pub fn output_ports(&self) -> impl Iterator<Item = &(usize, ClickTarget)> {
-		self.output_ports.iter()
-	}
-
-	fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
-		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_input_port(input_index, ClickTarget::new(subpath, 0.));
-	}
-
-	fn insert_custom_input_port(&mut self, input_index: usize, click_target: ClickTarget) {
-		self.input_ports.push((input_index, click_target));
-	}
-
-	fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
-		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_output_port(output_index, ClickTarget::new(subpath, 0.));
-	}
-
-	fn insert_custom_output_port(&mut self, output_index: usize, click_target: ClickTarget) {
-		self.output_ports.push((output_index, click_target));
-	}
-
-	fn insert_node_input(&mut self, input_index: usize, row_index: usize, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
-		let center = node_top_left + DVec2::new(0., 24. + 24. * row_index as f64);
-		self.insert_input_port_at_center(input_index, center);
-	}
-
-	fn insert_node_output(&mut self, output_index: usize, row_index: usize, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
-		let center = node_top_left + DVec2::new(5. * 24., 24. + 24. * row_index as f64);
-		self.insert_output_port_at_center(output_index, center);
-	}
-
-	fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
-		let center = if input_index == 0 {
-			node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.)
-		} else {
-			node_top_left + DVec2::new(0., 24. * 1.)
-		};
-		self.insert_input_port_at_center(input_index, center);
-	}
-
-	fn insert_layer_output(&mut self, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
-		let center = node_top_left + DVec2::new(2. * 24., -8.);
-		self.insert_output_port_at_center(0, center);
-	}
-
-	pub fn clicked_input_port_from_point(&self, point: DVec2) -> Option<usize> {
-		self.input_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
-	}
-
-	pub fn clicked_output_port_from_point(&self, point: DVec2) -> Option<usize> {
-		self.output_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
-	}
-
-	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
-		self.input_ports
-			.get(index)
-			.and_then(|(_, click_target)| click_target.bounding_box().map(|bounds| bounds[0] + DVec2::new(8., 8.)))
-	}
-
-	pub fn output_port_position(&self, index: usize) -> Option<DVec2> {
-		self.output_ports
-			.get(index)
-			.and_then(|(_, click_target)| click_target.bounding_box().map(|bounds| bounds[0] + DVec2::new(8., 8.)))
-	}
-}
-
-#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
-pub struct RootNode {
-	pub node_id: NodeId,
-	pub output_index: usize,
-}
-
-impl RootNode {
-	pub fn to_connector(&self) -> OutputConnector {
-		OutputConnector::Node {
-			node_id: self.node_id,
-			output_index: self.output_index,
-		}
-	}
-}
-
-#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
-pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
-	#[default]
-	No,
-}
-
-/// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct NodeNetworkMetadata {
-	pub persistent_metadata: NodeNetworkPersistentMetadata,
-	#[serde(skip)]
-	pub transient_metadata: NodeNetworkTransientMetadata,
-}
-
-impl Clone for NodeNetworkMetadata {
-	fn clone(&self) -> Self {
-		NodeNetworkMetadata {
-			persistent_metadata: self.persistent_metadata.clone(),
-			transient_metadata: Default::default(),
-		}
-	}
-}
-
-impl PartialEq for NodeNetworkMetadata {
-	fn eq(&self, other: &Self) -> bool {
-		self.persistent_metadata == other.persistent_metadata
-	}
-}
-
-impl NodeNetworkMetadata {
-	pub fn nested_metadata(&self, nested_path: &[NodeId]) -> Option<&Self> {
-		let mut network_metadata = Some(self);
-
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network| network.persistent_metadata.node_metadata.get(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_ref());
-		}
-		network_metadata
-	}
-
-	/// Get the mutable nested network given by the path of node ids
-	pub fn nested_metadata_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network_metadata = Some(self);
-
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
-		}
-		network_metadata
-	}
-}
-
-#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NodeNetworkPersistentMetadata {
-	/// Node metadata must exist for every document node in the network
-	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
-	pub node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
-	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
-	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
-	pub previewing: Previewing,
-	// Stores the transform and navigation state for the network
-	pub navigation_metadata: NavigationMetadata,
-	/// Stack of selection snapshots for previous history states.
-	// TODO: Use `#[serde(skip)]` here instead? @TrueDoctor claims this isn't valid but hasn't satisfactorily explained how it differs from the situation where `#[serde(default)]` fills in the default value. From brief testing, skip seems to work without issue.
-	#[serde(default)]
-	pub selection_undo_history: VecDeque<SelectedNodes>,
-	/// Stack of selection snapshots for future history states.
-	// TODO: Use `#[serde(skip)]` here instead? See above.
-	#[serde(default)]
-	pub selection_redo_history: VecDeque<SelectedNodes>,
-}
-
-/// This is the same as Option, but more clear in the context of having cached metadata either being loaded or unloaded
-#[derive(Debug, Default, Clone)]
-pub enum TransientMetadata<T> {
-	Loaded(T),
-	#[default]
-	Unloaded,
-}
-
-impl<T> TransientMetadata<T> {
-	/// Set the current transient metadata to unloaded
-	pub fn unload(&mut self) {
-		*self = TransientMetadata::Unloaded;
-	}
-
-	pub fn is_loaded(&self) -> bool {
-		matches!(self, TransientMetadata::Loaded(_))
-	}
-}
-
-/// If some network calculation is too slow to compute for every usage, cache the data here
-#[derive(Debug, Default, Clone)]
-pub struct NodeNetworkTransientMetadata {
-	pub selected_nodes: SelectedNodes,
-	/// Sole dependents of the top of the stacks of all selected nodes. Used to determine which nodes are checked for collision when shifting.
-	/// The LayerOwner is used to determine whether the collided node should be shifted, or the layer that owns it.
-	pub stack_dependents: TransientMetadata<HashMap<NodeId, LayerOwner>>,
-	/// Cache for the bounding box around all nodes in node graph space.
-	pub all_nodes_bounding_box: TransientMetadata<[DVec2; 2]>,
-	/// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
-	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
-	/// Cache for all outward wire connections
-	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,
-	// TODO: Cache all wire paths instead of calculating in Graph.svelte
-	// pub wire_paths: Vec<WirePath>
-	/// All export connector click targets
-	pub import_export_ports: TransientMetadata<Ports>,
-	/// Click targets for adding, removing, and moving import/export ports
-	pub modify_import_export: TransientMetadata<ModifyImportExportClickTarget>,
-	// Distance to the edges of the network, where the import/export ports are displayed. Rounded to nearest grid space when the panning ends.
-	pub rounded_network_edge_distance: TransientMetadata<NetworkEdgeDistance>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModifyImportExportClickTarget {
-	// Plus icon that appears below all imports/exports, except in the document network
-	pub add_import_export: Ports,
-	// Subtract icon that appears when hovering over an import/export
-	pub remove_imports_exports: Ports,
-	// Grip drag icon that appears when hovering over an import/export
-	pub reorder_imports_exports: Ports,
-}
-
-#[derive(Debug, Clone)]
-pub struct NetworkEdgeDistance {
-	/// The viewport pixel distance between the left edge of the node graph and the exports.
-	pub exports_to_edge_distance: DVec2,
-	/// The viewport pixel distance between the left edge of the node graph and the imports.
-	pub imports_to_edge_distance: DVec2,
-}
-
-#[derive(Debug, Clone)]
-pub enum LayerOwner {
-	// Used to get the layer that should be shifted when there is a collision.
-	Layer(NodeId),
-	// The vertical offset of a node from the start of its shift. Should be reset when the drag ends.
-	None(i32),
-}
-
-/// Utility function for providing a default boolean value to serde.
-#[inline(always)]
-fn return_true() -> bool {
-	true
-}
-
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct DocumentNodeMetadata {
-	#[serde(deserialize_with = "deserialize_node_persistent_metadata")]
-	pub persistent_metadata: DocumentNodePersistentMetadata,
-	#[serde(skip)]
-	pub transient_metadata: DocumentNodeTransientMetadata,
-}
-
-impl Clone for DocumentNodeMetadata {
-	fn clone(&self) -> Self {
-		DocumentNodeMetadata {
-			persistent_metadata: self.persistent_metadata.clone(),
-			transient_metadata: Default::default(),
-		}
-	}
-}
-
-impl PartialEq for DocumentNodeMetadata {
-	fn eq(&self, other: &Self) -> bool {
-		self.persistent_metadata == other.persistent_metadata
-	}
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct NumberInputSettings {
-	pub unit: Option<String>,
-	pub min: Option<f64>,
-	pub max: Option<f64>,
-	pub step: Option<f64>,
-	pub mode: NumberInputMode,
-	pub range_min: Option<f64>,
-	pub range_max: Option<f64>,
-	pub is_integer: bool,
-	pub blank_assist: bool,
-}
-
-impl Default for NumberInputSettings {
-	fn default() -> Self {
-		NumberInputSettings {
-			unit: None,
-			min: None,
-			max: None,
-			step: None,
-			mode: NumberInputMode::default(),
-			range_min: None,
-			range_max: None,
-			is_integer: false,
-			blank_assist: true,
-		}
-	}
-}
-
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Vec2InputSettings {
-	pub x: String,
-	pub y: String,
-	pub unit: String,
-	pub min: Option<f64>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum WidgetOverride {
-	None,
-	Hidden,
-	String(String),
-	Number(NumberInputSettings),
-	Vec2(Vec2InputSettings),
-	Custom(String),
-}
-
-// TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct PropertiesRow {
-	/// A general datastore than can store key value pairs of any types for any input
-	// TODO: This could be simplified to just Value, and key value pairs could be stored as the Value::Object variant
-	pub input_data: HashMap<String, Value>,
-	// An input can override a widget, which would otherwise be automatically generated from the type
-	// The string is the identifier to the widget override function stored in INPUT_OVERRIDES
-	pub widget_override: Option<String>,
-	#[serde(skip)]
-	pub input_name: String,
-	#[serde(skip)]
-	pub input_description: String,
-}
-
-impl Default for PropertiesRow {
-	fn default() -> Self {
-		("", "TODO").into()
-	}
-}
-
-impl From<(&str, &str)> for PropertiesRow {
-	fn from(input_name_and_description: (&str, &str)) -> Self {
-		PropertiesRow::with_override(input_name_and_description.0, input_name_and_description.1, WidgetOverride::None)
-	}
-}
-
-impl PropertiesRow {
-	pub fn with_override(input_name: &str, input_description: &str, widget_override: WidgetOverride) -> Self {
-		let mut input_data = HashMap::new();
-		let input_name = input_name.to_string();
-		let input_description = input_description.to_string();
-
-		match widget_override {
-			WidgetOverride::None => PropertiesRow {
-				input_data,
-				widget_override: None,
-				input_name,
-				input_description,
-			},
-			WidgetOverride::Hidden => PropertiesRow {
-				input_data,
-				widget_override: Some("hidden".to_string()),
-				input_name,
-				input_description,
-			},
-			WidgetOverride::String(string_properties) => {
-				input_data.insert("string_properties".to_string(), Value::String(string_properties));
-				PropertiesRow {
-					input_data,
-					widget_override: Some("string".to_string()),
-					input_name,
-					input_description,
-				}
-			}
-			WidgetOverride::Number(mut number_properties) => {
-				if let Some(unit) = number_properties.unit.take() {
-					input_data.insert("unit".to_string(), json!(unit));
-				}
-				if let Some(min) = number_properties.min.take() {
-					input_data.insert("min".to_string(), json!(min));
-				}
-				if let Some(max) = number_properties.max.take() {
-					input_data.insert("max".to_string(), json!(max));
-				}
-				if let Some(step) = number_properties.step.take() {
-					input_data.insert("step".to_string(), json!(step));
-				}
-				if let Some(range_min) = number_properties.range_min.take() {
-					input_data.insert("range_min".to_string(), json!(range_min));
-				}
-				if let Some(range_max) = number_properties.range_max.take() {
-					input_data.insert("range_max".to_string(), json!(range_max));
-				}
-				input_data.insert("mode".to_string(), json!(number_properties.mode));
-				input_data.insert("is_integer".to_string(), Value::Bool(number_properties.is_integer));
-				input_data.insert("blank_assist".to_string(), Value::Bool(number_properties.blank_assist));
-				PropertiesRow {
-					input_data,
-					widget_override: Some("number".to_string()),
-					input_name,
-					input_description,
-				}
-			}
-			WidgetOverride::Vec2(vec2_properties) => {
-				input_data.insert("x".to_string(), json!(vec2_properties.x));
-				input_data.insert("y".to_string(), json!(vec2_properties.y));
-				input_data.insert("unit".to_string(), json!(vec2_properties.unit));
-				if let Some(min) = vec2_properties.min {
-					input_data.insert("min".to_string(), json!(min));
-				}
-				PropertiesRow {
-					input_data,
-					widget_override: Some("vec2".to_string()),
-					input_name,
-					input_description,
-				}
-			}
-			WidgetOverride::Custom(lambda_name) => PropertiesRow {
-				input_data,
-				widget_override: Some(lambda_name),
-				input_name,
-				input_description,
-			},
-		}
-	}
-
-	pub fn with_tooltip(mut self, tooltip: &str) -> Self {
-		self.input_data.insert("tooltip".to_string(), json!(tooltip));
-		self
-	}
-}
-
-// TODO: Eventually remove this migration document upgrade code
-fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
-	use serde::Deserialize;
-
-	const REPLACEMENTS: [(&str, &str); 4] = [
-		("VectorData", "Instances<VectorData>"),
-		("GraphicGroup", "Instances<GraphicGroup>"),
-		("ImageFrame", "Instances<Image>"),
-		("Instances<ImageFrame>", "Instances<Image>"),
-	];
-
-	let mut names = Vec::<String>::deserialize(deserializer)?;
-
-	for name in names.iter_mut() {
-		for (old, new) in REPLACEMENTS.iter() {
-			if name == old {
-				*name = new.to_string();
-			}
-		}
-	}
-
-	Ok(names)
-}
-
-/// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentNodePersistentMetadata {
-	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no display name is set.
-	// TODO: Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
-	// TODO: The reference is removed once the node is modified, since the node now stores its own implementation and inputs.
-	// TODO: Implement node versioning so that references to old nodes can be updated to the new node definition.
-	pub reference: Option<String>,
-	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
-	#[serde(default)]
-	pub display_name: String,
-	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
-	/// Must match the length of node inputs
-	pub input_properties: Vec<PropertiesRow>,
-	#[serde(deserialize_with = "migrate_output_names")]
-	pub output_names: Vec<String>,
-	/// Indicates to the UI if a primary output should be drawn for this node.
-	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
-	#[serde(default = "return_true")]
-	pub has_primary_output: bool,
-	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
-	#[serde(default)]
-	pub locked: bool,
-	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
-	#[serde(default)]
-	pub pinned: bool,
-	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	/// All fields in NodeTypePersistentMetadata should automatically be updated by using the network interface API
-	pub node_type_metadata: NodeTypePersistentMetadata,
-	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
-	pub network_metadata: Option<NodeNetworkMetadata>,
-}
-
-impl Default for DocumentNodePersistentMetadata {
-	fn default() -> Self {
-		DocumentNodePersistentMetadata {
-			reference: None,
-			display_name: String::new(),
-			input_properties: Vec::new(),
-			output_names: Vec::new(),
-			has_primary_output: true,
-			pinned: false,
-			locked: false,
-			node_type_metadata: NodeTypePersistentMetadata::default(),
-			network_metadata: None,
-		}
-	}
-}
-
-impl DocumentNodePersistentMetadata {
-	pub fn is_layer(&self) -> bool {
-		matches!(self.node_type_metadata, NodeTypePersistentMetadata::Layer(_))
-	}
-}
-
-/// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentNodePersistentMetadataInputNames {
-	pub reference: Option<String>,
-	#[serde(default)]
-	pub display_name: String,
-	pub input_names: Vec<String>,
-	pub output_names: Vec<String>,
-	#[serde(default = "return_true")]
-	pub has_primary_output: bool,
-	#[serde(default)]
-	pub locked: bool,
-	#[serde(default)]
-	pub pinned: bool,
-	pub node_type_metadata: NodeTypePersistentMetadata,
-	pub network_metadata: Option<NodeNetworkMetadata>,
-}
-
-impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
-	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
-		let input_properties = old
-			.reference
-			.as_ref()
-			.and_then(|reference| resolve_document_node_type(reference))
-			.map(|definition| definition.node_template.persistent_node_metadata.input_properties.clone())
-			.unwrap_or(old.input_names.into_iter().map(|name| (name.as_str(), "").into()).collect());
-
-		DocumentNodePersistentMetadata {
-			reference: old.reference,
-			display_name: old.display_name,
-			input_properties,
-			output_names: old.output_names,
-			has_primary_output: old.has_primary_output,
-			locked: old.locked,
-			pinned: old.pinned,
-			node_type_metadata: old.node_type_metadata,
-			network_metadata: old.network_metadata,
-		}
-	}
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-enum NodePersistentMetadataVersions {
-	NodePersistentMetadataInputNames(DocumentNodePersistentMetadataInputNames),
-	NodePersistentMetadata(DocumentNodePersistentMetadata),
-}
-
-fn deserialize_node_persistent_metadata<'de, D>(deserializer: D) -> Result<DocumentNodePersistentMetadata, D::Error>
-where
-	D: serde::Deserializer<'de>,
-{
-	use serde::Deserialize;
-
-	let value = Value::deserialize(deserializer)?;
-
-	serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()).or_else(|_| {
-		serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value)
-			.map(DocumentNodePersistentMetadata::from)
-			.map_err(serde::de::Error::custom)
-	})
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum NodeTypePersistentMetadata {
-	Layer(LayerPersistentMetadata),
-	Node(NodePersistentMetadata),
-}
-
-impl Default for NodeTypePersistentMetadata {
-	fn default() -> Self {
-		NodeTypePersistentMetadata::node(IVec2::ZERO)
-	}
-}
-
-impl NodeTypePersistentMetadata {
-	pub fn node(position: IVec2) -> NodeTypePersistentMetadata {
-		NodeTypePersistentMetadata::Node(NodePersistentMetadata {
-			position: NodePosition::Absolute(position),
-		})
-	}
-	pub fn layer(position: IVec2) -> NodeTypePersistentMetadata {
-		NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-			position: LayerPosition::Absolute(position),
-			owned_nodes: TransientMetadata::default(),
-		})
-	}
-}
-
-/// All fields in LayerMetadata should automatically be updated by using the network interface API
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct LayerPersistentMetadata {
-	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
-	// preview_click_target: Option<ClickTarget>,
-	/// Stores the position of a layer node, which can either be Absolute or Stack
-	pub position: LayerPosition,
-	/// All nodes that should be moved when the layer is moved.
-	#[serde(skip)]
-	pub owned_nodes: TransientMetadata<HashSet<NodeId>>,
-}
-
-impl PartialEq for LayerPersistentMetadata {
-	fn eq(&self, other: &Self) -> bool {
-		self.position == other.position
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NodePersistentMetadata {
-	/// Stores the position of a non layer node, which can either be Absolute or Chain
-	position: NodePosition,
-}
-
-/// A layer can either be position as Absolute or in a Stack
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum LayerPosition {
-	// Position of the node in grid spaces
-	Absolute(IVec2),
-	// A layer is in a Stack when it feeds into the bottom input of a layer. The Y position stores the vertical distance between the layer and its upstream sibling/parent.
-	Stack(u32),
-}
-
-/// A node can either be position as Absolute or in a Chain
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum NodePosition {
-	// Position of the node in grid spaces
-	Absolute(IVec2),
-	// In a chain the position is based on the number of nodes to the first layer node
-	Chain,
-}
-
-/// Cached metadata that should be calculated when creating a node, and should be recalculated when modifying a node property that affects one of the cached fields.
-#[derive(Debug, Default, Clone)]
-pub struct DocumentNodeTransientMetadata {
-	// The click targets are stored as a single struct since it is very rare for only one to be updated, and recomputing all click targets in one function is more efficient than storing them separately.
-	pub click_targets: TransientMetadata<DocumentNodeClickTargets>,
-	// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_metadata: NodeTypeTransientMetadata,
-}
-
-#[derive(Debug, Clone)]
-pub struct DocumentNodeClickTargets {
-	/// In order to keep the displayed position of the node in sync with the click target, the displayed position of a node is derived from the top left of the click target
-	/// Ensure node_click_target is kept in sync when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
-	pub node_click_target: ClickTarget,
-	/// Stores all port click targets in node graph space.
-	pub port_click_targets: Ports,
-	// Click targets that are specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
-	pub node_type_metadata: NodeTypeClickTargets,
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum NodeTypeTransientMetadata {
-	Layer(LayerTransientMetadata),
-	#[default]
-	Node, // No transient data is stored exclusively for nodes
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct LayerTransientMetadata {
-	// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the left end of the node
-	/// This is necessary since calculating the layer width through web_sys is very slow
-	pub layer_width: TransientMetadata<u32>,
-	// Should not be a performance concern to calculate when needed with chain_width.
-	// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail to the end of the chain
-	// chain_width: u32,
-}
-
-#[derive(Debug, Clone)]
-pub enum NodeTypeClickTargets {
-	Layer(LayerClickTargets),
-	Node, // No transient click targets are stored exclusively for nodes
-}
-
-/// All fields in TransientLayerMetadata should automatically be updated by using the network interface API
-#[derive(Debug, Clone)]
-pub struct LayerClickTargets {
-	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
-	pub visibility_click_target: ClickTarget,
-	/// Cache for the grip icon, which is next to the visibility button.
-	pub grip_click_target: ClickTarget,
-	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
-	// preview_click_target: ClickTarget,
-}
-
-pub enum LayerClickTargetTypes {
-	Visibility,
-	Grip,
-	// Preview,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NavigationMetadata {
-	/// The current pan, and zoom state of the viewport's view of the node graph.
-	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
-	pub node_graph_ptz: PTZ,
-	// TODO: Remove and replace with calculate_offset_transform from the node_graph_ptz. This will be difficult since it requires both the navigation message handler and the IPP
-	/// Transform from node graph space to viewport space.
-	pub node_graph_to_viewport: DAffine2,
-	/// Top right of the node graph in viewport space
-	#[serde(default)]
-	pub node_graph_top_right: DVec2,
-}
-
-impl Default for NavigationMetadata {
-	fn default() -> NavigationMetadata {
-		// Default PTZ and transform
-		NavigationMetadata {
-			node_graph_ptz: PTZ::default(),
-			node_graph_to_viewport: DAffine2::IDENTITY,
-			// TODO: Eventually replace with footprint
-			node_graph_top_right: DVec2::ZERO,
-		}
-	}
-}
-
-// PartialEq required by message handlers
-/// All persistent editor and Graphene data for a node. Used to serialize and deserialize a node, pass it through the editor, and create definitions.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NodeTemplate {
-	pub document_node: DocumentNode,
-	pub persistent_node_metadata: DocumentNodePersistentMetadata,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum TransactionStatus {
-	Started,
-	Modified,
-	#[default]
-	Finished,
-}

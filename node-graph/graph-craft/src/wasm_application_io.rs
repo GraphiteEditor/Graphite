@@ -209,13 +209,11 @@ impl ApplicationIo for WasmApplicationIo {
 		log::trace!("Spawning window");
 
 		#[cfg(not(test))]
-		use winit::platform::wayland::EventLoopBuilderExtWayland;
-
-		#[cfg(not(test))]
-		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
+		let event_loop = winit::event_loop::EventLoopBuilder::new().build().unwrap();
 
 		#[cfg(test)]
 		let event_loop = winit::event_loop::EventLoop::new().unwrap();
+
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
