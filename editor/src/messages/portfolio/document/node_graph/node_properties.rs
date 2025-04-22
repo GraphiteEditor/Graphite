@@ -17,6 +17,7 @@ use graphene_core::raster::{
 	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
+use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
@@ -27,7 +28,7 @@ use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::{GraphicGroupTable, RasterFrame};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterFrame};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -1621,11 +1622,11 @@ pub(crate) fn _gpu_map_properties(parameter_widgets_info: ParameterWidgetsInfo) 
 }
 
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let grid_type_index = 1;
-	let spacing_index = 2;
-	let angles_index = 3;
-	let rows_index = 4;
-	let columns_index = 5;
+	let grid_type_index = grid::GridTypeInput::INDEX;
+	let spacing_index = grid::SpacingInput::<f64>::INDEX;
+	let angles_index = grid::AnglesInput::INDEX;
+	let rows_index = grid::RowsInput::INDEX;
+	let columns_index = grid::ColumnsInput::INDEX;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,

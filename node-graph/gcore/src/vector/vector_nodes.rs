@@ -9,7 +9,7 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
@@ -1021,34 +1021,38 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 	let vector_data = vector_data.one_instance().instance;
 
 	let stroke = vector_data.style.stroke().clone().unwrap_or_default();
-	let subpaths = vector_data.stroke_bezier_paths();
+	let bezpaths = vector_data.stroke_bezpath_iter();
 	let mut result = VectorData::empty();
 
-	// Perform operation on all subpaths in this shape.
-	for subpath in subpaths {
-		// Taking the existing stroke data and passing it to Bezier-rs to generate new fill paths.
-		let stroke_radius = stroke.weight / 2.;
-		let join = match stroke.line_join {
-			LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
-			LineJoin::Bevel => Join::Bevel,
-			LineJoin::Round => Join::Round,
-		};
-		let cap = match stroke.line_cap {
-			LineCap::Butt => Cap::Butt,
-			LineCap::Round => Cap::Round,
-			LineCap::Square => Cap::Square,
-		};
-		let solidified = subpath.outline(stroke_radius, join, cap);
+	// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
+	let join = match stroke.line_join {
+		LineJoin::Miter => kurbo::Join::Miter,
+		LineJoin::Bevel => kurbo::Join::Bevel,
+		LineJoin::Round => kurbo::Join::Round,
+	};
+	let cap = match stroke.line_cap {
+		LineCap::Butt => kurbo::Cap::Butt,
+		LineCap::Round => kurbo::Cap::Round,
+		LineCap::Square => kurbo::Cap::Square,
+	};
+	let dash_offset = stroke.dash_offset;
+	let dash_pattern = stroke.dash_lengths;
+	let miter_limit = stroke.line_join_miter_limit;
 
-		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
-		if solidified.1.is_some() {
-			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(solidified.0, false);
-			result.append_subpath(solidified.1.unwrap(), false);
-		} else {
-			// One closed subpath, open path.
-			result.append_subpath(solidified.0, false);
-		}
+	let stroke_style = kurbo::Stroke::new(stroke.weight)
+		.with_caps(cap)
+		.with_join(join)
+		.with_dashes(dash_offset, dash_pattern)
+		.with_miter_limit(miter_limit);
+
+	let stroke_options = kurbo::StrokeOpts::default();
+
+	// 0.25 is balanced between performace and accuracy of the curve.
+	const STROKE_TOLERANCE: f64 = 0.25;
+
+	for path in bezpaths {
+		let solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+		result.append_bezpath(solidified);
 	}
 
 	// We set our fill to our stroke's color, then clear our stroke.
