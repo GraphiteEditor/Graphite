@@ -564,7 +564,6 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
-
 	/// Fills the area inside the path with a pattern. `color` is in gamma space
 	/// This is used by the fill tool to show the area to be filled
 	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {

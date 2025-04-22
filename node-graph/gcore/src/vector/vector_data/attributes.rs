@@ -609,7 +609,10 @@ impl FoundSubpath {
 		self.edges.extend(segments);
 	}
 
-	pub fn splice<I>(&mut self, range: std::ops::Range<usize>, replace_with: I) where I: IntoIterator<Item = HalfEdge> {
+	pub fn splice<I>(&mut self, range: std::ops::Range<usize>, replace_with: I)
+	where
+		I: IntoIterator<Item = HalfEdge>,
+	{
 		self.edges.splice(range, replace_with);
 	}
 

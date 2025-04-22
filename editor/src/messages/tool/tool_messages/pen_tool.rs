@@ -1618,15 +1618,12 @@ impl Fsm for PenToolFsmState {
 					if let Some(layer) = layer {
 						let mut vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
 
-						let closest_point = vector_data
-							.extendable_points(preferences.vector_meshes)
-							.filter(|&id| id != start)
-							.find(|&id| {
-								vector_data.point_domain.position_from_id(id).map_or(false, |pos| {
-									let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
-									dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
-								})
-							});
+						let closest_point = vector_data.extendable_points(preferences.vector_meshes).filter(|&id| id != start).find(|&id| {
+							vector_data.point_domain.position_from_id(id).map_or(false, |pos| {
+								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
+								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
+							})
+						});
 
 						// We have the point. Join the 2 vertices and check if any path is closed
 						if let Some(end) = closest_point {
@@ -1639,13 +1636,11 @@ impl Fsm for PenToolFsmState {
 							let subpaths: Vec<_> = closed_paths
 								.filter_map(|path| {
 									let segments = path.edges.iter().filter_map(|edge| {
-										vector_data.segment_domain.iter().find(|(id, _, _, _)| id == &edge.id).map(|(_, start, end, bezier)| {
-											if start == edge.start {
-												(bezier, start, end)
-											} else {
-												(bezier.reversed(), end, start)
-											}
-										})
+										vector_data
+											.segment_domain
+											.iter()
+											.find(|(id, _, _, _)| id == &edge.id)
+											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
 									});
 									vector_data.subpath_from_segments_ignore_discontinuities(segments)
 								})
