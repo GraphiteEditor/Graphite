@@ -1,6 +1,6 @@
 use dyn_any::DynAny;
-use glam::DVec2;
-use kurbo::Point;
+use glam::{DAffine2, DVec2};
+use kurbo::{Affine, Point};
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
@@ -110,4 +110,11 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
 
 pub fn dvec2_to_point(value: DVec2) -> Point {
 	Point { x: value.x, y: value.y }
+}
+
+pub fn daffine2_to_affine(value: DAffine2) -> Affine {
+	let x_axis = value.matrix2.x_axis;
+	let y_axis = value.matrix2.y_axis;
+	let translation = value.translation;
+	Affine::new([x_axis.x, x_axis.y, y_axis.x, y_axis.y, translation.x, translation.y])
 }

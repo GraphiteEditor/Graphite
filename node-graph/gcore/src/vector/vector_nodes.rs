@@ -1,5 +1,5 @@
 use super::algorithms::offset_subpath::offset_subpath;
-use super::misc::CentroidType;
+use super::misc::{CentroidType, daffine2_to_affine, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
@@ -12,6 +12,7 @@ use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, Graph
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
+use kurbo::{BezPath, ParamCurve, Shape};
 use rand::{Rng, SeedableRng};
 
 /// Implemented for types that can be converted to an iterator of vector data.
@@ -1257,6 +1258,79 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result
 }
 
+////////////// TODO: clean up and refactor.
+fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> kurbo::Point {
+	let mut low_t = 0.;
+	let mut hight_t = 1.;
+	let mut mid_t = 0.5;
+
+	let total_length = path.perimeter(accuracy);
+	while hight_t - low_t > accuracy {
+		let cur_len = path.subsegment(0.0..mid_t).perimeter(accuracy);
+		let cur_distance = cur_len / total_length;
+
+		if cur_distance > distance {
+			hight_t = mid_t;
+		} else {
+			low_t = mid_t;
+		}
+		mid_t = (hight_t + low_t) / 2.;
+	}
+
+	path.eval(mid_t)
+}
+
+/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
+/// The returned tuple represents the segment index and the `t` value along that segment.
+/// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
+pub fn global_euclidean_to_local_euclidean(bezpath: &kurbo::BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
+	let mut accumulator = 0.;
+	for (index, length) in lengths.iter().enumerate() {
+		let length_ratio = length / total_length;
+		if (index == 0 || accumulator <= global_t) && global_t <= accumulator + length_ratio {
+			return (index, ((global_t - accumulator) / length_ratio).clamp(0., 1.));
+		}
+		accumulator += length_ratio;
+	}
+	(bezpath.segments().count() - 2, 1.)
+}
+/// Default error bound for `t_value_to_parametric` function when TValue argument is Euclidean
+pub const DEFAULT_EUCLIDEAN_ERROR_BOUND: f64 = 0.001;
+
+/// Convert a [SubpathTValue] to a parametric `(segment_index, t)` tuple.
+/// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
+/// - If the argument is a variant containing a `segment_index`, asserts that the index references a valid segment on the curve.
+// fn t_value_to_parametric(bezpath: &kurbo::BezPath, t: SubpathTValue) -> (usize, f64) {
+fn segment_index_t_value(bezpath: &kurbo::BezPath, t: SubpathTValue) -> (usize, f64) {
+	let segment_len = bezpath.segments().count();
+	assert!(segment_len >= 1);
+
+	match t {
+		SubpathTValue::GlobalEuclidean(t) => {
+			let lengths = bezpath.segments().map(|bezier| bezier.perimeter(0.01)).collect::<Vec<f64>>();
+			let total_length: f64 = lengths.iter().sum();
+			let (segment_index, segment_t_euclidean) = global_euclidean_to_local_euclidean(&bezpath, t, lengths.as_slice(), total_length);
+			// let segment_t_parametric = bezpath.get_seg(segment_index).unwrap().euclidean_to_parametric(segment_t_euclidean, DEFAULT_EUCLIDEAN_ERROR_BOUND);
+			// (segment_index, segment_t_parametric)
+			(segment_index, segment_t_euclidean)
+		}
+		SubpathTValue::GlobalParametric(global_t) => {
+			assert!((0.0..=1.).contains(&global_t));
+
+			if global_t == 1. {
+				return (segment_len - 1, 1.);
+			}
+
+			let scaled_t = global_t * segment_len as f64;
+			let segment_index = scaled_t.floor() as usize;
+			let t = scaled_t - segment_index as f64;
+
+			(segment_index, t)
+		}
+		_ => unreachable!(),
+	}
+}
+
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector"), path(graphene_core::vector))]
@@ -1276,18 +1350,27 @@ async fn position_on_path(
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
-	let progress = progress.clamp(0., subpaths_count);
-	let progress = if reverse { subpaths_count - progress } else { progress };
-	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+	let mut bezpaths: Vec<BezPath> = vector_data.stroke_bezpath_iter().collect();
+	let bezpath_count = bezpaths.len() as f64;
+	let progress = progress.clamp(0., bezpath_count);
+	let progress = if reverse { bezpath_count - progress } else { progress };
+	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	vector_data.stroke_bezier_paths().nth(index).map_or(DVec2::ZERO, |mut subpath| {
-		subpath.apply_transform(vector_data_transform);
-
-		let t = if progress == subpaths_count { 1. } else { progress.fract() };
-		subpath.evaluate(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) })
+	bezpaths.get_mut(index).map_or(DVec2::ZERO, |bezpath| {
+		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		bezpath.apply_affine(daffine2_to_affine(vector_data_transform));
+		if euclidian {
+			let (seg_index, t) = segment_index_t_value(&bezpath, SubpathTValue::GlobalEuclidean(t));
+			let seg = bezpath.get_seg(1 + seg_index).unwrap();
+			point_to_dvec2(eval_pathseg_euclidian(seg, t, 0.001))
+		} else {
+			let (seg_index, t) = segment_index_t_value(&bezpath, SubpathTValue::GlobalParametric(t));
+			let seg = bezpath.get_seg(1 + seg_index).unwrap();
+			point_to_dvec2(seg.eval(t))
+		}
 	})
 }
+/////////////
 
 /// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
