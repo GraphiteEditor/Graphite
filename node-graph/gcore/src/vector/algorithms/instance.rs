@@ -1,39 +1,74 @@
-use crate::instances::Instance;
-use crate::vector::{VectorData, VectorDataTable};
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, OwnedContextImpl};
-use glam::{DAffine2, DVec2};
+use crate::instances::{Instance, Instances};
+use crate::raster::Color;
+use crate::raster::image::ImageFrameTable;
+use crate::transform::TransformMut;
+use crate::vector::VectorDataTable;
+use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use glam::DVec2;
 
-#[node_macro::node(name("Instance on Points"), category("Vector: Shape"), path(graphene_core::vector))]
-async fn instance_on_points(
+#[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
+async fn instance_on_points<T: Into<GraphicElement> + Default + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	points: VectorDataTable,
-	#[implementations(Context -> VectorDataTable)] instance_node: impl Node<'n, Context<'static>, Output = VectorDataTable>,
-) -> VectorDataTable {
-	let mut result = VectorDataTable::empty();
+	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> ImageFrameTable<Color>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	reverse: bool,
+) -> GraphicGroupTable {
+	let mut result_table = GraphicGroupTable::empty();
 
 	for Instance { instance: points, transform, .. } in points.instances() {
-		for (index, &point) in points.point_domain.positions().iter().enumerate() {
+		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
-			let instanced = instance_node.eval(new_ctx.into_context()).await;
+			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-			for instanced in instanced.instances() {
-				let instanced = result.push_instance(instanced);
-				*instanced.transform *= DAffine2::from_translation(transformed_point);
+			for mut instanced in generated_instance.instances_owned() {
+				instanced.transform.translate(transformed_point);
+				result_table.push(instanced.to_graphic_element());
+			}
+		};
+
+		let range = points.point_domain.positions().iter().enumerate();
+		if reverse {
+			for (index, &point) in range.rev() {
+				iteration(index, point).await;
+			}
+		} else {
+			for (index, &point) in range {
+				iteration(index, point).await;
 			}
 		}
 	}
 
-	// TODO: Remove once we support empty tables, currently this is here to avoid crashing
-	if result.is_empty() {
-		return VectorDataTable::new(VectorData::empty());
-	}
-
-	result
+	result_table
 }
 
-#[node_macro::node(category("Attributes"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
+async fn instance_repeat<T: Into<GraphicElement> + Default + Clone + 'static>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> ImageFrameTable<Color>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	#[default(1)] count: u64,
+	reverse: bool,
+) -> GraphicGroupTable {
+	let count = count.max(1) as usize;
+
+	let mut result_table = GraphicGroupTable::empty();
+
+	for index in 0..count {
+		let index = if reverse { count - index - 1 } else { index };
+
+		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
+		let generated_instance = instance.eval(new_ctx.into_context()).await;
+
+		for instanced in generated_instance.instances_owned() {
+			result_table.push(instanced.to_graphic_element());
+		}
+	}
+
+	result_table
+}
+
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	match ctx.vararg(0).map(|dynamic| dynamic.downcast_ref::<DVec2>()) {
 		Ok(Some(position)) => return *position,
@@ -43,7 +78,7 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	Default::default()
 }
 
-#[node_macro::node(category("Attributes"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_index(ctx: impl Ctx + ExtractIndex) -> f64 {
 	match ctx.try_index() {
 		Some(index) => return index as f64,

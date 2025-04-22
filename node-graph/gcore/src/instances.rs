@@ -40,35 +40,11 @@ impl<T> Instances<T> {
 		}
 	}
 
-	pub fn push(&mut self, instance: T) -> InstanceMut<T> {
-		self.instance.push(instance);
-		self.transform.push(DAffine2::IDENTITY);
-		self.alpha_blending.push(AlphaBlending::default());
-		self.source_node_id.push(None);
-
-		InstanceMut {
-			instance: self.instance.last_mut().expect("Shouldn't be empty"),
-			transform: self.transform.last_mut().expect("Shouldn't be empty"),
-			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
-			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
-		}
-	}
-
-	pub fn push_instance(&mut self, instance: Instance<T>) -> InstanceMut<T>
-	where
-		T: Clone,
-	{
-		self.instance.push(instance.instance.clone());
-		self.transform.push(*instance.transform);
-		self.alpha_blending.push(*instance.alpha_blending);
-		self.source_node_id.push(*instance.source_node_id);
-
-		InstanceMut {
-			instance: self.instance.last_mut().expect("Shouldn't be empty"),
-			transform: self.transform.last_mut().expect("Shouldn't be empty"),
-			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
-			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
-		}
+	pub fn push(&mut self, instance: InstanceOwned<T>) {
+		self.instance.push(instance.instance);
+		self.transform.push(instance.transform);
+		self.alpha_blending.push(instance.alpha_blending);
+		self.source_node_id.push(instance.source_node_id);
 	}
 
 	pub fn one_instance(&self) -> Instance<T> {
@@ -112,6 +88,20 @@ impl<T> Instances<T> {
 			.zip(self.alpha_blending.iter_mut())
 			.zip(self.source_node_id.iter_mut())
 			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceMut {
+				instance,
+				transform,
+				alpha_blending,
+				source_node_id,
+			})
+	}
+
+	pub fn instances_owned(self) -> impl DoubleEndedIterator<Item = InstanceOwned<T>> {
+		self.instance
+			.into_iter()
+			.zip(self.transform)
+			.zip(self.alpha_blending)
+			.zip(self.source_node_id)
+			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceOwned {
 				instance,
 				transform,
 				alpha_blending,
@@ -211,6 +201,27 @@ pub struct InstanceMut<'a, T> {
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
 	pub source_node_id: &'a mut Option<NodeId>,
+}
+#[derive(Copy, Clone, Debug)]
+pub struct InstanceOwned<T> {
+	pub instance: T,
+	pub transform: DAffine2,
+	pub alpha_blending: AlphaBlending,
+	pub source_node_id: Option<NodeId>,
+}
+
+impl<T> InstanceOwned<T> {
+	pub fn to_graphic_element<U>(self) -> InstanceOwned<U>
+	where
+		T: Into<U>,
+	{
+		InstanceOwned {
+			instance: self.instance.into(),
+			transform: self.transform,
+			alpha_blending: self.alpha_blending,
+			source_node_id: self.source_node_id,
+		}
+	}
 }
 
 // VECTOR DATA TABLE

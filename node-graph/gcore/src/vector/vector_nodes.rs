@@ -2,7 +2,8 @@ use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
-use crate::instances::{InstanceMut, Instances};
+use crate::instances::{InstanceMut, InstanceOwned, Instances};
+use crate::raster::image::ImageFrameTable;
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -11,8 +12,10 @@ use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
+use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
+use std::collections::hash_map::DefaultHasher;
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -198,7 +201,7 @@ where
 async fn repeat<I: 'n + Send>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: DVec2,
@@ -221,13 +224,14 @@ where
 	for index in 0..instances {
 		let angle = index as f64 * angle / total;
 		let translation = index as f64 * direction / total;
-		let modification = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
+		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
 
-		let mut new_graphic_element = instance.to_graphic_element().clone();
-		new_graphic_element.new_ids_from_hash(Some(crate::uuid::NodeId(index as u64)));
-
-		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = modification;
+		result_table.push(InstanceOwned {
+			instance: instance.to_graphic_element().clone(),
+			transform,
+			alpha_blending: Default::default(),
+			source_node_id: None,
+		});
 	}
 
 	result_table
@@ -237,7 +241,7 @@ where
 async fn circular_repeat<I: 'n + Send>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
@@ -256,13 +260,14 @@ where
 
 	for index in 0..instances {
 		let rotation = DAffine2::from_angle((std::f64::consts::TAU / instances as f64) * index as f64 + angle_offset.to_radians());
-		let modification = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
 
-		let mut new_graphic_element = instance.to_graphic_element().clone();
-		new_graphic_element.new_ids_from_hash(Some(crate::uuid::NodeId(index as u64)));
-
-		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = modification;
+		result_table.push(InstanceOwned {
+			instance: instance.to_graphic_element().clone(),
+			transform,
+			alpha_blending: Default::default(),
+			source_node_id: None,
+		});
 	}
 
 	result_table
@@ -274,7 +279,7 @@ async fn copy_to_points<I: 'n + Send>(
 	points: VectorDataTable,
 	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(VectorDataTable, GraphicGroupTable)]
+	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)]
 	instance: Instances<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -316,7 +321,7 @@ where
 
 	let mut result_table = GraphicGroupTable::default();
 
-	for (index, &point) in points_list.into_iter().enumerate() {
+	for &point in points_list.into_iter() {
 		let center_transform = DAffine2::from_translation(instance_center);
 
 		let translation = points_transform.transform_point2(point);
@@ -342,11 +347,14 @@ where
 			random_scale_min
 		};
 
-		let mut new_graphic_element = instance.to_graphic_element().clone();
-		new_graphic_element.new_ids_from_hash(Some(crate::uuid::NodeId(index as u64)));
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
 
-		let new_instance = result_table.push(new_graphic_element);
-		*new_instance.transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
+		result_table.push(InstanceOwned {
+			instance: instance.to_graphic_element().clone(),
+			transform,
+			alpha_blending: Default::default(),
+			source_node_id: None,
+		});
 	}
 
 	result_table
@@ -355,7 +363,7 @@ where
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send>(
 	_: impl Ctx,
-	#[implementations(VectorDataTable, GraphicGroupTable)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	#[default(0., 0.)] center: DVec2,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
@@ -382,20 +390,25 @@ where
 	);
 
 	// Apply reflection around the center point
-	let modification = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
+	let transform = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
 
 	// Add original instance depending on the keep_original flag
 	if keep_original {
-		result_table.push(instance.to_graphic_element());
+		result_table.push(InstanceOwned {
+			instance: instance.to_graphic_element().clone(),
+			transform: DAffine2::IDENTITY,
+			alpha_blending: Default::default(),
+			source_node_id: None,
+		});
 	}
 
 	// Create and add mirrored instance
-	let mut mirrored_element = instance.to_graphic_element();
-	mirrored_element.new_ids_from_hash(None);
-
-	// Apply the transformation to the mirrored instance
-	let mirrored_instance = result_table.push(mirrored_element);
-	*mirrored_instance.transform = modification;
+	result_table.push(InstanceOwned {
+		instance: instance.to_graphic_element(),
+		transform,
+		alpha_blending: Default::default(),
+		source_node_id: None,
+	});
 
 	result_table
 }
@@ -1072,15 +1085,20 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 	// a flatten vector elements connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
 	fn flatten_group(graphic_group_table: &GraphicGroupTable, output: &mut InstanceMut<VectorData>) {
-		for current_element in graphic_group_table.instances() {
+		for (group_index, current_element) in graphic_group_table.instances().enumerate() {
 			match current_element.instance {
 				GraphicElement::VectorData(vector_data_table) => {
 					// Loop through every row of the VectorDataTable and concatenate each instance's subpath into the output VectorData instance.
-					for vector_data_instance in vector_data_table.instances() {
+					for (vector_index, vector_data_instance) in vector_data_table.instances().enumerate() {
 						let other = vector_data_instance.instance;
 						let transform = *current_element.transform * *vector_data_instance.transform;
 						let node_id = current_element.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
-						output.instance.concat(other, transform, node_id);
+
+						let mut hasher = DefaultHasher::new();
+						(group_index, vector_index, node_id).hash(&mut hasher);
+						let collision_hash_seed = hasher.finish();
+
+						output.instance.concat(other, transform, collision_hash_seed);
 
 						// Use the last encountered style as the output style
 						output.instance.style = vector_data_instance.instance.style.clone();
