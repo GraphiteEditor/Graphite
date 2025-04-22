@@ -182,8 +182,8 @@ impl VectorData {
 		let mut first_point_index = None;
 		let mut last_point_index = None;
 
-		let mut first_segment_index = None;
-		let mut last_segment_index = None;
+		let mut first_segment_id = None;
+		let mut last_segment_id = None;
 
 		let mut point_id = self.point_domain.next_id();
 		let mut segment_id = self.segment_domain.next_id();
@@ -191,8 +191,8 @@ impl VectorData {
 		let stroke_id = StrokeId::ZERO;
 		let fill_id = FillId::ZERO;
 
-		for elm in bezpath.elements() {
-			match *elm {
+		for element in bezpath.elements() {
+			match *element {
 				kurbo::PathEl::MoveTo(point) => {
 					let next_point_index = self.point_domain.ids().len();
 					self.point_domain.push(point_id.next_id(), point_to_dvec2(point));
@@ -205,7 +205,7 @@ impl VectorData {
 						self.segment_domain.push(next_segment_id, first_point_index, last_point_index, BezierHandles::Linear, stroke_id);
 
 						let next_region_id = self.region_domain.next_id();
-						self.region_domain.push(next_region_id, first_segment_index.unwrap()..=next_segment_id, fill_id);
+						self.region_domain.push(next_region_id, first_segment_id.unwrap()..=next_segment_id, fill_id);
 					}
 					_ => {
 						error!("Empty bezpath cannot be closed.")
@@ -222,11 +222,11 @@ impl VectorData {
 				self.segment_domain.push(segment_id.next_id(), last_point_index.unwrap(), next_point_index, handle, stroke_id);
 
 				last_point_index = Some(next_point_index);
-				first_segment_index = Some(first_segment_index.unwrap_or(next_segment_id));
-				last_segment_index = Some(next_segment_id);
+				first_segment_id = Some(first_segment_id.unwrap_or(next_segment_id));
+				last_segment_id = Some(next_segment_id);
 			};
 
-			match *elm {
+			match *element {
 				kurbo::PathEl::LineTo(point) => append_path_element(BezierHandles::Linear, point),
 				kurbo::PathEl::QuadTo(handle, point) => append_path_element(BezierHandles::Quadratic { handle: point_to_dvec2(handle) }, point),
 				kurbo::PathEl::CurveTo(handle_start, handle_end, point) => append_path_element(

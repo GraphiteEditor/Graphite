@@ -1039,19 +1039,19 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 	let dash_pattern = stroke.dash_lengths;
 	let miter_limit = stroke.line_join_miter_limit;
 
-	let style = kurbo::Stroke::new(stroke.weight)
+	let stroke_style = kurbo::Stroke::new(stroke.weight)
 		.with_caps(cap)
 		.with_join(join)
 		.with_dashes(dash_offset, dash_pattern)
 		.with_miter_limit(miter_limit);
 
-	let opts = kurbo::StrokeOpts::default();
+	let stroke_options = kurbo::StrokeOpts::default();
 
 	// 0.25 is balanced between performace and accuracy of the curve.
 	const STROKE_TOLERANCE: f64 = 0.25;
 
 	for path in bezpaths {
-		let solidified = kurbo::stroke(path, &style, &opts, STROKE_TOLERANCE);
+		let solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
 		result.append_bezpath(solidified);
 	}
 
