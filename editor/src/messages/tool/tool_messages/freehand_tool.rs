@@ -264,7 +264,12 @@ impl Fsm for FreehandToolFsmState {
 				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
 				} else {
-					responses.add(DocumentMessage::EndTransaction);
+					if let Some(layer) = tool_data.layer {
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![layer.to_node()],
+							delete_children: true,
+						});
+					}
 				}
 
 				tool_data.end_point = None;
