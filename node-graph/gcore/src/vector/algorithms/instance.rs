@@ -122,10 +122,17 @@ mod test {
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
 		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
-		let repeated = super::instance_on_points(owned, points, &rect).await;
+		let repeated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(repeated.len(), positions.len());
 		for (position, instanced) in positions.into_iter().zip(repeated.instances()) {
-			let bounds = instanced.instance.bounding_box_with_transform(*instanced.transform).unwrap();
+			let bounds = instanced
+				.instance
+				.as_vector_data()
+				.unwrap()
+				.one_instance()
+				.instance
+				.bounding_box_with_transform(*instanced.transform)
+				.unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
 		}
