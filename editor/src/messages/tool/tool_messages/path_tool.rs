@@ -709,8 +709,6 @@ impl PathToolData {
 			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer))
 		{
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
-				log::info!("reaching here");
-
 				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id) {
 					self.angle = angle;
 					return angle;
@@ -775,7 +773,7 @@ impl PathToolData {
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
-		shape_editor.move_selected_points(None, document, opposite_delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, opposite_delta, false, true, None, false, responses);
 
 		// Calculate the projected delta and shift the points along that delta
 		let delta = current_mouse - drag_start;
@@ -787,7 +785,7 @@ impl PathToolData {
 			_ => DVec2::new(delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, projected_delta, false, true, None, false, responses);
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -803,12 +801,12 @@ impl PathToolData {
 			_ => DVec2::new(opposite_delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, None, false, responses);
 
 		// Calculate what actually would have been the original delta for the point, and apply that
 		let delta = current_mouse - drag_start;
 
-		shape_editor.move_selected_points(None, document, delta, false, true, None, responses);
+		shape_editor.move_selected_points(None, document, delta, false, true, None, false, responses);
 
 		self.snapping_axis = None;
 	}
@@ -857,19 +855,18 @@ impl PathToolData {
 			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
 		};
 
-		log::info!("{:?}", self.temporary_colinear_handles);
-		log::info!("reaching here");
-
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		let opposite = if lock_angle { None } else { self.opposite_handle_position };
 		let unsnapped_delta = current_mouse - previous_mouse;
 
 		if self.snapping_axis.is_none() {
+			let mut skip_opposite = false;
 			if self.temporary_colinear_handles && !lock_angle {
-				self.temporary_colinear_handles = false;
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+				self.temporary_colinear_handles = false;
+				skip_opposite = true;
 			}
-			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, responses);
+			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, opposite, skip_opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -878,7 +875,7 @@ impl PathToolData {
 				Axis::Y => DVec2::new(0., unsnapped_delta.y),
 				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
-			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, responses);
+			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, opposite, false, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 
@@ -1171,11 +1168,6 @@ impl Fsm for PathToolFsmState {
 					tool_data.angle_locked = false;
 				}
 
-				if !lock_angle_state && tool_data.temporary_colinear_handles {
-					shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
-					tool_data.temporary_colinear_handles = false;
-				}
-
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
 					tool_data.drag(
 						equidistant_state,
@@ -1335,6 +1327,11 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					// the handles which are temporarily made colinear when ctrl-dragging from the anchor need to revert back
+					if tool_data.temporary_colinear_handles {
+						shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+						tool_data.temporary_colinear_handles = false;
+					}
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 
@@ -1433,6 +1430,7 @@ impl Fsm for PathToolFsmState {
 					true,
 					false,
 					tool_data.opposite_handle_position,
+					false,
 					responses,
 				);
 
@@ -1680,7 +1678,6 @@ fn calculate_lock_angle(
 	let anchor_position = vector_data.point_domain.position_from_id(anchor);
 	let current_segment = handle_id.get_segment();
 	let points_connected = vector_data.connected_count(anchor);
-	log::info!("points_connected: {points_connected:?}");
 
 	let (anchor_position, segment) = anchor_position.zip(current_segment)?;
 	if points_connected == 1 {
