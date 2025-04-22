@@ -581,21 +581,20 @@ impl HalfEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Subpath_ {
+pub struct FoundSubpath {
 	pub edges: Vec<HalfEdge>,
 }
 
-impl Subpath_ {
+impl FoundSubpath {
 	pub fn new(segments: Vec<HalfEdge>) -> Self {
 		Self { edges: segments }
 	}
 
-	pub fn first_segment(&self) -> Option<&HalfEdge> {
-		self.edges.first()
-	}
-
-	pub fn last_segment(&self) -> Option<&HalfEdge> {
-		self.edges.last()
+	pub fn endpoints(&self) -> Option<(&HalfEdge, &HalfEdge)> {
+		match (self.edges.first(), self.edges.last()) {
+			(Some(first), Some(last)) => Some((first, last)),
+			_ => None,
+		}
 	}
 
 	pub fn push(&mut self, segment: HalfEdge) {
@@ -604,6 +603,14 @@ impl Subpath_ {
 
 	pub fn insert(&mut self, index: usize, segment: HalfEdge) {
 		self.edges.insert(index, segment);
+	}
+
+	pub fn extend(&mut self, segments: impl IntoIterator<Item = HalfEdge>) {
+		self.edges.extend(segments);
+	}
+
+	pub fn splice<I>(&mut self, range: std::ops::Range<usize>, replace_with: I) where I: IntoIterator<Item = HalfEdge> {
+		self.edges.splice(range, replace_with);
 	}
 
 	pub fn is_closed(&self) -> bool {
@@ -661,94 +668,75 @@ impl VectorData {
 			.map(to_bezier)
 	}
 
-	pub fn auto_join_paths(&self) -> Vec<Subpath_> {
+	pub fn auto_join_paths(&self) -> Vec<FoundSubpath> {
 		let segments = self.segment_domain.iter().map(|(id, start, end, _)| HalfEdge::new(id, start, end, false));
 
-		let mut paths: Vec<Subpath_> = Vec::new();
-		let mut current_path: Option<&mut Subpath_> = None;
+		let mut paths: Vec<FoundSubpath> = Vec::new();
+		let mut current_path: Option<&mut FoundSubpath> = None;
 		let mut previous: Option<(usize, usize)> = None;
 
 		// First pass. Generates subpaths from continuous segments.
 		for seg_ref in segments {
-			let start = seg_ref.start;
-			let end = seg_ref.end;
+			let (start, end) = (seg_ref.start, seg_ref.end);
 
-			if let Some((_, prev_end)) = previous {
-				if start == prev_end {
-					if let Some(path) = current_path.as_mut() {
-						path.push(seg_ref);
-					}
-				} else {
-					paths.push(Subpath_::from_segment(seg_ref));
-					current_path = paths.last_mut();
+			if previous.map_or(false, |(_, prev_end)| start == prev_end) {
+				if let Some(path) = current_path.as_mut() {
+					path.push(seg_ref);
 				}
 			} else {
-				paths.push(Subpath_::from_segment(seg_ref));
+				paths.push(FoundSubpath::from_segment(seg_ref));
 				current_path = paths.last_mut();
 			}
 
 			previous = Some((start, end));
 		}
 
-		// Print the paths
-		// debug!("Paths: {:?}", paths);
-
-		// Second pass. Tries to join paths together.
-		let mut joined_paths: Vec<Subpath_> = Vec::new();
+		// Second pass. Try to join paths together.
+		let mut joined_paths = Vec::new();
 
 		loop {
-			let mut previous_subpath: Option<&mut Subpath_> = None;
-			let paths_length = paths.len();
+			let mut prev_index: Option<usize> = None;
+			let original_len = paths.len();
 
-			for current_subpath in paths.into_iter() {
-				if previous_subpath.is_none() {
-					joined_paths.push(current_subpath);
-					previous_subpath = Some(joined_paths.last_mut().unwrap());
+			for current in paths.into_iter() {
+				// If there's no previous subpath, start a new one
+				if prev_index.is_none() {
+					joined_paths.push(current);
+					prev_index = Some(joined_paths.len() - 1);
 					continue;
 				}
 
-				// Take ownership of the previous subpath
-				let prev: &mut Subpath_ = previous_subpath.unwrap();
-				let prev_last = prev.last_segment().unwrap();
-				let prev_first = prev.first_segment().unwrap();
-				let cur_last = current_subpath.last_segment().unwrap();
-				let cur_first = current_subpath.first_segment().unwrap();
+				let prev = &mut joined_paths[prev_index.unwrap()];
 
+				// Compare segment connections
+				let (prev_first, prev_last) = prev.endpoints().unwrap();
+				let (cur_first, cur_last) = current.endpoints().unwrap();
+
+				// Join paths if the endpoints connect
 				if prev_last.end == cur_first.start {
-					for segment in current_subpath.edges {
-						prev.push(segment.normalize_direction());
-					}
+					prev.edges.extend(current.edges.into_iter().map(|s| s.normalize_direction()));
 				} else if prev_first.start == cur_last.end {
-					for segment in current_subpath.edges.into_iter().rev() {
-						prev.insert(0, segment.normalize_direction());
-					}
+					prev.edges.splice(0..0, current.edges.into_iter().rev().map(|s| s.normalize_direction()));
 				} else if prev_last.end == cur_last.end {
-					for segment in current_subpath.edges.into_iter().rev() {
-						prev.push(segment.reversed().normalize_direction());
-					}
+					prev.edges.extend(current.edges.into_iter().rev().map(|s| s.reversed().normalize_direction()));
 				} else if prev_first.start == cur_first.start {
-					for segment in current_subpath.edges {
-						prev.insert(0, segment.reversed().normalize_direction());
-					}
+					prev.edges.splice(0..0, current.edges.into_iter().map(|s| s.reversed().normalize_direction()));
 				} else {
-					joined_paths.push(current_subpath);
-					previous_subpath = Some(joined_paths.last_mut().unwrap());
-					continue;
+					// If not connected, start a new subpath
+					joined_paths.push(current);
+					prev_index = Some(joined_paths.len() - 1);
 				}
-
-				// Return ownership
-				previous_subpath = Some(prev);
 			}
 
-			if paths_length == joined_paths.len() {
-				break;
-			};
+			// If no paths were joined in this pass, we're done
+			if joined_paths.len() == original_len {
+				return joined_paths;
+			}
 
-			paths = joined_paths; // Move
-			joined_paths = Vec::new(); // Reset for next iteration
+			// Repeat pass with newly joined paths
+			paths = joined_paths;
+			joined_paths = Vec::new();
 		}
-
-		joined_paths
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.

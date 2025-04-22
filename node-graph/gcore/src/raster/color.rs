@@ -955,9 +955,13 @@ impl Color {
 		}
 	}
 
-	/// Produces a CSS color in the format `rgb(red green blue / alpha%)`.
-	/// To get the expected color you might have to use `to_gamma_srgb`.
+	/// Produces a CSS color in the format `rgb(red green blue / alpha%)`. Use this if the [`Color`] is in linear space.
 	pub fn to_css(&self) -> String {
+		self.to_gamma_srgb().to_css_from_gamma()
+	}
+
+	/// Produces a CSS color in the format `rgb(red green blue / alpha%)`. Use this if the [`Color`] is in gamma space.
+	pub fn to_css_from_gamma(&self) -> String {
 		format!("rgb({} {} {} / {}%)", self.red * 255.0, self.green * 255.0, self.blue * 255.0, self.alpha * 100.0)
 	}
 

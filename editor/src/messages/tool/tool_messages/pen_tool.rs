@@ -1609,54 +1609,49 @@ impl Fsm for PenToolFsmState {
 				}
 
 				// Fill the shape if the new point closes the path
-				if tool_data.latest_point().is_some() {
-					let latest_point = tool_data.latest_point().unwrap();
-
+				if let Some(latest_point) = tool_data.latest_point() {
 					let handle_start = latest_point.handle_start;
 					let handle_end = tool_data.handle_end.unwrap_or(tool_data.next_handle_start);
 					let next_point = tool_data.next_point;
-
-					// Check if the next point is close to any other point in the vector data
-					let mut end = None;
-
 					let start = latest_point.id;
-					if layer.is_some() {
-						let mut vector_data = document.network_interface.compute_modified_vector(layer.unwrap()).unwrap();
-						for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != start) {
-							let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
-							let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
-							let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-							if transformed_distance_between_squared < snap_point_tolerance_squared {
-								end = Some(id);
-							}
-						}
+
+					if let Some(layer) = layer {
+						let mut vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+
+						let closest_point = vector_data
+							.extendable_points(preferences.vector_meshes)
+							.filter(|&id| id != start)
+							.find(|&id| {
+								vector_data.point_domain.position_from_id(id).map_or(false, |pos| {
+									let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
+									dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
+								})
+							});
 
 						// We have the point. Join the 2 vertices and check if any path is closed
-						if end.is_some() {
-							let id: SegmentId = SegmentId::generate();
-							vector_data.push(id, start, end.unwrap(), BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
+						if let Some(end) = closest_point {
+							let segment_id = SegmentId::generate();
+							vector_data.push(segment_id, start, end, BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
 
 							let grouped_segments = vector_data.auto_join_paths();
+							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));
 
-							// Find the closed paths with the last added segment
-							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(id));
-
-							// Get the bezier curves of the closed path
 							let subpaths: Vec<_> = closed_paths
 								.filter_map(|path| {
 									let segments = path.edges.iter().filter_map(|edge| {
-										vector_data
-											.segment_domain
-											.iter()
-											.find(|(id, _, _, _)| id == &edge.id)
-											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+										vector_data.segment_domain.iter().find(|(id, _, _, _)| id == &edge.id).map(|(_, start, end, bezier)| {
+											if start == edge.start {
+												(bezier, start, end)
+											} else {
+												(bezier.reversed(), end, start)
+											}
+										})
 									});
 									vector_data.subpath_from_segments_ignore_discontinuities(segments)
 								})
 								.collect();
 
-							let fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_css();
-
+							let fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_css_from_gamma();
 							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
 						}
 					}

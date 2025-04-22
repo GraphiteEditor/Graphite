@@ -12,8 +12,7 @@ use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -556,8 +555,8 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	/// Fills the area inside the path
-	/// This is used by the fill tool to show the area to be filled and by the pen tool to show the path being closed
+	/// Fills the area inside the path. `color` is in gamma space
+	/// This is used by the pen tool to show the path being closed
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.push_path(subpaths, transform);
 
@@ -565,6 +564,9 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
+
+	/// Fills the area inside the path with a pattern. `color` is in gamma space
+	/// This is used by the fill tool to show the area to be filled
 	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
 		let pattern_width = 4;
 		let pattern_height = 4;
@@ -580,17 +582,12 @@ impl OverlayContext {
 
 		let mut data = vec![0u8; (4 * pattern_width * pattern_height) as usize]; // 4x4 pixels, 4 components (RGBA) per pixel
 
-		let mut set_pixel = |x: usize, y: usize, color: &[u8; 4]| {
-			let index = (x + y * pattern_width as usize) * 4;
-			data[index] = color[0];
-			data[index + 1] = color[1];
-			data[index + 2] = color[2];
-			data[index + 3] = color[3];
-		};
-
 		let color = color.to_rgba8_srgb();
-		set_pixel(0, 0, &color);
-		set_pixel(2, 2, &color);
+		let pixels = [(0, 0), (2, 2)];
+		for &(x, y) in &pixels {
+			let index = (x + y * pattern_width as usize) * 4;
+			data[index..index + 4].copy_from_slice(&color);
+		}
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), pattern_width, pattern_height).unwrap();
 		pattern_ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
