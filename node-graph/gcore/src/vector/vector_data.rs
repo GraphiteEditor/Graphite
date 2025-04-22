@@ -12,7 +12,6 @@ use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
-use kurbo::{BezPath, Point};
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -179,7 +178,7 @@ impl VectorData {
 	}
 
 	/// Appends a Kurbo BezPath to the vector data.
-	pub fn append_bezpath(&mut self, bezpath: BezPath) {
+	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
 		let mut first_point_index = None;
 		let mut last_point_index = None;
 
@@ -215,7 +214,7 @@ impl VectorData {
 				_ => {}
 			}
 
-			let mut append_path_element = |handle: BezierHandles, point: Point| {
+			let mut append_path_element = |handle: BezierHandles, point: kurbo::Point| {
 				let next_point_index = self.point_domain.ids().len();
 				self.point_domain.push(point_id.next_id(), point_to_dvec2(point));
 
