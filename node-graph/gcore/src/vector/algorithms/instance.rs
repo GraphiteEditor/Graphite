@@ -8,7 +8,7 @@ use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
 	points: VectorDataTable,
 	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> ImageFrameTable<Color>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	reverse: bool,
