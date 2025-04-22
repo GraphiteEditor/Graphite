@@ -1,3 +1,4 @@
+use crate::vector::misc::dvec2_to_point;
 use crate::vector::vector_data::{HandleId, VectorData};
 use bezier_rs::BezierHandles;
 use core::iter::zip;
@@ -662,6 +663,39 @@ impl VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
 	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = bezier_rs::Subpath<PointId>> {
 		self.build_stroke_path_iter().into_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
+	}
+
+	/// Construct a [`kurbo::BezPath`] curve for stroke.
+	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = kurbo::BezPath> {
+		self.build_stroke_path_iter().into_iter().map(|(group, closed)| {
+			let mut bezpath = kurbo::BezPath::new();
+			let mut out_handle;
+
+			let Some(first) = group.first() else { return bezpath };
+			bezpath.move_to(dvec2_to_point(first.anchor));
+			out_handle = first.out_handle;
+
+			for manipulator in group.iter().skip(1) {
+				match (out_handle, manipulator.in_handle) {
+					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
+					(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
+					(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
+					(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
+				}
+				out_handle = manipulator.out_handle;
+			}
+
+			if closed {
+				match (out_handle, first.in_handle) {
+					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(first.anchor)),
+					(None, None) => bezpath.line_to(dvec2_to_point(first.anchor)),
+					(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
+					(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
+				}
+				bezpath.close_path();
+			}
+			bezpath
+		})
 	}
 
 	/// Construct an iterator [`bezier_rs::ManipulatorGroup`] for stroke.

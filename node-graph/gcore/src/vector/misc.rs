@@ -107,3 +107,7 @@ pub enum ArcType {
 pub fn point_to_dvec2(point: Point) -> DVec2 {
 	DVec2 { x: point.x, y: point.y }
 }
+
+pub fn dvec2_to_point(value: DVec2) -> Point {
+	Point { x: value.x, y: value.y }
+}
