@@ -1,60 +1,59 @@
 {
 	"$schema": "../node_modules/@tauri-apps/cli/schema.json",
 	"build": {
-		"beforeBuildCommand": "npm run tauri:build-wasm",
+		"beforeBuildCommand": "npm run tauri:build",
 		"beforeDevCommand": "npm run tauri:dev",
-		"distDir": "../dist",
-		"devPath": "http://127.0.0.1:8080/"
+		"frontendDist": "../dist",
+		"devUrl": "http://127.0.0.1:8080/"
 	},
-	"package": {
-		"productName": "Graphite",
-		"version": "0.1.0"
-	},
-	"tauri": {
-		"allowlist": {
-			"all": true
+	"bundle": {
+		"active": true,
+		"category": "DeveloperTool",
+		"copyright": "",
+		"targets": "all",
+		"externalBin": [],
+		"icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+		"windows": {
+			"certificateThumbprint": null,
+			"digestAlgorithm": "sha256",
+			"timestampUrl": ""
 		},
-		"bundle": {
-			"active": true,
-			"category": "DeveloperTool",
-			"copyright": "",
+		"longDescription": "",
+		"macOS": {
+			"entitlements": null,
+			"exceptionDomain": "",
+			"frameworks": [],
+			"providerShortName": null,
+			"signingIdentity": null
+		},
+		"resources": [],
+		"shortDescription": "",
+		"linux": {
 			"deb": {
 				"depends": ["librustc_codegen_spirv"]
-			},
-			"externalBin": [],
-			"icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-			"identifier": "rs.graphite.editor",
-			"longDescription": "",
-			"macOS": {
-				"entitlements": null,
-				"exceptionDomain": "",
-				"frameworks": [],
-				"providerShortName": null,
-				"signingIdentity": null
-			},
-			"resources": [],
-			"shortDescription": "",
-			"targets": "all",
-			"windows": {
-				"certificateThumbprint": null,
-				"digestAlgorithm": "sha256",
-				"timestampUrl": ""
 			}
-		},
-		"security": {
-			"csp": null
-		},
-		"updater": {
-			"active": false
-		},
+		}
+	},
+	"productName": "Graphite",
+	"mainBinaryName": "Graphite",
+	"version": "0.1.0",
+	"identifier": "rs.graphite.editor",
+	"plugins": {},
+	"app": {
+		"withGlobalTauri": true,
 		"windows": [
 			{
+				"decorations": false,
 				"fullscreen": false,
-				"height": 600,
+				"height": 1080,
 				"resizable": true,
 				"title": "Graphite",
-				"width": 800
+				"width": 1920,
+				"useHttpsScheme": true
 			}
-		]
+		],
+		"security": {
+			"csp": null
+		}
 	}
 }

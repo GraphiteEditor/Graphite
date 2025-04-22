@@ -240,7 +240,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
-						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
+						alias: network_interface.display_name(&artboard.to_node(), &[]),
 						skip_adding_history_step: true,
 					});
 

@@ -105,18 +105,18 @@
 		--color-error-red: #d6536e;
 		--color-error-red-rgb: 214, 83, 110;
 
-		--color-data-general: #c5c5c5;
-		--color-data-general-dim: #767676;
+		--color-data-general: #cfcfcf;
+		--color-data-general-dim: #8a8a8a;
 		--color-data-raster: #e4bb72;
 		--color-data-raster-dim: #8b7752;
 		--color-data-vectordata: #65bbe5;
 		--color-data-vectordata-dim: #4b778c;
-		--color-data-number: #cbbab4;
-		--color-data-number-dim: #87736b;
-		--color-data-group: #6b84e8;
-		--color-data-group-dim: #4a557b;
-		--color-data-artboard: #70a898;
-		--color-data-artboard-dim: #3a6156;
+		--color-data-group: #66b195;
+		--color-data-group-dim: #3d725e;
+		--color-data-artboard: #fbf9eb;
+		--color-data-artboard-dim: #b9b9a9;
+		--color-data-number: #c9a699;
+		--color-data-number-dim: #886b60;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

@@ -1,14 +1,15 @@
+use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
-use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Percentage, PixelLength, SeedValue};
+use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Cap, Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
@@ -51,7 +52,6 @@ async fn assign_colors<T>(
 	gradient: GradientStops,
 	/// Whether to reverse the gradient.
 	reverse: bool,
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_randomize")]
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: bool,
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
@@ -268,18 +268,33 @@ where
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Copy to Points"), category("Vector"), path(graphene_core::vector))]
 async fn copy_to_points<I: 'n + Send>(
 	_: impl Ctx,
 	points: VectorDataTable,
 	#[expose]
+	/// Artwork to be copied and placed at each point.
 	#[implementations(VectorDataTable, GraphicGroupTable)]
 	instance: Instances<I>,
-	#[default(1)] random_scale_min: f64,
-	#[default(1)] random_scale_max: f64,
+	/// Minimum range of randomized sizes given to each instance.
+	#[default(1)]
+	#[range((0., 2.))]
+	#[unit("x")]
+	random_scale_min: Multiplier,
+	/// Maximum range of randomized sizes given to each instance.
+	#[default(1)]
+	#[range((0., 2.))]
+	#[unit("x")]
+	random_scale_max: Multiplier,
+	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
+	#[range((-50., 50.))]
 	random_scale_bias: f64,
+	/// Seed to determine unique variations on all the randomized instance sizes.
 	random_scale_seed: SeedValue,
+	/// Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise.
+	#[range((0., 360.))]
 	random_rotation: Angle,
+	/// Seed to determine unique variations on all the randomized instance angles.
 	random_rotation_seed: SeedValue,
 ) -> GraphicGroupTable
 where
@@ -954,6 +969,16 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	result
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+	vector_data
+		.bounding_box_with_transform(vector_data_transform)
+		.map(|[top_left, bottom_right]| bottom_right - top_left)
+		.unwrap_or_default()
+}
+
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
@@ -969,7 +994,8 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 		subpath.apply_transform(vector_data_transform);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
-		let mut subpath_out = subpath.offset(
+		let mut subpath_out = offset_subpath(
+			&subpath,
 			-distance,
 			match line_join {
 				LineJoin::Miter => Join::Miter(Some(miter_limit)),
@@ -995,34 +1021,38 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 	let vector_data = vector_data.one_instance().instance;
 
 	let stroke = vector_data.style.stroke().clone().unwrap_or_default();
-	let subpaths = vector_data.stroke_bezier_paths();
+	let bezpaths = vector_data.stroke_bezpath_iter();
 	let mut result = VectorData::empty();
 
-	// Perform operation on all subpaths in this shape.
-	for subpath in subpaths {
-		// Taking the existing stroke data and passing it to Bezier-rs to generate new fill paths.
-		let stroke_radius = stroke.weight / 2.;
-		let join = match stroke.line_join {
-			LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
-			LineJoin::Bevel => Join::Bevel,
-			LineJoin::Round => Join::Round,
-		};
-		let cap = match stroke.line_cap {
-			LineCap::Butt => Cap::Butt,
-			LineCap::Round => Cap::Round,
-			LineCap::Square => Cap::Square,
-		};
-		let solidified = subpath.outline(stroke_radius, join, cap);
+	// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
+	let join = match stroke.line_join {
+		LineJoin::Miter => kurbo::Join::Miter,
+		LineJoin::Bevel => kurbo::Join::Bevel,
+		LineJoin::Round => kurbo::Join::Round,
+	};
+	let cap = match stroke.line_cap {
+		LineCap::Butt => kurbo::Cap::Butt,
+		LineCap::Round => kurbo::Cap::Round,
+		LineCap::Square => kurbo::Cap::Square,
+	};
+	let dash_offset = stroke.dash_offset;
+	let dash_pattern = stroke.dash_lengths;
+	let miter_limit = stroke.line_join_miter_limit;
 
-		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
-		if solidified.1.is_some() {
-			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(solidified.0, false);
-			result.append_subpath(solidified.1.unwrap(), false);
-		} else {
-			// One closed subpath, open path.
-			result.append_subpath(solidified.0, false);
-		}
+	let stroke_style = kurbo::Stroke::new(stroke.weight)
+		.with_caps(cap)
+		.with_join(join)
+		.with_dashes(dash_offset, dash_pattern)
+		.with_miter_limit(miter_limit);
+
+	let stroke_options = kurbo::StrokeOpts::default();
+
+	// 0.25 is balanced between performace and accuracy of the curve.
+	const STROKE_TOLERANCE: f64 = 0.25;
+
+	for path in bezpaths {
+		let solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+		result.append_bezpath(solidified);
 	}
 
 	// We set our fill to our stroke's color, then clear our stroke.
@@ -1227,6 +1257,79 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result
 }
 
+/// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(name("Position on Path"), category("Vector"), path(graphene_core::vector))]
+async fn position_on_path(
+	_: impl Ctx,
+	/// The path to traverse.
+	vector_data: VectorDataTable,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progress: Fraction,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> DVec2 {
+	let euclidian = !parameterized_distance;
+
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
+	let progress = progress.clamp(0., subpaths_count);
+	let progress = if reverse { subpaths_count - progress } else { progress };
+	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+
+	vector_data.stroke_bezier_paths().nth(index).map_or(DVec2::ZERO, |mut subpath| {
+		subpath.apply_transform(vector_data_transform);
+
+		let t = if progress == subpaths_count { 1. } else { progress.fract() };
+		subpath.evaluate(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) })
+	})
+}
+
+/// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+#[node_macro::node(name("Tangent on Path"), category("Vector"), path(graphene_core::vector))]
+async fn tangent_on_path(
+	_: impl Ctx,
+	/// The path to traverse.
+	vector_data: VectorDataTable,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progress: Fraction,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> f64 {
+	let euclidian = !parameterized_distance;
+
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
+	let progress = progress.clamp(0., subpaths_count);
+	let progress = if reverse { subpaths_count - progress } else { progress };
+	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+
+	vector_data.stroke_bezier_paths().nth(index).map_or(0., |mut subpath| {
+		subpath.apply_transform(vector_data_transform);
+
+		let t = if progress == subpaths_count { 1. } else { progress.fract() };
+		let mut tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		if tangent == DVec2::ZERO {
+			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
+			tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		}
+		if tangent == DVec2::ZERO {
+			return 0.;
+		}
+
+		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
+	})
+}
+
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn poisson_disk_points(
 	_: impl Ctx,
@@ -1245,17 +1348,23 @@ async fn poisson_disk_points(
 	if separation_disk_diameter <= 0.01 {
 		return VectorDataTable::new(result);
 	}
+	let path_with_bounding_boxes: Vec<_> = vector_data
+		.stroke_bezier_paths()
+		.filter_map(|mut subpath| {
+			// TODO: apply transform to points instead of modifying the paths
+			subpath.apply_transform(vector_data_transform);
+			subpath.loose_bounding_box().map(|bb| (subpath, bb))
+		})
+		.collect();
 
-	for mut subpath in vector_data.stroke_bezier_paths() {
+	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
 
-		subpath.apply_transform(vector_data_transform);
-
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>()) {
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 
