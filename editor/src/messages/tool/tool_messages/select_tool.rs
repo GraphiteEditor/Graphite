@@ -1627,14 +1627,12 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 			})
 			.and_then(|lca| {
 				let direct_children_of_lca: Vec<_> = lca.children(metadata).collect();
-				if clicked_layer == lca {
-					Some(lca)
-				} else {
+				(clicked_layer == lca).then_some(lca).or_else(|| {
 					direct_children_of_lca
 						.iter()
 						.find(|&&child| clicked_layer == child || clicked_layer.ancestors(metadata).any(|ancestor| ancestor == child))
 						.copied()
-				}
+				})
 			})
 	});
 
