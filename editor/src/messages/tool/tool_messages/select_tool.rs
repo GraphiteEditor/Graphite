@@ -1606,7 +1606,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	let selected_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
 	let metadata = document.metadata();
 
-	let final_selection: Option<Vec<LayerNodeIdentifier>> = (!selected_layers.is_empty() && selected_layers != vec![LayerNodeIdentifier::ROOT_PARENT]).then_some(()).and_then(|_| {
+	let final_selection: Option<LayerNodeIdentifier> = (!selected_layers.is_empty() && selected_layers != vec![LayerNodeIdentifier::ROOT_PARENT]).then_some(()).and_then(|_| {
 		let mut relevant_layers = selected_layers;
 		if !relevant_layers.contains(&clicked_layer) {
 			relevant_layers.push(clicked_layer);
@@ -1619,29 +1619,20 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 					.iter()
 					.all(|layer| *layer == potential_lca || layer.ancestors(metadata).any(|ancestor| ancestor == potential_lca))
 			})
-			.map(|lca| {
+			.and_then(|lca| {
 				let direct_children_of_lca: Vec<_> = lca.children(metadata).collect();
-				let mut relevant_siblings = HashSet::new();
-				for layer_to_check in &relevant_layers {
-					if *layer_to_check == lca {
-						relevant_siblings.clear();
-						relevant_siblings.insert(lca);
-						break;
-					}
-					if let Some(relevant_child) = direct_children_of_lca
+				if clicked_layer == lca {
+					Some(lca)
+				} else {
+					direct_children_of_lca
 						.iter()
-						.find(|&&child| *layer_to_check == child || layer_to_check.ancestors(metadata).any(|ancestor| ancestor == child))
-					{
-						relevant_siblings.insert(*relevant_child);
-					}
+						.find(|&&child| clicked_layer == child || clicked_layer.ancestors(metadata).any(|ancestor| ancestor == child)).copied()
 				}
-				relevant_siblings.into_iter().collect()
 			})
 	});
 
-	let new_selected = final_selection.unwrap_or_else(|| vec![clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer)]);
-	tool_data.layers_dragging.clear();
-	tool_data.layers_dragging.extend(new_selected);
+	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
+	tool_data.layers_dragging.extend(vec![new_selected]);
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
