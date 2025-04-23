@@ -189,7 +189,7 @@ async fn transform<T: 'n + 'static>(
 
 	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
-	for data_transform in transform_target.instances_mut() {
+	for data_transform in transform_target.instance_mut_iter() {
 		*data_transform.transform = matrix * *data_transform.transform;
 	}
 
@@ -202,7 +202,7 @@ fn replace_transform<Data, TransformInput: Transform>(
 	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Instances<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Instances<Data> {
-	for data_transform in data.instances_mut() {
+	for data_transform in data.instance_mut_iter() {
 		*data_transform.transform = transform.transform();
 	}
 	data
