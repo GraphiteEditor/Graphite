@@ -9,9 +9,9 @@ use std::cmp::{max, min};
 #[node_macro::node(category("Raster"))]
 async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
 	let image_frame_transform = image_frame.transform();
-	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
+	let image_frame_alpha_blending = image_frame.one_instance_ref().alpha_blending;
 
-	let image = image_frame.one_instance().instance;
+	let image = image_frame.one_instance_ref().instance;
 
 	// Prepare the image data for processing
 	let image_data = bytemuck::cast_vec(image.data.clone());

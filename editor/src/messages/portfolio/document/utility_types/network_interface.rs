@@ -1141,7 +1141,7 @@ impl NodeNetworkInterface {
 
 	pub fn input_description<'a>(&'a self, node_id: NodeId, index: usize, network_path: &[NodeId]) -> Option<&'a str> {
 		let Some(input_row) = self.input_properties_row(&node_id, index, network_path) else {
-			log::error!("Could not get node_metadata in input_description");
+			log::error!("Could not get input_row in input_description");
 			return None;
 		};
 		let description = input_row.input_description.as_str();
@@ -1162,7 +1162,7 @@ impl NodeNetworkInterface {
 
 	pub fn input_metadata(&self, node_id: &NodeId, index: usize, field: &str, network_path: &[NodeId]) -> Option<&Value> {
 		let Some(input_row) = self.input_properties_row(node_id, index, network_path) else {
-			log::error!("Could not get node_metadata in get_input_metadata");
+			log::error!("Could not get input_row in get_input_metadata");
 			return None;
 		};
 		input_row.input_data.get(field)
@@ -3781,6 +3781,7 @@ impl NodeNetworkInterface {
 		self.unload_stack_dependents(network_path);
 	}
 
+	// TODO: Eventually remove this document upgrade code
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], implementation: DocumentNodeImplementation) {
 		let Some(network) = self.network_mut(network_path) else {
