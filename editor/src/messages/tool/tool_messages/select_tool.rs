@@ -29,7 +29,6 @@ use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::misc::BooleanOperation;
-use std::collections::HashSet;
 use std::fmt;
 
 #[derive(Default)]
@@ -1306,7 +1305,7 @@ impl Fsm for SelectToolFsmState {
 								.collect(),
 						});
 					}
-				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
+				} else if tool_data.select_single_layer.take().is_some() {
 					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
 					if !has_dragged {
 						let intersection_list = document.click_list(input).collect::<Vec<_>>();
