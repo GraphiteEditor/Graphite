@@ -54,7 +54,11 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
-		.tooltip("Expose this parameter as a node input in the graph")
+		.tooltip(if exposed {
+			"Stop exposing this parameter as a node input in the graph"
+		} else {
+			"Expose this parameter as a node input in the graph"
+		})
 		.on_update(move |_parameter| {
 			Message::Batched(Box::new([
 				NodeGraphMessage::ExposeInput {
