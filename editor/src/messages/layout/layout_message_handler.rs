@@ -338,6 +338,7 @@ impl LayoutMessageHandler {
 	}
 }
 
+#[message_handler_data(CustomData)]
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		match message {
@@ -437,4 +438,8 @@ impl LayoutMessageHandler {
 		};
 		responses.add(message);
 	}
+}
+
+pub fn custom_data() -> Vec<String> {
+	vec![String::from("Fn(&MessageDiscriminant) -> Vec<KeysGroup>")]
 }

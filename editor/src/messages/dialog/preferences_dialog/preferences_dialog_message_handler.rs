@@ -13,6 +13,7 @@ pub struct PreferencesDialogMessageData<'a> {
 #[derive(Debug, Clone, Default)]
 pub struct PreferencesDialogMessageHandler {}
 
+#[message_handler_data]
 impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageData<'_>> for PreferencesDialogMessageHandler {
 	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, data: PreferencesDialogMessageData) {
 		let PreferencesDialogMessageData { preferences } = data;

@@ -16,6 +16,7 @@ pub struct InputMapperMessageHandler {
 	mapping: Mapping,
 }
 
+#[message_handler_data]
 impl MessageHandler<InputMapperMessage, InputMapperMessageData<'_>> for InputMapperMessageHandler {
 	fn process_message(&mut self, message: InputMapperMessage, responses: &mut VecDeque<Message>, data: InputMapperMessageData) {
 		let InputMapperMessageData { input, actions } = data;

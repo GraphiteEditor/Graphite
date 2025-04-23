@@ -16,6 +16,7 @@ pub struct DialogMessageHandler {
 	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
+#[message_handler_data]
 impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandler {
 	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, data: DialogMessageData) {
 		let DialogMessageData { portfolio, preferences } = data;

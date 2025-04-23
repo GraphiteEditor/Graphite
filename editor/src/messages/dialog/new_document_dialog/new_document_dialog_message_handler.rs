@@ -11,6 +11,7 @@ pub struct NewDocumentDialogMessageHandler {
 	pub dimensions: UVec2,
 }
 
+#[message_handler_data]
 impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
 	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {

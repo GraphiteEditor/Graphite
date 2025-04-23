@@ -23,6 +23,7 @@ pub struct SpreadsheetMessageHandler {
 	viewing_vector_data_domain: VectorDataDomain,
 }
 
+#[message_handler_data]
 impl MessageHandler<SpreadsheetMessage, ()> for SpreadsheetMessageHandler {
 	fn process_message(&mut self, message: SpreadsheetMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {

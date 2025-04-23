@@ -32,6 +32,7 @@ impl Default for ExportDialogMessageHandler {
 	}
 }
 
+#[message_handler_data]
 impl MessageHandler<ExportDialogMessage, ExportDialogMessageData<'_>> for ExportDialogMessageHandler {
 	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, data: ExportDialogMessageData) {
 		let ExportDialogMessageData { portfolio } = data;

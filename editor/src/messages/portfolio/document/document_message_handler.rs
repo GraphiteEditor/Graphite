@@ -166,6 +166,7 @@ impl Default for DocumentMessageHandler {
 	}
 }
 
+#[message_handler_data]
 impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
 		let DocumentMessageData {

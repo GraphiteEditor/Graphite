@@ -54,6 +54,7 @@ pub struct PortfolioMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
 		let PortfolioMessageData {

@@ -29,6 +29,7 @@ pub struct ToolMessageHandler {
 	pub tool_is_active: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, data: ToolMessageData) {
 		let ToolMessageData {
@@ -325,15 +326,5 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 		list.extend(self.transform_layer_handler.actions());
 
 		list
-	}
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test]
-	fn print_field() {
-		ToolMessageData::print_field_types();
 	}
 }

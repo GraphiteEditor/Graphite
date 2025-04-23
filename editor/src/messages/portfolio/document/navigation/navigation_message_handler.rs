@@ -32,6 +32,7 @@ pub struct NavigationMessageHandler {
 	abortable_pan_start: Option<f64>,
 }
 
+#[message_handler_data]
 impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
 	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, data: NavigationMessageData) {
 		let NavigationMessageData {

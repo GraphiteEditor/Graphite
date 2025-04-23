@@ -5,6 +5,7 @@ pub struct BroadcastMessageHandler {
 	listeners: HashMap<BroadcastEvent, Vec<Message>>,
 }
 
+#[message_handler_data]
 impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 	fn process_message(&mut self, message: BroadcastMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {

@@ -13,6 +13,7 @@ pub struct KeyMappingMessageHandler {
 	mapping_handler: InputMapperMessageHandler,
 }
 
+#[message_handler_data]
 impl MessageHandler<KeyMappingMessage, KeyMappingMessageData<'_>> for KeyMappingMessageHandler {
 	fn process_message(&mut self, message: KeyMappingMessage, responses: &mut VecDeque<Message>, data: KeyMappingMessageData) {
 		let KeyMappingMessageData { input, actions } = data;

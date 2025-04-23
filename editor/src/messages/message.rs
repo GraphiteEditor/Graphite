@@ -64,11 +64,18 @@ mod test {
 
 	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool) {
 		// Print the current node
-		let branch = if is_last { "└── " } else { "├── " };
-		println!("{}{}{}", prefix, branch, tree.name());
+		let (branch, child_prefix) = match &tree.data_fields() {
+			Some(_) => ("├── ", format!("{}│   ", prefix)),
+			None => {
+				if is_last {
+					("└── ", format!("{}    ", prefix))
+				} else {
+					("├── ", format!("{}│   ", prefix))
+				}
+			}
+		};
 
-		// Prepare prefix for children
-		let child_prefix = if is_last { format!("{}    ", prefix) } else { format!("{}│   ", prefix) };
+		println!("{}{}{}", prefix, branch, tree.name());
 
 		// Print children if any
 		if let Some(variants) = tree.variants() {
@@ -76,6 +83,17 @@ mod test {
 			for (i, variant) in variants.iter().enumerate() {
 				let is_last_child = i == len - 1;
 				print_tree_node(variant, &child_prefix, is_last_child);
+			}
+		}
+
+		// Print data field if any
+		if let Some(data) = tree.data_fields() {
+			let len = data.fields().len();
+			println!("{}{}{}", prefix, "└── ", data.name());
+			for (i, field) in data.fields().iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+				println!("{}{}{}", format!("{}    ", prefix), branch, field);
 			}
 		}
 	}

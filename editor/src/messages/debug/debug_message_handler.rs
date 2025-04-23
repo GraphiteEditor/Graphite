@@ -6,6 +6,7 @@ pub struct DebugMessageHandler {
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }
 
+#[message_handler_data]
 impl MessageHandler<DebugMessage, ()> for DebugMessageHandler {
 	fn process_message(&mut self, message: DebugMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {

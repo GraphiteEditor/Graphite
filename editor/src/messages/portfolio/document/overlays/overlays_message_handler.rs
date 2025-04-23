@@ -17,6 +17,7 @@ pub struct OverlaysMessageHandler {
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
+#[message_handler_data]
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
 		let OverlaysMessageData { overlays_visible, ipp, .. } = data;

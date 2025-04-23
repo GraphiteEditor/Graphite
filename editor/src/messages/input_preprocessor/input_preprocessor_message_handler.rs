@@ -20,6 +20,7 @@ pub struct InputPreprocessorMessageHandler {
 	pub viewport_bounds: ViewportBounds,
 }
 
+#[message_handler_data]
 impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for InputPreprocessorMessageHandler {
 	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, data: InputPreprocessorMessageData) {
 		let InputPreprocessorMessageData { keyboard_platform } = data;

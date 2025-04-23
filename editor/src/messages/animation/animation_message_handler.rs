@@ -57,6 +57,7 @@ impl AnimationMessageHandler {
 	}
 }
 
+#[message_handler_data]
 impl MessageHandler<AnimationMessage, ()> for AnimationMessageHandler {
 	fn process_message(&mut self, message: AnimationMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {

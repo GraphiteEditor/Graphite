@@ -5,6 +5,7 @@ pub struct WorkspaceMessageHandler {
 	node_graph_visible: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<WorkspaceMessage, ()> for WorkspaceMessageHandler {
 	fn process_message(&mut self, message: WorkspaceMessage, _responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
