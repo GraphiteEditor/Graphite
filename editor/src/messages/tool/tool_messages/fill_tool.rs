@@ -95,7 +95,8 @@ impl Fsm for FillToolFsmState {
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
 				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
 				if !input.keyboard.get(Key::MouseMiddle as usize) {
-					let preview_color = global_tool_data.primary_color;
+					let use_secondary = input.keyboard.get(Key::Shift as usize);
+					let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
 					// Get the layer the user is hovering over
 					let click = document.click(input);
