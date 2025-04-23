@@ -266,6 +266,16 @@ impl LayerNodeIdentifier {
 		self.first_child(metadata).is_some()
 	}
 
+	/// Is the layer a child of given layer
+	pub fn is_child_of(self, metadata: &DocumentMetadata, parent: &LayerNodeIdentifier) -> bool {
+		parent.children(metadata).any(|child| child == self)
+	}
+
+	/// Is the layer an ancestor of given layer
+	pub fn is_ancestor_of(self, metadata: &DocumentMetadata, child: &LayerNodeIdentifier) -> bool {
+		child.ancestors(metadata).any(|ancestor| ancestor == self)
+	}
+
 	/// Iterator over all direct children (excluding self and recursive children)
 	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {

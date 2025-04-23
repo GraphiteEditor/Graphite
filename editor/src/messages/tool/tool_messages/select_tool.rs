@@ -1620,28 +1620,22 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		clicked_layer
 			.ancestors(metadata)
 			.filter(not_artboard(document))
-			.find(|&potential_lca| {
-				relevant_layers
-					.iter()
-					.all(|layer| *layer == potential_lca || layer.ancestors(metadata).any(|ancestor| ancestor == potential_lca))
-			})
+			.find(|&potential_lca| relevant_layers.iter().all(|layer| *layer == potential_lca || potential_lca.is_ancestor_of(metadata, layer)))
 			.and_then(|lca| {
-				let direct_children_of_lca: Vec<_> = lca.children(metadata).collect();
-				(clicked_layer == lca).then_some(lca).or_else(|| {
-					direct_children_of_lca
-						.iter()
-						.find(|&&child| clicked_layer == child || clicked_layer.ancestors(metadata).any(|ancestor| ancestor == child))
-						.copied()
-				})
+				let lca_children: Vec<_> = lca.children(metadata).collect();
+				(clicked_layer == lca)
+					.then_some(lca)
+					.or_else(|| lca_children.iter().find(|&&child| clicked_layer == child || child.is_ancestor_of(metadata, &clicked_layer)).copied())
 			})
 	});
 
-	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| selected.children(metadata).any(|child| child == layer))) {
+	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| layer.is_child_of(metadata, selected))) {
 		return;
 	};
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
 	tool_data.layers_dragging.extend(vec![new_selected]);
+	tool_data.layers_dragging.retain(|&selected_layer| !selected_layer.is_child_of(metadata, &new_selected));
 	if remove {
 		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
 	}
