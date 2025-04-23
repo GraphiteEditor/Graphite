@@ -1609,11 +1609,11 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 			.expect("ROOT_PARENT should have at least one layer when clicking")
 	});
 
-	let selected_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
 	let metadata = document.metadata();
 
+	let selected_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
 	let final_selection: Option<LayerNodeIdentifier> = (!selected_layers.is_empty() && selected_layers != vec![LayerNodeIdentifier::ROOT_PARENT]).then_some(()).and_then(|_| {
-		let mut relevant_layers = selected_layers;
+		let mut relevant_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
 		if !relevant_layers.contains(&clicked_layer) {
 			relevant_layers.push(clicked_layer);
 		}
@@ -1635,6 +1635,10 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 				})
 			})
 	});
+
+	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| selected.children(metadata).any(|child| child == layer))) {
+		return;
+	};
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
 	tool_data.layers_dragging.extend(vec![new_selected]);
