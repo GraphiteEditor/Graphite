@@ -822,7 +822,7 @@ impl ShapeState {
 
 				if skip_opposite_handle {
 					continue;
-				};
+				}
 
 				if state.is_selected(other.to_manipulator_point()) {
 					// If two colinear handles are being dragged at the same time but not the anchor, it is necessary to break the colinear state.

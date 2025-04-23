@@ -15,6 +15,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::utility_functions::calculate_segment_angle;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
@@ -1810,7 +1811,7 @@ fn calculate_lock_angle(
 
 	let (anchor_position, segment) = anchor_position.zip(current_segment)?;
 	if points_connected == 1 {
-		calculate_segment_angle(anchor, segment, vector_data)
+		calculate_segment_angle(anchor, segment, vector_data, false)
 	} else {
 		let opposite_handle = handle_id
 			.get_handle_pair(vector_data)
@@ -1830,9 +1831,9 @@ fn calculate_lock_angle(
 		} else {
 			let angle_1 = vector_data
 				.adjacent_segment(&handle_id)
-				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector_data));
+				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector_data, false));
 
-			let angle_2 = calculate_segment_angle(anchor, segment, vector_data);
+			let angle_2 = calculate_segment_angle(anchor, segment, vector_data, false);
 
 			match (angle_1, angle_2) {
 				(Some(angle_1), Some(angle_2)) => Some((angle_1 + angle_2) / 2.0),
@@ -1842,26 +1843,4 @@ fn calculate_lock_angle(
 			}
 		}
 	}
-}
-
-fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &VectorData) -> Option<f64> {
-	let anchor_position = vector_data.point_domain.position_from_id(anchor)?;
-	let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
-
-	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
-	let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data);
-
-	let start_point = if is_start(anchor, segment) {
-		vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-	} else {
-		vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-	};
-
-	let required_handle = if is_start(anchor, segment) {
-		end_handle.filter(|&handle| Some(handle) != start_point).or(start_point)
-	} else {
-		start_handle.filter(|&handle| Some(handle) != start_point).or(start_point)
-	};
-
-	required_handle.map(|required_handle| -(required_handle - anchor_position).angle_to(DVec2::X))
 }
