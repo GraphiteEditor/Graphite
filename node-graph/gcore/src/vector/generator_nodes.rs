@@ -253,9 +253,9 @@ fn isometric_grid_test() {
 
 	// Works properly
 	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance().instance.segment_bezier_iter() {
+	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		assert!(
 			((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -268,9 +268,9 @@ fn isometric_grid_test() {
 #[test]
 fn skew_isometric_grid_test() {
 	let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance().instance.segment_bezier_iter() {
+	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		let vector = bezier.start - bezier.end;
 		let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
