@@ -842,7 +842,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.replace_implementation(node_id, network_path, new_image_node.document_node.implementation);
 
 						// Insert a new empty input for the image
-						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", &[*node_id]);
+						document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", "", &[*node_id]);
 						document.network_interface.set_reference(node_id, network_path, Some("Image".to_string()));
 					}
 
@@ -861,6 +861,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						for (i, input) in old_inputs.iter().enumerate() {
 							document.network_interface.set_input(&InputConnector::node(*node_id, i + 1), input.clone(), network_path);
 						}
+					}
+
+					if reference == "Instance on Points" && inputs_count == 2 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 					}
 				}
 
