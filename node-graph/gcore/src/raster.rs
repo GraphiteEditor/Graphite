@@ -300,21 +300,21 @@ trait SetBlendMode {
 
 impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.blend_mode = blend_mode;
 		}
 	}
 }
 impl SetBlendMode for ImageFrameTable<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.blend_mode = blend_mode;
 		}
 	}

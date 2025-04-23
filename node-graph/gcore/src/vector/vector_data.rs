@@ -433,29 +433,29 @@ impl VectorData {
 		}
 	}
 
-	pub fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64) {
-		let point_map = other
+	pub fn concat(&mut self, additional: &Self, transform_of_additional: DAffine2, collision_hash_seed: u64) {
+		let point_map = additional
 			.point_domain
 			.ids()
 			.iter()
 			.filter(|id| self.point_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
-		let segment_map = other
+		let segment_map = additional
 			.segment_domain
 			.ids()
 			.iter()
 			.filter(|id| self.segment_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
-		let region_map = other
+		let region_map = additional
 			.region_domain
 			.ids()
 			.iter()
 			.filter(|id| self.region_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
 		let id_map = IdMap {
@@ -465,14 +465,14 @@ impl VectorData {
 			region_map,
 		};
 
-		self.point_domain.concat(&other.point_domain, transform, &id_map);
-		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
-		self.region_domain.concat(&other.region_domain, transform, &id_map);
+		self.point_domain.concat(&additional.point_domain, transform_of_additional, &id_map);
+		self.segment_domain.concat(&additional.segment_domain, transform_of_additional, &id_map);
+		self.region_domain.concat(&additional.region_domain, transform_of_additional, &id_map);
 
 		// TODO: properly deal with fills such as gradients
-		self.style = other.style.clone();
+		self.style = additional.style.clone();
 
-		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
+		self.colinear_manipulators.extend(additional.colinear_manipulators.iter().copied());
 	}
 }
 

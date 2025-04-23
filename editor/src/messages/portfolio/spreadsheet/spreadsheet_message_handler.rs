@@ -258,7 +258,7 @@ impl<T: InstanceLayout> InstanceLayout for Instances<T> {
 		}
 
 		let mut rows = self
-			.instances()
+			.instance_ref_iter()
 			.enumerate()
 			.map(|(index, instance)| {
 				vec![

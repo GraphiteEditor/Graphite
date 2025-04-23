@@ -15,7 +15,7 @@ use graphene_core::{Ctx, GraphicElement, Node};
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
-	let vector_data = vector_data.one_instance().instance;
+	let vector_data = vector_data.one_instance_ref().instance;
 
 	vector_data.point_domain.positions().to_vec()
 }
@@ -96,8 +96,8 @@ where
 		return target;
 	}
 
-	let target_width = target.one_instance().instance.width;
-	let target_height = target.one_instance().instance.height;
+	let target_width = target.one_instance_ref().instance.width;
+	let target_height = target.one_instance_ref().instance.height;
 	let target_size = DVec2::new(target_width as f64, target_height as f64);
 
 	let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
@@ -122,7 +122,7 @@ where
 		let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
 		let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
 		assert!(texture_index(max_x, max_y) < texture.data.len());
-		assert!(target_index(max_x, max_y) < target.one_instance().instance.data.len());
+		assert!(target_index(max_x, max_y) < target.one_instance_ref().instance.data.len());
 
 		for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 			for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
@@ -143,7 +143,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let blank_texture = empty_image((), transform, Color::TRANSPARENT);
 	let image = crate::raster::blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
-	image.one_instance().instance.clone()
+	image.one_instance_ref().instance.clone()
 }
 
 macro_rules! inline_blend_funcs {
@@ -220,7 +220,7 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 	let mut background_bounds = bbox.to_transform();
 
 	// If the bounds are empty (no size on images or det(transform) = 0), keep the target bounds
-	let bounds_empty = bounds.instances().all(|bounds| bounds.instance.width() == 0 || bounds.instance.height() == 0);
+	let bounds_empty = bounds.instance_ref_iter().all(|bounds| bounds.instance.width() == 0 || bounds.instance.height() == 0);
 	if bounds.transform().matrix2.determinant() != 0. && !bounds_empty {
 		background_bounds = bounds.transform();
 	}
