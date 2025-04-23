@@ -181,6 +181,14 @@ impl PointDomain {
 		}
 	}
 
+	pub fn len(&self) -> usize {
+		self.id.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.id.is_empty()
+	}
+
 	/// Iterate over point IDs and positions
 	pub fn iter(&self) -> impl Iterator<Item = (PointId, DVec2)> + '_ {
 		self.ids().iter().copied().zip(self.positions().iter().copied())
