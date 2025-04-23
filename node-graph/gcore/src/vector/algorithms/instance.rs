@@ -1,4 +1,4 @@
-use crate::instances::{Instance, Instances};
+use crate::instances::{InstanceRef, Instances};
 use crate::raster::Color;
 use crate::raster::image::ImageFrameTable;
 use crate::transform::TransformMut;
@@ -15,14 +15,14 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Clone + 'static>
 ) -> GraphicGroupTable {
 	let mut result_table = GraphicGroupTable::empty();
 
-	for Instance { instance: points, transform, .. } in points.instances() {
+	for InstanceRef { instance: points, transform, .. } in points.instance_ref_iter() {
 		let mut iteration = async |index, point| {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_vararg(Box::new(transformed_point));
 			let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-			for mut instanced in generated_instance.instances_owned() {
+			for mut instanced in generated_instance.instance_iter() {
 				instanced.transform.translate(transformed_point);
 				result_table.push(instanced.to_graphic_element());
 			}
@@ -60,7 +60,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Clone + 'static>(
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
 		let generated_instance = instance.eval(new_ctx.into_context()).await;
 
-		for instanced in generated_instance.instances_owned() {
+		for instanced in generated_instance.instance_iter() {
 			result_table.push(instanced.to_graphic_element());
 		}
 	}
@@ -124,12 +124,12 @@ mod test {
 		let points = VectorDataTable::new(VectorData::from_subpath(Subpath::from_anchors_linear(positions, false)));
 		let repeated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(repeated.len(), positions.len());
-		for (position, instanced) in positions.into_iter().zip(repeated.instances()) {
+		for (position, instanced) in positions.into_iter().zip(repeated.instance_ref_iter()) {
 			let bounds = instanced
 				.instance
 				.as_vector_data()
 				.unwrap()
-				.one_instance()
+				.one_instance_ref()
 				.instance
 				.bounding_box_with_transform(*instanced.transform)
 				.unwrap();
