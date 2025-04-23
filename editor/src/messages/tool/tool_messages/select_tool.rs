@@ -51,8 +51,8 @@ pub enum SelectOptionsUpdate {
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum NestedSelectionBehavior {
 	#[default]
-	Deepest,
 	Shallowest,
+	Deepest,
 }
 
 impl fmt::Display for NestedSelectionBehavior {
@@ -114,7 +114,7 @@ impl ToolMetadata for SelectTool {
 
 impl SelectTool {
 	fn deep_selection_widget(&self) -> WidgetHolder {
-		let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
+		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]
 			.iter()
 			.map(|mode| {
 				MenuListEntry::new(format!("{mode:?}"))
@@ -124,7 +124,7 @@ impl SelectTool {
 			.collect();
 
 		DropdownInput::new(vec![layer_selection_behavior_entries])
-			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
+			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest) as u32))
 			.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
 			.widget_holder()
 	}
