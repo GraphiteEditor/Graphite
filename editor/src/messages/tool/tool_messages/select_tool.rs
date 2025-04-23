@@ -287,11 +287,24 @@ impl ToolTransition for SelectTool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
-	Ready { selection: NestedSelectionBehavior },
-	Drawing { selection_shape: SelectionShapeType, has_drawn: bool },
-	Dragging { axis: Axis, using_compass: bool, has_dragged: bool },
+	Ready {
+		selection: NestedSelectionBehavior,
+	},
+	Drawing {
+		selection_shape: SelectionShapeType,
+		has_drawn: bool,
+	},
+	Dragging {
+		axis: Axis,
+		using_compass: bool,
+		has_dragged: bool,
+		deepest: bool,
+		remove: bool,
+	},
 	ResizingBounds,
-	SkewingBounds { skew: Key },
+	SkewingBounds {
+		skew: Key,
+	},
 	RotatingBounds,
 	DraggingPivot,
 }
@@ -917,7 +930,7 @@ impl Fsm for SelectToolFsmState {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false }
+					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection)}
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -969,7 +982,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false }
+            SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection)}
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
@@ -985,7 +998,16 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis, using_compass, has_dragged }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				},
+				SelectToolMessage::PointerMove(modifier_keys),
+			) => {
 				if !has_dragged {
 					responses.add(ToolMessage::UpdateHints);
 				}
@@ -1038,6 +1060,8 @@ impl Fsm for SelectToolFsmState {
 					axis,
 					using_compass,
 					has_dragged: true,
+					deepest,
+					remove,
 				}
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
@@ -1226,14 +1250,29 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis, using_compass, has_dragged }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				},
+				SelectToolMessage::PointerOutsideViewport(_),
+			) => {
 				// AutoPanning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
 				}
 
-				SelectToolFsmState::Dragging { axis, using_compass, has_dragged }
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				}
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// AutoPanning
@@ -1270,7 +1309,7 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::Dragging { has_dragged, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Dragging { has_dragged, remove, deepest, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.axis_align = false;
@@ -1315,8 +1354,17 @@ impl Fsm for SelectToolFsmState {
 							let selected = intersection_list;
 
 							match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(responses, selected, tool_data, document, true),
-								_ => drag_deepest_manipulation(responses, selected, tool_data, document, true),
+								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true),
+								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
+								_ => {
+									responses.add(DocumentMessage::DeselectAllLayers);
+									tool_data.layers_dragging.clear();
+									if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest && !deepest {
+										drag_shallowest_manipulation(responses, selected, tool_data, document, false)
+									} else {
+										drag_deepest_manipulation(responses, selected, tool_data, document, false)
+									}
+								}
 							}
 							tool_data.get_snap_candidates(document, input);
 
@@ -1534,7 +1582,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Dragging { axis, using_compass, has_dragged } if *has_dragged => {
+			SelectToolFsmState::Dragging { axis, using_compass, has_dragged, .. } if *has_dragged => {
 				let mut hint_data = vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![
