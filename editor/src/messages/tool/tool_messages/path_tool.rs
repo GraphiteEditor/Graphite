@@ -1452,12 +1452,11 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
+				if tool_data.temporary_colinear_handles {
+					tool_data.temporary_colinear_handles = false;
+				}
+
 				if tool_data.handle_drag_toggle && drag_occurred {
-					// the handles which are temporarily made colinear when ctrl-dragging from the anchor need to revert back
-					if tool_data.temporary_colinear_handles {
-						shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
-						tool_data.temporary_colinear_handles = false;
-					}
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 
@@ -1817,12 +1816,11 @@ fn calculate_lock_angle(
 			.get_handle_pair(vector_data)
 			.iter()
 			.flatten()
-			.copied()
 			.find(|&h| h.to_manipulator_point() != handle_id)
+			.copied()
 			.map(|h| h.to_manipulator_point());
 		let opposite_handle_position = opposite_handle.and_then(|h| h.get_position(vector_data)).filter(|pos| (pos - anchor_position).length() > 1e-6);
 
-		let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
 		if let Some(opposite_pos) = opposite_handle_position {
 			if !vector_data.colinear_manipulators.iter().flatten().map(|h| h.to_manipulator_point()).any(|h| h == handle_id) {
 				shape_state.convert_selected_manipulators_to_colinear_handles(responses, document);
@@ -1830,47 +1828,11 @@ fn calculate_lock_angle(
 			}
 			Some(-(opposite_pos - anchor_position).angle_to(DVec2::X))
 		} else {
-			// This is the segment which is adjacent to the handle
-			let angle_1 = if let Some((_, adjacent_segment)) = vector_data.adjacent_segment(&handle_id) {
-				let end_point = if is_start(anchor, adjacent_segment) {
-					vector_data.segment_end_from_id(adjacent_segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-				} else {
-					vector_data.segment_start_from_id(adjacent_segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-				};
+			let angle_1 = vector_data
+				.adjacent_segment(&handle_id)
+				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector_data));
 
-				let required_handle = if is_start(anchor, adjacent_segment) {
-					ManipulatorPointId::EndHandle(adjacent_segment)
-						.get_position(vector_data)
-						.filter(|handle: &DVec2| Some(*handle) != end_point)
-						.or(end_point)
-				} else {
-					ManipulatorPointId::PrimaryHandle(adjacent_segment)
-						.get_position(vector_data)
-						.filter(|handle| Some(*handle) != end_point)
-						.or(end_point)
-				};
-
-				required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
-			} else {
-				None
-			};
-
-			let angle_2 = {
-				let endpoint = if is_start(anchor, segment) {
-					vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-				} else {
-					vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-				};
-				let opposite_handle = vector_data
-					.all_connected(anchor)
-					.filter(|handle| handle.to_manipulator_point() == handle_id)
-					.map(|handle| handle.opposite())
-					.next()
-					.map(|handle_id| handle_id.to_manipulator_point());
-				let required_handle = opposite_handle.and_then(|h| h.get_position(vector_data)).filter(|pos| Some(pos) != endpoint.as_ref()).or(endpoint);
-
-				required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
-			};
+			let angle_2 = calculate_segment_angle(anchor, segment, vector_data);
 
 			match (angle_1, angle_2) {
 				(Some(angle_1), Some(angle_2)) => Some((angle_1 + angle_2) / 2.0),
@@ -1896,15 +1858,9 @@ fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &Ve
 	};
 
 	let required_handle = if is_start(anchor, segment) {
-		start_handle
-			.filter(|&handle| handle != anchor_position)
-			.or(end_handle.filter(|&handle| Some(handle) != start_point))
-			.or(start_point)
+		end_handle.filter(|&handle| Some(handle) != start_point).or(start_point)
 	} else {
-		end_handle
-			.filter(|&handle| handle != anchor_position)
-			.or(start_handle.filter(|&handle| Some(handle) != start_point))
-			.or(start_point)
+		start_handle.filter(|&handle| Some(handle) != start_point).or(start_point)
 	};
 
 	required_handle.map(|required_handle| -(required_handle - anchor_position).angle_to(DVec2::X))
