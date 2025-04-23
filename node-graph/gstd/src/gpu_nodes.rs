@@ -62,7 +62,7 @@ impl Clone for ComputePass {
 #[node_macro::old_node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
 	let image_frame_table = &image;
-	let image = image.one_instance().instance;
+	let image = image.one_instance_ref().instance;
 
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
@@ -113,7 +113,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, 
 	};
 	let mut result = ImageFrameTable::new(new_image);
 	*result.transform_mut() = image_frame_table.transform();
-	*result.one_instance_mut().alpha_blending = *image_frame_table.one_instance().alpha_blending;
+	*result.one_instance_mut().alpha_blending = *image_frame_table.one_instance_ref().alpha_blending;
 
 	result
 }
@@ -133,7 +133,7 @@ where
 	GraphicElement: From<Image<T>>,
 	T::Static: Pixel,
 {
-	let image = image.one_instance().instance;
+	let image = image.one_instance_ref().instance;
 
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 	let inner_network = NodeNetwork::value_network(node);
@@ -278,10 +278,10 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 	let foreground_transform = foreground.transform();
 	let background_transform = background.transform();
 
-	let background_alpha_blending = background.one_instance().alpha_blending;
+	let background_alpha_blending = background.one_instance_ref().alpha_blending;
 
-	let foreground = foreground.one_instance().instance;
-	let background = background.one_instance().instance;
+	let foreground = foreground.one_instance_ref().instance;
+	let background = background.one_instance_ref().instance;
 
 	let foreground_size = DVec2::new(foreground.width as f64, foreground.height as f64);
 	let background_size = DVec2::new(background.width as f64, background.height as f64);
