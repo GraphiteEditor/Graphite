@@ -15,7 +15,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::raster::{Color, RedGreenBlue, RedGreenBlueAlpha};
+use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
@@ -127,6 +127,87 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
 			properties: Some("identity_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Cache",
+			category: "General",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(2), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::network(generic!(T), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::FreezeRealTimeNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+							DocumentNode {
+								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::BoundlessFootprintNode")),
+								manual_composition: Some(generic!(T)),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
+						..Default::default()
+					}),
+					inputs: vec![NodeInput::value(TaggedValue::None, true)],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Memoize".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Freeze Real Time".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Boundless Footprint".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					input_properties: vec![("Data", "TODO").into()],
+					output_names: vec!["Data".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("TODO"),
+			properties: None,
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -714,6 +795,87 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Rasterizes the given vector data"),
+			properties: None,
+		},
+		DocumentNodeDefinition {
+			identifier: "Noise Pattern",
+			category: "Raster",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					manual_composition: Some(concrete!(Context)),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode")),
+					inputs: vec![
+						NodeInput::value(TaggedValue::None, false),
+						NodeInput::value(TaggedValue::Bool(true), false),
+						NodeInput::value(TaggedValue::U32(0), false),
+						NodeInput::value(TaggedValue::F64(10.), false),
+						NodeInput::value(TaggedValue::NoiseType(NoiseType::default()), false),
+						NodeInput::value(TaggedValue::DomainWarpType(DomainWarpType::default()), false),
+						NodeInput::value(TaggedValue::F64(100.), false),
+						NodeInput::value(TaggedValue::FractalType(FractalType::default()), false),
+						NodeInput::value(TaggedValue::U32(3), false),
+						NodeInput::value(TaggedValue::F64(2.), false),
+						NodeInput::value(TaggedValue::F64(0.5), false),
+						NodeInput::value(TaggedValue::F64(0.), false), // 0-1 range
+						NodeInput::value(TaggedValue::F64(2.), false),
+						NodeInput::value(TaggedValue::CellularDistanceFunction(CellularDistanceFunction::default()), false),
+						NodeInput::value(TaggedValue::CellularReturnType(CellularReturnType::default()), false),
+						NodeInput::value(TaggedValue::F64(1.), false),
+					],
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_properties: vec![
+						("Spacer", "TODO").into(),
+						("Clip", "TODO").into(),
+						("Seed", "TODO").into(),
+						PropertiesRow::with_override("Scale", "TODO", WidgetOverride::Custom("noise_properties_scale".to_string())),
+						PropertiesRow::with_override("Noise Type", "TODO", WidgetOverride::Custom("noise_properties_noise_type".to_string())),
+						PropertiesRow::with_override("Domain Warp Type", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_type".to_string())),
+						PropertiesRow::with_override("Domain Warp Amplitude", "TODO", WidgetOverride::Custom("noise_properties_domain_warp_amplitude".to_string())),
+						PropertiesRow::with_override("Fractal Type", "TODO", WidgetOverride::Custom("noise_properties_fractal_type".to_string())),
+						PropertiesRow::with_override("Fractal Octaves", "TODO", WidgetOverride::Custom("noise_properties_fractal_octaves".to_string())),
+						PropertiesRow::with_override("Fractal Lacunarity", "TODO", WidgetOverride::Custom("noise_properties_fractal_lacunarity".to_string())),
+						PropertiesRow::with_override("Fractal Gain", "TODO", WidgetOverride::Custom("noise_properties_fractal_gain".to_string())),
+						PropertiesRow::with_override("Fractal Weighted Strength", "TODO", WidgetOverride::Custom("noise_properties_fractal_weighted_strength".to_string())),
+						PropertiesRow::with_override("Fractal Ping Pong Strength", "TODO", WidgetOverride::Custom("noise_properties_ping_pong_strength".to_string())),
+						PropertiesRow::with_override("Cellular Distance Function", "TODO", WidgetOverride::Custom("noise_properties_cellular_distance_function".to_string())),
+						PropertiesRow::with_override("Cellular Return Type", "TODO", WidgetOverride::Custom("noise_properties_cellular_return_type".to_string())),
+						PropertiesRow::with_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
+					],
+					output_names: vec!["Image".to_string()],
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Noise Pattern".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										display_name: "Cull".to_string(),
+										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("Generates different noise patterns."),
 			properties: None,
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
@@ -3559,7 +3721,7 @@ impl DocumentNodeDefinition {
 				};
 				nested_node_metadata.persistent_metadata.input_properties.resize_with(input_length, PropertiesRow::default);
 
-				//Recurse over all sub nodes if the current node is a network implementation
+				// Recurse over all sub-nodes if the current node is a network implementation
 				let mut current_path = path.clone();
 				current_path.push(current_node);
 				let DocumentNodeImplementation::Network(template_network) = &node_template.document_node.implementation else {

@@ -205,9 +205,14 @@ fn grid<T: GridSpacing>(
 				for x in 0..columns {
 					// Add current point to the grid with offset for odd columns
 					let current_index = vector_data.point_domain.ids().len();
-					vector_data
-						.point_domain
-						.push(point_id.next_id(), DVec2::new(spacing.x * x as f64, spacing.y * (y as f64 - (x % 2) as f64 * 0.5)));
+
+					let a_angles_eaten = ((x + 1) / 2) as f64;
+					let b_angles_eaten = (x / 2) as f64;
+
+					let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
+
+					let position = DVec2::new(spacing.x * x as f64, spacing.y * y as f64 + offset_y_fraction * spacing.x);
+					vector_data.point_domain.push(point_id.next_id(), position);
 
 					// Helper function to connect points with line segments
 					let mut push_segment = |to_index: Option<usize>| {
@@ -248,14 +253,27 @@ fn isometric_grid_test() {
 
 	// Works properly
 	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance().instance.segment_bezier_iter() {
+	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		assert!(
 			((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
 			"Length of {} should be 10",
 			(bezier.start - bezier.end).length()
 		);
+	}
+}
+
+#[test]
+fn skew_isometric_grid_test() {
+	let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
+	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
+		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+		let vector = bezier.start - bezier.end;
+		let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
+		assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {}", angle)
 	}
 }

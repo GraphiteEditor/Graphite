@@ -299,7 +299,7 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			render.parent_tag(
 				"g",
 				|attributes| {
@@ -325,12 +325,12 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let transform = transform * *instance.transform;
 			let alpha_blending = *instance.alpha_blending;
 
 			let mut layer = false;
-			if let Some(bounds) = self.instances().filter_map(|element| element.instance.bounding_box(transform)).reduce(Quad::combine_bounds) {
+			if let Some(bounds) = self.instance_ref_iter().filter_map(|element| element.instance.bounding_box(transform)).reduce(Quad::combine_bounds) {
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
 					_ => alpha_blending.blend_mode.into(),
@@ -356,13 +356,13 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.instances()
+		self.instance_ref_iter()
 			.filter_map(|element| element.instance.bounding_box(transform * *element.transform))
 			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			if let Some(element_id) = instance.source_node_id {
 				let mut footprint = footprint;
 				footprint.transform *= *instance.transform;
@@ -374,7 +374,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 		if let Some(graphic_group_id) = element_id {
 			let mut all_upstream_click_targets = Vec::new();
 
-			for instance in self.instances() {
+			for instance in self.instance_ref_iter() {
 				let mut new_click_targets = Vec::new();
 				instance.instance.add_upstream_click_targets(&mut new_click_targets);
 
@@ -390,7 +390,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let mut new_click_targets = Vec::new();
 
 			instance.instance.add_upstream_click_targets(&mut new_click_targets);
@@ -404,11 +404,11 @@ impl GraphicElementRendered for GraphicGroupTable {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.instances().any(|instance| instance.instance.contains_artboard())
+		self.instance_ref_iter().any(|instance| instance.instance.contains_artboard())
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.instance.new_ids_from_hash(*instance.source_node_id);
 		}
 	}
@@ -420,7 +420,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 impl GraphicElementRendered for VectorDataTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let multiplied_transform = render.transform * *instance.transform;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
@@ -469,7 +469,7 @@ impl GraphicElementRendered for VectorDataTable {
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let multiplied_transform = parent_transform * *instance.transform;
 			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
@@ -614,7 +614,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.instances()
+		self.instance_ref_iter()
 			.flat_map(|instance| {
 				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
 
@@ -633,7 +633,7 @@ impl GraphicElementRendered for VectorDataTable {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		let instance_transform = self.transform();
 
-		for instance in self.instances().map(|instance| instance.instance) {
+		for instance in self.instance_ref_iter().map(|instance| instance.instance) {
 			if let Some(element_id) = element_id {
 				let stroke_width = instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 				let filled = instance.style.fill() != &Fill::None;
@@ -661,7 +661,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = instance.instance.style.fill() != &Fill::None;
 			let fill = |mut subpath: bezier_rs::Subpath<_>| {
@@ -679,7 +679,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.instance.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default());
 		}
 	}
@@ -796,42 +796,42 @@ impl GraphicElementRendered for Artboard {
 
 impl GraphicElementRendered for ArtboardGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for artboard in self.instances() {
+		for artboard in self.instance_ref_iter() {
 			artboard.instance.render_svg(render, render_params);
 		}
 	}
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			instance.instance.render_to_vello(scene, transform, context, render_params);
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.instances().filter_map(|instance| instance.instance.bounding_box(transform)).reduce(Quad::combine_bounds)
+		self.instance_ref_iter().filter_map(|instance| instance.instance.bounding_box(transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			instance.instance.collect_metadata(metadata, footprint, *instance.source_node_id);
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			instance.instance.add_upstream_click_targets(click_targets);
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.instances().count() > 0
+		self.instance_ref_iter().count() > 0
 	}
 }
 
 impl GraphicElementRendered for ImageFrameTable<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
 
 			let image = &instance.instance;
@@ -870,7 +870,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		for instance in self.instances() {
+		for instance in self.instance_ref_iter() {
 			let image = &instance.instance;
 			if image.data.is_empty() {
 				return;
@@ -883,7 +883,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.instances()
+		self.instance_ref_iter()
 			.flat_map(|instance| {
 				let transform = transform * *instance.transform;
 				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
@@ -939,7 +939,7 @@ impl GraphicElementRendered for RasterFrame {
 
 		match self {
 			RasterFrame::ImageFrame(image) => {
-				for instance in image.instances() {
+				for instance in image.instance_ref_iter() {
 					let image = &instance.instance;
 					if image.data.is_empty() {
 						return;
@@ -951,7 +951,7 @@ impl GraphicElementRendered for RasterFrame {
 				}
 			}
 			RasterFrame::TextureFrame(image_texture) => {
-				for instance in image_texture.instances() {
+				for instance in image_texture.instance_ref_iter() {
 					let image =
 						vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.texture.width(), instance.instance.texture.height()).with_extend(peniko::Extend::Repeat);
 
