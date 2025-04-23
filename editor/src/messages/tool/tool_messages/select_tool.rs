@@ -964,8 +964,8 @@ impl Fsm for SelectToolFsmState {
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
-							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false),
+							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
 						tool_data.get_snap_candidates(document, input);
 
@@ -1309,12 +1309,19 @@ impl Fsm for SelectToolFsmState {
 				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
 					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
 					if !has_dragged {
-						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
-							log::error!("selecting_layer should not be ROOT_PARENT");
-						} else {
-							responses.add(NodeGraphMessage::SelectedNodesSet {
-								nodes: vec![selecting_layer.to_node()],
-							});
+						let intersection_list = document.click_list(input).collect::<Vec<_>>();
+						let intersection = document.find_deepest(&intersection_list);
+						if let Some(intersection) = intersection {
+							tool_data.layer_selected_on_start = Some(intersection);
+							let selected = intersection_list;
+
+							match tool_data.nested_selection_behavior {
+								NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(responses, selected, tool_data, document, true),
+								_ => drag_deepest_manipulation(responses, selected, tool_data, document, true),
+							}
+							tool_data.get_snap_candidates(document, input);
+
+							responses.add(DocumentMessage::StartTransaction);
 						}
 					}
 				}
@@ -1591,7 +1598,7 @@ fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifi
 	|&layer| layer != LayerNodeIdentifier::ROOT_PARENT && !document.network_interface.is_artboard(&layer.to_node(), &[])
 }
 
-fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
+fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler, remove: bool) {
 	if selected.is_empty() {
 		return;
 	}
@@ -1626,13 +1633,17 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 				} else {
 					direct_children_of_lca
 						.iter()
-						.find(|&&child| clicked_layer == child || clicked_layer.ancestors(metadata).any(|ancestor| ancestor == child)).copied()
+						.find(|&&child| clicked_layer == child || clicked_layer.ancestors(metadata).any(|ancestor| ancestor == child))
+						.copied()
 				}
 			})
 	});
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
 	tool_data.layers_dragging.extend(vec![new_selected]);
+	if remove {
+		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
+	}
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
@@ -1650,15 +1661,18 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	});
 }
 
-fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![
-		document.find_deepest(&selected).unwrap_or(
-			LayerNodeIdentifier::ROOT_PARENT
-				.children(document.metadata())
-				.next()
-				.expect("ROOT_PARENT should have a layer child when clicking"),
-		),
-	]);
+fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler, remove: bool) {
+	let layer = document.find_deepest(&selected).unwrap_or(
+		LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.next()
+			.expect("ROOT_PARENT should have a layer child when clicking"),
+	);
+	if !remove {
+		tool_data.layers_dragging.extend(vec![layer]);
+	} else {
+		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
+	}
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging
