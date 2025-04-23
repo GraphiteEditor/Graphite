@@ -505,18 +505,11 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
+/// X or Y Component of Vector2
 pub enum XY {
 	#[default]
 	X,
 	Y,
-}
-impl core::fmt::Display for XY {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			XY::X => write!(f, "X"),
-			XY::Y => write!(f, "Y"),
-		}
-	}
 }
 
 // TODO: Rename to "Passthrough"

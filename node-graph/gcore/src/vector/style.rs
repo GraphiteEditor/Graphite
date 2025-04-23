@@ -480,12 +480,12 @@ pub enum LineCap {
 	Square,
 }
 
-impl Display for LineCap {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl LineCap {
+	fn svg_name(&self) -> &'static str {
 		match self {
-			LineCap::Butt => write!(f, "butt"),
-			LineCap::Round => write!(f, "round"),
-			LineCap::Square => write!(f, "square"),
+			LineCap::Butt => "butt",
+			LineCap::Round => "round",
+			LineCap::Square => "square",
 		}
 	}
 }
@@ -500,12 +500,12 @@ pub enum LineJoin {
 	Round,
 }
 
-impl Display for LineJoin {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl LineJoin {
+	fn svg_name(&self) -> &'static str {
 		match self {
-			LineJoin::Bevel => write!(f, "bevel"),
-			LineJoin::Miter => write!(f, "miter"),
-			LineJoin::Round => write!(f, "round"),
+			LineJoin::Bevel => "bevel",
+			LineJoin::Miter => "miter",
+			LineJoin::Round => "round",
 		}
 	}
 }
@@ -654,10 +654,10 @@ impl Stroke {
 			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
 		}
 		if let Some(line_cap) = line_cap {
-			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap);
+			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap.svg_name());
 		}
 		if let Some(line_join) = line_join {
-			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join);
+			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join.svg_name());
 		}
 		if let Some(line_join_miter_limit) = line_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);

@@ -112,6 +112,7 @@ trait ChoiceSource {
 	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value>;
 	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>>;
 	fn widget_hint() -> ChoiceWidgetHint;
+	fn description() -> Option<&'static str>;
 }
 
 struct ChoiceSourceStatic<T: ChoiceTypeStatic>(std::marker::PhantomData<T>);
@@ -139,6 +140,9 @@ where
 	fn widget_hint() -> ChoiceWidgetHint {
 		T::WIDGET_HINT
 	}
+	fn description() -> Option<&'static str> {
+		T::DESCRIPTION
+	}
 }
 
 fn enum_source<E: ChoiceTypeStatic>() -> ChoiceSourceStatic<E> {
@@ -157,15 +161,19 @@ fn choice_widget<E: ChoiceSource>(list: E, parameter_widgets_info: ParameterWidg
 
 	if let Some(current) = E::from_tagged_value(input.as_non_exposed_value()) {
 		let widget = match E::widget_hint() {
-			ChoiceWidgetHint::Dropdown => dropdown(list, node_id, index, current),
-			ChoiceWidgetHint::RadioButtons => radio_buttons(list, node_id, index, current),
+			ChoiceWidgetHint::Dropdown => dropdown(list, node_id, index, current).widget_holder(),
+			ChoiceWidgetHint::RadioButtons => radio_buttons(list, node_id, index, current).widget_holder(),
 		};
 		widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), widget]);
 	}
-	LayoutGroup::Row { widgets }
+	let mut row = LayoutGroup::Row { widgets };
+	if let Some(desc) = E::description() {
+		row = row.with_tooltip(desc);
+	}
+	row
 }
 
-fn radio_buttons<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> WidgetHolder {
+fn radio_buttons<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> RadioInput {
 	let items = E::enumerate()
 		.into_iter()
 		.flatten()
@@ -183,10 +191,10 @@ fn radio_buttons<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, curre
 		})
 		.collect();
 
-	RadioInput::new(items).selected_index(E::into_index(current)).widget_holder()
+	RadioInput::new(items).selected_index(E::into_index(current))
 }
 
-fn dropdown<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> WidgetHolder {
+fn dropdown<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> DropdownInput {
 	let items = E::enumerate()
 		.into_iter()
 		.map(|category| {
@@ -202,7 +210,7 @@ fn dropdown<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E
 		})
 		.collect();
 
-	DropdownInput::new(items).selected_index(E::into_index(current)).widget_holder()
+	DropdownInput::new(items).selected_index(E::into_index(current))
 }
 
 pub(crate) fn property_from_type(
@@ -277,11 +285,11 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
-						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode_widget(default_info),
-						Some(x) if x == TypeId::of::<RedGreenBlue>() => rgb_widget(default_info),
-						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => rgba_widget(default_info),
-						Some(x) if x == TypeId::of::<XY>() => xy_widget(default_info),
-						Some(x) if x == TypeId::of::<NoiseType>() => noise_type_widget(default_info),
+						Some(x) if x == TypeId::of::<RealTimeMode>() => choice_widget(enum_source::<RealTimeMode>(), default_info),
+						Some(x) if x == TypeId::of::<RedGreenBlue>() => choice_widget(enum_source::<RedGreenBlue>(), default_info),
+						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => choice_widget(enum_source::<RedGreenBlueAlpha>(), default_info),
+						Some(x) if x == TypeId::of::<XY>() => choice_widget(enum_source::<XY>(), default_info),
+						Some(x) if x == TypeId::of::<NoiseType>() => choice_widget(enum_source::<NoiseType>(), default_info),
 						Some(x) if x == TypeId::of::<FractalType>() => fractal_type_widget(default_info, false),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function_widget(default_info, false),
 						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type_widget(default_info, false),
@@ -841,109 +849,8 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 	widgets
 }
 
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn rgb_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::RedGreenBlue(mode)) = input.as_non_exposed_value() {
-		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(
-				MenuListEntry::new(format!("{method:?}"))
-					.label(method.to_string())
-					.on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index))
-					.on_commit(commit_value),
-			);
-		}
-		let entries = vec![entries];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
-}
-
-pub fn real_time_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::RealTimeMode(mode)) = input.as_non_exposed_value() {
-		let calculation_modes = [
-			RealTimeMode::Utc,
-			RealTimeMode::Year,
-			RealTimeMode::Hour,
-			RealTimeMode::Minute,
-			RealTimeMode::Second,
-			RealTimeMode::Millisecond,
-		];
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(
-				MenuListEntry::new(format!("{method:?}"))
-					.label(method.to_string())
-					.on_update(update_value(move |_| TaggedValue::RealTimeMode(method), node_id, index))
-					.on_commit(commit_value),
-			);
-		}
-		let entries = vec![entries];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Real Time Mode")
-}
-
-pub fn rgba_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::RedGreenBlueAlpha(mode)) = input.as_non_exposed_value() {
-		let calculation_modes = [RedGreenBlueAlpha::Red, RedGreenBlueAlpha::Green, RedGreenBlueAlpha::Blue, RedGreenBlueAlpha::Alpha];
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(
-				MenuListEntry::new(format!("{method:?}"))
-					.label(method.to_string())
-					.on_update(update_value(move |_| TaggedValue::RedGreenBlueAlpha(method), node_id, index))
-					.on_commit(commit_value),
-			);
-		}
-		let entries = vec![entries];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
-}
-
-pub fn xy_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	// TODO: Put tooltips in choice_widget
-	choice_widget(enum_source::<XY>(), parameter_widgets_info).with_tooltip("X or Y Component of Vector2")
-}
-
 pub fn noise_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	// TODO: Put tooltips in choice_widget
-	choice_widget(enum_source::<NoiseType>(), parameter_widgets_info).with_tooltip("Style of noise pattern")
+	choice_widget(enum_source::<NoiseType>(), parameter_widgets_info)
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
@@ -956,19 +863,9 @@ pub fn fractal_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disable
 		return LayoutGroup::Row { widgets: vec![] };
 	};
 	if let Some(&TaggedValue::FractalType(fractal_type)) = input.as_non_exposed_value() {
-		let entries = FractalType::list()
-			.iter()
-			.map(|fractal_type| {
-				MenuListEntry::new(format!("{fractal_type:?}"))
-					.label(fractal_type.to_string())
-					.on_update(update_value(move |_| TaggedValue::FractalType(*fractal_type), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(vec![entries]).selected_index(Some(fractal_type as u32)).disabled(disabled).widget_holder(),
+			dropdown(enum_source::<FractalType>(), node_id, index, fractal_type).disabled(disabled).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Style of layered levels of the noise pattern")
@@ -984,20 +881,9 @@ pub fn cellular_distance_function_widget(parameter_widgets_info: ParameterWidget
 		return LayoutGroup::Row { widgets: vec![] };
 	};
 	if let Some(&TaggedValue::CellularDistanceFunction(cellular_distance_function)) = input.as_non_exposed_value() {
-		let entries = CellularDistanceFunction::list()
-			.iter()
-			.map(|cellular_distance_function| {
-				MenuListEntry::new(format!("{cellular_distance_function:?}"))
-					.label(cellular_distance_function.to_string())
-					.on_update(update_value(move |_| TaggedValue::CellularDistanceFunction(*cellular_distance_function), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(vec![entries])
-				.selected_index(Some(cellular_distance_function as u32))
+			dropdown(enum_source::<CellularDistanceFunction>(), node_id, index, cellular_distance_function)
 				.disabled(disabled)
 				.widget_holder(),
 		]);
@@ -1015,19 +901,9 @@ pub fn cellular_return_type_widget(parameter_widgets_info: ParameterWidgetsInfo,
 		return LayoutGroup::Row { widgets: vec![] };
 	};
 	if let Some(&TaggedValue::CellularReturnType(cellular_return_type)) = input.as_non_exposed_value() {
-		let entries = CellularReturnType::list()
-			.iter()
-			.map(|cellular_return_type| {
-				MenuListEntry::new(format!("{cellular_return_type:?}"))
-					.label(cellular_return_type.to_string())
-					.on_update(update_value(move |_| TaggedValue::CellularReturnType(*cellular_return_type), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(vec![entries]).selected_index(Some(cellular_return_type as u32)).disabled(disabled).widget_holder(),
+			dropdown(enum_source::<CellularReturnType>(), node_id, index, cellular_return_type).disabled(disabled).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Return type of the cellular noise")
@@ -1043,21 +919,9 @@ pub fn domain_warp_type_widget(parameter_widgets_info: ParameterWidgetsInfo, dis
 		return LayoutGroup::Row { widgets: vec![] };
 	};
 	if let Some(&TaggedValue::DomainWarpType(domain_warp_type)) = input.as_non_exposed_value() {
-		let entries = DomainWarpType::list()
-			.iter()
-			.map(|i| i.into_iter())
-			.flatten()
-			.map(|(item, info)| {
-				MenuListEntry::new(info.name.as_ref())
-					.label(info.label.as_ref())
-					.on_update(update_value(move |_| TaggedValue::DomainWarpType(*item), node_id, index))
-					.on_commit(commit_value)
-			})
-			.collect();
-
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(vec![entries]).selected_index(Some(domain_warp_type as u32)).disabled(disabled).widget_holder(),
+			dropdown(enum_source::<DomainWarpType>(), node_id, index, domain_warp_type).disabled(disabled).widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Type of domain warp")
@@ -1385,22 +1249,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 		return vec![];
 	};
 	if let Some(&TaggedValue::SelectiveColorChoice(choice)) = input.as_non_exposed_value() {
-		use SelectiveColorChoice::*;
-		let entries = [[Reds, Yellows, Greens, Cyans, Blues, Magentas].as_slice(), [Whites, Neutrals, Blacks].as_slice()]
-			.into_iter()
-			.map(|section| {
-				section
-					.iter()
-					.map(|choice| {
-						MenuListEntry::new(format!("{choice:?}"))
-							.label(choice.to_string())
-							.on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index))
-							.on_commit(commit_value)
-					})
-					.collect()
-			})
-			.collect();
-		colors.extend([DropdownInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
+		colors.extend([radio_buttons(enum_source::<SelectiveColorChoice>(), node_id, colors_index, choice).widget_holder()]);
 	}
 
 	let colors_choice_index = match &document_node.inputs[colors_index].as_value() {

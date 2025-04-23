@@ -2,9 +2,11 @@ use crate::{Ctx, ExtractAnimationTime, ExtractTime};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Real Time Mode
 pub enum RealTimeMode {
+	#[label("UTC")]
 	Utc,
 	Year,
 	Hour,
@@ -12,18 +14,6 @@ pub enum RealTimeMode {
 	#[default]
 	Second,
 	Millisecond,
-}
-impl core::fmt::Display for RealTimeMode {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RealTimeMode::Utc => write!(f, "UTC"),
-			RealTimeMode::Year => write!(f, "Year"),
-			RealTimeMode::Hour => write!(f, "Hour"),
-			RealTimeMode::Minute => write!(f, "Minute"),
-			RealTimeMode::Second => write!(f, "Second"),
-			RealTimeMode::Millisecond => write!(f, "Millisecond"),
-		}
-	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

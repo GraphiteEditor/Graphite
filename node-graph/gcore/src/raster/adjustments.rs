@@ -823,7 +823,8 @@ async fn vibrance<T: Adjust<Color>>(
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+/// Color Channel
 pub enum RedGreenBlue {
 	#[default]
 	Red,
@@ -831,19 +832,10 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
-impl core::fmt::Display for RedGreenBlue {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RedGreenBlue::Red => write!(f, "Red"),
-			RedGreenBlue::Green => write!(f, "Green"),
-			RedGreenBlue::Blue => write!(f, "Blue"),
-		}
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+/// Color Channel
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -852,21 +844,11 @@ pub enum RedGreenBlueAlpha {
 	Alpha,
 }
 
-impl core::fmt::Display for RedGreenBlueAlpha {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RedGreenBlueAlpha::Red => write!(f, "Red"),
-			RedGreenBlueAlpha::Green => write!(f, "Green"),
-			RedGreenBlueAlpha::Blue => write!(f, "Blue"),
-			RedGreenBlueAlpha::Alpha => write!(f, "Alpha"),
-		}
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
+/// Style of noise pattern
 pub enum NoiseType {
 	#[default]
 	Perlin,
@@ -885,122 +867,59 @@ pub enum NoiseType {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+/// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
 	None,
+	#[label("Fractional Brownian Motion")]
 	FBm,
 	Ridged,
 	PingPong,
+	#[label("Progressive (Domain Warp Only)")]
 	DomainWarpProgressive,
+	#[label("Independent (Domain Warp Only)")]
 	DomainWarpIndependent,
-}
-
-impl core::fmt::Display for FractalType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			FractalType::None => write!(f, "None"),
-			FractalType::FBm => write!(f, "Fractional Brownian Motion"),
-			FractalType::Ridged => write!(f, "Ridged"),
-			FractalType::PingPong => write!(f, "Ping Pong"),
-			FractalType::DomainWarpProgressive => write!(f, "Progressive (Domain Warp Only)"),
-			FractalType::DomainWarpIndependent => write!(f, "Independent (Domain Warp Only)"),
-		}
-	}
-}
-
-impl FractalType {
-	pub fn list() -> &'static [FractalType; 6] {
-		&[
-			FractalType::None,
-			FractalType::FBm,
-			FractalType::Ridged,
-			FractalType::PingPong,
-			FractalType::DomainWarpProgressive,
-			FractalType::DomainWarpIndependent,
-		]
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+/// Distance function used by the cellular noise
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
+	#[label("Euclidean Squared (Faster)")]
 	EuclideanSq,
 	Manhattan,
 	Hybrid,
 }
 
-impl core::fmt::Display for CellularDistanceFunction {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			CellularDistanceFunction::Euclidean => write!(f, "Euclidean"),
-			CellularDistanceFunction::EuclideanSq => write!(f, "Euclidean Squared (Faster)"),
-			CellularDistanceFunction::Manhattan => write!(f, "Manhattan"),
-			CellularDistanceFunction::Hybrid => write!(f, "Hybrid"),
-		}
-	}
-}
-
-impl CellularDistanceFunction {
-	pub fn list() -> &'static [CellularDistanceFunction; 4] {
-		&[
-			CellularDistanceFunction::Euclidean,
-			CellularDistanceFunction::EuclideanSq,
-			CellularDistanceFunction::Manhattan,
-			CellularDistanceFunction::Hybrid,
-		]
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
+	#[label("Nearest (F1)")]
 	Nearest,
+	#[label("Next Nearest (F2)")]
 	NextNearest,
+	#[label("Average (F1 / 2 + F2 / 2)")]
 	Average,
+	#[label("Difference (F2 - F1)")]
 	Difference,
+	#[label("Product (F2 * F1 / 2)")]
 	Product,
+	#[label("Division (F1 / F2)")]
 	Division,
-}
-
-impl core::fmt::Display for CellularReturnType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			CellularReturnType::CellValue => write!(f, "Cell Value"),
-			CellularReturnType::Nearest => write!(f, "Nearest (F1)"),
-			CellularReturnType::NextNearest => write!(f, "Next Nearest (F2)"),
-			CellularReturnType::Average => write!(f, "Average (F1 / 2 + F2 / 2)"),
-			CellularReturnType::Difference => write!(f, "Difference (F2 - F1)"),
-			CellularReturnType::Product => write!(f, "Product (F2 * F1 / 2)"),
-			CellularReturnType::Division => write!(f, "Division (F1 / F2)"),
-		}
-	}
-}
-
-impl CellularReturnType {
-	pub fn list() -> &'static [CellularReturnType; 7] {
-		&[
-			CellularReturnType::CellValue,
-			CellularReturnType::Nearest,
-			CellularReturnType::NextNearest,
-			CellularReturnType::Average,
-			CellularReturnType::Difference,
-			CellularReturnType::Product,
-			CellularReturnType::Division,
-		]
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Radio)]
+/// Type of domain warp
 pub enum DomainWarpType {
 	#[default]
 	None,
@@ -1132,7 +1051,7 @@ impl core::fmt::Display for RelativeAbsolute {
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1141,25 +1060,11 @@ pub enum SelectiveColorChoice {
 	Cyans,
 	Blues,
 	Magentas,
+
+	#[menu_separator]
 	Whites,
 	Neutrals,
 	Blacks,
-}
-
-impl core::fmt::Display for SelectiveColorChoice {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			SelectiveColorChoice::Reds => write!(f, "Reds"),
-			SelectiveColorChoice::Yellows => write!(f, "Yellows"),
-			SelectiveColorChoice::Greens => write!(f, "Greens"),
-			SelectiveColorChoice::Cyans => write!(f, "Cyans"),
-			SelectiveColorChoice::Blues => write!(f, "Blues"),
-			SelectiveColorChoice::Magentas => write!(f, "Magentas"),
-			SelectiveColorChoice::Whites => write!(f, "Whites"),
-			SelectiveColorChoice::Neutrals => write!(f, "Neutrals"),
-			SelectiveColorChoice::Blacks => write!(f, "Blacks"),
-		}
-	}
 }
 
 // Aims for interoperable compatibility with:

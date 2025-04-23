@@ -98,6 +98,16 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 
 		variants.last_mut().unwrap().push(Variant { name: va.ident.clone(), basic_item })
 	}
+	let display_arm: Vec<_> = variants
+		.iter()
+		.map(|vg| vg.iter())
+		.flatten()
+		.map(|v| {
+			let vn = &v.name;
+			let vl = &v.basic_item.label;
+			quote! { #name::#vn => write!(f, #vl), }
+		})
+		.collect();
 
 	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
 		syn::Error::new(
@@ -113,6 +123,15 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 		}
 	};
 
+	let enum_description = match &enum_info.basic_item.description {
+		Some(s) => {
+			let s = s.trim();
+			quote! { Some(#s) }
+		}
+		None => {
+			quote! { None }
+		}
+	};
 	let group: Vec<_> = variants
 		.iter()
 		.map(|vg| {
@@ -157,8 +176,17 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 
 		impl #crate_name::registry::ChoiceTypeStatic for #name {
 			const WIDGET_HINT: #crate_name::registry::ChoiceWidgetHint = #crate_name::registry::ChoiceWidgetHint::#widget_hint;
+			const DESCRIPTION: Option<&'static str> = #enum_description;
 			fn list() -> &'static [&'static [(Self, #crate_name::registry::VariantMetadata)]] {
 				&[ #(#group)* ]
+			}
+		}
+
+		impl core::fmt::Display for #name {
+			fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+				match self {
+					#( #display_arm )*
+				}
 			}
 		}
 	})
