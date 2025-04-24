@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -15,7 +15,7 @@ use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -1587,6 +1587,54 @@ impl Fsm for PenToolFsmState {
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
+				}
+
+				// Display a filled overlay of the shape if the new point closes the path
+				if let Some(latest_point) = tool_data.latest_point() {
+					let handle_start = latest_point.handle_start;
+					let handle_end = tool_data.handle_end.unwrap_or(tool_data.next_handle_start);
+					let next_point = tool_data.next_point;
+					let start = latest_point.id;
+
+					if let Some(layer) = layer {
+						let mut vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+
+						let closest_point = vector_data.extendable_points(preferences.vector_meshes).filter(|&id| id != start).find(|&id| {
+							vector_data.point_domain.position_from_id(id).map_or(false, |pos| {
+								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
+								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
+							})
+						});
+
+						// We have the point. Join the 2 vertices and check if any path is closed.
+						if let Some(end) = closest_point {
+							let segment_id = SegmentId::generate();
+							vector_data.push(segment_id, start, end, BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
+
+							let grouped_segments = vector_data.auto_join_paths();
+							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));
+
+							let subpaths: Vec<_> = closed_paths
+								.filter_map(|path| {
+									let segments = path.edges.iter().filter_map(|edge| {
+										vector_data
+											.segment_domain
+											.iter()
+											.find(|(id, _, _, _)| id == &edge.id)
+											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+									});
+									vector_data.subpath_from_segments_ignore_discontinuities(segments)
+								})
+								.collect();
+
+							let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+								.unwrap()
+								.with_alpha(0.05)
+								.to_rgba_hex_srgb();
+							fill_color.insert(0, '#');
+							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
+						}
+					}
 				}
 
 				// Draw the overlays that visualize current snapping
