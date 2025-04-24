@@ -23,7 +23,7 @@ use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
 use graphene_std::ops::XY;
-use graphene_std::transform::Footprint;
+use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
@@ -178,6 +178,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<ReferencePoint>() => reference_point_widget(default_info, false).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
 						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode_widget(default_info),
@@ -285,6 +286,27 @@ pub fn bool_widget(parameter_widgets_info: ParameterWidgetsInfo, checkbox_input:
 				.checked(x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
 				.on_commit(commit_value)
+				.widget_holder(),
+		])
+	}
+	widgets
+}
+
+pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
+
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::ReferencePoint(reference_point)) = input.as_non_exposed_value() {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			ReferencePointInput::new(reference_point)
+				.on_update(update_value(move |x: &ReferencePointInput| TaggedValue::ReferencePoint(x.value), node_id, index))
+				.disabled(disabled)
 				.widget_holder(),
 		])
 	}
