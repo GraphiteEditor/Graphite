@@ -1,5 +1,4 @@
-use super::utility_types::OverlayProvider;
-use super::utility_types::OverlaysVisibilitySettings;
+use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
 use crate::messages::prelude::*;
 
 pub struct OverlaysMessageData<'a> {

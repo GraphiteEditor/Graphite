@@ -502,10 +502,7 @@ impl ShapeState {
 			let selected_anchor_points: Vec<ManipulatorPointId> = state
 				.selected_points
 				.iter()
-				.filter(|selected_point| match selected_point {
-					ManipulatorPointId::Anchor(_) => true,
-					_ => false,
-				})
+				.filter(|selected_point| matches!(selected_point, ManipulatorPointId::Anchor(_)))
 				.cloned()
 				.collect();
 
@@ -521,11 +518,7 @@ impl ShapeState {
 			let selected_handle_points: Vec<ManipulatorPointId> = state
 				.selected_points
 				.iter()
-				.filter(|selected_point| match selected_point {
-					ManipulatorPointId::PrimaryHandle(_) => true,
-					ManipulatorPointId::EndHandle(_) => true,
-					_ => false,
-				})
+				.filter(|selected_point| matches!(selected_point, ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_)))
 				.cloned()
 				.collect();
 

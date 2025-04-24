@@ -200,14 +200,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.navigation_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::Overlays(message) => {
-				let overlays_visibility_settings = self.overlays_visibility_settings;
+				let visibility_settings = self.overlays_visibility_settings;
 
 				// Send the overlays message to the overlays message handler
 				self.overlays_message_handler.process_message(
 					message,
 					responses,
 					OverlaysMessageData {
-						visibility_settings: overlays_visibility_settings,
+						visibility_settings,
 						ipp,
 						device_pixel_ratio,
 					},
@@ -1157,10 +1157,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
-					OverlaysType::Anchors =>  {
+					OverlaysType::Anchors => {
 						visibility_settings.anchors = visible;
 						responses.add(PortfolioMessage::UpdateDocumentWidgets);
-					},
+					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 				responses.add(BroadcastEvent::ToolAbort);
@@ -2097,9 +2097,11 @@ impl DocumentMessageHandler {
 						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
 					},
 					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("General").widget_holder()],
+					},
+					LayoutGroup::Row {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
-								.tooltip("Enable or disable the artboard names overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2113,23 +2115,24 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
-								.tooltip("Enable or disable the compass rose overlay")
+							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::CompassRose,
+										overlays_type: OverlaysType::TransformMeasurement,
 									}
 									.into()
 								})
 								.widget_holder(),
-							TextLabel::new("Compass Rose".to_string()).widget_holder(),
+							TextLabel::new("G/R/S Measurement".to_string()).widget_holder(),
 						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Select Tool").widget_holder()],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
-								.tooltip("Enable or disable the quick measurement overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2143,23 +2146,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
-								.tooltip("Enable or disable the transform measurement overlay")
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: OverlaysType::TransformMeasurement,
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Transform Measurement".to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
-								.tooltip("Enable or disable the transform cage overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2173,8 +2160,35 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::CompassRose,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Dial".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.pivot)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: OverlaysType::Pivot,
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Pivot".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
-								.tooltip("Enable or disable the hover outline overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2189,7 +2203,6 @@ impl DocumentMessageHandler {
 					LayoutGroup::Row {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
-								.tooltip("Enable or disable the selection outline overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2202,24 +2215,11 @@ impl DocumentMessageHandler {
 						],
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.pivot)
-								.tooltip("Enable or disable the pivot overlay")
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: OverlaysType::Pivot,
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Pivot".to_string()).widget_holder(),
-						],
+						widgets: vec![TextLabel::new("Pen & Path Tools").widget_holder()],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.path)
-								.tooltip("Enable or disable the path overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2234,7 +2234,6 @@ impl DocumentMessageHandler {
 					LayoutGroup::Row {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.anchors)
-								.tooltip("Enable or disable the anchors overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
@@ -2250,7 +2249,6 @@ impl DocumentMessageHandler {
 						widgets: vec![
 							CheckboxInput::new(self.overlays_visibility_settings.handles)
 								.disabled(!self.overlays_visibility_settings.anchors)
-								.tooltip("Enable or disable the handles overlay")
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,

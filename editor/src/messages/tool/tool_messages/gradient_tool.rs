@@ -265,6 +265,7 @@ impl Fsm for GradientToolFsmState {
 					overlay_context.line(start, end, None, None);
 					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
 					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
+
 					for (index, (position, _)) in stops.into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
