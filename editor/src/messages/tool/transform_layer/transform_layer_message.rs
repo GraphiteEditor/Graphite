@@ -2,7 +2,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::TransformType;
 use crate::messages::prelude::*;
-use crate::messages::tool::tool_messages::path_tool::ProportionalEditData;
+use crate::messages::tool::tool_messages::path_tool::ProportionalEditingData;
 use glam::DVec2;
 
 #[impl_message(Message, ToolMessage, TransformLayer)]
@@ -20,7 +20,7 @@ pub enum TransformLayerMessage {
 	BeginScale,
 	BeginGRS {
 		transform_type: TransformType,
-		proportional_edit_data: Option<ProportionalEditData>,
+		proportional_editing_data: Option<ProportionalEditingData>,
 	},
 	BeginGrabPen {
 		last_point: DVec2,
@@ -48,5 +48,7 @@ pub enum TransformLayerMessage {
 		digit: u8,
 	},
 	TypeNegate,
-	UpdateProportionalEditData(ProportionalEditData),
+	UpdateProportionalEditingData {
+		data: ProportionalEditingData,
+	},
 }

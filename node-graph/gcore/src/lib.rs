@@ -59,6 +59,7 @@ pub use rand::{Rng, SeedableRng};
 pub use rand_chacha::ChaCha20Rng;
 pub use raster::Color;
 pub use types::Cow;
+
 // pub trait Node: for<'n> NodeIO<'n> {
 /// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
 /// See `node-graph/README.md` for information on how to define a new node.

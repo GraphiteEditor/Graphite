@@ -205,7 +205,7 @@ impl ClosestSegment {
 impl ShapeState {
 	/// Calculates the center point of all selected manipulator points (anchors and handles)
 	pub fn selection_center(&self, document: &DocumentMessageHandler) -> Option<DVec2> {
-		let mut total = DVec2::ZERO;
+		let mut sum = DVec2::ZERO;
 		let mut count = 0;
 
 		// Iterate through all selected layers and their selection states
@@ -220,7 +220,7 @@ impl ShapeState {
 					// Get the position in layer space coordinates
 					if let Some(position) = point.get_position(&vector_data) {
 						// Convert to document space and accumulate
-						total += transform.transform_point2(position);
+						sum += transform.transform_point2(position);
 						count += 1;
 					}
 				}
@@ -228,7 +228,7 @@ impl ShapeState {
 		}
 
 		// Return average position if we have any points
-		if count > 0 { Some(total / count as f64) } else { None }
+		if count > 0 { Some(sum / count as f64) } else { None }
 	}
 
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {

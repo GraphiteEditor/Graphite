@@ -657,11 +657,10 @@ impl<'a> Selected<'a> {
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),
-			_ => {
-				self.apply_transformation(transformation, transform_operation);
-			}
+			_ => self.apply_transformation(transformation, transform_operation),
 		}
 	}
+
 	pub fn revert_operation(&mut self) {
 		for layer in self.selected.iter().copied() {
 			let original_transform = &self.original_transforms;
