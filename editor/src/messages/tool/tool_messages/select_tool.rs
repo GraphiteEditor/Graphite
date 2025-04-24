@@ -1677,7 +1677,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| layer.is_child_of(metadata, selected))) {
 		return;
 	}
-	if !exists {
+	if !exists && !remove {
 		responses.add(DocumentMessage::DeselectAllLayers);
 		tool_data.layers_dragging.clear();
 	}
