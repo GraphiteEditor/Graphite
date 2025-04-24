@@ -449,7 +449,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// This is used by the pen and path tool to outline the path of the shape
+	/// Used by the Pen and Path tools to outline the path of the shape.
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -468,7 +468,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// This is used by the pen tool in order to show how the bezier curve would look like
+	/// Used by the Pen tool in order to show how the bezier curve would look like.
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -547,7 +547,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// This is used by the select tool to outline a path selected or hovered
+	/// Used by the Select tool to outline a path selected or hovered.
 	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.push_path(subpaths, transform);
 
@@ -555,8 +555,8 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	/// Fills the area inside the path. `color` is in gamma space
-	/// This is used by the pen tool to show the path being closed
+	/// Fills the area inside the path. Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.push_path(subpaths, transform);
 
@@ -564,14 +564,14 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
-	/// Fills the area inside the path with a pattern. `color` is in gamma space
-	/// This is used by the fill tool to show the area to be filled
+	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Used by the fill tool to show the area to be filled.
 	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
-		let pattern_width = 4;
-		let pattern_height = 4;
-		let pattern_canvas = OffscreenCanvas::new(pattern_width, pattern_height).unwrap();
+		const PATTERN_WIDTH: usize = 4;
+		const PATTERN_HEIGHT: usize = 4;
 
-		let pattern_ctx: OffscreenCanvasRenderingContext2d = pattern_canvas
+		let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
 			.get_context("2d")
 			.ok()
 			.flatten()
@@ -579,17 +579,22 @@ impl OverlayContext {
 			.dyn_into()
 			.expect("Context should be a canvas 2d context");
 
-		let mut data = vec![0u8; (4 * pattern_width * pattern_height) as usize]; // 4x4 pixels, 4 components (RGBA) per pixel
+		// 4x4 pixels, 4 components (RGBA) per pixel
+		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-		let color = color.to_rgba8_srgb();
+		// ┌▄▄┬──┬──┬──┐
+		// ├▀▀┼──┼──┼──┤
+		// ├──┼──┼▄▄┼──┤
+		// ├──┼──┼▀▀┼──┤
+		// └──┴──┴──┴──┘
 		let pixels = [(0, 0), (2, 2)];
 		for &(x, y) in &pixels {
-			let index = (x + y * pattern_width as usize) * 4;
-			data[index..index + 4].copy_from_slice(&color);
+			let index = (x + y * PATTERN_WIDTH as usize) * 4;
+			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
 		}
 
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), pattern_width, pattern_height).unwrap();
-		pattern_ctx.put_image_data(&image_data, 0.0, 0.0).unwrap();
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 
 		self.push_path(subpaths, transform);

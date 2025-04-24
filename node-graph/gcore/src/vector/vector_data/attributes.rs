@@ -584,7 +584,7 @@ impl HalfEdge {
 				reverse: false,
 			}
 		} else {
-			self.clone()
+			*self
 		}
 	}
 }
@@ -691,7 +691,7 @@ impl VectorData {
 		for seg_ref in segments {
 			let (start, end) = (seg_ref.start, seg_ref.end);
 
-			if previous.map_or(false, |(_, prev_end)| start == prev_end) {
+			if previous.is_some_and(|(_, prev_end)| start == prev_end) {
 				if let Some(path) = current_path.as_mut() {
 					path.push(seg_ref);
 				}
@@ -784,6 +784,7 @@ impl VectorData {
 				});
 			}
 		}
+
 		Some(bezier_rs::Subpath::new(groups, closed))
 	}
 
@@ -865,12 +866,12 @@ impl VectorData {
 
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
 	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = bezier_rs::Subpath<PointId>> {
-		self.build_stroke_path_iter().into_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
+		self.build_stroke_path_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
 	}
 
 	/// Construct a [`kurbo::BezPath`] curve for stroke.
 	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = kurbo::BezPath> {
-		self.build_stroke_path_iter().into_iter().map(|(group, closed)| {
+		self.build_stroke_path_iter().map(|(group, closed)| {
 			let mut bezpath = kurbo::BezPath::new();
 			let mut out_handle;
 

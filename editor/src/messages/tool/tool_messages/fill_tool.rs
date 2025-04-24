@@ -92,18 +92,15 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
 			(_, FillToolMessage::Overlays(mut overlay_context)) => {
-				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
-				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
-				if !input.keyboard.get(Key::MouseMiddle as usize) {
-					let use_secondary = input.keyboard.get(Key::Shift as usize);
-					let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
+				// Choose the working color to preview
+				let use_secondary = input.keyboard.get(Key::Shift as usize);
+				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
-					// Get the layer the user is hovering over
-					let click = document.click(input);
-					if let Some(layer) = click {
-						overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
-					}
+				// Get the layer the user is hovering over
+				if let Some(layer) = document.click(input) {
+					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
 				}
+
 				self
 			}
 			(_, FillToolMessage::PointerMove | FillToolMessage::WorkingColorChanged) => {

@@ -1614,7 +1614,7 @@ impl Fsm for PenToolFsmState {
 					overlay_context.manipulator_anchor(next_anchor, false, None);
 				}
 
-				// Fill the shape if the new point closes the path
+				// Display a filled overlay of the shape if the new point closes the path
 				if let Some(latest_point) = tool_data.latest_point() {
 					let handle_start = latest_point.handle_start;
 					let handle_end = tool_data.handle_end.unwrap_or(tool_data.next_handle_start);
@@ -1631,7 +1631,7 @@ impl Fsm for PenToolFsmState {
 							})
 						});
 
-						// We have the point. Join the 2 vertices and check if any path is closed
+						// We have the point. Join the 2 vertices and check if any path is closed.
 						if let Some(end) = closest_point {
 							let segment_id = SegmentId::generate();
 							vector_data.push(segment_id, start, end, BezierHandles::Cubic { handle_start, handle_end }, StrokeId::ZERO);
@@ -1652,7 +1652,11 @@ impl Fsm for PenToolFsmState {
 								})
 								.collect();
 
-							let fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_css_from_gamma();
+							let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+								.unwrap()
+								.with_alpha(0.05)
+								.to_rgba_hex_srgb();
+							fill_color.insert(0, '#');
 							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
 						}
 					}

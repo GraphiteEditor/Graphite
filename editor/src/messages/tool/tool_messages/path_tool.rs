@@ -1030,7 +1030,7 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Drawing { selection_shape } => {
-						let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+						let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
 							.to_rgba_hex_srgb();

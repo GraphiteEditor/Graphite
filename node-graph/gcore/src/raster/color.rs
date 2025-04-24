@@ -955,16 +955,6 @@ impl Color {
 		}
 	}
 
-	/// Produces a CSS color in the format `rgb(red green blue / alpha%)`. Use this if the [`Color`] is in linear space.
-	pub fn to_css(&self) -> String {
-		self.to_gamma_srgb().to_css_from_gamma()
-	}
-
-	/// Produces a CSS color in the format `rgb(red green blue / alpha%)`. Use this if the [`Color`] is in gamma space.
-	pub fn to_css_from_gamma(&self) -> String {
-		format!("rgb({} {} {} / {}%)", self.red * 255.0, self.green * 255.0, self.blue * 255.0, self.alpha * 100.0)
-	}
-
 	#[inline(always)]
 	pub fn srgb_to_linear(channel: f32) -> f32 {
 		if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) }

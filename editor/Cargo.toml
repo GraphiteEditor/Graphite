@@ -30,7 +30,9 @@ ron = ["dep:ron"]
 # Local dependencies
 graphite-proc-macros = { path = "../proc-macros" }
 graph-craft = { path = "../node-graph/graph-craft" }
-interpreted-executor = { path = "../node-graph/interpreted-executor", features = ["serde"] }
+interpreted-executor = { path = "../node-graph/interpreted-executor", features = [
+	"serde",
+] }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 
@@ -58,9 +60,9 @@ web-sys = { workspace = true, features = [
 	"Element",
 	"HtmlCanvasElement",
 	"CanvasRenderingContext2d",
-	"OffscreenCanvasRenderingContext2d",
 	"CanvasPattern",
 	"OffscreenCanvas",
+	"OffscreenCanvasRenderingContext2d",
 	"TextMetrics",
 ] }
 
