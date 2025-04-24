@@ -2,11 +2,11 @@
 
 use super::graph_modification_utils;
 use crate::consts::PIVOT_DIAMETER;
-use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
+use graphene_std::transform::ReferencePoint;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
@@ -18,7 +18,7 @@ pub struct Pivot {
 	/// The viewspace pivot position (if applicable)
 	pivot: Option<DVec2>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
-	old_pivot_position: PivotPosition,
+	old_pivot_position: ReferencePoint,
 }
 
 impl Default for Pivot {
@@ -27,7 +27,7 @@ impl Default for Pivot {
 			normalized_pivot: DVec2::splat(0.5),
 			transform_from_normalized: Default::default(),
 			pivot: Default::default(),
-			old_pivot_position: PivotPosition::Center,
+			old_pivot_position: ReferencePoint::Center,
 		}
 	}
 }
@@ -96,7 +96,7 @@ impl Pivot {
 		should_refresh
 	}
 
-	pub fn to_pivot_position(&self) -> PivotPosition {
+	pub fn to_pivot_position(&self) -> ReferencePoint {
 		self.normalized_pivot.into()
 	}
 

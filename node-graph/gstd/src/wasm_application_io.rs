@@ -187,7 +187,7 @@ where
 		..Default::default()
 	};
 
-	for instance in data.instances_mut() {
+	for instance in data.instance_mut_iter() {
 		*instance.transform = DAffine2::from_translation(-aabb.start) * *instance.transform;
 	}
 	data.render_svg(&mut render, &render_params);

@@ -2800,7 +2800,7 @@ mod document_message_handler_tests {
 			let document = editor.active_document();
 			for layer in document.metadata().all_layers() {
 				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1.0 && (bbox[0].y - min_y).abs() < 1.0 {
+					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
 						return Some(layer);
 					}
 				}
@@ -2814,8 +2814,8 @@ mod document_message_handler_tests {
 			parent.children(document.metadata()).position(|child| child == layer)
 		}
 
-		let layer_middle = get_layer_by_bounds(&mut editor, 50.0, 50.0).await.unwrap();
-		let layer_top = get_layer_by_bounds(&mut editor, 100.0, 100.0).await.unwrap();
+		let layer_middle = get_layer_by_bounds(&mut editor, 50., 50.).await.unwrap();
+		let layer_top = get_layer_by_bounds(&mut editor, 100., 100.).await.unwrap();
 
 		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
 		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
@@ -2915,7 +2915,7 @@ mod document_message_handler_tests {
 		// Applying transform to folder1 (translation)
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(100.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -2927,7 +2927,7 @@ mod document_message_handler_tests {
 		// Applying different transform to folder2 (translation)
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder2.to_node()] }).await;
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(200.0, 100.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(200., 100., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -2946,7 +2946,7 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50.0, 25.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(50., 25., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -2967,10 +2967,10 @@ mod document_message_handler_tests {
 		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
 
 		// Verifing the rectangle maintains approximately the same position in viewport space
-		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.0;
-		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.0;
+		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.;
+		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.;
 		let distance = before_center.distance(after_center);
 
-		assert!(distance < 1.0, "Rectangle should maintain its viewport position after moving between transformed groups");
+		assert!(distance < 1., "Rectangle should maintain its viewport position after moving between transformed groups");
 	}
 }
