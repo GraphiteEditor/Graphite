@@ -28,6 +28,7 @@ use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
@@ -96,7 +97,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot {
-		position: PivotPosition,
+		position: ReferencePoint,
 	},
 }
 
@@ -129,9 +130,9 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
-		PivotInput::new(self.tool_data.pivot.to_pivot_position())
-			.on_update(|pivot_input: &PivotInput| SelectToolMessage::SetPivot { position: pivot_input.position }.into())
+	fn pivot_reference_point_widget(&self, disabled: bool) -> WidgetHolder {
+		ReferencePointInput::new(self.tool_data.pivot.to_pivot_position())
+			.on_update(|pivot_input: &ReferencePointInput| SelectToolMessage::SetPivot { position: pivot_input.value }.into())
 			.disabled(disabled)
 			.widget_holder()
 	}
@@ -204,7 +205,7 @@ impl LayoutHolder for SelectTool {
 
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
