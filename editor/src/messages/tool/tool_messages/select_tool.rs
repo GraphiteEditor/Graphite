@@ -966,7 +966,8 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
-					if !input.keyboard.key(extend_selection) && !input.keyboard.key(remove_from_selection) {
+          let extend = input.keyboard.key(extend_selection);
+					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
@@ -976,7 +977,7 @@ impl Fsm for SelectToolFsmState {
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, false),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, extend),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
 						tool_data.get_snap_candidates(document, input);
