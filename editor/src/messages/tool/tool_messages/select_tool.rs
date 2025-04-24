@@ -976,7 +976,7 @@ impl Fsm for SelectToolFsmState {
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, false),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
 						tool_data.get_snap_candidates(document, input);
@@ -1352,18 +1352,14 @@ impl Fsm for SelectToolFsmState {
 						if let Some(intersection) = intersection {
 							tool_data.layer_selected_on_start = Some(intersection);
 							let selected = intersection_list;
-
 							match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true),
+								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true, false),
 								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
+								NestedSelectionBehavior::Shallowest if !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, false, true),
 								_ => {
 									responses.add(DocumentMessage::DeselectAllLayers);
 									tool_data.layers_dragging.clear();
-									if tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest && !deepest {
-										drag_shallowest_manipulation(responses, selected, tool_data, document, false)
-									} else {
-										drag_deepest_manipulation(responses, selected, tool_data, document, false)
-									}
+									drag_deepest_manipulation(responses, selected, tool_data, document, false)
 								}
 							}
 							tool_data.get_snap_candidates(document, input);
@@ -1645,7 +1641,7 @@ fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifi
 	|&layer| layer != LayerNodeIdentifier::ROOT_PARENT && !document.network_interface.is_artboard(&layer.to_node(), &[])
 }
 
-fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler, remove: bool) {
+fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler, remove: bool, exists: bool) {
 	if selected.is_empty() {
 		return;
 	}
@@ -1668,18 +1664,22 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 		clicked_layer
 			.ancestors(metadata)
 			.filter(not_artboard(document))
-			.find(|&potential_lca| relevant_layers.iter().all(|layer| *layer == potential_lca || potential_lca.is_ancestor_of(metadata, layer)))
-			.and_then(|lca| {
-				let lca_children: Vec<_> = lca.children(metadata).collect();
-				(clicked_layer == lca)
-					.then_some(lca)
-					.or_else(|| lca_children.iter().find(|&&child| clicked_layer == child || child.is_ancestor_of(metadata, &clicked_layer)).copied())
+			.find(|&ancestor| relevant_layers.iter().all(|layer| *layer == ancestor || ancestor.is_ancestor_of(metadata, layer)))
+			.and_then(|least_common_ancestor| {
+				let common_siblings: Vec<_> = least_common_ancestor.children(metadata).collect();
+				(clicked_layer == least_common_ancestor)
+					.then_some(least_common_ancestor)
+					.or_else(|| common_siblings.iter().find(|&&child| clicked_layer == child || child.is_ancestor_of(metadata, &clicked_layer)).copied())
 			})
 	});
 
 	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| layer.is_child_of(metadata, selected))) {
 		return;
-	};
+	}
+	if !exists {
+		responses.add(DocumentMessage::DeselectAllLayers);
+		tool_data.layers_dragging.clear();
+	}
 
 	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
 	tool_data.layers_dragging.extend(vec![new_selected]);
