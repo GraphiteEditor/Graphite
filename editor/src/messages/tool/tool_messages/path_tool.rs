@@ -979,7 +979,8 @@ impl Fsm for PathToolFsmState {
 				let display_handles = overlay_context.visibility_settings.handles();
 				if !display_handles {
 					shape_editor.deselect_all_handles();
-				} else if !display_anchors {
+				}
+				if !display_anchors {
 					shape_editor.deselect_all_anchors();
 				}
 
