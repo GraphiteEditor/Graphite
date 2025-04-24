@@ -284,6 +284,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=SplineToolMessage::Confirm),
 		//
 		// FillToolMessage
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=FillToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=FillToolMessage::FillPrimaryColor),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=FillToolMessage::FillSecondaryColor),
 		entry!(KeyUp(MouseLeft); action_dispatch=FillToolMessage::PointerUp),
