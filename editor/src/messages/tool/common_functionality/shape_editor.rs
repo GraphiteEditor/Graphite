@@ -729,7 +729,9 @@ impl ShapeState {
 					let length = transform.transform_vector2(unselected_position - anchor).length();
 					let position = transform.inverse().transform_vector2(direction * length);
 					let modification_type = unselected_handle.set_relative_position(position);
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					if (anchor - selected_position).length() > 1e-6 {
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
 				}
 				// If both handles are selected, average the angles of the handles
 				else {
@@ -775,6 +777,7 @@ impl ShapeState {
 		in_viewport_space: bool,
 		was_alt_dragging: bool,
 		opposite_handle_position: Option<DVec2>,
+		skip_opposite_handle: bool,
 		responses: &mut VecDeque<Message>,
 	) {
 		for (&layer, state) in &self.selected_shape_state {
@@ -816,6 +819,11 @@ impl ShapeState {
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 				let Some(other) = vector_data.other_colinear_handle(handle) else { continue };
+
+				if skip_opposite_handle {
+					continue;
+				}
+
 				if state.is_selected(other.to_manipulator_point()) {
 					// If two colinear handles are being dragged at the same time but not the anchor, it is necessary to break the colinear state.
 					let handles = [handle, other];
