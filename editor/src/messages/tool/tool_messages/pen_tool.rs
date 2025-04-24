@@ -10,7 +10,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
-use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
@@ -1295,31 +1295,8 @@ impl PenToolData {
 
 		match (self.handle_type, self.path_closed) {
 			(TargetHandle::FuturePreviewOutHandle, _) | (TargetHandle::PreviewInHandle, true) => {
-				let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
-
-				let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
-				let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector_data);
-
-				let start_point = if is_start(anchor, segment) {
-					vector_data.segment_end_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-				} else {
-					vector_data.segment_start_from_id(segment).and_then(|id| vector_data.point_domain.position_from_id(id))
-				};
-
-				let required_handle = if is_start(anchor, segment) {
-					start_handle
-						.filter(|&handle| handle != anchor_position)
-						.or(end_handle.filter(|&handle| Some(handle) != start_point))
-						.or(start_point)
-				} else {
-					end_handle
-						.filter(|&handle| handle != anchor_position)
-						.or(start_handle.filter(|&handle| Some(handle) != start_point))
-						.or(start_point)
-				};
-
-				if let Some(required_handle) = required_handle {
-					self.angle = -(required_handle - anchor_position).angle_to(DVec2::X);
+				if let Some(required_handle) = calculate_segment_angle(anchor, segment, vector_data, true) {
+					self.angle = required_handle;
 					self.handle_mode = HandleMode::ColinearEquidistant;
 				}
 			}
@@ -1332,8 +1309,6 @@ impl PenToolData {
 				self.handle_mode = HandleMode::ColinearEquidistant;
 			}
 		}
-
-		// Closure to check if a point is the start or end of a segment
 	}
 
 	fn add_point_layer_position(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, viewport: DVec2) {
