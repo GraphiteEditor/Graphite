@@ -48,7 +48,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 
 				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
 				let _ = context.set_transform(a, b, c, d, e, f);
-				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
+				context.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
 				let _ = context.reset_transform();
 
 				if visibility_settings.all() {

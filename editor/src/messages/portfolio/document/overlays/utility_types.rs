@@ -8,10 +8,12 @@ use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -550,6 +552,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// Used by the Pen and Path tools to outline the path of the shape.
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -568,6 +571,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// Used by the Pen tool in order to show how the bezier curve would look like.
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -596,7 +600,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -643,10 +647,63 @@ impl OverlayContext {
 			}
 		}
 
+		self.end_dpi_aware_transform();
+	}
+
+	/// Used by the Select tool to outline a path selected or hovered.
+	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+		self.push_path(subpaths, transform);
+
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
+	}
 
-		self.end_dpi_aware_transform();
+	/// Fills the area inside the path. Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed.
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
+	}
+
+	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Used by the fill tool to show the area to be filled.
+	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+		const PATTERN_WIDTH: usize = 4;
+		const PATTERN_HEIGHT: usize = 4;
+
+		let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
+			.get_context("2d")
+			.ok()
+			.flatten()
+			.expect("Failed to get canvas context")
+			.dyn_into()
+			.expect("Context should be a canvas 2d context");
+
+		// 4x4 pixels, 4 components (RGBA) per pixel
+		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
+
+		// ┌▄▄┬──┬──┬──┐
+		// ├▀▀┼──┼──┼──┤
+		// ├──┼──┼▄▄┼──┤
+		// ├──┼──┼▀▀┼──┤
+		// └──┴──┴──┴──┘
+		let pixels = [(0, 0), (2, 2)];
+		for &(x, y) in &pixels {
+			let index = (x + y * PATTERN_WIDTH as usize) * 4;
+			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
+		}
+
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
+		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+
+		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_canvas_pattern(&pattern);
+		self.render_context.fill();
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {
