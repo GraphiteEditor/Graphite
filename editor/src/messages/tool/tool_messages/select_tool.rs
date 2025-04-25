@@ -1354,7 +1354,7 @@ impl Fsm for SelectToolFsmState {
 							tool_data.layer_selected_on_start = Some(intersection);
 							let selected = intersection_list;
 							match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true, false),
+								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true, true),
 								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
 								NestedSelectionBehavior::Shallowest if !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, false, true),
 								_ => {
@@ -1675,8 +1675,13 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	});
 
 	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| layer.is_child_of(metadata, selected))) {
+		if exists && remove && selected_layers.len() == 1 {
+			responses.add(DocumentMessage::DeselectAllLayers);
+			tool_data.layers_dragging.clear();
+		}
 		return;
 	}
+
 	if !exists && !remove {
 		responses.add(DocumentMessage::DeselectAllLayers);
 		tool_data.layers_dragging.clear();
@@ -1687,6 +1692,9 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	tool_data.layers_dragging.retain(|&selected_layer| !selected_layer.is_child_of(metadata, &new_selected));
 	if remove {
 		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
+		if selected_layers.contains(&new_selected) {
+			tool_data.layers_dragging.retain(|&selected_layer| new_selected != selected_layer);
+		}
 	}
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
