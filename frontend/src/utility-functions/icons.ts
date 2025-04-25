@@ -137,6 +137,7 @@ import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-log
 import HandleVisibilityAll from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-all.svg";
 import HandleVisibilityFrontier from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-frontier.svg";
 import HandleVisibilitySelected from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-selected.svg";
+import Heart from "@graphite-frontend/assets/icon-16px-solid/heart.svg";
 import HistoryRedo from "@graphite-frontend/assets/icon-16px-solid/history-redo.svg";
 import HistoryUndo from "@graphite-frontend/assets/icon-16px-solid/history-undo.svg";
 import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
@@ -257,6 +258,7 @@ const SOLID_16PX = {
 	HandleVisibilityAll: { svg: HandleVisibilityAll, size: 16 },
 	HandleVisibilityFrontier: { svg: HandleVisibilityFrontier, size: 16 },
 	HandleVisibilitySelected: { svg: HandleVisibilitySelected, size: 16 },
+	Heart: { svg: Heart, size: 16 },
 	HistoryRedo: { svg: HistoryRedo, size: 16 },
 	HistoryUndo: { svg: HistoryUndo, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },
