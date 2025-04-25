@@ -813,7 +813,7 @@ mod test_spline_tool {
 		editor
 			.handle_message(GraphOperationMessage::TransformSet {
 				layer: artboard_layer,
-				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 1.2), 30.0_f64.to_radians(), DVec2::new(50.0, 25.0)),
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 1.2), 30_f64.to_radians(), DVec2::new(50., 25.)),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			})
