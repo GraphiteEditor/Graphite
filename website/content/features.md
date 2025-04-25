@@ -10,9 +10,9 @@ css = ["/page/features.css", "/component/feature-box.css", "/component/feature-i
 
 # Graphite features
 
-The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and nondestructive editing workflow which is a unique feature among vector editing software.
+The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. This tooling is built around a procedural graphics engine, letting artists build complex graphics and animations in its visual scripting language.
 
-Throughout 2025, stay tuned for major performance improvements, a multiplatform desktop app with native rendering speed, and the beginnings of a full suite of raster editing tools.
+In 2025, stay tuned for performance improvements, native multiplatform desktop apps, and the beginnings of a full raster editing tool suite.
 
 </div>
 </section>
