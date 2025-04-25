@@ -68,6 +68,7 @@ pub enum PathToolMessage {
 		extend_selection: Key,
 		lasso_select: Key,
 		handle_drag_from_anchor: Key,
+		drag_zero_handle: Key,
 	},
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -498,6 +499,7 @@ impl PathToolData {
 		direct_insert_without_sliding: bool,
 		lasso_select: bool,
 		handle_drag_from_anchor: bool,
+		drag_zero_handle: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -557,6 +559,24 @@ impl PathToolData {
 							shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
 							responses.add(PathToolMessage::SelectedPointUpdated);
 						}
+					}
+				}
+
+				if let Some((Some(point), Some(vector_data))) = shape_editor
+					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+					.and_then(|(layer, point)| Some((point.as_anchor(), document.network_interface.compute_modified_vector(layer))))
+				{
+					let handles = vector_data
+						.all_connected(point)
+						.filter(|handle| handle.length(&vector_data) < 1e-6)
+						.map(|handle| handle.to_manipulator_point())
+						.collect::<Vec<_>>();
+					let endpoint = vector_data.extendable_points(false).any(|anchor| point == anchor);
+
+					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
+						shape_editor.deselect_all_points();
+						shape_editor.select_points_by_manipulator_id(&handles);
+						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 					}
 				}
 
@@ -1160,12 +1180,14 @@ impl Fsm for PathToolFsmState {
 					extend_selection,
 					lasso_select,
 					handle_drag_from_anchor,
+					drag_zero_handle,
 				},
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let lasso_select = input.keyboard.get(lasso_select as usize);
 				let direct_insert_without_sliding = input.keyboard.get(direct_insert_without_sliding as usize);
 				let handle_drag_from_anchor = input.keyboard.get(handle_drag_from_anchor as usize);
+				let drag_zero_handle = input.keyboard.get(drag_zero_handle as usize);
 
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
@@ -1179,6 +1201,7 @@ impl Fsm for PathToolFsmState {
 					direct_insert_without_sliding,
 					lasso_select,
 					handle_drag_from_anchor,
+					drag_zero_handle,
 				)
 			}
 			(
@@ -1467,6 +1490,7 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.alt_dragging_from_anchor = false;
 				tool_data.alt_clicked_on_anchor = false;
+				tool_data.angle_locked = false;
 
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
