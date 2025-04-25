@@ -432,7 +432,9 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 
 #[cfg(test)]
 mod test_line_tool {
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::{messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer, test_utils::test_prelude::*};
+	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
 
 	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
@@ -460,8 +462,8 @@ mod test_line_tool {
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			match (start_input, end_input) {
 				(start_input, end_input) => {
-					assert!((start_input - DVec2::ZERO).length() < 1.0, "Start point should be near (0,0)");
-					assert!((end_input - DVec2::new(100.0, 100.0)).length() < 1.0, "End point should be near (100,100)");
+					assert!((start_input - DVec2::ZERO).length() < 1., "Start point should be near (0,0)");
+					assert!((end_input - DVec2::new(100., 100.)).length() < 1., "End point should be near (100,100)");
 				}
 			}
 		}
@@ -471,9 +473,13 @@ mod test_line_tool {
 	async fn test_line_tool_with_transformed_viewport() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2.0 }).await;
-		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100.0, 50.0) }).await;
-		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30.0_f64.to_radians() }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100., 50.) }).await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: (30. as f64).to_radians(),
+			})
+			.await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			let document = editor.active_document();
@@ -481,16 +487,16 @@ mod test_line_tool {
 			let viewport_to_document = document_to_viewport.inverse();
 
 			let expected_start = viewport_to_document.transform_point2(DVec2::ZERO);
-			let expected_end = viewport_to_document.transform_point2(DVec2::new(100.0, 100.0));
+			let expected_end = viewport_to_document.transform_point2(DVec2::new(100., 100.));
 
 			assert!(
-				(start_input - expected_start).length() < 1.0,
+				(start_input - expected_start).length() < 1.,
 				"Start point should match expected document coordinates. Got {:?}, expected {:?}",
 				start_input,
 				expected_start
 			);
 			assert!(
-				(end_input - expected_end).length() < 1.0,
+				(end_input - expected_end).length() < 1.,
 				"End point should match expected document coordinates. Got {:?}, expected {:?}",
 				end_input,
 				expected_end
@@ -517,7 +523,7 @@ mod test_line_tool {
 								let updated_line_vec = updated_end - updated_start;
 								let updated_angle = updated_line_vec.angle_to(DVec2::X);
 								assert!((original_angle - updated_angle).abs() < 0.1, "Line angle should be locked when Ctrl is kept pressed");
-								assert!((updated_start - updated_end).length() > 1.0, "Line should be able to change length when Ctrl is kept pressed");
+								assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
 							}
 						}
 					}
@@ -536,8 +542,8 @@ mod test_line_tool {
 				(start_input, end_input) => {
 					let expected_start = DVec2::new(0., 100.);
 					let expected_end = DVec2::new(200., 100.);
-					assert!((start_input - expected_start).length() < 1.0, "start point should be near (0,100)");
-					assert!((end_input - expected_end).length() < 1.0, "end point should be near (200,100)");
+					assert!((start_input - expected_start).length() < 1., "start point should be near (0,100)");
+					assert!((end_input - expected_end).length() < 1., "end point should be near (200,100)");
 				}
 			}
 		}
@@ -554,11 +560,49 @@ mod test_line_tool {
 					let line_vec = end_input - start_input;
 					let angle_radians = line_vec.angle_to(DVec2::X);
 					let angle_degrees = angle_radians.to_degrees();
-					let nearest_angle = (angle_degrees / 15.0).round() * 15.0;
+					let nearest_angle = (angle_degrees / 15.).round() * 15.;
 
-					assert!((angle_degrees - nearest_angle).abs() < 1.0, "Angle should snap to the nearest 15 degrees");
+					assert!((angle_degrees - nearest_angle).abs() < 1., "Angle should snap to the nearest 15 degrees");
 				}
 			}
 		}
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_with_transformed_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 0., 0., 200., 200., ModifierKeys::empty()).await;
+
+		let artboard_id = editor.get_selected_layer().await.expect("Should have selected the artboard");
+
+		editor
+			.handle_message(GraphOperationMessage::TransformChange {
+				layer: artboard_id,
+				transform: DAffine2::from_angle(45.0_f64.to_radians()),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.drag_tool(ToolType::Line, 50., 50., 150., 150., ModifierKeys::empty()).await;
+
+		let (start_input, end_input) = get_line_node_inputs(&mut editor).await.expect("Line was not created successfully within transformed artboard");
+		// The line should still be diagonal with equal change in x and y
+		let line_vector = end_input - start_input;
+		// Verifying the line is approximately 100*sqrt(2) units in length (diagonal of 100x100 square)
+		let line_length = line_vector.length();
+		assert!(
+			(line_length - 141.42).abs() < 1.0, // 100 * sqrt(2) ~= 141.42
+			"Line length should be approximately 141.42 units. Got: {line_length}"
+		);
+		assert!((line_vector.x - 100.0).abs() < 1.0, "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
+		assert!(
+			(line_vector.y.abs() - 100.0).abs() < 1.0,
+			"Absolute Y-component of line vector should be approximately 100. Got: {}",
+			line_vector.y.abs()
+		);
+		let angle_degrees = line_vector.angle_to(DVec2::X).to_degrees();
+		assert!((angle_degrees - (-45.0)).abs() < 1.0, "Line angle should be close to -45 degrees. Got: {angle_degrees}");
 	}
 }

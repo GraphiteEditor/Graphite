@@ -8,6 +8,7 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
+use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
 use graph_craft::document::DocumentNode;
 use graphene_core::InputAccessor;
@@ -239,6 +240,23 @@ impl EditorTestUtils {
 
 		self.press(Key::Enter, ModifierKeys::empty()).await;
 	}
+
+	pub async fn get_selected_layer(&mut self) -> Option<LayerNodeIdentifier> {
+		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
+	}
+
+	pub async fn double_click(&mut self, position: DVec2) {
+		self.handle_message(InputPreprocessorMessage::DoubleClick {
+			editor_mouse_state: EditorMouseState {
+				editor_position: position,
+				mouse_keys: MouseKeys::LEFT,
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys: ModifierKeys::empty(),
+		})
+		.await;
+	}
+
 	pub async fn drag_path(&mut self, points: &[DVec2], modifier_keys: ModifierKeys) {
 		if points.is_empty() {
 			return;
@@ -248,12 +266,10 @@ impl EditorTestUtils {
 		self.move_mouse(first_point.x, first_point.y, modifier_keys, MouseKeys::empty()).await;
 		self.left_mousedown(first_point.x, first_point.y, modifier_keys).await;
 
-		// Move through all intermediate points
 		for &point in &points[1..] {
 			self.move_mouse(point.x, point.y, modifier_keys, MouseKeys::LEFT).await;
 		}
 
-		// Mouse up at the last point
 		self.mouseup(
 			EditorMouseState {
 				editor_position: points[points.len() - 1],
