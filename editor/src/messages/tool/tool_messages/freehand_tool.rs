@@ -364,6 +364,45 @@ mod test_freehand {
 			.collect()
 	}
 
+	fn verify_path_points(vector_data_list: &[(VectorData, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
+		if vector_data_list.len() == 0 {
+			return Err("No vector data found after drawing".to_string());
+		}
+
+		let path_data = vector_data_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
+
+		let (vector_data, transform) = path_data;
+		let point_count = vector_data.point_domain.ids().len();
+		let segment_count = vector_data.segment_domain.ids().len();
+
+		let actual_positions: Vec<DVec2> = vector_data
+			.point_domain
+			.ids()
+			.iter()
+			.filter_map(|&point_id| {
+				let position = vector_data.point_domain.position_from_id(point_id)?;
+				Some(transform.transform_point2(position))
+			})
+			.collect();
+
+		if segment_count != point_count - 1 {
+			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));
+		}
+
+		if point_count != expected_captured_points.len() {
+			return Err(format!("Expected {} points, got {}", expected_captured_points.len(), point_count));
+		}
+
+		for (i, (&expected, &actual)) in expected_captured_points.iter().zip(actual_positions.iter()).enumerate() {
+			let distance = (expected - actual).length();
+			if distance >= tolerance {
+				return Err(format!("Point {} position mismatch: expected {:?}, got {:?} (distance: {})", i, expected, actual, distance));
+			}
+		}
+
+		Ok(())
+	}
+
 	#[tokio::test]
 	async fn test_freehand_transformed_artboard() {
 		let mut editor = EditorTestUtils::create();
@@ -388,64 +427,11 @@ mod test_freehand {
 		let mouse_points = [DVec2::new(150.0, 100.0), DVec2::new(200.0, 150.0), DVec2::new(250.0, 130.0), DVec2::new(300.0, 170.0)];
 
 		// Expected points that will actually be captured by the tool
-		let expected_captured_points = [DVec2::new(200.0, 150.0), DVec2::new(250.0, 130.0), DVec2::new(300.0, 170.0)];
-
-		let first_point = mouse_points[0];
-		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(first_point.x, first_point.y, ModifierKeys::empty()).await;
-
-		for &point in &mouse_points[1..] {
-			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
-		}
-
-		editor
-			.mouseup(
-				EditorMouseState {
-					editor_position: mouse_points[mouse_points.len() - 1],
-					mouse_keys: MouseKeys::empty(),
-					scroll_delta: ScrollDelta::default(),
-				},
-				ModifierKeys::empty(),
-			)
-			.await;
+		let expected_captured_points = &mouse_points[1..];
+		editor.drag_path(&mouse_points, ModifierKeys::empty()).await;
 
 		let vector_data_list = get_vector_data(&mut editor).await;
-
-		assert!(vector_data_list.len() > 0, "No vector data found after drawing");
-
-		let path_data = vector_data_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).expect("Could not find path data");
-
-		let (vector_data, transform) = path_data;
-
-		let point_count = vector_data.point_domain.ids().len();
-		let segment_count = vector_data.segment_domain.ids().len();
-
-		let actual_positions: Vec<DVec2> = vector_data
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector_data.point_domain.position_from_id(point_id)?;
-				Some(transform.transform_point2(position))
-			})
-			.collect();
-
-		assert_eq!(segment_count, point_count - 1, "Expected segments to be one less than points");
-
-		assert_eq!(point_count, expected_captured_points.len(), "Expected {} points, got {}", expected_captured_points.len(), point_count);
-
-		for (i, (&expected, &actual)) in expected_captured_points.iter().zip(actual_positions.iter()).enumerate() {
-			let distance = (expected - actual).length();
-			let tolerance = 1.0;
-			assert!(
-				distance < tolerance,
-				"Point {} position mismatch: expected {:?}, got {:?} (distance: {})",
-				i,
-				expected,
-				actual,
-				distance
-			);
-		}
+		verify_path_points(&vector_data_list, expected_captured_points, 1.0).expect("Path points verification failed");
 	}
 
 	#[tokio::test]
