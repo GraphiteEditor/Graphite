@@ -1422,6 +1422,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.saved_points_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
+				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
