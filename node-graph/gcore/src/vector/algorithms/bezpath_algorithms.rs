@@ -1,15 +1,27 @@
-use kurbo::{BezPath, ParamCurve, Point, Shape};
+use kurbo::{BezPath, ParamCurve, ParamCurveDeriv, PathSeg, Point, Shape};
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
+	let (segment_index, t) = tvalue_to_parametric(bezpath, t, euclidian);
+	bezpath.get_seg(segment_index + 1).unwrap().eval(t)
+}
+
+pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
+	let (segment_index, t) = tvalue_to_parametric(bezpath, t, euclidian);
+	let segment = bezpath.get_seg(segment_index + 1).unwrap();
+	match segment {
+		PathSeg::Line(line) => line.deriv().eval(t),
+		PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
+		PathSeg::Cubic(cubic_bez) => cubic_bez.deriv().eval(t),
+	}
+}
+
+pub fn tvalue_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool) -> (usize, f64) {
 	if euclidian {
 		let (segment_index, t) = t_value_to_parametric(&bezpath, BezPathTValue::GlobalEuclidean(t));
 		let segment = bezpath.get_seg(segment_index + 1).unwrap();
-		eval_pathseg_euclidian(segment, t, POSITION_ACCURACY)
-	} else {
-		let (segment_index, t) = t_value_to_parametric(&bezpath, BezPathTValue::GlobalParametric(t));
-		let segment = bezpath.get_seg(segment_index + 1).unwrap();
-		segment.eval(t)
+		return (segment_index, eval_pathseg_euclidian(segment, t, POSITION_ACCURACY));
 	}
+	t_value_to_parametric(&bezpath, BezPathTValue::GlobalParametric(t))
 }
 
 /// Accuracy to find the position on [kurbo::Bezpath].
@@ -17,9 +29,9 @@ const POSITION_ACCURACY: f64 = 1e-3;
 /// Accuracy to find the length of the [kurbo::PathSeg].
 const PERIMETER_ACCURACY: f64 = 1e-3;
 
-/// Finds the point on the given path segment i.e fractional distance along the segment's total length.
+/// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_upto_t / total_length` approximates the input `distance`.
-fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> kurbo::Point {
+fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut hight_t = 1.;
 	let mut mid_t = 0.5;
@@ -27,7 +39,7 @@ fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) ->
 	let total_length = path.perimeter(accuracy);
 
 	if !total_length.is_finite() || total_length <= f64::EPSILON {
-		return path.start();
+		return 0.;
 	}
 
 	let distance = distance.clamp(0., 1.);
@@ -44,7 +56,7 @@ fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) ->
 		mid_t = (hight_t + low_t) / 2.;
 	}
 
-	path.eval(mid_t)
+	mid_t
 }
 
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.

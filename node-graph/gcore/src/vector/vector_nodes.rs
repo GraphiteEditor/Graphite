@@ -1,5 +1,5 @@
+use super::algorithms::bezpath_algorithms::{position_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
-use super::algorithms::position_on_bezpath::position_on_bezpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
@@ -1312,19 +1312,20 @@ async fn tangent_on_path(
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance().instance;
 
-	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
-	let progress = progress.clamp(0., subpaths_count);
-	let progress = if reverse { subpaths_count - progress } else { progress };
-	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+	let mut bezpaths: Vec<kurbo::BezPath> = vector_data.stroke_bezpath_iter().collect();
+	let bezpath_count = bezpaths.len() as f64;
+	let progress = progress.clamp(0., bezpath_count);
+	let progress = if reverse { bezpath_count - progress } else { progress };
+	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	vector_data.stroke_bezier_paths().nth(index).map_or(0., |mut subpath| {
-		subpath.apply_transform(vector_data_transform);
+	bezpaths.get_mut(index).map_or(0., |bezpath| {
+		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		let t = if progress == subpaths_count { 1. } else { progress.fract() };
-		let mut tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		let mut tangent = point_to_dvec2(tangent_on_bezpath(&bezpath, t, euclidian));
 		if tangent == DVec2::ZERO {
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
-			tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+			tangent = point_to_dvec2(tangent_on_bezpath(&bezpath, t, euclidian));
 		}
 		if tangent == DVec2::ZERO {
 			return 0.;
