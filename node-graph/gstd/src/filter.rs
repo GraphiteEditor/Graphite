@@ -74,6 +74,7 @@ fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma
 		convert_color_space(&mut original_buffer, ConvertFunction::ToGamma)
 	}
 
+	original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
 	let (width, height) = original_buffer.dimensions();
 
 	// Create 1D gaussian kernel
@@ -125,6 +126,7 @@ fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma
 		convert_color_space(&mut y_axis, ConvertFunction::ToLinear);
 	}
 
+	y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	y_axis
 }
 
@@ -133,6 +135,7 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 		convert_color_space(&mut original_buffer, ConvertFunction::ToGamma)
 	}
 
+	original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
 	let (width, height) = original_buffer.dimensions();
 	let mut x_axis = Image::new(width, height, Color::TRANSPARENT);
 	let mut y_axis = Image::new(width, height, Color::TRANSPARENT);
@@ -170,5 +173,6 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 		convert_color_space(&mut y_axis, ConvertFunction::ToLinear);
 	}
 
+	y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	y_axis
 }
