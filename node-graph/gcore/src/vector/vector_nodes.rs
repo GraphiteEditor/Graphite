@@ -6,7 +6,7 @@ use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
-use crate::transform::{Footprint, Transform, TransformMut};
+use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
@@ -217,7 +217,9 @@ where
 
 	let mut result_table = GraphicGroupTable::default();
 
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
+		return result_table;
+	};
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
@@ -253,7 +255,9 @@ where
 
 	let mut result_table = GraphicGroupTable::default();
 
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
+		return result_table;
+	};
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 	let base_transform = DVec2::new(0., radius) - center;
@@ -310,7 +314,7 @@ where
 
 	let random_scale_difference = random_scale_max - random_scale_min;
 
-	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
+	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY, false).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
 	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
@@ -364,7 +368,8 @@ where
 async fn mirror<I: 'n + Send>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
-	#[default(0., 0.)] center: DVec2,
+	#[default(ReferencePoint::Center)] reference_point: ReferencePoint,
+	offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
 ) -> GraphicGroupTable
@@ -373,12 +378,17 @@ where
 {
 	let mut result_table = GraphicGroupTable::default();
 
-	// The mirror center is based on the bounding box for now
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY) else { return result_table };
-	let mirror_center = (bounding_box[0] + bounding_box[1]) / 2. + center;
-
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
+
+	// The mirror reference is based on the bounding box (at least for now, until we have proper local layer origins)
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
+		return result_table;
+	};
+	let mirror_reference_point = reference_point
+		.point_in_bounding_box((bounding_box[0], bounding_box[1]).into())
+		.unwrap_or_else(|| (bounding_box[0] + bounding_box[1]) / 2.)
+		+ normal * offset;
 
 	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
@@ -389,8 +399,8 @@ where
 		DVec2::ZERO,
 	);
 
-	// Apply reflection around the center point
-	let transform = DAffine2::from_translation(mirror_center) * reflection * DAffine2::from_translation(-mirror_center);
+	// Apply reflection around the reference point
+	let transform = DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point);
 
 	// Add original instance depending on the keep_original flag
 	if keep_original {
