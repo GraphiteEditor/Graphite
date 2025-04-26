@@ -8,6 +8,7 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
+use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
 use graph_craft::document::DocumentNode;
 use graphene_core::InputAccessor;
@@ -217,12 +218,40 @@ impl EditorTestUtils {
 		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
 	}
 
+	pub async fn select_secondary_color(&mut self, color: Color) {
+		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+	}
+
 	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(PortfolioMessage::PasteImage {
 			name: None,
 			image,
 			mouse,
 			parent_and_insert_index: None,
+		})
+		.await;
+	}
+	pub async fn draw_spline(&mut self, points: &[DVec2]) {
+		self.select_tool(ToolType::Spline).await;
+
+		for &point in points {
+			self.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+
+		self.press(Key::Enter, ModifierKeys::empty()).await;
+	}
+	pub async fn get_selected_layer(&mut self) -> Option<LayerNodeIdentifier> {
+		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
+	}
+
+	pub async fn double_click(&mut self, position: DVec2) {
+		self.handle_message(InputPreprocessorMessage::DoubleClick {
+			editor_mouse_state: EditorMouseState {
+				editor_position: position,
+				mouse_keys: MouseKeys::LEFT,
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys: ModifierKeys::empty(),
 		})
 		.await;
 	}

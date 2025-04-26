@@ -1,4 +1,6 @@
 use dyn_any::DynAny;
+use glam::DVec2;
+use kurbo::Point;
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
@@ -84,4 +86,28 @@ impl AsI64 for f64 {
 	fn as_i64(&self) -> i64 {
 		*self as i64
 	}
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum GridType {
+	#[default]
+	Rectangular,
+	Isometric,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+pub enum ArcType {
+	#[default]
+	Open,
+	Closed,
+	PieSlice,
+}
+
+pub fn point_to_dvec2(point: Point) -> DVec2 {
+	DVec2 { x: point.x, y: point.y }
+}
+
+pub fn dvec2_to_point(value: DVec2) -> Point {
+	Point { x: value.x, y: value.y }
 }

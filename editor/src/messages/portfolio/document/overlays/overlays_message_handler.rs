@@ -10,17 +10,15 @@ pub struct OverlaysMessageData<'a> {
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
+	#[cfg(target_arch = "wasm32")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
+	#[cfg(target_arch = "wasm32")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
-		let OverlaysMessageData {
-			overlays_visible,
-			ipp,
-			device_pixel_ratio,
-		} = data;
+		let OverlaysMessageData { overlays_visible, ipp, .. } = data;
 
 		match message {
 			#[cfg(target_arch = "wasm32")]
@@ -29,6 +27,8 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 				use super::utility_types::OverlayContext;
 				use glam::{DAffine2, DVec2};
 				use wasm_bindgen::JsCast;
+
+				let device_pixel_ratio = data.device_pixel_ratio;
 
 				let canvas = match &self.canvas {
 					Some(canvas) => canvas,
@@ -47,7 +47,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 
 				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
 				let _ = context.set_transform(a, b, c, d, e, f);
-				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
+				context.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
 				let _ = context.reset_transform();
 
 				if overlays_visible {
@@ -67,10 +67,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!(
-					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?} {:?} {:?}",
-					self.canvas, self.context
-				);
+				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?}",);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

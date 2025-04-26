@@ -16,6 +16,7 @@ pub struct MenuBarMessageHandler {
 	pub has_selection_history: (bool, bool),
 	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
+	pub reset_node_definitions_on_open: bool,
 }
 
 impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
@@ -40,6 +41,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_off = self.message_logging_verbosity == MessageLoggingVerbosity::Off;
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
+		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -583,18 +585,29 @@ impl LayoutHolder for MenuBarMessageHandler {
 						action: MenuBarEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
 						..MenuBarEntry::default()
 					}],
-					vec![MenuBarEntry {
-						label: "User Manual".into(),
-						icon: Some("UserManual".into()),
-						action: MenuBarEntry::create_action(|_| {
-							FrontendMessage::TriggerVisitLink {
-								url: "https://graphite.rs/learn/".into(),
-							}
-							.into()
-						}),
-						..MenuBarEntry::default()
-					}],
 					vec![
+						MenuBarEntry {
+							label: "Donate to Graphite".into(),
+							icon: Some("Heart".into()),
+							action: MenuBarEntry::create_action(|_| {
+								FrontendMessage::TriggerVisitLink {
+									url: "https://graphite.rs/donate/".into(),
+								}
+								.into()
+							}),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "User Manual".into(),
+							icon: Some("UserManual".into()),
+							action: MenuBarEntry::create_action(|_| {
+								FrontendMessage::TriggerVisitLink {
+									url: "https://graphite.rs/learn/".into(),
+								}
+								.into()
+							}),
+							..MenuBarEntry::default()
+						},
 						MenuBarEntry {
 							label: "Report a Bug".into(),
 							icon: Some("Bug".into()),
@@ -624,12 +637,18 @@ impl LayoutHolder for MenuBarMessageHandler {
 						action: MenuBarEntry::no_action(),
 						children: MenuBarEntryChildren(vec![
 							vec![MenuBarEntry {
-								label: "Print Trace Logs".into(),
-								icon: Some(if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-								action: MenuBarEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
+								label: "Reset Nodes to Definitions on Open".into(),
+								icon: Some(if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+								action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
 								..MenuBarEntry::default()
 							}],
 							vec![
+								MenuBarEntry {
+									label: "Print Trace Logs".into(),
+									icon: Some(if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+									action: MenuBarEntry::create_action(|_| DebugMessage::ToggleTraceLogs.into()),
+									..MenuBarEntry::default()
+								},
 								MenuBarEntry {
 									label: "Print Messages: Off".into(),
 									icon: message_logging_verbosity_off.then_some("SmallDot".into()),

@@ -28,6 +28,7 @@ use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
@@ -96,7 +97,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot {
-		position: PivotPosition,
+		position: ReferencePoint,
 	},
 }
 
@@ -129,9 +130,9 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
-		PivotInput::new(self.tool_data.pivot.to_pivot_position())
-			.on_update(|pivot_input: &PivotInput| SelectToolMessage::SetPivot { position: pivot_input.position }.into())
+	fn pivot_reference_point_widget(&self, disabled: bool) -> WidgetHolder {
+		ReferencePointInput::new(self.tool_data.pivot.to_pivot_position())
+			.on_update(|pivot_input: &ReferencePointInput| SelectToolMessage::SetPivot { position: pivot_input.value }.into())
 			.disabled(disabled)
 			.widget_holder()
 	}
@@ -204,7 +205,7 @@ impl LayoutHolder for SelectTool {
 
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -707,22 +708,23 @@ impl Fsm for SelectToolFsmState {
 					let angle = -mouse_position.angle_to(DVec2::X);
 					let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-					let mut other = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-						.unwrap()
-						.with_alpha(0.25)
-						.to_rgba_hex_srgb();
-					other.insert(0, '#');
-					let other = other.as_str();
-
 					let extension = tool_data.drag_current - tool_data.drag_start;
 					let origin = compass_center - extension;
 					let viewport_diagonal = input.viewport_bounds.size().length();
 
-					let edge = DVec2::from_angle(snapped_angle) * viewport_diagonal;
+					let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
 					let perp = edge.perp();
 
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(COLOR_OVERLAY_BLUE), None);
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(other), None);
+					let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
+						(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
+					} else {
+						(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
+					};
+					let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+					perp_color.insert(0, '#');
+					let perp_color = perp_color.as_str();
+					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
+					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
 				}
 
 				// Check if the tool is in selection mode
@@ -758,7 +760,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					// Update the selection box
-					let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
 						.with_alpha(0.05)
 						.to_rgba_hex_srgb();
@@ -1326,7 +1328,11 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(
-				SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds | SelectToolFsmState::Dragging { .. },
+				SelectToolFsmState::ResizingBounds
+				| SelectToolFsmState::SkewingBounds { .. }
+				| SelectToolFsmState::RotatingBounds
+				| SelectToolFsmState::Dragging { .. }
+				| SelectToolFsmState::DraggingPivot,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
@@ -1493,11 +1499,10 @@ impl Fsm for SelectToolFsmState {
 		match self {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
-					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup({
-						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()];
+						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()];
 						if *selection == NestedSelectionBehavior::Shallowest {
-							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen Selection")]);
+							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen")]);
 						}
 						hints
 					}),
@@ -1507,6 +1512,8 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 						HintInfo::keys([Key::Control], "Lasso").prepend_plus(),
 					]),
+					// TODO: Make all the following hints only appear if there is at least one selected layer
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
@@ -1542,7 +1549,7 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
 					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
-					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend Selection")])
+					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend")])
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}

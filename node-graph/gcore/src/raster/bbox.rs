@@ -54,6 +54,12 @@ impl AxisAlignedBbox {
 	}
 }
 
+impl From<(DVec2, DVec2)> for AxisAlignedBbox {
+	fn from((start, end): (DVec2, DVec2)) -> Self {
+		Self { start, end }
+	}
+}
+
 #[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
 #[derive(Clone)]
 pub struct Bbox {
