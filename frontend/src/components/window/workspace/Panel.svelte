@@ -172,6 +172,11 @@
 									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
 								</td>
 							</tr>
+							<tr>
+								<td colspan="2">
+									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+								</td>
+							</tr>
 						</table>
 					</LayoutRow>
 				</LayoutCol>
