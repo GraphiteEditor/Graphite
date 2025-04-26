@@ -303,7 +303,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<GradientType>() => gradient_type_widget(default_info),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => choice_widget(enum_source::<BooleanOperation>(), default_info),
 						Some(x) if x == TypeId::of::<CentroidType>() => choice_widget(enum_source::<CentroidType>(), default_info),
-						Some(x) if x == TypeId::of::<LuminanceCalculation>() => choice_widget(enum_source::<LuminanceCalculation>(), default_info),
+						Some(x) if x == TypeId::of::<LuminanceCalculation>() => choice::enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
 						_ => {
 							let mut widgets = start_widgets(default_info, FrontendGraphDataType::General);
 							widgets.extend_from_slice(&[
@@ -330,6 +330,170 @@ pub(crate) fn property_from_type(
 	extra_widgets.push(widgets);
 
 	Ok(extra_widgets)
+}
+
+pub mod choice {
+	use super::ParameterWidgetsInfo;
+	use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
+	use crate::messages::tool::tool_messages::tool_prelude::*;
+	use graph_craft::document::value::TaggedValue;
+	use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
+	use std::marker::PhantomData;
+
+	trait WidgetFactory {
+		type Value: Clone + 'static;
+
+		fn disabled(self, disabled: bool) -> Self;
+		fn build<U, C>(&self, current: Self::Value, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&Self::Value) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync;
+		fn description(&self) -> Option<&str>;
+	}
+
+	pub fn enum_choice<E: ChoiceTypeStatic>() -> EnumChoice<E> {
+		EnumChoice {
+			disabled: false,
+			phantom: PhantomData,
+		}
+	}
+
+	pub struct EnumChoice<E> {
+		disabled: bool,
+		phantom: PhantomData<E>,
+	}
+
+	impl<E: ChoiceTypeStatic + 'static> EnumChoice<E> {
+		pub fn for_socket(self, parameter_info: ParameterWidgetsInfo) -> ForSocket<Self> {
+			ForSocket { widget_factory: self, parameter_info }
+		}
+		pub fn for_value(self, current: E) -> ForValue<Self> {
+			todo!()
+		}
+
+		pub fn into_menu_entries(self, action: impl Fn(E) -> Message + 'static + Send + Sync) -> Vec<Vec<MenuBarEntry>> {
+			todo!()
+		}
+
+		fn dropdown<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&E) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync,
+		{
+			let items = E::list()
+				.into_iter()
+				.map(|group| {
+					group
+						.into_iter()
+						.map(|(item, metadata)| {
+							let item = item.clone();
+							let updater = updater_factory();
+							let committer = committer_factory();
+							MenuListEntry::new(metadata.name.as_ref())
+								.label(metadata.label.as_ref())
+								.on_update(move |_| updater(&item))
+								.on_commit(committer)
+						})
+						.collect()
+				})
+				.collect();
+			DropdownInput::new(items).disabled(self.disabled).selected_index(Some(current.as_u32())).widget_holder()
+		}
+
+		fn radio_buttons<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&E) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync,
+		{
+			let items = E::list()
+				.into_iter()
+				.map(|group| group.into_iter())
+				.flatten()
+				.map(|(item, var_meta)| {
+					let item = item.clone();
+					let updater = updater_factory();
+					let committer = committer_factory();
+					let red = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(&item)).on_commit(committer);
+					let red = match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
+						(None, None) => red.label(var_meta.label.as_ref()),
+						(None, Some(doc)) => red.label(var_meta.label.as_ref()).tooltip(doc),
+						(Some(icon), None) => red.icon(icon).tooltip(var_meta.label.as_ref()),
+						(Some(icon), Some(doc)) => red.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
+					};
+					red
+				})
+				.collect();
+			RadioInput::new(items).selected_index(Some(current.as_u32())).widget_holder()
+		}
+	}
+	impl<E: ChoiceTypeStatic + 'static> WidgetFactory for EnumChoice<E> {
+		type Value = E;
+		fn disabled(self, disabled: bool) -> Self {
+			Self { disabled, ..self }
+		}
+
+		fn description(&self) -> Option<&str> {
+			E::DESCRIPTION
+		}
+
+		fn build<U, C>(&self, current: Self::Value, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&Self::Value) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync,
+		{
+			match E::WIDGET_HINT {
+				ChoiceWidgetHint::Dropdown => self.dropdown(current, updater_factory, committer_factory),
+				ChoiceWidgetHint::RadioButtons => self.radio_buttons(current, updater_factory, committer_factory),
+			}
+		}
+	}
+
+	pub struct ForSocket<'p, W> {
+		widget_factory: W,
+		parameter_info: ParameterWidgetsInfo<'p>,
+	}
+
+	impl<'p, W> ForSocket<'p, W>
+	where
+		W: WidgetFactory,
+		for<'a> &'a W::Value: TryFrom<&'a TaggedValue>,
+		W::Value: Clone,
+		TaggedValue: From<W::Value>,
+	{
+		fn disabled(self, disabled: bool) -> Self {
+			Self {
+				widget_factory: self.widget_factory.disabled(disabled),
+				..self
+			}
+		}
+
+		pub fn property_row(self) -> LayoutGroup {
+			let ParameterWidgetsInfo { document_node, node_id, index, .. } = self.parameter_info;
+
+			let mut widgets = super::start_widgets(self.parameter_info, FrontendGraphDataType::General);
+
+			let Some(input) = document_node.inputs.get(index) else {
+				log::warn!("A widget failed to be built because its node's input index is invalid.");
+				return LayoutGroup::Row { widgets: vec![] };
+			};
+
+			let input: Option<W::Value> = input.as_non_exposed_value().and_then(|v| <&W::Value as TryFrom<&TaggedValue>>::try_from(v).ok()).map(Clone::clone);
+
+			if let Some(current) = input {
+				let committer = || super::commit_value;
+				let updater = || super::update_value(move |v: &W::Value| TaggedValue::from(v.clone()), node_id, index);
+				let widget = self.widget_factory.build(current, updater, committer);
+				widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), widget]);
+			}
+			let mut row = LayoutGroup::Row { widgets };
+			if let Some(desc) = self.widget_factory.description() {
+				row = row.with_tooltip(desc);
+			}
+			row
+		}
+	}
+
+	pub struct ForValue<W>(PhantomData<W>);
 }
 
 pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
