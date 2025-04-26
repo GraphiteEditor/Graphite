@@ -15,6 +15,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::utility_functions::calculate_segment_angle;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
@@ -369,6 +370,8 @@ struct PathToolData {
 	snapping_axis: Option<Axis>,
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
+	angle_locked: bool,
+	temporary_colinear_handles: bool,
 }
 
 impl PathToolData {
@@ -678,11 +681,38 @@ impl PathToolData {
 		Some((handle_position_document, anchor_position_document, handle_id))
 	}
 
-	fn calculate_handle_angle(&mut self, handle_vector: DVec2, handle_id: ManipulatorPointId, lock_angle: bool, snap_angle: bool) -> f64 {
+	#[allow(clippy::too_many_arguments)]
+	fn calculate_handle_angle(
+		&mut self,
+		shape_editor: &mut ShapeState,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+		relative_vector: DVec2,
+		handle_vector: DVec2,
+		handle_id: ManipulatorPointId,
+		lock_angle: bool,
+		snap_angle: bool,
+	) -> f64 {
 		let current_angle = -handle_vector.angle_to(DVec2::X);
 
+		if let Some(vector_data) = shape_editor
+			.selected_shape_state
+			.iter()
+			.next()
+			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer))
+		{
+			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
+				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id) {
+					self.angle = angle;
+					return angle;
+				}
+			}
+		}
+
 		// When the angle is locked we use the old angle
+
 		if self.current_selected_handle_id == Some(handle_id) && lock_angle {
+			self.angle_locked = true;
 			return self.angle;
 		}
 
@@ -736,7 +766,7 @@ impl PathToolData {
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
-		shape_editor.move_selected_points(None, document, opposite_delta, false, true, false, None, responses);
+		shape_editor.move_selected_points(None, document, opposite_delta, false, true, false, None, false, responses);
 
 		// Calculate the projected delta and shift the points along that delta
 		let delta = current_mouse - drag_start;
@@ -748,7 +778,7 @@ impl PathToolData {
 			_ => DVec2::new(delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points(None, document, projected_delta, false, true, false, None, responses);
+		shape_editor.move_selected_points(None, document, projected_delta, false, true, false, None, false, responses);
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -764,12 +794,12 @@ impl PathToolData {
 			_ => DVec2::new(opposite_delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, false, None, responses);
+		shape_editor.move_selected_points(None, document, opposite_projected_delta, false, true, false, None, false, responses);
 
 		// Calculate what actually would have been the original delta for the point, and apply that
 		let delta = current_mouse - drag_start;
 
-		shape_editor.move_selected_points(None, document, delta, false, true, false, None, responses);
+		shape_editor.move_selected_points(None, document, delta, false, true, false, None, false, responses);
 
 		self.snapping_axis = None;
 	}
@@ -823,7 +853,7 @@ impl PathToolData {
 		let snapped_delta = if let Some((handle_pos, anchor_pos, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
 			let cursor_pos = handle_pos + raw_delta;
 
-			let handle_angle = self.calculate_handle_angle(cursor_pos - anchor_pos, handle_id, lock_angle, snap_angle);
+			let handle_angle = self.calculate_handle_angle(shape_editor, document, responses, handle_pos - anchor_pos, cursor_pos - anchor_pos, handle_id, lock_angle, snap_angle);
 
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
 			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
@@ -882,7 +912,14 @@ impl PathToolData {
 				self.alt_dragging_from_anchor = false;
 				self.alt_clicked_on_anchor = false;
 			}
-			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, responses);
+
+			let mut skip_opposite = false;
+			if self.temporary_colinear_handles && !lock_angle {
+				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+				self.temporary_colinear_handles = false;
+				skip_opposite = true;
+			}
+			shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -891,7 +928,7 @@ impl PathToolData {
 				Axis::Y => DVec2::new(0., unsnapped_delta.y),
 				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
-			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, false, opposite, responses);
+			shape_editor.move_selected_points(handle_lengths, document, projected_delta, equidistant, true, false, opposite, false, responses);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 
@@ -997,7 +1034,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::Drawing { selection_shape } => {
-						let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+						let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
 							.to_rgba_hex_srgb();
@@ -1167,6 +1204,10 @@ impl Fsm for PathToolFsmState {
 				let equidistant_state = input.keyboard.get(equidistant as usize);
 				let lock_angle_state = input.keyboard.get(lock_angle as usize);
 				let snap_angle_state = input.keyboard.get(snap_angle as usize);
+
+				if !lock_angle_state {
+					tool_data.angle_locked = false;
+				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
 					tool_data.drag(
@@ -1373,6 +1414,10 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
+				if tool_data.temporary_colinear_handles {
+					tool_data.temporary_colinear_handles = false;
+				}
+
 				if tool_data.handle_drag_toggle && drag_occurred {
 					shape_editor.deselect_all_points();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
@@ -1471,6 +1516,7 @@ impl Fsm for PathToolFsmState {
 					false,
 					false,
 					tool_data.opposite_handle_position,
+					false,
 					responses,
 				);
 
@@ -1707,4 +1753,53 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 	}
 
 	SelectionStatus::None
+}
+
+fn calculate_lock_angle(
+	tool_data: &mut PathToolData,
+	shape_state: &mut ShapeState,
+	responses: &mut VecDeque<Message>,
+	document: &DocumentMessageHandler,
+	vector_data: &VectorData,
+	handle_id: ManipulatorPointId,
+) -> Option<f64> {
+	let anchor = handle_id.get_anchor(vector_data)?;
+	let anchor_position = vector_data.point_domain.position_from_id(anchor);
+	let current_segment = handle_id.get_segment();
+	let points_connected = vector_data.connected_count(anchor);
+
+	let (anchor_position, segment) = anchor_position.zip(current_segment)?;
+	if points_connected == 1 {
+		calculate_segment_angle(anchor, segment, vector_data, false)
+	} else {
+		let opposite_handle = handle_id
+			.get_handle_pair(vector_data)
+			.iter()
+			.flatten()
+			.find(|&h| h.to_manipulator_point() != handle_id)
+			.copied()
+			.map(|h| h.to_manipulator_point());
+		let opposite_handle_position = opposite_handle.and_then(|h| h.get_position(vector_data)).filter(|pos| (pos - anchor_position).length() > 1e-6);
+
+		if let Some(opposite_pos) = opposite_handle_position {
+			if !vector_data.colinear_manipulators.iter().flatten().map(|h| h.to_manipulator_point()).any(|h| h == handle_id) {
+				shape_state.convert_selected_manipulators_to_colinear_handles(responses, document);
+				tool_data.temporary_colinear_handles = true;
+			}
+			Some(-(opposite_pos - anchor_position).angle_to(DVec2::X))
+		} else {
+			let angle_1 = vector_data
+				.adjacent_segment(&handle_id)
+				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector_data, false));
+
+			let angle_2 = calculate_segment_angle(anchor, segment, vector_data, false);
+
+			match (angle_1, angle_2) {
+				(Some(angle_1), Some(angle_2)) => Some((angle_1 + angle_2) / 2.0),
+				(Some(angle_1), None) => Some(angle_1),
+				(None, Some(angle_2)) => Some(angle_2),
+				(None, None) => None,
+			}
+		}
+	}
 }
