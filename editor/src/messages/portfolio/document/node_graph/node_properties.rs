@@ -285,25 +285,25 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
-						Some(x) if x == TypeId::of::<RealTimeMode>() => choice_widget(enum_source::<RealTimeMode>(), default_info),
-						Some(x) if x == TypeId::of::<RedGreenBlue>() => choice_widget(enum_source::<RedGreenBlue>(), default_info),
-						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => choice_widget(enum_source::<RedGreenBlueAlpha>(), default_info),
-						Some(x) if x == TypeId::of::<XY>() => choice_widget(enum_source::<XY>(), default_info),
-						Some(x) if x == TypeId::of::<NoiseType>() => choice_widget(enum_source::<NoiseType>(), default_info),
+						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<FractalType>() => fractal_type_widget(default_info, false),
 						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function_widget(default_info, false),
 						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type_widget(default_info, false),
 						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type_widget(default_info, false),
 						Some(x) if x == TypeId::of::<RelativeAbsolute>() => relative_absolute_widget(default_info),
-						Some(x) if x == TypeId::of::<GridType>() => choice_widget(enum_source::<GridType>(), default_info),
-						Some(x) if x == TypeId::of::<LineCap>() => choice_widget(enum_source::<LineCap>(), default_info),
-						Some(x) if x == TypeId::of::<LineJoin>() => choice_widget(enum_source::<LineJoin>(), default_info),
-						Some(x) if x == TypeId::of::<ArcType>() => choice_widget(enum_source::<ArcType>(), default_info),
+						Some(x) if x == TypeId::of::<GridType>() => enum_choice::<GridType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<LineCap>() => enum_choice::<LineCap>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<LineJoin>() => enum_choice::<LineJoin>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<FillType>() => fill_type_widget(default_info),
 						Some(x) if x == TypeId::of::<GradientType>() => gradient_type_widget(default_info),
-						Some(x) if x == TypeId::of::<BooleanOperation>() => choice_widget(enum_source::<BooleanOperation>(), default_info),
-						Some(x) if x == TypeId::of::<CentroidType>() => choice_widget(enum_source::<CentroidType>(), default_info),
-						Some(x) if x == TypeId::of::<LuminanceCalculation>() => choice::enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
 						_ => {
 							let mut widgets = start_widgets(default_info, FrontendGraphDataType::General);
 							widgets.extend_from_slice(&[
@@ -369,6 +369,9 @@ pub mod choice {
 		}
 		pub fn for_value(self, current: E) -> ForValue<Self> {
 			todo!()
+		}
+		pub fn disabled(self, disabled: bool) -> Self {
+			Self { disabled, ..self }
 		}
 
 		pub fn into_menu_entries(self, action: impl Fn(E) -> Message + 'static + Send + Sync) -> Vec<Vec<MenuBarEntry>> {
@@ -460,7 +463,7 @@ pub mod choice {
 		W::Value: Clone,
 		TaggedValue: From<W::Value>,
 	{
-		fn disabled(self, disabled: bool) -> Self {
+		pub fn disabled(self, disabled: bool) -> Self {
 			Self {
 				widget_factory: self.widget_factory.disabled(disabled),
 				..self
@@ -495,6 +498,8 @@ pub mod choice {
 
 	pub struct ForValue<W>(PhantomData<W>);
 }
+
+use choice::enum_choice;
 
 pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
@@ -1014,81 +1019,28 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 }
 
 pub fn noise_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	choice_widget(enum_source::<NoiseType>(), parameter_widgets_info)
+	enum_choice::<NoiseType>().for_socket(parameter_widgets_info).property_row()
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 pub fn fractal_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::FractalType(fractal_type)) = input.as_non_exposed_value() {
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			dropdown(enum_source::<FractalType>(), node_id, index, fractal_type).disabled(disabled).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Style of layered levels of the noise pattern")
+	enum_choice::<FractalType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 pub fn cellular_distance_function_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::CellularDistanceFunction(cellular_distance_function)) = input.as_non_exposed_value() {
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			dropdown(enum_source::<CellularDistanceFunction>(), node_id, index, cellular_distance_function)
-				.disabled(disabled)
-				.widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Distance function used by the cellular noise")
+	enum_choice::<CellularDistanceFunction>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 pub fn cellular_return_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::CellularReturnType(cellular_return_type)) = input.as_non_exposed_value() {
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			dropdown(enum_source::<CellularReturnType>(), node_id, index, cellular_return_type).disabled(disabled).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Return type of the cellular noise")
+	enum_choice::<CellularReturnType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 pub fn domain_warp_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-	if let Some(&TaggedValue::DomainWarpType(domain_warp_type)) = input.as_non_exposed_value() {
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			dropdown(enum_source::<DomainWarpType>(), node_id, index, domain_warp_type).disabled(disabled).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }.with_tooltip("Type of domain warp")
+	enum_choice::<DomainWarpType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
@@ -1499,7 +1451,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let grid_type = choice_widget(enum_source::<GridType>(), ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context));
+	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context)).property_row();
 
 	let mut widgets = vec![grid_type];
 
@@ -2014,8 +1966,8 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	);
 	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
 	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, dash_offset_index, true, context), number_input);
-	let line_cap = choice_widget(enum_source::<LineCap>(), ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context));
-	let line_join = choice_widget(enum_source::<LineJoin>(), ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
+	let line_cap = enum_choice::<LineCap>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context)).property_row();
+	let line_join = enum_choice::<LineJoin>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context)).property_row();
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,
@@ -2051,7 +2003,7 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let number_input = NumberInput::default().unit(" px");
 	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, distance_index, true, context), number_input);
 
-	let line_join = choice_widget(enum_source::<LineJoin>(), ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context));
+	let line_join = enum_choice::<LineJoin>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context)).property_row();
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,

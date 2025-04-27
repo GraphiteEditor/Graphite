@@ -847,7 +847,7 @@ pub enum RedGreenBlueAlpha {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
-#[widget(Radio)]
+#[widget(Dropdown)]
 /// Style of noise pattern
 pub enum NoiseType {
 	#[default]
