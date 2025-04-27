@@ -1015,10 +1015,16 @@ impl Fsm for PathToolFsmState {
 				let display_anchors = overlay_context.visibility_settings.anchors();
 				let display_handles = overlay_context.visibility_settings.handles();
 				if !display_handles {
-					shape_editor.deselect_all_handles();
+					shape_editor.ignore_selected_handles();
+				}
+				else {
+					shape_editor.mark_selected_handles();
 				}
 				if !display_anchors {
-					shape_editor.deselect_all_anchors();
+					shape_editor.ignore_selected_anchors();
+				}
+				else {
+					shape_editor.mark_selected_anchors();
 				}
 
 				// TODO: find the segment ids of which the selected points are a part of

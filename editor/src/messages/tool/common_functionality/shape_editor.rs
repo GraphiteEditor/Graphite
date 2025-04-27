@@ -42,6 +42,8 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
+	ignore_handles: bool,
+	ignore_anchors: bool,
 }
 
 impl SelectedLayerState {
@@ -52,10 +54,22 @@ impl SelectedLayerState {
 		self.selected_points.contains(&point)
 	}
 	pub fn select_point(&mut self, point: ManipulatorPointId) {
+		if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
+			return;
+		}
 		self.selected_points.insert(point);
 	}
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
+		if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
+			return;
+		}
 		self.selected_points.remove(&point);
+	}
+	pub fn set_handles_status(&mut self, ignore: bool) {
+		self.ignore_handles = ignore;
+	}
+	pub fn set_anchors_status(&mut self, ignore: bool) {
+		self.ignore_anchors = ignore;
 	}
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
@@ -496,13 +510,37 @@ impl ShapeState {
 		}
 	}
 
+	pub fn mark_selected_anchors(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_anchors_status(false);
+		}
+	}
+
+	pub fn mark_selected_handles(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_handles_status(false);
+		}
+	}
+
+	pub fn ignore_selected_anchors(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_anchors_status(true);
+		}
+	}
+
+	pub fn ignore_selected_handles(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_handles_status(true);
+		}
+	}
+
 	/// Deselects all the anchors across every selected layer.
 	pub fn deselect_all_anchors(&mut self) {
 		for (_, state) in self.selected_shape_state.iter_mut() {
 			let selected_anchor_points: Vec<ManipulatorPointId> = state
 				.selected_points
 				.iter()
-				.filter(|selected_point| matches!(selected_point, ManipulatorPointId::Anchor(_)))
+				.filter(|selected_point| selected_point.as_anchor().is_some())
 				.cloned()
 				.collect();
 
@@ -518,7 +556,7 @@ impl ShapeState {
 			let selected_handle_points: Vec<ManipulatorPointId> = state
 				.selected_points
 				.iter()
-				.filter(|selected_point| matches!(selected_point, ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_)))
+				.filter(|selected_point| selected_point.as_handle().is_some())
 				.cloned()
 				.collect();
 
@@ -636,7 +674,7 @@ impl ShapeState {
 		Some(())
 	}
 
-	/// Iterates over the selected manipulator groups exluding endpoints, returning whether their handles have mixed, colinear, or free angles.
+	/// Iterates over the selected manipulator groups excluding endpoints, returning whether their handles have mixed, colinear, or free angles.
 	/// If there are no points selected this function returns mixed.
 	pub fn selected_manipulator_angles(&self, network_interface: &NodeNetworkInterface) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.

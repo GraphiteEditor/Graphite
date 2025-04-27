@@ -852,7 +852,7 @@ impl Fsm for SelectToolFsmState {
 				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
-				/// If bounding box is some, compass_rose_state.can_grab() && show_compass is evaluated else compass_rose_state.can_grab() is evaluated
+				// If bounding box is some, compass_rose_state.can_grab() && show_compass is evaluated else compass_rose_state.can_grab() is evaluated
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 				let is_flat_layer = tool_data
 					.bounding_box_manager
@@ -916,7 +916,9 @@ impl Fsm for SelectToolFsmState {
 				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
-					
+					debug!("Starting drag on the layers!");
+					debug!("can_grab_compass_rose: {:?} ---> compass_rose_state.can_grab(): {:?}, show_compass: {:?}", can_grab_compass_rose, compass_rose_state.can_grab(), show_compass);
+
 					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
@@ -1024,9 +1026,18 @@ impl Fsm for SelectToolFsmState {
 
 				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 				let mouse_delta = match axis {
-					Axis::X => mouse_delta.project_onto(e0),
-					Axis::Y => mouse_delta.project_onto(e0.perp()),
-					Axis::None => mouse_delta,
+					Axis::X =>  {
+						debug!("The axis is on X!");
+						mouse_delta.project_onto(e0)
+					},
+					Axis::Y => {
+						debug!("The axis is on Y!");
+						mouse_delta.project_onto(e0.perp()) 
+					},
+					Axis::None => {
+						debug!("The axis is on both X and Y!");
+						mouse_delta
+					},
 				};
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
