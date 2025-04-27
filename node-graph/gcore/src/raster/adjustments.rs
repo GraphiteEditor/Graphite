@@ -575,7 +575,7 @@ impl Blend<Color> for ImageFrameTable<Color> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		let mut result = self.clone();
 
-		for (over, under) in result.instances_mut().zip(under.instances()) {
+		for (over, under) in result.instance_mut_iter().zip(under.instance_ref_iter()) {
 			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 			*over.instance = Image {
@@ -708,7 +708,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			for c in instance.instance.data.iter_mut() {
 				*c = map_fn(c);
 			}
@@ -1209,14 +1209,14 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1226,7 +1226,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1426,7 +1426,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.instances().next().unwrap().instance;
+		let result = result.instance_ref_iter().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

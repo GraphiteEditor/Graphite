@@ -19,8 +19,8 @@
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import PivotInput from "@graphite/components/widgets/inputs/PivotInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
+	import ReferencePointInput from "@graphite/components/widgets/inputs/ReferencePointInput.svelte";
 	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import WorkingColorsInput from "@graphite/components/widgets/inputs/WorkingColorsInput.svelte";
@@ -142,9 +142,9 @@
 				incrementCallbackDecrease={() => widgetValueCommitAndUpdate(index, "Decrement")}
 			/>
 		{/if}
-		{@const pivotInput = narrowWidgetProps(component.props, "PivotInput")}
-		{#if pivotInput}
-			<PivotInput {...exclude(pivotInput)} on:position={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+		{@const referencePointInput = narrowWidgetProps(component.props, "ReferencePointInput")}
+		{#if referencePointInput}
+			<ReferencePointInput {...exclude(referencePointInput)} on:value={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}

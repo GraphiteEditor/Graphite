@@ -365,6 +365,30 @@ fn not_equals<U: core::cmp::PartialEq<T>, T>(
 	other_value != value
 }
 
+/// The less-than operation (<) compares two values and returns true if the first value is less than the second, or false if it is not.
+/// If enabled with "Or Equal", the less-than-or-equal operation (<=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn less_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value <= other_value } else { value < other_value }
+}
+
+/// The greater-than operation (>) compares two values and returns true if the first value is greater than the second, or false if it is not.
+/// If enabled with "Or Equal", the greater-than-or-equal operation (>=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn greater_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value >= other_value } else { value > other_value }
+}
+
 /// The logical or operation (||) returns true if either of the two inputs are true, or false if both are false.
 #[node_macro::node(category("Math: Logic"))]
 fn logical_or(_: impl Ctx, value: bool, other_value: bool) -> bool {

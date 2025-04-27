@@ -40,39 +40,15 @@ impl<T> Instances<T> {
 		}
 	}
 
-	pub fn push(&mut self, instance: T) -> InstanceMut<T> {
-		self.instance.push(instance);
-		self.transform.push(DAffine2::IDENTITY);
-		self.alpha_blending.push(AlphaBlending::default());
-		self.source_node_id.push(None);
-
-		InstanceMut {
-			instance: self.instance.last_mut().expect("Shouldn't be empty"),
-			transform: self.transform.last_mut().expect("Shouldn't be empty"),
-			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
-			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
-		}
+	pub fn push(&mut self, instance: Instance<T>) {
+		self.instance.push(instance.instance);
+		self.transform.push(instance.transform);
+		self.alpha_blending.push(instance.alpha_blending);
+		self.source_node_id.push(instance.source_node_id);
 	}
 
-	pub fn push_instance(&mut self, instance: Instance<T>) -> InstanceMut<T>
-	where
-		T: Clone,
-	{
-		self.instance.push(instance.instance.clone());
-		self.transform.push(*instance.transform);
-		self.alpha_blending.push(*instance.alpha_blending);
-		self.source_node_id.push(*instance.source_node_id);
-
-		InstanceMut {
-			instance: self.instance.last_mut().expect("Shouldn't be empty"),
-			transform: self.transform.last_mut().expect("Shouldn't be empty"),
-			alpha_blending: self.alpha_blending.last_mut().expect("Shouldn't be empty"),
-			source_node_id: self.source_node_id.last_mut().expect("Shouldn't be empty"),
-		}
-	}
-
-	pub fn one_instance(&self) -> Instance<T> {
-		Instance {
+	pub fn one_instance_ref(&self) -> InstanceRef<T> {
+		InstanceRef {
 			instance: self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			transform: self.transform.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
 			alpha_blending: self.alpha_blending.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
@@ -91,12 +67,12 @@ impl<T> Instances<T> {
 		}
 	}
 
-	pub fn instances(&self) -> impl DoubleEndedIterator<Item = Instance<T>> {
+	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = Instance<T>> {
 		self.instance
-			.iter()
-			.zip(self.transform.iter())
-			.zip(self.alpha_blending.iter())
-			.zip(self.source_node_id.iter())
+			.into_iter()
+			.zip(self.transform)
+			.zip(self.alpha_blending)
+			.zip(self.source_node_id)
 			.map(|(((instance, transform), alpha_blending), source_node_id)| Instance {
 				instance,
 				transform,
@@ -105,7 +81,21 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn instances_mut(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<T>> {
+	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<T>> {
+		self.instance
+			.iter()
+			.zip(self.transform.iter())
+			.zip(self.alpha_blending.iter())
+			.zip(self.source_node_id.iter())
+			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceRef {
+				instance,
+				transform,
+				alpha_blending,
+				source_node_id,
+			})
+	}
+
+	pub fn instance_mut_iter(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<T>> {
 		self.instance
 			.iter_mut()
 			.zip(self.transform.iter_mut())
@@ -119,12 +109,12 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn get(&self, index: usize) -> Option<Instance<T>> {
+	pub fn get(&self, index: usize) -> Option<InstanceRef<T>> {
 		if index >= self.instance.len() {
 			return None;
 		}
 
-		Some(Instance {
+		Some(InstanceRef {
 			instance: &self.instance[index],
 			transform: &self.transform[index],
 			alpha_blending: &self.alpha_blending[index],
@@ -199,12 +189,13 @@ fn one_source_node_id_default() -> Vec<Option<NodeId>> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Instance<'a, T> {
+pub struct InstanceRef<'a, T> {
 	pub instance: &'a T,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
 	pub source_node_id: &'a Option<NodeId>,
 }
+
 #[derive(Debug)]
 pub struct InstanceMut<'a, T> {
 	pub instance: &'a mut T,
@@ -213,10 +204,32 @@ pub struct InstanceMut<'a, T> {
 	pub source_node_id: &'a mut Option<NodeId>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct Instance<T> {
+	pub instance: T,
+	pub transform: DAffine2,
+	pub alpha_blending: AlphaBlending,
+	pub source_node_id: Option<NodeId>,
+}
+
+impl<T> Instance<T> {
+	pub fn to_graphic_element<U>(self) -> Instance<U>
+	where
+		T: Into<U>,
+	{
+		Instance {
+			instance: self.instance.into(),
+			transform: self.transform,
+			alpha_blending: self.alpha_blending,
+			source_node_id: self.source_node_id,
+		}
+	}
+}
+
 // VECTOR DATA TABLE
 impl Transform for VectorDataTable {
 	fn transform(&self) -> DAffine2 {
-		*self.one_instance().transform
+		*self.one_instance_ref().transform
 	}
 }
 impl TransformMut for VectorDataTable {
@@ -228,7 +241,7 @@ impl TransformMut for VectorDataTable {
 // TEXTURE FRAME TABLE
 impl Transform for TextureFrameTable {
 	fn transform(&self) -> DAffine2 {
-		*self.one_instance().transform
+		*self.one_instance_ref().transform
 	}
 }
 impl TransformMut for TextureFrameTable {
@@ -243,7 +256,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn transform(&self) -> DAffine2 {
-		*self.one_instance().transform
+		*self.one_instance_ref().transform
 	}
 }
 impl<P: Pixel> TransformMut for ImageFrameTable<P>
