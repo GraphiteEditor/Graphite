@@ -918,7 +918,7 @@ pub enum CellularReturnType {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
-#[widget(Radio)]
+#[widget(Dropdown)]
 /// Type of domain warp
 pub enum DomainWarpType {
 	#[default]
