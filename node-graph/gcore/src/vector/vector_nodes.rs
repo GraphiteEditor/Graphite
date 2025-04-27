@@ -1730,7 +1730,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			split_distance
 		}
 	}
-  
+
 	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [usize]) -> Vec<[usize; 2]> {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
@@ -1756,6 +1756,8 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			handles: *handles,
 		};
 
+		prev_bezier = prev_bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
+
 		let mut prev_handles = handles;
 		let mut prev_start_point_index = start_point_index;
 		let mut prev_end_point_index = end_point_index;
@@ -1771,6 +1773,8 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 				handles: *handles,
 			};
 
+			bezier = bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
+
 			let spilt_distance = calculate_distance_to_spilt(prev_bezier, bezier, distance);
 
 			if prev_bezier.is_linear() {
@@ -1781,8 +1785,6 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 				bezier.handles = bezier_rs::BezierHandles::Linear;
 			}
 
-			prev_bezier = prev_bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
-			bezier = bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
 			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
 
 			let original_length = bezier.length(None);
@@ -1847,10 +1849,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 				first_bezier.handles = bezier_rs::BezierHandles::Linear;
 			}
 
-			prev_bezier = prev_bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
-			first_bezier = first_bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
-
-			let inverse_transform = (vector_data.transform.matrix2.determinant() != 0.).then(|| vector_data.transform.inverse()).unwrap_or_default();
+			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
 
 			// Only split if the length is big enough to make it worthwhile
 			let valid_length = prev_length > 1e-10;
@@ -1895,7 +1894,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 	if distance > 1.0 {
 		let mut segments_connected = segments_connected_count(&vector_data);
 		let new_segments = update_existing_segments(&mut vector_data, vector_data_transform, distance, &mut segments_connected);
-	insert_new_segments(&mut vector_data, &new_segments);
+		insert_new_segments(&mut vector_data, &new_segments);
 	}
 
 	vector_data
