@@ -1526,9 +1526,10 @@ impl Fsm for PenToolFsmState {
 					}
 				}
 
-				// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
-				overlay_context.line(next_anchor, next_handle_start, None, None);
-
+				if display_handles {
+					// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
+					overlay_context.line(next_anchor, next_handle_start, None, None);
+				}
 				match tool_options.pen_overlay_mode {
 					PenOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1543,11 +1544,13 @@ impl Fsm for PenToolFsmState {
 				}
 
 				if let (Some(anchor_start), Some(handle_start), Some(handle_end)) = (anchor_start, handle_start, handle_end) {
-					// Draw the line between the most recently placed anchor and its outgoing handle (which is currently influencing the currently-being-placed segment)
-					overlay_context.line(anchor_start, handle_start, None, None);
+					if display_handles {
+						// Draw the line between the most recently placed anchor and its outgoing handle (which is currently influencing the currently-being-placed segment)
+						overlay_context.line(anchor_start, handle_start, None, None);
 
-					// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
-					overlay_context.line(next_anchor, handle_end, None, None);
+						// Draw the line between the currently-being-placed anchor and its incoming handle (opposite the one currently being dragged out)
+						overlay_context.line(next_anchor, handle_end, None, None);
+					}
 
 					if self == PenToolFsmState::PlacingAnchor && anchor_start != handle_start && tool_data.modifiers.lock_angle {
 						// Draw the line between the currently-being-placed anchor and last-placed point (lock angle bent overlays)
@@ -1562,7 +1565,10 @@ impl Fsm for PenToolFsmState {
 					if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && valid(next_anchor, handle_end) && display_handles {
 						// Draw the handle circle for the currently-being-dragged-out incoming handle (opposite the one currently being dragged out)
 						let selected = tool_data.handle_type == TargetHandle::PreviewInHandle;
-						overlay_context.manipulator_handle(handle_end, selected, None);
+						if display_handles {
+							overlay_context.manipulator_handle(handle_end, selected, None);
+							overlay_context.manipulator_handle(handle_end, selected, None);
+						}
 					}
 
 					if valid(anchor_start, handle_start) && display_handles {
