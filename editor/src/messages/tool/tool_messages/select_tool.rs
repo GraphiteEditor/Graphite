@@ -632,18 +632,16 @@ impl Fsm for SelectToolFsmState {
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 
-				if overlay_context.visibility_settings.transform_cage() {
-					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
-						let edges = bounds.check_selected_edges(input.mouse.position);
-						let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
-						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-						if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
-							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
-						}
-						if !is_skewing && dragging_bounds {
-							if let Some(edges) = edges {
-								tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
-							}
+				if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
+					let edges = bounds.check_selected_edges(input.mouse.position);
+					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
+					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
+						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
+					}
+					if !is_skewing && dragging_bounds {
+						if let Some(edges) = edges {
+							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 						}
 					}
 				}
@@ -854,7 +852,8 @@ impl Fsm for SelectToolFsmState {
 				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
-				let can_grab_compass_rose = compass_rose_state.can_grab() && show_compass;
+				/// If bounding box is some, compass_rose_state.can_grab() && show_compass is evaluated else compass_rose_state.can_grab() is evaluated
+				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 				let is_flat_layer = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -917,7 +916,7 @@ impl Fsm for SelectToolFsmState {
 				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
-
+					
 					if input.keyboard.key(select_deepest) || tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
 						tool_data.select_single_layer = intersection;
 					} else {
