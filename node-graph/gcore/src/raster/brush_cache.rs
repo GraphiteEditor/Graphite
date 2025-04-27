@@ -31,7 +31,7 @@ struct BrushCacheImpl {
 impl BrushCacheImpl {
 	fn compute_brush_plan(&mut self, mut background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
 		// Do background invalidation.
-		if background.one_instance().instance != self.background.one_instance().instance {
+		if background.one_instance_ref().instance != self.background.one_instance_ref().instance {
 			self.background = background.clone();
 			return BrushPlan {
 				strokes: input.to_vec(),
