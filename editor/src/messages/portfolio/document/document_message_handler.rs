@@ -1146,8 +1146,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
 				let visibility_settings = &mut self.overlays_visibility_settings;
+				let overlays_type = match overlays_type {
+					Some(overlays_type) => overlays_type,
+					None => {
+						visibility_settings.all = visible;
+						return;
+					}
+				};
 				match overlays_type {
-					OverlaysType::All => visibility_settings.all = visible,
 					OverlaysType::ArtboardName => visibility_settings.artboard_name = visible,
 					OverlaysType::CompassRose => visibility_settings.compass_rose = visible,
 					OverlaysType::QuickMeasurement => visibility_settings.quick_measurement = visible,
@@ -1163,6 +1169,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
+				
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -2086,7 +2093,7 @@ impl DocumentMessageHandler {
 				.on_update(|optional_input: &CheckboxInput| {
 					DocumentMessage::SetOverlaysVisibility {
 						visible: optional_input.checked,
-						overlays_type: OverlaysType::All,
+						overlays_type: None,
 					}
 					.into()
 				})
@@ -2105,7 +2112,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::ArtboardName,
+										overlays_type: Some(OverlaysType::ArtboardName),
 									}
 									.into()
 								})
@@ -2119,7 +2126,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::TransformMeasurement,
+										overlays_type: Some(OverlaysType::TransformMeasurement),
 									}
 									.into()
 								})
@@ -2136,7 +2143,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::QuickMeasurement,
+										overlays_type: Some(OverlaysType::QuickMeasurement),
 									}
 									.into()
 								})
@@ -2150,7 +2157,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::TransformCage,
+										overlays_type: Some(OverlaysType::TransformCage),
 									}
 									.into()
 								})
@@ -2164,7 +2171,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::CompassRose,
+										overlays_type: Some(OverlaysType::CompassRose),
 									}
 									.into()
 								})
@@ -2178,7 +2185,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::Pivot,
+										overlays_type: Some(OverlaysType::Pivot),
 									}
 									.into()
 								})
@@ -2192,7 +2199,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::HoverOutline,
+										overlays_type: Some(OverlaysType::HoverOutline),
 									}
 									.into()
 								})
@@ -2206,7 +2213,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::SelectionOutline,
+										overlays_type: Some(OverlaysType::SelectionOutline),
 									}
 									.into()
 								})
@@ -2223,7 +2230,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::Path,
+										overlays_type: Some(OverlaysType::Path),
 									}
 									.into()
 								})
@@ -2237,7 +2244,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::Anchors,
+										overlays_type: Some(OverlaysType::Anchors),
 									}
 									.into()
 								})
@@ -2252,7 +2259,7 @@ impl DocumentMessageHandler {
 								.on_update(|optional_input: &CheckboxInput| {
 									DocumentMessage::SetOverlaysVisibility {
 										visible: optional_input.checked,
-										overlays_type: OverlaysType::Handles,
+										overlays_type: Some(OverlaysType::Handles),
 									}
 									.into()
 								})

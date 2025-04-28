@@ -24,7 +24,6 @@ pub fn empty_provider() -> OverlayProvider {
 // Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
-	All,
 	ArtboardName,
 	CompassRose,
 	QuickMeasurement,

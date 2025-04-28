@@ -144,7 +144,7 @@ pub enum DocumentMessage {
 	},
 	SetOverlaysVisibility {
 		visible: bool,
-		overlays_type: OverlaysType,
+		overlays_type: Option<OverlaysType>,
 	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
