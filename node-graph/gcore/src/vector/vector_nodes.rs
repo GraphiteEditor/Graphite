@@ -1,7 +1,7 @@
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::CentroidType;
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
+use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{InstanceMut, Instances};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
 use crate::renderer::GraphicElementRendered;
@@ -1478,6 +1478,94 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 	let mut result = VectorDataTable::new(result);
 	*result.transform_mut() = vector_data_transform;
 	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn outer_path(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance().instance;
+
+	// Create a new VectorData to store our result
+	let mut result = VectorData::empty();
+	result.style = vector_data.style.clone();
+
+	// Collect all closed subpaths with their indices
+	let subpaths: Vec<_> = vector_data
+		.stroke_bezier_paths()
+		.enumerate()
+		.filter(|(_, subpath)| subpath.closed())
+		.map(|(i, mut subpath)| {
+			// Apply transform to work in world space
+			subpath.apply_transform(vector_data_transform);
+			(i, subpath)
+		})
+		.collect();
+
+	if subpaths.is_empty() {
+		// No closed paths found, return empty result
+		let mut result_table = VectorDataTable::new(result);
+		*result_table.transform_mut() = vector_data_transform;
+		return result_table;
+	}
+
+	// Find the outermost path:
+	// 1. Start by assuming all subpaths could be the outermost
+	let mut potential_outer_paths: Vec<_> = subpaths.iter().map(|(i, _)| *i).collect();
+
+	// 2. For each subpath, test against all others
+	for (i, subpath_i) in &subpaths {
+		// Skip if already eliminated
+		if !potential_outer_paths.contains(i) {
+			continue;
+		}
+
+		for (j, subpath_j) in &subpaths {
+			// Skip comparing to self
+			if i == j {
+				continue;
+			}
+
+			// Sample points from subpath_i
+			let total_points = 20;
+			let mut contained_points = 0;
+
+			// Check several points along subpath_i to see if they're contained in subpath_j
+			for k in 0..total_points {
+				let t = k as f64 / total_points as f64;
+				let point = subpath_i.evaluate(bezier_rs::SubpathTValue::GlobalParametric(t));
+
+				if subpath_j.contains_point(point) {
+					contained_points += 1;
+				}
+			}
+
+			// If most points from subpath_i are inside subpath_j,
+			// then subpath_i is not an outer path
+			if contained_points > total_points / 2 {
+				potential_outer_paths.retain(|&x| x != *i);
+				break;
+			}
+		}
+	}
+
+	// 3. Among remaining potential outer paths, choose the one with the largest area
+	if let Some(&outer_index) = potential_outer_paths.iter().max_by(|&&a, &&b| {
+		let area_a = subpaths.iter().find(|(i, _)| *i == a).map(|(_, s)| s.area(None, None).abs()).unwrap_or(0.0);
+		let area_b = subpaths.iter().find(|(i, _)| *i == b).map(|(_, s)| s.area(None, None).abs()).unwrap_or(0.0);
+		area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
+	}) {
+		// Find the outer path and add it to the result
+		if let Some((_, outer_path)) = subpaths.iter().find(|(i, _)| *i == outer_index) {
+			let mut path_copy = outer_path.clone();
+			path_copy.apply_transform(vector_data_transform.inverse());
+			result.append_subpath(path_copy, true);
+		}
+	}
+
+	// Create the resulting VectorDataTable
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
