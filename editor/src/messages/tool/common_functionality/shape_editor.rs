@@ -72,6 +72,9 @@ impl SelectedLayerState {
 		self.ignore_anchors = ignore;
 	}
 	pub fn clear_points(&mut self) {
+		if self.ignore_handles || self.ignore_anchors {
+			return;
+		}
 		self.selected_points.clear();
 	}
 	pub fn selected_points_count(&self) -> usize {
