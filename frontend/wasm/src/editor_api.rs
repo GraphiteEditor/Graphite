@@ -490,6 +490,13 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Visit the given URL
+	#[wasm_bindgen(js_name = visitUrl)]
+	pub fn visit_url(&self, url: String) {
+		let message = FrontendMessage::TriggerVisitLink { url };
+		self.dispatch(message);
+	}
+
 	/// Paste layers from a serialized json representation
 	#[wasm_bindgen(js_name = pasteSerializedData)]
 	pub fn paste_serialized_data(&self, data: String) {
