@@ -1525,84 +1525,74 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction, #[min(0.)] start_index: IntegerCount) -> VectorDataTable {
+async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction) -> VectorDataTable {
+	let mut source = source;
+	let mut target = target;
+
 	let time = time.clamp(0., 1.);
 
-	let source_alpha_blending = source.one_instance_ref().alpha_blending;
-	let target_alpha_blending = target.one_instance_ref().alpha_blending;
-
-	let source_transform = source.transform();
-	let target_transform = target.transform();
-
-	let source = source.one_instance_ref().instance;
-	let target = target.one_instance_ref().instance;
-
-	let mut result = VectorDataTable::default();
+	let mut result_table = VectorDataTable::default();
 
 	// Lerp styles
-	*result.one_instance_mut().alpha_blending = if time < 0.5 { *source_alpha_blending } else { *target_alpha_blending };
-	result.one_instance_mut().instance.style = source.style.lerp(&target.style, time);
+	let source_alpha_blending = source.one_instance_ref().alpha_blending;
+	let target_alpha_blending = target.one_instance_ref().alpha_blending;
+	*result_table.one_instance_mut().alpha_blending = if time < 0.5 { *source_alpha_blending } else { *target_alpha_blending };
+	result_table.one_instance_mut().instance.style = source.one_instance_ref().instance.style.lerp(&target.one_instance_ref().instance.style, time);
 
-	let mut source_paths = source.stroke_bezier_paths();
-	let mut target_paths = target.stroke_bezier_paths();
-	for (mut source_path, mut target_path) in (&mut source_paths).zip(&mut target_paths) {
-		// Deal with mismatched transforms
+	// Before and after transforms
+	let source_transform = *source.one_instance_ref().transform;
+	let target_transform = *target.one_instance_ref().transform;
+
+	// Before and after paths
+	let source_paths = source.one_instance_mut().instance.stroke_bezier_paths();
+	let target_paths = target.one_instance_mut().instance.stroke_bezier_paths();
+	for (mut source_path, mut target_path) in source_paths.zip(target_paths) {
 		source_path.apply_transform(source_transform);
 		target_path.apply_transform(target_transform);
 
-		// Deal with mismatched start index
-		for _ in 0..start_index {
-			let first = target_path.remove_manipulator_group(0);
-			target_path.push_manipulator_group(first);
+		// Align point counts by inserting mid‐segment points until their counts match
+		while source_path.manipulator_groups().len() < target_path.manipulator_groups().len() {
+			let last = source_path.len() - 1;
+			source_path.insert(SubpathTValue::Parametric { segment_index: last, t: 0.5 });
+		}
+		while target_path.manipulator_groups().len() < source_path.manipulator_groups().len() {
+			let last = target_path.len() - 1;
+			target_path.insert(SubpathTValue::Parametric { segment_index: last, t: 0.5 });
 		}
 
-		// Deal with mismatched closed state
-		if source_path.closed() && !target_path.closed() {
-			source_path.set_closed(false);
-			source_path.push_manipulator_group(source_path.manipulator_groups()[0].flip());
-		}
-		if !source_path.closed() && target_path.closed() {
-			target_path.set_closed(false);
-			target_path.push_manipulator_group(target_path.manipulator_groups()[0].flip());
+		// Interpolate anchors and handles
+		for (source_manipulators, target_manipulators) in source_path.manipulator_groups_mut().iter_mut().zip(target_path.manipulator_groups()) {
+			let source_anchor = source_manipulators.anchor;
+			let target_anchor = target_manipulators.anchor;
+			source_manipulators.anchor = source_anchor.lerp(target_anchor, time);
+
+			let source_in_handle = source_manipulators.in_handle.unwrap_or(source_anchor);
+			let target_in_handle = target_manipulators.in_handle.unwrap_or(target_anchor);
+			source_manipulators.in_handle = Some(source_in_handle.lerp(target_in_handle, time));
+
+			let source_out_handle = source_manipulators.out_handle.unwrap_or(source_anchor);
+			let target_out_handle = target_manipulators.out_handle.unwrap_or(target_anchor);
+			source_manipulators.out_handle = Some(source_out_handle.lerp(target_out_handle, time));
 		}
 
-		// Mismatched subpath items
-		'outer: loop {
-			for segment_index in (0..(source_path.len() - 1)).rev() {
-				if target_path.len() <= source_path.len() {
-					break 'outer;
-				}
-				source_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
-			}
-		}
-		'outer: loop {
-			for segment_index in (0..(target_path.len() - 1)).rev() {
-				if source_path.len() <= target_path.len() {
-					break 'outer;
-				}
-				target_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
-			}
-		}
-
-		// Lerp points
-		for (manipulator, target) in source_path.manipulator_groups_mut().iter_mut().zip(target_path.manipulator_groups()) {
-			manipulator.in_handle = Some(manipulator.in_handle.unwrap_or(manipulator.anchor).lerp(target.in_handle.unwrap_or(target.anchor), time));
-			manipulator.out_handle = Some(manipulator.out_handle.unwrap_or(manipulator.anchor).lerp(target.out_handle.unwrap_or(target.anchor), time));
-			manipulator.anchor = manipulator.anchor.lerp(target.anchor, time);
-		}
-
-		result.one_instance_mut().instance.append_subpath(source_path, true);
+		result_table.one_instance_mut().instance.append_subpath(source_path.clone(), true);
 	}
 
-	// Mismatched subpath count
+	// Deal with unmatched extra paths by collapsing them
+	let source_paths_count = source.one_instance_ref().instance.stroke_bezier_paths().count();
+	let target_paths_count = target.one_instance_ref().instance.stroke_bezier_paths().count();
+	let source_paths = source.one_instance_mut().instance.stroke_bezier_paths().skip(target_paths_count);
+	let target_paths = target.one_instance_mut().instance.stroke_bezier_paths().skip(source_paths_count);
+
 	for mut source_path in source_paths {
 		source_path.apply_transform(source_transform);
-		let end = source_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default();
+		let end = source_path.manipulator_groups().last().map(|group| group.anchor).unwrap_or_default();
 		for group in source_path.manipulator_groups_mut() {
 			group.anchor = group.anchor.lerp(end, time);
 			group.in_handle = group.in_handle.map(|handle| handle.lerp(end, time));
-			group.out_handle = group.in_handle.map(|handle| handle.lerp(end, time));
+			group.out_handle = group.out_handle.map(|handle| handle.lerp(end, time));
 		}
+		result_table.one_instance_mut().instance.append_subpath(source_path, true);
 	}
 	for mut target_path in target_paths {
 		target_path.apply_transform(target_transform);
@@ -1610,11 +1600,12 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for group in target_path.manipulator_groups_mut() {
 			group.anchor = start.lerp(group.anchor, time);
 			group.in_handle = group.in_handle.map(|handle| start.lerp(handle, time));
-			group.out_handle = group.in_handle.map(|handle| start.lerp(handle, time));
+			group.out_handle = group.out_handle.map(|handle| start.lerp(handle, time));
 		}
+		result_table.one_instance_mut().instance.append_subpath(target_path, true);
 	}
 
-	result
+	result_table
 }
 
 fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2, distance: f64) -> VectorData {
@@ -1978,7 +1969,7 @@ mod test {
 	async fn morph() {
 		let source = Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.);
 		let target = Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO);
-		let sample_points = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5, 0).await;
+		let sample_points = super::morph(Footprint::default(), vector_node(source), vector_node(target), 0.5).await;
 		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(
 			&sample_points.point_domain.positions()[..4],
