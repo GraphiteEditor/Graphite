@@ -1,8 +1,8 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE,
-	SEGMENT_INSERTION_TOLERANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE,
+	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
@@ -1249,7 +1249,7 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
 
-				// If there is a point nearby then remove the overlay
+				// If there is a point nearby, then remove the overlay
 				if shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
 					.is_some()
@@ -1257,16 +1257,16 @@ impl Fsm for PathToolFsmState {
 					tool_data.segment = None;
 					responses.add(OverlaysMessage::Draw)
 				}
-				// If already hovering on a segment, then recalculate it's closest point
+				// If already hovering on a segment, then recalculate its closest point
 				else if let Some(closest_segment) = &mut tool_data.segment {
 					closest_segment.update_closest_point(document.metadata(), input.mouse.position);
-					if closest_segment.too_far(input.mouse.position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, document.metadata()) {
+					if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE, document.metadata()) {
 						tool_data.segment = None;
 					}
 					responses.add(OverlaysMessage::Draw)
 				}
-				// If not check that if there is some closest segment or not
-				else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_TOLERANCE) {
+				// If not, check that if there is some closest segment or not
+				else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
 					tool_data.segment = Some(closest_segment);
 					responses.add(OverlaysMessage::Draw)
 				}
