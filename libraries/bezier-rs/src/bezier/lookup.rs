@@ -77,8 +77,8 @@ impl Bezier {
 	pub(crate) fn t_value_to_parametric(&self, t: TValue) -> f64 {
 		match t {
 			TValue::Parametric(t) => {
-				assert!((0.0..=1.).contains(&t));
-				t
+				// Clamp the t value to the valid range [0.0, 1.0]
+				t.clamp(0.0, 1.0)
 			}
 			TValue::Euclidean(t) => {
 				assert!((0.0..=1.).contains(&t));

@@ -212,7 +212,8 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 				(segment_index, t)
 			}
 			SubpathTValue::GlobalParametric(global_t) => {
-				assert!((0.0..=1.).contains(&global_t));
+				// Clamp global_t to the valid range [0, 1] instead of asserting
+				let global_t = global_t.clamp(0.0, 1.0);
 
 				if global_t == 1. {
 					return (self.len_segments() - 1, 1.);

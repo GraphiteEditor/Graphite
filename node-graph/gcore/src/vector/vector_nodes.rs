@@ -659,7 +659,7 @@ async fn spatial_merge_by_distance(
 }
 
 #[node_macro::node(category("Debug"), path(graphene_core::vector))]
-async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle: VectorDataTable) -> VectorDataTable {
+async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle: VectorDataTable, #[default(false)] preserve_aspect_ratio: bool) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance.clone();
 
@@ -687,6 +687,42 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 		]
 	};
 
+	// If we're preserving aspect ratio, we need to calculate a modified destination rectangle
+	let modified_corners = if preserve_aspect_ratio {
+		// Calculate destination bounds from the corners
+		let dst_min = dst_corners.iter().fold(DVec2::splat(f64::MAX), |min, &p| min.min(p));
+		let dst_max = dst_corners.iter().fold(DVec2::splat(f64::MIN), |max, &p| max.max(p));
+		let dst_size = dst_max - dst_min;
+		let dst_center = dst_min + dst_size * 0.5;
+
+		// Calculate source aspect ratio
+		let source_size = source_bbox[1] - source_bbox[0];
+		let source_ratio = source_size.x / source_size.y;
+
+		// Calculate destination aspect ratio
+		let dst_ratio = dst_size.x / dst_size.y;
+
+		// Determine the new size that preserves aspect ratio
+		let new_dst_size = if source_ratio > dst_ratio {
+			// Width constrained
+			DVec2::new(dst_size.x, dst_size.x / source_ratio)
+		} else {
+			// Height constrained
+			DVec2::new(dst_size.y * source_ratio, dst_size.y)
+		};
+
+		// Calculate the new corners for the aspect-preserved rectangle
+		let half_size = new_dst_size * 0.5;
+		[
+			dst_center - half_size,                                             // Top-left
+			DVec2::new(dst_center.x + half_size.x, dst_center.y - half_size.y), // Top-right
+			dst_center + half_size,                                             // Bottom-right
+			DVec2::new(dst_center.x - half_size.x, dst_center.y + half_size.y), // Bottom-left
+		]
+	} else {
+		dst_corners
+	};
+
 	// Apply the warp
 	let mut result = vector_data.clone();
 
@@ -701,8 +737,8 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 		// Normalize coordinates within the source bounding box
 		let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
 
-		// Apply bilinear interpolation
-		*position = bilinear_interpolate(t, &dst_corners);
+		// Apply bilinear interpolation with either the original or modified corners
+		*position = bilinear_interpolate(t, &modified_corners);
 	}
 
 	// Transform handles in bezier curves
@@ -714,8 +750,8 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 			// Normalize coordinates within the source bounding box
 			let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
 
-			// Apply bilinear interpolation
-			bilinear_interpolate(t, &dst_corners)
+			// Apply bilinear interpolation with either the original or modified corners
+			bilinear_interpolate(t, &modified_corners)
 		});
 	}
 
@@ -730,6 +766,278 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 	result_table
 }
 
+#[node_macro::node(name("Select Subpath by Index"), category("Vector"), path(graphene_core::vector))]
+async fn select_subpath_by_index(_ctx: impl Ctx + ExtractAll + CloneVarArgs, vector_data: VectorDataTable, #[default(0)] index: u64, #[default(false)] reverse: bool) -> VectorDataTable {
+	let source_transform = vector_data.transform();
+	let source_instance = vector_data.one_instance_ref();
+	let source_vector_data = source_instance.instance;
+
+	let mut result_vector_data = VectorData::empty();
+	result_vector_data.style = source_vector_data.style.clone();
+	result_vector_data.upstream_graphic_group = source_vector_data.upstream_graphic_group.clone();
+
+	// Collect all subpaths
+	let subpaths: Vec<_> = source_vector_data.stroke_bezier_paths().collect();
+
+	// Skip if no subpaths found
+	if subpaths.is_empty() {
+		let mut result_table = VectorDataTable::new(result_vector_data);
+		*result_table.transform_mut() = source_transform;
+		return result_table;
+	}
+
+	// Select the subpath at the specified index (with bounds checking)
+	let subpath_count = subpaths.len();
+	let idx = if reverse {
+		subpath_count.saturating_sub(1).saturating_sub(index as usize % subpath_count.max(1))
+	} else {
+		index as usize % subpath_count.max(1)
+	};
+
+	if let Some(selected_subpath) = subpaths.get(idx) {
+		// Add the selected subpath to the result VectorData
+		// We need to clone because append_subpath takes ownership, but we only have a reference
+		result_vector_data.append_subpath(selected_subpath.clone(), true);
+	}
+
+	// Create the result table and set the transform
+	let mut result_table = VectorDataTable::new(result_vector_data);
+	*result_table.transform_mut() = source_transform;
+	result_table
+}
+
+#[node_macro::node(name("Select Points Within Shape"), category("Vector"), path(graphene_core::vector))]
+async fn select_points_within_shape(
+	_: impl Ctx,
+	/// The vector data containing points to filter.
+	points_data: VectorDataTable,
+	/// The vector data representing the shape to filter points by.
+	#[expose]
+	filter_shape: VectorDataTable,
+) -> VectorDataTable {
+	let points_transform = points_data.transform();
+	let points_instance = points_data.one_instance_ref().instance;
+
+	let filter_transform = filter_shape.transform();
+	let filter_instance = filter_shape.one_instance_ref().instance;
+
+	let mut result_vector_data = VectorData::empty();
+	result_vector_data.style = points_instance.style.clone();
+	result_vector_data.upstream_graphic_group = points_instance.upstream_graphic_group.clone();
+
+	// Pre-transform filter subpaths into world space for efficient checking
+	let filter_subpaths_world: Vec<_> = filter_instance
+		.stroke_bezier_paths()
+		.map(|mut subpath| {
+			subpath.apply_transform(filter_transform);
+			subpath
+		})
+		.collect();
+
+	// Iterate through each point in the input points_data
+	for (point_id, point_pos) in points_instance.point_domain.ids().iter().zip(points_instance.point_domain.positions()) {
+		// Transform the point into world space
+		let point_world = points_transform.transform_point2(*point_pos);
+
+		// Check if the point is contained within any of the filter subpaths
+		let is_contained = filter_subpaths_world.iter().any(|subpath| subpath.contains_point(point_world));
+
+		// If the point is contained, add it to the result
+		if is_contained {
+			result_vector_data.point_domain.push(*point_id, *point_pos);
+		}
+	}
+
+	// Create the result table and set the transform
+	let mut result_table = VectorDataTable::new(result_vector_data);
+	*result_table.transform_mut() = points_transform;
+	result_table
+}
+
+#[node_macro::node(name("Select Point by Index"), category("Vector"), path(graphene_core::vector))]
+async fn select_point_by_index(_ctx: impl Ctx + ExtractAll + CloneVarArgs, vector_data: VectorDataTable, #[default(0)] index: u64, #[default(false)] reverse: bool) -> VectorDataTable {
+	let source_transform = vector_data.transform();
+	let source_instance = vector_data.one_instance_ref();
+	let source_vector_data = source_instance.instance;
+
+	let mut result_vector_data = VectorData::empty();
+	result_vector_data.style = source_vector_data.style.clone();
+	result_vector_data.upstream_graphic_group = source_vector_data.upstream_graphic_group.clone();
+
+	// Get point IDs and positions
+	let point_ids = source_vector_data.point_domain.ids();
+	let point_positions = source_vector_data.point_domain.positions();
+
+	// Skip if no points found
+	if point_ids.is_empty() {
+		let mut result_table = VectorDataTable::new(result_vector_data);
+		*result_table.transform_mut() = source_transform;
+		return result_table;
+	}
+
+	// Select the point at the specified index (with bounds checking)
+	let point_count = point_ids.len();
+	let idx = if reverse {
+		point_count.saturating_sub(1).saturating_sub(index as usize % point_count.max(1))
+	} else {
+		index as usize % point_count.max(1)
+	};
+
+	if let (Some(&selected_id), Some(&selected_position)) = (point_ids.get(idx), point_positions.get(idx)) {
+		// Add the selected point to the result VectorData's PointDomain
+		result_vector_data.point_domain.push(selected_id, selected_position);
+	}
+
+	// Create the result table and set the transform
+	let mut result_table = VectorDataTable::new(result_vector_data);
+	*result_table.transform_mut() = source_transform;
+	result_table
+}
+
+#[node_macro::node(name("Select Group by Index"), category("Vector"), path(graphene_core::vector))]
+async fn select_group_by_index(_ctx: impl Ctx + ExtractAll + CloneVarArgs, shape: GraphicGroupTable, #[default(0)] index: u64, #[default(false)] reverse: bool) -> GraphicGroupTable {
+	let mut result_table = GraphicGroupTable::empty();
+
+	// Get the instances from the input GraphicGroupTable
+	let groups: Vec<_> = shape.instance_iter().collect();
+
+	// Skip if no groups found
+	if groups.is_empty() {
+		return result_table;
+	}
+
+	// Select the group at the specified index (with bounds checking)
+	let group_count = groups.len();
+	let idx = if reverse {
+		group_count.saturating_sub(1).saturating_sub(index as usize % group_count.max(1))
+	} else {
+		index as usize % group_count.max(1)
+	};
+
+	if let Some(selected_group) = groups.get(idx) {
+		// Directly push the selected group element into the result table
+		result_table.push(selected_group.clone());
+	}
+
+	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn shrink_wrap(
+	_: impl Ctx,
+	vector_data: VectorDataTable,
+	#[default(0.)]
+	#[range((0., 1.))]
+	concavity: f64,
+) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance_ref().instance;
+
+	// Collect points from all shapes (including handles for better coverage)
+	let mut points = Vec::new();
+
+	// Add points from all subpaths
+	for subpath in vector_data.stroke_bezier_paths() {
+		let mut transformed_subpath = subpath.clone();
+		transformed_subpath.apply_transform(vector_data_transform);
+
+		// Sample points more densely for better hull accuracy
+		for (t_idx, t) in (0..=20).map(|i| i as f64 / 20.0).enumerate() {
+			let point = transformed_subpath.evaluate(SubpathTValue::GlobalParametric(t));
+			points.push(point);
+
+			// Add extra points for corners to ensure accuracy
+			if t_idx > 0 && t_idx < 20 {
+				let tangent = transformed_subpath.tangent(SubpathTValue::GlobalParametric(t));
+				if tangent.length() < 1e-6 {
+					// Detect corners/cusps
+					for i in 1..=5 {
+						let offset = i as f64 * 0.01;
+						points.push(transformed_subpath.evaluate(SubpathTValue::GlobalParametric(t - offset)));
+						points.push(transformed_subpath.evaluate(SubpathTValue::GlobalParametric(t + offset)));
+					}
+				}
+			}
+		}
+	}
+
+	// Ensure we have enough points for a hull
+	if points.len() < 3 {
+		return VectorDataTable::default();
+	}
+
+	// Compute hull points
+	let hull_points = compute_hull(&points, concavity);
+
+	// Create subpath from hull points
+	let hull_subpath = Subpath::from_anchors(
+		hull_points.iter().map(|&p| vector_data_transform.inverse().transform_point2(p)).collect::<Vec<_>>(),
+		true, // Closed path
+	);
+
+	// Create vector data from hull subpath
+	let mut result = VectorData::from_subpath(&hull_subpath);
+	result.style = vector_data.style.clone();
+	result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+	// Return result with original transform
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
+}
+
+// Compute hull points based on concavity parameter
+fn compute_hull(points: &[DVec2], concavity: f64) -> Vec<DVec2> {
+	// Sort points by polar angle for convex hull computation
+	compute_convex_hull(points)
+}
+
+// Compute convex hull using Jarvis march (gift wrapping) algorithm
+fn compute_convex_hull(points: &[DVec2]) -> Vec<DVec2> {
+	if points.len() < 3 {
+		return points.to_vec();
+	}
+
+	// Find leftmost point
+	let mut leftmost = 0;
+	for i in 1..points.len() {
+		if points[i].x < points[leftmost].x {
+			leftmost = i;
+		}
+	}
+
+	let mut hull = Vec::new();
+	let mut p = leftmost;
+
+	// Jarvis march algorithm
+	loop {
+		hull.push(points[p]);
+
+		let mut q = (p + 1) % points.len();
+		for i in 0..points.len() {
+			// If i is more counter-clockwise than current q, then update q
+			if orient(points[p], points[i], points[q]) > 0.0 {
+				q = i;
+			}
+		}
+
+		p = q;
+
+		// Break if we've come back to start
+		if p == leftmost {
+			break;
+		}
+	}
+
+	hull
+}
+
+// Helper: Calculate orientation of triplet (p, q, r)
+// Returns positive if counter-clockwise, negative if clockwise, 0 if collinear
+fn orient(p: DVec2, q: DVec2, r: DVec2) -> f64 {
+	(q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y)
+}
+
 // Interpolate within a quadrilateral using normalized coordinates (0-1)
 fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	let tl = quad[0]; // Top-left
@@ -739,6 +1047,133 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 
 	// Bilinear interpolation
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn relax(
+	_: impl Ctx,
+	source: VectorDataTable,
+	#[default(0.5)]
+	#[range((0., 1.))]
+	smooth_amount: f64,
+	#[default(0.5)]
+	#[range((0., 1.))]
+	match_original: f64,
+	#[default(8)]
+	#[min(1.0)]
+	iterations: u32,
+) -> VectorDataTable {
+	let source_transform = source.transform();
+	let source = source.one_instance_ref().instance.clone();
+
+	// For stability, limit the iterations based on smooth amount
+	let iterations = (iterations as f64 * smooth_amount.max(0.1)) as u32;
+	let iterations = iterations.max(1);
+
+	// Convert to relaxation strength and shape preservation
+	let relaxation_strength = smooth_amount.powf(1.5);
+	let shape_preservation = match_original.powf(0.8);
+
+	let mut result = source.clone();
+
+	// Store original positions for shape preservation
+	let original_positions: Vec<DVec2> = result.point_domain.positions().to_vec();
+
+	// Create a mapping of points to their connected neighbors
+	let num_points = result.point_domain.positions().len();
+	let mut connected_neighbors = vec![Vec::new(); num_points];
+
+	for segment_idx in 0..result.segment_domain.ids().len() {
+		let start_id = result.segment_domain.start_point()[segment_idx];
+		let end_id = result.segment_domain.end_point()[segment_idx];
+
+		// Use the indices directly after checking bounds.
+		if start_id < num_points && end_id < num_points {
+			connected_neighbors[start_id].push(end_id);
+			connected_neighbors[end_id].push(start_id);
+		} else {
+			// Indices obtained from SegmentDomain should always be valid if VectorData is consistent.
+			warn!("Segment references out-of-bounds point index in relax node. Start: {}, End: {}, Max: {}", start_id, end_id, num_points);
+		}
+	}
+
+	// Apply iterative relaxation
+	for _ in 0..iterations {
+		// Calculate new positions based on neighbors (Laplacian smoothing)
+		let mut new_positions = Vec::with_capacity(result.point_domain.positions().len());
+
+		for (i, pos) in result.point_domain.positions().iter().enumerate() {
+			let neighbors = &connected_neighbors[i];
+
+			if neighbors.is_empty() {
+				new_positions.push(*pos);
+				continue;
+			}
+
+			// Calculate average of neighboring positions
+			let mut avg_pos = DVec2::ZERO;
+			for &neighbor_idx in neighbors {
+				avg_pos += result.point_domain.positions()[neighbor_idx];
+			}
+			avg_pos /= neighbors.len() as f64;
+
+			// Apply Laplacian smoothing with strength factor
+			let relaxed_pos = pos.lerp(avg_pos, relaxation_strength);
+
+			// Pull back toward original position based on preservation factor
+			let final_pos = relaxed_pos.lerp(original_positions[i], shape_preservation);
+
+			new_positions.push(final_pos);
+		}
+
+		// Update positions
+		for (i, pos) in new_positions.into_iter().enumerate() {
+			result.point_domain.set_position(i, pos);
+		}
+
+		// Apply transformation to handles
+		for (_segment_id, handles, start_idx, end_idx) in result.segment_domain.handles_mut() {
+			// Check if indices are valid before accessing positions and original_positions
+			if start_idx < result.point_domain.positions().len() && end_idx < result.point_domain.positions().len() && start_idx < original_positions.len() && end_idx < original_positions.len() {
+				match handles {
+					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+						let start_pos = result.point_domain.positions()[start_idx];
+						let end_pos = result.point_domain.positions()[end_idx];
+
+						// Adjust handles to maintain tangents but adapt to new anchor positions
+						let orig_start_to_handle = *handle_start - original_positions[start_idx];
+						let orig_end_to_handle = *handle_end - original_positions[end_idx];
+
+						*handle_start = start_pos + orig_start_to_handle * (1.0 - relaxation_strength * 0.5);
+						*handle_end = end_pos + orig_end_to_handle * (1.0 - relaxation_strength * 0.5);
+					}
+					bezier_rs::BezierHandles::Quadratic { handle } => {
+						let start_pos = result.point_domain.positions()[start_idx];
+						let end_pos = result.point_domain.positions()[end_idx];
+
+						// Reposition quadratic handle based on new anchor positions
+						let original_delta = original_positions[end_idx] - original_positions[start_idx];
+						if original_delta.length_squared() > 1e-12 {
+							// Project the original handle offset onto the original segment direction
+							let orig_handle_ratio = (*handle - original_positions[start_idx]).dot(original_delta) / original_delta.length_squared();
+							// Apply the same ratio to the new segment
+							*handle = start_pos + orig_handle_ratio.clamp(0.0, 1.0) * (end_pos - start_pos);
+						} else {
+							// Handle degenerate case: start and end points were originally the same.
+							// Place the handle halfway between the new positions.
+							*handle = start_pos.lerp(end_pos, 0.5);
+						}
+					}
+					_ => {}
+				}
+			}
+		}
+	}
+
+	// Create final result
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = source_transform;
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1283,6 +1718,145 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 
 	// Return the resulting vector data with newly generated points and segments.
 	result
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn outer_path(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance_ref().instance;
+
+	// Create a new VectorData to store our result
+	let mut result = VectorData::empty();
+	result.style = vector_data.style.clone();
+
+	// Collect all closed subpaths with their indices
+	let subpaths: Vec<_> = vector_data
+		.stroke_bezier_paths()
+		.enumerate()
+		.filter(|(_, subpath)| subpath.closed())
+		.map(|(i, mut subpath)| {
+			// Apply transform to work in world space
+			subpath.apply_transform(vector_data_transform);
+			(i, subpath)
+		})
+		.collect();
+
+	if subpaths.is_empty() {
+		// No closed paths found, return empty result
+		let mut result_table = VectorDataTable::new(result);
+		*result_table.transform_mut() = vector_data_transform;
+		return result_table;
+	}
+
+	// Find the outermost path:
+	// 1. Start by assuming all subpaths could be the outermost
+	let mut potential_outer_paths: Vec<_> = subpaths.iter().map(|(i, _)| *i).collect();
+
+	// 2. For each subpath, test against all others
+	for (i, subpath_i) in &subpaths {
+		// Skip if already eliminated
+		if !potential_outer_paths.contains(i) {
+			continue;
+		}
+
+		for (j, subpath_j) in &subpaths {
+			// Skip comparing to self
+			if i == j {
+				continue;
+			}
+
+			// Sample points from subpath_i
+			let total_points = 20;
+			let mut contained_points = 0;
+
+			// Check several points along subpath_i to see if they're contained in subpath_j
+			for k in 0..total_points {
+				let t = k as f64 / total_points as f64;
+				let point = subpath_i.evaluate(bezier_rs::SubpathTValue::GlobalParametric(t));
+
+				if subpath_j.contains_point(point) {
+					contained_points += 1;
+				}
+			}
+
+			// If most points from subpath_i are inside subpath_j,
+			// then subpath_i is not an outer path
+			if contained_points > total_points / 2 {
+				potential_outer_paths.retain(|&x| x != *i);
+				break;
+			}
+		}
+	}
+
+	// 3. Among remaining potential outer paths, choose the one with the largest area
+	if let Some(&outer_index) = potential_outer_paths.iter().max_by(|&&a, &&b| {
+		let area_a = subpaths.iter().find(|(i, _)| *i == a).map(|(_, s)| s.area(None, None).abs()).unwrap_or(0.0);
+		let area_b = subpaths.iter().find(|(i, _)| *i == b).map(|(_, s)| s.area(None, None).abs()).unwrap_or(0.0);
+		area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
+	}) {
+		// Find the outer path and add it to the result
+		if let Some((_, outer_path)) = subpaths.iter().find(|(i, _)| *i == outer_index) {
+			let mut path_copy = outer_path.clone();
+			path_copy.apply_transform(vector_data_transform.inverse());
+			result.append_subpath(path_copy, true);
+		}
+	}
+
+	// Create the resulting VectorDataTable
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
+}
+
+#[node_macro::node(name("Filter by Area"), category("Vector"), path(graphene_core::vector))]
+async fn filter_by_area(
+	_: impl Ctx,
+	/// The vector data to filter
+	vector_data: VectorDataTable,
+	/// Minimum area threshold - subpaths with areas smaller than this will be removed
+	#[default(1.0)]
+	#[min(0.0)]
+	min_area: f64,
+	/// Whether to filter only closed paths (true) or all paths (false)
+	#[default(true)]
+	only_closed: bool,
+) -> VectorDataTable {
+	let vector_data_transform = vector_data.transform();
+	let vector_data = vector_data.one_instance_ref().instance;
+
+	// Create a new VectorData to store filtered subpaths
+	let mut result = VectorData::empty();
+	result.style = vector_data.style.clone();
+	result.upstream_graphic_group = vector_data.upstream_graphic_group.clone();
+
+	// Calculate the scale to apply to area calculations
+	let scale = vector_data_transform.decompose_scale();
+	let scale_factor = scale[0] * scale[1];
+
+	for subpath in vector_data.stroke_bezier_paths() {
+		// Skip open paths if only_closed is true
+		if only_closed && !subpath.closed() {
+			result.append_subpath(subpath, false);
+			continue;
+		}
+
+		// Get a copy with the transform applied for area calculation
+		let mut transformed_subpath = subpath.clone();
+		transformed_subpath.apply_transform(vector_data_transform);
+
+		// Calculate the area of this subpath with proper scaling
+		let area = transformed_subpath.area(Some(1e-3), Some(1e-3)).abs() * scale_factor.abs();
+
+		// If area is above threshold, keep it
+		if area >= min_area {
+			result.append_subpath(subpath, false);
+		}
+	}
+
+	// Create a new VectorDataTable with the filtered result
+	let mut result_table = VectorDataTable::new(result);
+	*result_table.transform_mut() = vector_data_transform;
+	result_table
 }
 
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
