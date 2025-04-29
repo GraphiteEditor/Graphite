@@ -1384,13 +1384,13 @@ impl ShapeState {
 
 			let (id, anchor) = result?;
 			let handles = vector_data.all_connected(id);
-			let mut positions = handles
+			let positions = handles
 				.filter_map(|handle| handle.to_manipulator_point().get_position(&vector_data))
-				.filter(|&handle| !anchor.abs_diff_eq(handle, 1e-5));
+				.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))
+				.count();
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
-			let already_sharp = positions.next().is_none();
-			if already_sharp {
+			if positions != 0 {
 				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
 			} else {
 				for handle in vector_data.all_connected(id) {
