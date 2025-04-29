@@ -89,7 +89,6 @@ impl LayerSnapper {
 
 	pub fn free_snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		self.collect_paths(snap_data, !config.use_existing_candidates);
-
 		let document = snap_data.document;
 		let normals = document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::NormalToPath));
 		let tangents = document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::TangentToPath));
@@ -121,8 +120,9 @@ impl LayerSnapper {
 						..Default::default()
 					},
 				});
-				normals_and_tangents(path, normals, tangents, point, tolerance, snap_results);
+				snap_normals(path, normals, point, tolerance, snap_results);
 			}
+			snap_tangents(path, tangents, point, tolerance, snap_results);
 		}
 	}
 
@@ -262,7 +262,7 @@ impl LayerSnapper {
 	}
 }
 
-fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool, point: &SnapCandidatePoint, tolerance: f64, snap_results: &mut SnapResults) {
+fn snap_normals(path: &SnapCandidatePath, normals: bool, point: &SnapCandidatePoint, tolerance: f64, snap_results: &mut SnapResults) {
 	if normals && path.bounds.is_none() {
 		for &neighbor in &point.neighbors {
 			for t in path.document_curve.normals_to_point(neighbor) {
@@ -284,27 +284,68 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 			}
 		}
 	}
-	if tangents && path.bounds.is_none() {
-		for &neighbor in &point.neighbors {
-			for t in path.document_curve.tangents_to_point(neighbor) {
-				let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
-				let distance = tangent_point.distance(point.document_point);
-				if distance > tolerance {
-					continue;
-				}
-				snap_results.points.push(SnappedPoint {
-					snapped_point_document: tangent_point,
-					target: SnapTarget::Path(PathSnapTarget::TangentToPath),
-					distance,
-					tolerance,
-					outline_layers: [Some(path.layer), None],
-					source: point.source,
-					constrained: true,
-					..Default::default()
-				});
-			}
+}
+
+// TODO: Snap rectangles and ellipses to ellipses tangents, find out why point.neighbors is empty while drawing rectangles and ellipses
+fn snap_tangents(path: &SnapCandidatePath, tangents: bool, point: &SnapCandidatePoint, tolerance: f64, snap_results: &mut SnapResults) {
+	if !tangents || point.neighbors.len() != 1 {
+		return;
+	}
+	let neighbor = point.neighbors[0];
+	for t in path.document_curve.tangents_to_point(neighbor) {
+		let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
+
+		if let Some(closest_point) = closest_point_along_line(neighbor, point.document_point, &path.document_curve, tolerance, 20) {
+			let tangent = (tangent_point - neighbor).normalize();
+			let offset = (point.document_point - tangent_point).dot(tangent);
+			let snap_to = tangent_point + tangent * offset;
+
+			let distance = snap_to.distance(point.document_point);
+			snap_results.points.push(SnappedPoint {
+				snapped_point_document: snap_to,
+				source: point.source,
+				target: SnapTarget::Path(PathSnapTarget::TangentToPath),
+				at_intersection: true,
+				alignment_target_x: Some(tangent_point),
+				distance,
+				tolerance,
+				outline_layers: [Some(path.layer), None],
+				target_bounds: Some(Quad([neighbor, neighbor, snap_to, snap_to])),
+				..Default::default()
+			});
 		}
 	}
+}
+fn closest_point_along_line(start: DVec2, end: DVec2, curve: &Bezier, tolerance: f64, max_iterations: usize) -> Option<DVec2> {
+	let mut closest_point = None;
+	let mut closest_distance = f64::INFINITY;
+
+	for i in 0..=max_iterations {
+		let t = i as f64 / max_iterations as f64;
+
+		let curve_point = curve.evaluate(TValue::Parametric(t));
+		let tangent = curve.tangent(TValue::Parametric(t));
+		if tangent.length_squared() == 0.0 {
+			continue;
+		}
+
+		let line_direction = end - start;
+		if line_direction.length_squared() == 0.0 {
+			break;
+		}
+
+		let v = curve_point - start;
+		let projected_distance = v.dot(line_direction.normalize());
+		let projected_point = start + projected_distance * line_direction.normalize();
+
+		let distance = projected_point.distance(curve_point);
+
+		if distance < closest_distance {
+			closest_distance = distance;
+			closest_point = Some(projected_point);
+		}
+	}
+	if closest_distance < tolerance { closest_point } else { None }
 }
 
 #[derive(Clone, Debug)]
