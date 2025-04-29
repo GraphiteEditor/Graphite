@@ -111,7 +111,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
 			NodeGraphMessage::AddImport => {
-				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", breadcrumb_network_path);
+				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", "", breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::AddExport => {
@@ -1293,7 +1293,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
-				if self.drag_start.is_some() || self.box_selection_start.is_some() {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
 					let _ = self.auto_panning.shift_viewport(ipp, responses);
 				} else {
 					// Auto-panning
@@ -2236,8 +2236,8 @@ impl NodeGraphMessageHandler {
 					data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
 					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
 					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
-					name: input.name.unwrap_or_else(|| input.ty.nested_type().to_string()),
-					description: input.description.unwrap_or_default(),
+					name: input.input_name.unwrap_or_else(|| input.ty.nested_type().to_string()),
+					description: input.input_description.unwrap_or_default(),
 					connected_to: input.output_connector,
 				})
 			});
@@ -2546,8 +2546,8 @@ impl NodeGraphMessageHandler {
 
 #[derive(Default)]
 struct InputLookup {
-	name: Option<String>,
-	description: Option<String>,
+	input_name: Option<String>,
+	input_description: Option<String>,
 	ty: Type,
 	type_source: TypeSource,
 	valid_types: Vec<Type>,
@@ -2574,20 +2574,17 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
-			let name = network_interface
-				.input_name(&node_id, index, breadcrumb_network_path)
+			let input_name = network_interface
+				.input_name(node_id, index, breadcrumb_network_path)
 				.filter(|s| !s.is_empty())
 				.map(|name| name.to_string());
-			let description = network_interface
-				.input_description(&node_id, index, breadcrumb_network_path)
-				.filter(|s| !s.is_empty())
-				.map(|description| description.to_string());
+			let input_description = network_interface.input_description(node_id, index, breadcrumb_network_path).map(|description| description.to_string());
 			// Get the output connector that feeds into this input (done here as well for simplicity)
 			let connector = OutputConnector::from_input(input);
 
 			inputs.push(Some(InputLookup {
-				name,
-				description,
+				input_name,
+				input_description,
 				output_connector: connector,
 				..Default::default()
 			}));

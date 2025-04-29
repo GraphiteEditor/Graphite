@@ -14,11 +14,11 @@ use std::ops::Mul;
 async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
 	fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDataTable> {
 		graphic_group_table
-			.instances()
+			.instance_ref_iter()
 			.map(|element| match element.instance.clone() {
 				GraphicElement::VectorData(mut vector_data) => {
 					// Apply the parent group's transform to each element of vector data
-					for sub_vector_data in vector_data.instances_mut() {
+					for sub_vector_data in vector_data.instance_mut_iter() {
 						*sub_vector_data.transform = *element.transform * *sub_vector_data.transform;
 					}
 
@@ -28,12 +28,12 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 					// Apply the parent group's transform to each element of raster data
 					match &mut image {
 						graphene_core::RasterFrame::ImageFrame(image) => {
-							for instance in image.instances_mut() {
+							for instance in image.instance_mut_iter() {
 								*instance.transform = *element.transform * *instance.transform;
 							}
 						}
 						graphene_core::RasterFrame::TextureFrame(image) => {
-							for instance in image.instances_mut() {
+							for instance in image.instance_mut_iter() {
 								*instance.transform = *element.transform * *instance.transform;
 							}
 						}
@@ -50,7 +50,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 				}
 				GraphicElement::GraphicGroup(mut graphic_group) => {
 					// Apply the parent group's transform to each element of inner group
-					for sub_element in graphic_group.instances_mut() {
+					for sub_element in graphic_group.instance_mut_iter() {
 						*sub_element.transform = *element.transform * *sub_element.transform;
 					}
 
@@ -72,7 +72,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 			let result = result.one_instance_mut().instance;
 
 			let upper_path_string = to_path(result, DAffine2::IDENTITY);
-			let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
+			let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
 
 			#[allow(unused_unsafe)]
 			let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
@@ -105,7 +105,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 					let result_vector_data = result_vector_data_table.one_instance_mut().instance;
 
 					let upper_path_string = to_path(result_vector_data, DAffine2::IDENTITY);
-					let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
+					let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
@@ -136,7 +136,7 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 					let result = result.one_instance_mut().instance;
 
 					let upper_path_string = to_path(result, DAffine2::IDENTITY);
-					let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
+					let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
@@ -160,12 +160,12 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 				// Find where all vector data intersect at least once
 				while let Some(lower_vector_data) = second_vector_data {
 					let all_other_vector_data = boolean_operation_on_vector_data(&vector_data_table.iter().filter(|v| v != &lower_vector_data).cloned().collect::<Vec<_>>(), BooleanOperation::Union);
-					let all_other_vector_data_instance = all_other_vector_data.one_instance();
+					let all_other_vector_data_instance = all_other_vector_data.one_instance_ref();
 
 					let transform_of_lower_into_space_of_upper = all_other_vector_data.transform().inverse() * lower_vector_data.transform();
 
 					let upper_path_string = to_path(all_other_vector_data_instance.instance, DAffine2::IDENTITY);
-					let lower_path_string = to_path(lower_vector_data.one_instance().instance, transform_of_lower_into_space_of_upper);
+					let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
 
 					#[allow(unused_unsafe)]
 					let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };

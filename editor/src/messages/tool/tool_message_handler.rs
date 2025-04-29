@@ -218,7 +218,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let document_data = &mut self.tool_state.document_tool_data;
 				document_data.primary_color = color;
 
-				self.tool_state.document_tool_data.update_working_colors(responses); // TODO: Make this an event
+				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
 			ToolMessage::SelectRandomPrimaryColor => {
 				// Select a random primary color (rgba) based on an UUID

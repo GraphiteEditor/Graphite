@@ -585,18 +585,29 @@ impl LayoutHolder for MenuBarMessageHandler {
 						action: MenuBarEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
 						..MenuBarEntry::default()
 					}],
-					vec![MenuBarEntry {
-						label: "User Manual".into(),
-						icon: Some("UserManual".into()),
-						action: MenuBarEntry::create_action(|_| {
-							FrontendMessage::TriggerVisitLink {
-								url: "https://graphite.rs/learn/".into(),
-							}
-							.into()
-						}),
-						..MenuBarEntry::default()
-					}],
 					vec![
+						MenuBarEntry {
+							label: "Donate to Graphite".into(),
+							icon: Some("Heart".into()),
+							action: MenuBarEntry::create_action(|_| {
+								FrontendMessage::TriggerVisitLink {
+									url: "https://graphite.rs/donate/".into(),
+								}
+								.into()
+							}),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "User Manual".into(),
+							icon: Some("UserManual".into()),
+							action: MenuBarEntry::create_action(|_| {
+								FrontendMessage::TriggerVisitLink {
+									url: "https://graphite.rs/learn/".into(),
+								}
+								.into()
+							}),
+							..MenuBarEntry::default()
+						},
 						MenuBarEntry {
 							label: "Report a Bug".into(),
 							icon: Some("Bug".into()),
