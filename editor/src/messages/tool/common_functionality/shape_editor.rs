@@ -71,6 +71,11 @@ impl SelectedLayerState {
 	pub fn set_anchors_status(&mut self, ignore: bool) {
 		self.ignore_anchors = ignore;
 	}
+	pub fn clear_points_force(&mut self) {
+		self.selected_points.clear();
+		self.ignore_handles = false;
+		self.ignore_anchors = false;
+	}
 	pub fn clear_points(&mut self) {
 		if self.ignore_handles || self.ignore_anchors {
 			return;
@@ -1517,7 +1522,7 @@ impl ShapeState {
 	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			if selection_change == SelectionChange::Clear {
-				state.clear_points()
+				state.clear_points_force()
 			}
 
 			let vector_data = network_interface.compute_modified_vector(layer);
