@@ -21,6 +21,107 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OverlaysType {
+	ArtboardName,
+	CompassRose,
+	QuickMeasurement,
+	TransformMeasurement,
+	TransformCage,
+	HoverOutline,
+	SelectionOutline,
+	Pivot,
+	Path,
+	Anchors,
+	Handles,
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct OverlaysVisibilitySettings {
+	pub all: bool,
+	pub artboard_name: bool,
+	pub compass_rose: bool,
+	pub quick_measurement: bool,
+	pub transform_measurement: bool,
+	pub transform_cage: bool,
+	pub hover_outline: bool,
+	pub selection_outline: bool,
+	pub pivot: bool,
+	pub path: bool,
+	pub anchors: bool,
+	pub handles: bool,
+}
+
+impl Default for OverlaysVisibilitySettings {
+	fn default() -> Self {
+		Self {
+			all: true,
+			artboard_name: true,
+			compass_rose: true,
+			quick_measurement: true,
+			transform_measurement: true,
+			transform_cage: true,
+			hover_outline: true,
+			selection_outline: true,
+			pivot: true,
+			path: true,
+			anchors: true,
+			handles: true,
+		}
+	}
+}
+
+impl OverlaysVisibilitySettings {
+	pub fn all(&self) -> bool {
+		self.all
+	}
+
+	pub fn artboard_name(&self) -> bool {
+		self.all && self.artboard_name
+	}
+
+	pub fn compass_rose(&self) -> bool {
+		self.all && self.compass_rose
+	}
+
+	pub fn quick_measurement(&self) -> bool {
+		self.all && self.quick_measurement
+	}
+
+	pub fn transform_measurement(&self) -> bool {
+		self.all && self.transform_measurement
+	}
+
+	pub fn transform_cage(&self) -> bool {
+		self.all && self.transform_cage
+	}
+
+	pub fn hover_outline(&self) -> bool {
+		self.all && self.hover_outline
+	}
+
+	pub fn selection_outline(&self) -> bool {
+		self.all && self.selection_outline
+	}
+
+	pub fn pivot(&self) -> bool {
+		self.all && self.pivot
+	}
+
+	pub fn path(&self) -> bool {
+		self.all && self.path
+	}
+
+	pub fn anchors(&self) -> bool {
+		self.all && self.anchors
+	}
+
+	pub fn handles(&self) -> bool {
+		self.all && self.anchors && self.handles
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
@@ -31,6 +132,7 @@ pub struct OverlayContext {
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
+	pub visibility_settings: OverlaysVisibilitySettings,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
@@ -310,13 +412,10 @@ impl OverlayContext {
 	}
 
 	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
-		let color_line = COLOR_OVERLAY_BLUE;
-
 		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
 		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
-		self.line(pivot, end_point1, Some(color_line), None);
-		self.line(pivot, end_point2, Some(color_line), None);
-
+		self.line(pivot, end_point1, None, None);
+		self.dashed_line(pivot, end_point2, None, None, Some(2.), Some(2.), Some(0.5));
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 

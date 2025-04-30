@@ -209,6 +209,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		match message {
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
+				if !overlay_context.visibility_settings.transform_measurement() {
+					return;
+				}
+
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -242,7 +246,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 								let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
-								overlay_context.line(quad[0], end, None, None);
+								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
 
 								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
 								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
@@ -250,7 +254,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
 								let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
-								overlay_context.line(quad[0], end, None, None);
+								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
@@ -258,9 +262,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
 							}
+
 							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
-								overlay_context.dashed_line(quad[1], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
-								overlay_context.dashed_line(quad[3], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
+								overlay_context.line(quad[1], quad[2], None, None);
+								overlay_context.line(quad[3], quad[2], None, None);
 							}
 						}
 						TransformOperation::Scaling(scale) => {
@@ -274,7 +279,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let end_point = pivot + local_edge * scale.max(1.);
 
 							if scale > 0. {
-								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(4.), Some(4.), Some(0.5));
+								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
 							}
 							overlay_context.line(boundary_point, end_point, None, None);
 
