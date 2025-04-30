@@ -310,13 +310,10 @@ impl OverlayContext {
 	}
 
 	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
-		let color_line = COLOR_OVERLAY_BLUE;
-
 		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
 		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
-		self.line(pivot, end_point1, Some(color_line), None);
-		self.line(pivot, end_point2, Some(color_line), None);
-
+		self.line(pivot, end_point1, None, None);
+		self.dashed_line(pivot, end_point2, None, None, Some(2.), Some(2.), Some(0.5));
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 

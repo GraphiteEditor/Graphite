@@ -4200,7 +4200,8 @@ impl NodeNetworkInterface {
 						if let InputConnector::Node { node_id: downstream_id, .. } = downstream_node {
 							let downstream_node_output = OutputConnector::node(*downstream_id, 0);
 							if !delete_nodes.contains(downstream_id) {
-								stack.push(downstream_node_output);
+								can_delete = false;
+								break;
 							}
 							// Continue traversing over the downstream sibling, if the current node is a sibling to a node that will be deleted and it is a layer
 							else {
