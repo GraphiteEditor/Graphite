@@ -1,7 +1,6 @@
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
-use crate::graphene_core::num_traits::FromPrimitive;
 use crate::registry::types::Angle;
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
@@ -98,7 +97,7 @@ fn rectangle<T: CornerRadius>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon<T: AsU64 + std::cmp::PartialOrd + FromPrimitive>(
+fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
@@ -113,7 +112,7 @@ fn regular_polygon<T: AsU64 + std::cmp::PartialOrd + FromPrimitive>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn star<T: AsU64 + std::cmp::PartialOrd + FromPrimitive>(
+fn star<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
@@ -150,7 +149,7 @@ impl GridSpacing for DVec2 {
 }
 
 #[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
-fn grid<T: GridSpacing + std::cmp::PartialOrd + FromPrimitive>(
+fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
 	grid_type: GridType,

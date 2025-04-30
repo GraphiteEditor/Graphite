@@ -20,6 +20,7 @@ pub mod context;
 pub mod generic;
 pub mod instances;
 pub mod logic;
+pub mod misc;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]
