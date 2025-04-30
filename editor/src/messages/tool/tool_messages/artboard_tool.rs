@@ -268,7 +268,7 @@ impl Fsm for ArtboardToolFsmState {
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 				tool_data.resize_artboard(responses, document, input, from_center, constrain_square);
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
@@ -307,7 +307,7 @@ impl Fsm for ArtboardToolFsmState {
 					bounds.bounds[0] = position.round();
 					bounds.bounds[1] = position.round() + size.round();
 
-					// AutoPanning
+					// Auto-panning
 					let messages = [
 						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
@@ -346,7 +346,7 @@ impl Fsm for ArtboardToolFsmState {
 					})
 				}
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
@@ -378,25 +378,25 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::Drawing
 			}
 			(state, ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }) => {
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
