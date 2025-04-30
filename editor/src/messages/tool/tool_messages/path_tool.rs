@@ -64,7 +64,6 @@ pub enum PathToolMessage {
 	ManipulatorMakeHandlesFree,
 	ManipulatorMakeHandlesColinear,
 	MouseDown {
-		delete_segment: Key,
 		extend_selection: Key,
 		lasso_select: Key,
 		handle_drag_from_anchor: Key,
@@ -506,22 +505,20 @@ impl PathToolData {
 			}
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
-		//We didn't found a point so we will see if there is a segment to insert the point
+		// We didn't find a point nearby, so we will see if there is a segment to insert a point on
 		else if let Some(closed_segment) = &mut self.segment {
 			responses.add(DocumentMessage::StartTransaction);
 
 			if self.delete_segment_pressed {
-				let segment = closed_segment.segment();
-				let layer = closed_segment.layer();
-				let points = closed_segment.points();
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-					shape_editor.dissolve_segment(responses, layer, &vector_data, segment, points);
+				if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
+					shape_editor.dissolve_segment(responses, closed_segment.layer(), &vector_data, closed_segment.segment(), closed_segment.points());
 					responses.add(DocumentMessage::EndTransaction);
 				}
 			} else {
 				closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
 				responses.add(DocumentMessage::EndTransaction);
 			}
+
 			self.segment = None;
 
 			PathToolFsmState::Ready
@@ -1018,17 +1015,21 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
-						// Check for a close segment if it is there
 						if let Some(closest_segment) = &tool_data.segment {
 							let perp = closest_segment.calculate_perp(document);
 							let point = closest_segment.closest_point_to_viewport();
+
+							// Draw an X on the segment
 							if tool_data.delete_segment_pressed {
-								let degrees: f64 = 45.0;
-								let tilted_line = DVec2::from_angle(degrees.to_radians()).rotate(perp);
+								let angle = 45_f64.to_radians();
+								let tilted_line = DVec2::from_angle(angle).rotate(perp);
 								let tilted_perp = tilted_line.perp();
+
 								overlay_context.line(point - tilted_line * SEGMENT_OVERLAY_SIZE, point + tilted_line * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 								overlay_context.line(point - tilted_perp * SEGMENT_OVERLAY_SIZE, point + tilted_perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-							} else {
+							}
+							// Draw a line on the segment
+							else {
 								overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 							}
 						}
@@ -1270,6 +1271,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.segment = Some(closest_segment);
 					responses.add(OverlaysMessage::Draw)
 				}
+
 				self
 			}
 			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
@@ -1575,10 +1577,8 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment"),
-					HintInfo::keys([Key::Control], "Delete Segment").prepend_plus(),
-				]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+				HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
 				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),

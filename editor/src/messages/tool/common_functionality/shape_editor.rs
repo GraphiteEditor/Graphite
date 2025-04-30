@@ -210,12 +210,11 @@ impl ClosestSegment {
 		let tangent = if let (Some(handle1), Some(handle2)) = self.handle_positions(document.metadata()) {
 			(handle1 - handle2).try_normalize()
 		} else {
-			let layer = self.layer();
-			let points = self.points();
-			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+			let [first_point, last_point] = self.points();
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) {
 				if let (Some(pos1), Some(pos2)) = (
-					ManipulatorPointId::Anchor(points[0]).get_position(&vector_data),
-					ManipulatorPointId::Anchor(points[1]).get_position(&vector_data),
+					ManipulatorPointId::Anchor(first_point).get_position(&vector_data),
+					ManipulatorPointId::Anchor(last_point).get_position(&vector_data),
 				) {
 					(pos1 - pos2).try_normalize()
 				} else {
@@ -226,8 +225,7 @@ impl ClosestSegment {
 			}
 		}
 		.unwrap_or(DVec2::ZERO);
-		let perp = tangent.perp();
-		return perp;
+		tangent.perp()
 	}
 }
 
