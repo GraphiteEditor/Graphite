@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
@@ -330,6 +330,9 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	let layer = modify_inputs.create_layer(id);
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
+	if let Some(upstream_layer) = layer.next_sibling(modify_inputs.network_interface.document_metadata()) {
+		modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, 3), &[]);
+	}
 	match node {
 		usvg::Node::Group(group) => {
 			for child in group.children() {
