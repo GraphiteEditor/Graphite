@@ -231,8 +231,6 @@ impl DistributionSnapper {
 				for &left in Self::exact_further_matches(bounds.translate(translation), &self.left, dist_left, distances.equal, 2).iter().skip(1) {
 					vec_right.push_front(left);
 				}
-				trace!("{:?}", vec_right);
-
 				vec_right[0][0].y = min(vec_right[0][0].y, vec_right[1][1].y);
 				vec_right[0][1].y = min(vec_right[0][1].y, vec_right[1][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distances, bounds, translation, tolerance))
@@ -246,7 +244,6 @@ impl DistributionSnapper {
 				let translation = -DVec2::X * (distances.first - distances.equal);
 				vec_left.make_contiguous().reverse();
 				vec_left.push_back(bounds.translate(translation));
-				trace!("{:?}", bounds);
 
 				for &right in Self::exact_further_matches(bounds.translate(translation), &self.right, dist_right, distances.equal, 2).iter().skip(1) {
 					vec_left.push_back(right);
@@ -290,7 +287,6 @@ impl DistributionSnapper {
 				}
 				vec_down[0][0].x = min(vec_down[0][0].x, vec_down[1][1].x);
 				vec_down[0][1].x = min(vec_down[0][1].x, vec_down[1][1].x);
-				trace!("{:?}", vec_down);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distances, bounds, translation, tolerance))
 			}
 		}
@@ -306,7 +302,6 @@ impl DistributionSnapper {
 				for &down in Self::exact_further_matches(bounds.translate(translation), &self.down, dist_down, distances.equal, 2).iter().skip(1) {
 					vec_up.push_back(down);
 				}
-				trace!("{:?}", vec_up);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Up, vec_up, distances, bounds, translation, tolerance))
 			}
 		}
@@ -323,9 +318,7 @@ impl DistributionSnapper {
 				let equal = bounds.translate(translation).min().y - self.up[0].max().y;
 				let first = equal + offset;
 				let distances = DistributionMatch { first, equal };
-
 				let mut boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
-				trace!("{:?}", boxes);
 				boxes[1][0].x = min(boxes[1][0].x, boxes[0][1].x);
 				boxes[1][1].x = min(boxes[1][1].x, boxes[0][1].x);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance))
