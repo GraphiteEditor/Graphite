@@ -165,6 +165,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 				DrawHandles::None => {}
 			}
 		}
+
 		if display_anchors {
 			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
 				overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(ManipulatorPointId::Anchor(id)), None);

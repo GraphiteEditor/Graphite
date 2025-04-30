@@ -866,7 +866,6 @@ impl Fsm for SelectToolFsmState {
 				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
-				// If bounding box is some, compass_rose_state.can_grab() && show_compass is evaluated else compass_rose_state.can_grab() is evaluated
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 				let is_flat_layer = tool_data
 					.bounding_box_manager
