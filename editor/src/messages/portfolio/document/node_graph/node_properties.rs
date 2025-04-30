@@ -16,7 +16,7 @@ use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
+use graphene_core::registry::ChoiceTypeStatic;
 use graphene_core::text::Font;
 use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
@@ -86,7 +86,7 @@ pub fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	]);
 }
 
-pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType) -> Vec<WidgetHolder> {
+pub fn start_widgets_exposable(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType, exposable: bool) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo {
 		document_node,
 		node_id,
@@ -101,7 +101,11 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: Fr
 		return vec![];
 	};
 	let description = if description != "TODO" { description } else { "" };
-	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).tooltip(description).widget_holder()];
+	let mut widgets = Vec::with_capacity(6);
+	if exposable {
+		widgets.push(expose_widget(node_id, index, data_type, input.is_exposed()));
+	}
+	widgets.push(TextLabel::new(name).tooltip(description).widget_holder());
 	if blank_assist {
 		add_blank_assist(&mut widgets);
 	}
@@ -109,113 +113,8 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: Fr
 	widgets
 }
 
-trait ChoiceSource {
-	type Value: Sized + Copy + Send + Sync + 'static;
-
-	fn into_index(v: Self::Value) -> Option<u32>;
-	fn into_tagged_value(v: Self::Value) -> TaggedValue;
-	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value>;
-	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>>;
-	fn widget_hint() -> ChoiceWidgetHint;
-	fn description() -> Option<&'static str>;
-}
-
-struct ChoiceSourceStatic<T: ChoiceTypeStatic>(std::marker::PhantomData<T>);
-impl<T> ChoiceSource for ChoiceSourceStatic<T>
-where
-	T: ChoiceTypeStatic + 'static,
-	for<'a> &'a T: TryFrom<&'a TaggedValue>,
-	TaggedValue: From<T>,
-{
-	type Value = T;
-
-	fn into_index(v: Self::Value) -> Option<u32> {
-		Some(v.as_u32())
-	}
-	fn into_tagged_value(v: Self::Value) -> TaggedValue {
-		TaggedValue::from(v)
-	}
-	fn from_tagged_value(tv: Option<&TaggedValue>) -> Option<Self::Value> {
-		let v_ref: Option<&Self::Value> = tv.map(|tv| tv.try_into().ok()).flatten();
-		v_ref.map(|vr| *vr)
-	}
-	fn enumerate() -> impl Iterator<Item = impl Iterator<Item = &'static (Self::Value, VariantMetadata)>> {
-		T::list().into_iter().map(|i| i.into_iter())
-	}
-	fn widget_hint() -> ChoiceWidgetHint {
-		T::WIDGET_HINT
-	}
-	fn description() -> Option<&'static str> {
-		T::DESCRIPTION
-	}
-}
-
-fn enum_source<E: ChoiceTypeStatic>() -> ChoiceSourceStatic<E> {
-	ChoiceSourceStatic(std::marker::PhantomData)
-}
-
-fn choice_widget<E: ChoiceSource>(list: E, parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
-
-	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
-
-	let Some(input) = document_node.inputs.get(index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return LayoutGroup::Row { widgets: vec![] };
-	};
-
-	if let Some(current) = E::from_tagged_value(input.as_non_exposed_value()) {
-		let widget = match E::widget_hint() {
-			ChoiceWidgetHint::Dropdown => dropdown(list, node_id, index, current).widget_holder(),
-			ChoiceWidgetHint::RadioButtons => radio_buttons(list, node_id, index, current).widget_holder(),
-		};
-		widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), widget]);
-	}
-	let mut row = LayoutGroup::Row { widgets };
-	if let Some(desc) = E::description() {
-		row = row.with_tooltip(desc);
-	}
-	row
-}
-
-fn radio_buttons<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> RadioInput {
-	let items = E::enumerate()
-		.into_iter()
-		.flatten()
-		.map(|(item, var_meta)| {
-			let red = RadioEntryData::new(var_meta.name.as_ref())
-				.on_update(update_value(move |_| E::into_tagged_value(*item), node_id, index))
-				.on_commit(commit_value);
-			let red = match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
-				(None, None) => red.label(var_meta.label.as_ref()),
-				(None, Some(doc)) => red.label(var_meta.label.as_ref()).tooltip(doc),
-				(Some(icon), None) => red.icon(icon).tooltip(var_meta.label.as_ref()),
-				(Some(icon), Some(doc)) => red.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
-			};
-			red
-		})
-		.collect();
-
-	RadioInput::new(items).selected_index(E::into_index(current))
-}
-
-fn dropdown<E: ChoiceSource>(_list: E, node_id: NodeId, index: usize, current: E::Value) -> DropdownInput {
-	let items = E::enumerate()
-		.into_iter()
-		.map(|category| {
-			category
-				.into_iter()
-				.map(|(item, var_meta)| {
-					MenuListEntry::new(var_meta.name.as_ref())
-						.label(var_meta.label.as_ref())
-						.on_update(update_value(move |_| E::into_tagged_value(*item), node_id, index))
-						.on_commit(commit_value)
-				})
-				.collect()
-		})
-		.collect();
-
-	DropdownInput::new(items).selected_index(E::into_index(current))
+pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType) -> Vec<WidgetHolder> {
+	start_widgets_exposable(parameter_widgets_info, data_type, true)
 }
 
 pub(crate) fn property_from_type(
@@ -346,7 +245,7 @@ pub mod choice {
 	use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
 	use std::marker::PhantomData;
 
-	trait WidgetFactory {
+	pub trait WidgetFactory {
 		type Value: Clone + 'static;
 
 		fn disabled(self, disabled: bool) -> Self;
@@ -371,7 +270,7 @@ pub mod choice {
 
 	impl<E: ChoiceTypeStatic + 'static> EnumChoice<E> {
 		pub fn for_socket(self, parameter_info: ParameterWidgetsInfo) -> ForSocket<Self> {
-			ForSocket { widget_factory: self, parameter_info }
+			ForSocket { widget_factory: self, parameter_info, exposable: true }
 		}
 		pub fn for_value(self, current: E) -> ForValue<Self> {
 			todo!()
@@ -460,6 +359,7 @@ pub mod choice {
 	pub struct ForSocket<'p, W> {
 		widget_factory: W,
 		parameter_info: ParameterWidgetsInfo<'p>,
+		exposable: bool,
 	}
 
 	impl<'p, W> ForSocket<'p, W>
@@ -476,10 +376,17 @@ pub mod choice {
 			}
 		}
 
+		pub fn exposable(self, exposable: bool) -> Self {
+			Self {
+				exposable,
+				..self
+			}
+		}
+
 		pub fn property_row(self) -> LayoutGroup {
 			let ParameterWidgetsInfo { document_node, node_id, index, .. } = self.parameter_info;
 
-			let mut widgets = super::start_widgets(self.parameter_info, FrontendGraphDataType::General);
+			let mut widgets = super::start_widgets_exposable(self.parameter_info, FrontendGraphDataType::General, self.exposable);
 
 			let Some(input) = document_node.inputs.get(index) else {
 				log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -1384,7 +1291,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	};
 	// Colors choice
 	let colors_index = 38;
-	let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
+	/*let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
 	add_blank_assist(&mut colors);
 
 	let Some(input) = document_node.inputs.get(colors_index) else {
@@ -1393,7 +1300,9 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	};
 	if let Some(&TaggedValue::SelectiveColorChoice(choice)) = input.as_non_exposed_value() {
 		colors.extend([radio_buttons(enum_source::<SelectiveColorChoice>(), node_id, colors_index, choice).widget_holder()]);
-	}
+	}*/
+
+	let colours = enum_choice::<SelectiveColorChoice>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, colors_index, false, context)).exposable(false).property_row();
 
 	let colors_choice_index = match &document_node.inputs[colors_index].as_value() {
 		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
@@ -1446,7 +1355,8 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 
 	vec![
 		// Colors choice
-		LayoutGroup::Row { widgets: colors },
+		//LayoutGroup::Row { widgets: colors },
+		colours,
 		// CMYK
 		LayoutGroup::Row { widgets: cyan },
 		LayoutGroup::Row { widgets: magenta },
