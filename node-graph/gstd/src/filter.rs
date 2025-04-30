@@ -12,9 +12,9 @@ enum ConvertFunction {
 #[node_macro::node(category("Raster"))]
 async fn blur(_: impl Ctx, image_frame: ImageFrameTable<Color>, #[range((0., 100.))] radius: PixelLength, box_blur: bool, gamma: bool) -> ImageFrameTable<Color> {
 	let image_frame_transform = image_frame.transform();
-	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
+	let image_frame_alpha_blending = image_frame.one_instance_ref().alpha_blending;
 
-	let image = image_frame.one_instance().instance.clone();
+	let image = image_frame.one_instance_ref().instance.clone();
 
 	// Run blur algorithm
 	let blurred_image = if radius < 0.1 {
