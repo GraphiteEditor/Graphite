@@ -248,8 +248,6 @@ impl DistributionSnapper {
 				for &right in Self::exact_further_matches(bounds.translate(translation), &self.right, dist_right, distances.equal, 2).iter().skip(1) {
 					vec_left.push_back(right);
 				}
-				// vec_left[0][0].y = min(vec_left[0][0].y, vec_left[1][1].y);
-				// vec_left[0][1].y = min(vec_left[0][1].y, vec_left[1][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Left, vec_left, distances, bounds, translation, tolerance))
 			}
 		}
