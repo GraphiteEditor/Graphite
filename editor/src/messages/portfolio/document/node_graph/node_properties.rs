@@ -270,7 +270,11 @@ pub mod choice {
 
 	impl<E: ChoiceTypeStatic + 'static> EnumChoice<E> {
 		pub fn for_socket(self, parameter_info: ParameterWidgetsInfo) -> ForSocket<Self> {
-			ForSocket { widget_factory: self, parameter_info, exposable: true }
+			ForSocket {
+				widget_factory: self,
+				parameter_info,
+				exposable: true,
+			}
 		}
 		pub fn for_value(self, current: E) -> ForValue<Self> {
 			todo!()
@@ -377,10 +381,7 @@ pub mod choice {
 		}
 
 		pub fn exposable(self, exposable: bool) -> Self {
-			Self {
-				exposable,
-				..self
-			}
+			Self { exposable, ..self }
 		}
 
 		pub fn property_row(self) -> LayoutGroup {
@@ -968,7 +969,6 @@ pub fn cellular_distance_function_widget(parameter_widgets_info: ParameterWidget
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 pub fn cellular_return_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-
 	enum_choice::<CellularReturnType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
 }
 
@@ -1302,7 +1302,10 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 		colors.extend([radio_buttons(enum_source::<SelectiveColorChoice>(), node_id, colors_index, choice).widget_holder()]);
 	}*/
 
-	let colours = enum_choice::<SelectiveColorChoice>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, colors_index, false, context)).exposable(false).property_row();
+	let colours = enum_choice::<SelectiveColorChoice>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, colors_index, false, context))
+		.exposable(false)
+		.property_row();
 
 	let colors_choice_index = match &document_node.inputs[colors_index].as_value() {
 		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
@@ -1388,7 +1391,9 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context)).property_row();
+	let grid_type = enum_choice::<GridType>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context))
+		.property_row();
 
 	let mut widgets = vec![grid_type];
 
@@ -1903,8 +1908,12 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	);
 	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
 	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, dash_offset_index, true, context), number_input);
-	let line_cap = enum_choice::<LineCap>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context)).property_row();
-	let line_join = enum_choice::<LineJoin>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context)).property_row();
+	let line_cap = enum_choice::<LineCap>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context))
+		.property_row();
+	let line_join = enum_choice::<LineJoin>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context))
+		.property_row();
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,
@@ -1940,7 +1949,9 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let number_input = NumberInput::default().unit(" px");
 	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, distance_index, true, context), number_input);
 
-	let line_join = enum_choice::<LineJoin>().for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context)).property_row();
+	let line_join = enum_choice::<LineJoin>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context))
+		.property_row();
 	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
 		Some(TaggedValue::LineJoin(x)) => x,
 		_ => &LineJoin::Miter,
