@@ -2,8 +2,8 @@
 
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT, SELECTION_DRAG_ANGLE,
-	SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, ROTATE_INCREMENT,
+	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -28,6 +28,7 @@ use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::BooleanOperation;
 use std::fmt;
 
@@ -51,8 +52,8 @@ pub enum SelectOptionsUpdate {
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum NestedSelectionBehavior {
 	#[default]
-	Deepest,
 	Shallowest,
+	Deepest,
 }
 
 impl fmt::Display for NestedSelectionBehavior {
@@ -96,7 +97,7 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot {
-		position: PivotPosition,
+		position: ReferencePoint,
 	},
 }
 
@@ -114,7 +115,7 @@ impl ToolMetadata for SelectTool {
 
 impl SelectTool {
 	fn deep_selection_widget(&self) -> WidgetHolder {
-		let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
+		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]
 			.iter()
 			.map(|mode| {
 				MenuListEntry::new(format!("{mode:?}"))
@@ -124,14 +125,14 @@ impl SelectTool {
 			.collect();
 
 		DropdownInput::new(vec![layer_selection_behavior_entries])
-			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
+			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest) as u32))
 			.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
 			.widget_holder()
 	}
 
-	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
-		PivotInput::new(self.tool_data.pivot.to_pivot_position())
-			.on_update(|pivot_input: &PivotInput| SelectToolMessage::SetPivot { position: pivot_input.position }.into())
+	fn pivot_reference_point_widget(&self, disabled: bool) -> WidgetHolder {
+		ReferencePointInput::new(self.tool_data.pivot.to_pivot_position())
+			.on_update(|pivot_input: &ReferencePointInput| SelectToolMessage::SetPivot { position: pivot_input.value }.into())
 			.disabled(disabled)
 			.widget_holder()
 	}
@@ -204,7 +205,7 @@ impl LayoutHolder for SelectTool {
 
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -287,11 +288,24 @@ impl ToolTransition for SelectTool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum SelectToolFsmState {
-	Ready { selection: NestedSelectionBehavior },
-	Drawing { selection_shape: SelectionShapeType, has_drawn: bool },
-	Dragging { axis: Axis, using_compass: bool, has_dragged: bool },
+	Ready {
+		selection: NestedSelectionBehavior,
+	},
+	Drawing {
+		selection_shape: SelectionShapeType,
+		has_drawn: bool,
+	},
+	Dragging {
+		axis: Axis,
+		using_compass: bool,
+		has_dragged: bool,
+		deepest: bool,
+		remove: bool,
+	},
 	ResizingBounds,
-	SkewingBounds { skew: Key },
+	SkewingBounds {
+		skew: Key,
+	},
 	RotatingBounds,
 	DraggingPivot,
 }
@@ -759,7 +773,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					// Update the selection box
-					let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
 						.with_alpha(0.05)
 						.to_rgba_hex_srgb();
@@ -917,7 +931,7 @@ impl Fsm for SelectToolFsmState {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false }
+					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -953,7 +967,8 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
-					if !input.keyboard.key(extend_selection) && !input.keyboard.key(remove_from_selection) {
+					let extend = input.keyboard.key(extend_selection);
+					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
@@ -963,13 +978,13 @@ impl Fsm for SelectToolFsmState {
 						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
-							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, extend),
+							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false }
+						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
@@ -985,7 +1000,16 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis, using_compass, has_dragged }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				},
+				SelectToolMessage::PointerMove(modifier_keys),
+			) => {
 				if !has_dragged {
 					responses.add(ToolMessage::UpdateHints);
 				}
@@ -1027,7 +1051,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current += mouse_delta;
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1038,6 +1062,8 @@ impl Fsm for SelectToolFsmState {
 					axis,
 					using_compass,
 					has_dragged: true,
+					deepest,
+					remove,
 				}
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
@@ -1079,7 +1105,7 @@ impl Fsm for SelectToolFsmState {
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 
-						// AutoPanning
+						// Auto-panning
 						let messages = [
 							SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 							SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1168,7 +1194,7 @@ impl Fsm for SelectToolFsmState {
 				let snapped_mouse_position = mouse_position;
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1189,7 +1215,7 @@ impl Fsm for SelectToolFsmState {
 					extend_lasso(&mut tool_data.lasso_polygon, tool_data.drag_current);
 				}
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1226,17 +1252,32 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Dragging { axis, using_compass, has_dragged }, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+			(
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				},
+				SelectToolMessage::PointerOutsideViewport(_),
+			) => {
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
 				}
 
-				SelectToolFsmState::Dragging { axis, using_compass, has_dragged }
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				}
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
@@ -1247,13 +1288,13 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				self
 			}
 			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
 				}
@@ -1261,7 +1302,7 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1270,7 +1311,7 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::Dragging { has_dragged, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Dragging { has_dragged, remove, deepest, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.axis_align = false;
@@ -1305,15 +1346,28 @@ impl Fsm for SelectToolFsmState {
 								.collect(),
 						});
 					}
-				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
+				} else if tool_data.select_single_layer.take().is_some() {
 					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
 					if !has_dragged {
-						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
-							log::error!("selecting_layer should not be ROOT_PARENT");
-						} else {
-							responses.add(NodeGraphMessage::SelectedNodesSet {
-								nodes: vec![selecting_layer.to_node()],
-							});
+						let selected = document.click_list(input).collect::<Vec<_>>();
+						let intersection = document.find_deepest(&selected);
+						if let Some(intersection) = intersection {
+							tool_data.layer_selected_on_start = Some(intersection);
+
+							match tool_data.nested_selection_behavior {
+								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true, true),
+								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
+								NestedSelectionBehavior::Shallowest if !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, false, true),
+								_ => {
+									responses.add(DocumentMessage::DeselectAllLayers);
+									tool_data.layers_dragging.clear();
+									drag_deepest_manipulation(responses, selected, tool_data, document, false)
+								}
+							}
+
+							tool_data.get_snap_candidates(document, input);
+
+							responses.add(DocumentMessage::StartTransaction);
 						}
 					}
 				}
@@ -1527,7 +1581,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::Dragging { axis, using_compass, has_dragged } if *has_dragged => {
+			SelectToolFsmState::Dragging { axis, using_compass, has_dragged, .. } if *has_dragged => {
 				let mut hint_data = vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![
@@ -1590,16 +1644,59 @@ fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifi
 	|&layer| layer != LayerNodeIdentifier::ROOT_PARENT && !document.network_interface.is_artboard(&layer.to_node(), &[])
 }
 
-fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	for layer in selected {
-		let ancestor = layer
-			.ancestors(document.metadata())
-			.filter(not_artboard(document))
-			.find(|&ancestor| document.network_interface.selected_nodes().selected_layers_contains(ancestor, document.metadata()));
+fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler, remove: bool, exists: bool) {
+	if selected.is_empty() {
+		return;
+	}
 
-		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
-		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
-		tool_data.layers_dragging.push(new_selected);
+	let clicked_layer = document.find_deepest(&selected).unwrap_or_else(|| {
+		LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.next()
+			.expect("ROOT_PARENT should have at least one layer when clicking")
+	});
+
+	let metadata = document.metadata();
+
+	let selected_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+	let final_selection: Option<LayerNodeIdentifier> = (!selected_layers.is_empty() && selected_layers != vec![LayerNodeIdentifier::ROOT_PARENT]).then_some(()).and_then(|_| {
+		let mut relevant_layers = document.network_interface.selected_nodes().selected_layers(document.metadata()).collect::<Vec<_>>();
+		if !relevant_layers.contains(&clicked_layer) {
+			relevant_layers.push(clicked_layer);
+		}
+		clicked_layer
+			.ancestors(metadata)
+			.filter(not_artboard(document))
+			.find(|&ancestor| relevant_layers.iter().all(|layer| *layer == ancestor || ancestor.is_ancestor_of(metadata, layer)))
+			.and_then(|least_common_ancestor| {
+				let common_siblings: Vec<_> = least_common_ancestor.children(metadata).collect();
+				(clicked_layer == least_common_ancestor)
+					.then_some(least_common_ancestor)
+					.or_else(|| common_siblings.iter().find(|&&child| clicked_layer == child || child.is_ancestor_of(metadata, &clicked_layer)).copied())
+			})
+	});
+
+	if final_selection.is_some_and(|layer| selected_layers.iter().any(|selected| layer.is_child_of(metadata, selected))) {
+		if exists && remove && selected_layers.len() == 1 {
+			responses.add(DocumentMessage::DeselectAllLayers);
+			tool_data.layers_dragging.clear();
+		}
+		return;
+	}
+
+	if !exists && !remove {
+		responses.add(DocumentMessage::DeselectAllLayers);
+		tool_data.layers_dragging.clear();
+	}
+
+	let new_selected = final_selection.unwrap_or_else(|| clicked_layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(clicked_layer));
+	tool_data.layers_dragging.extend(vec![new_selected]);
+	tool_data.layers_dragging.retain(|&selected_layer| !selected_layer.is_child_of(metadata, &new_selected));
+	if remove {
+		tool_data.layers_dragging.retain(|&selected_layer| clicked_layer != selected_layer);
+		if selected_layers.contains(&new_selected) {
+			tool_data.layers_dragging.retain(|&selected_layer| new_selected != selected_layer);
+		}
 	}
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
@@ -1618,15 +1715,18 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	});
 }
 
-fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![
-		document.find_deepest(&selected).unwrap_or(
-			LayerNodeIdentifier::ROOT_PARENT
-				.children(document.metadata())
-				.next()
-				.expect("ROOT_PARENT should have a layer child when clicking"),
-		),
-	]);
+fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler, remove: bool) {
+	let layer = document.find_deepest(&selected).unwrap_or(
+		LayerNodeIdentifier::ROOT_PARENT
+			.children(document.metadata())
+			.next()
+			.expect("ROOT_PARENT should have a layer child when clicking"),
+	);
+	if !remove {
+		tool_data.layers_dragging.extend(vec![layer]);
+	} else {
+		tool_data.layers_dragging.retain(|&selected_layer| layer != selected_layer);
+	}
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data
 			.layers_dragging

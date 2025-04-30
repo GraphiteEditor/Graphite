@@ -2,11 +2,12 @@ mod attributes;
 mod indexed;
 mod modification;
 
+use super::misc::point_to_dvec2;
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::ManipulatorGroup;
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -172,6 +173,70 @@ impl VectorData {
 
 			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
 				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg, fill_id);
+			}
+		}
+	}
+
+	/// Appends a Kurbo BezPath to the vector data.
+	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
+		let mut first_point_index = None;
+		let mut last_point_index = None;
+
+		let mut first_segment_id = None;
+		let mut last_segment_id = None;
+
+		let mut point_id = self.point_domain.next_id();
+		let mut segment_id = self.segment_domain.next_id();
+
+		let stroke_id = StrokeId::ZERO;
+		let fill_id = FillId::ZERO;
+
+		for element in bezpath.elements() {
+			match *element {
+				kurbo::PathEl::MoveTo(point) => {
+					let next_point_index = self.point_domain.ids().len();
+					self.point_domain.push(point_id.next_id(), point_to_dvec2(point));
+					first_point_index = Some(next_point_index);
+					last_point_index = Some(next_point_index);
+				}
+				kurbo::PathEl::ClosePath => match (first_point_index, last_point_index) {
+					(Some(first_point_index), Some(last_point_index)) => {
+						let next_segment_id = segment_id.next_id();
+						self.segment_domain.push(next_segment_id, first_point_index, last_point_index, BezierHandles::Linear, stroke_id);
+
+						let next_region_id = self.region_domain.next_id();
+						self.region_domain.push(next_region_id, first_segment_id.unwrap()..=next_segment_id, fill_id);
+					}
+					_ => {
+						error!("Empty bezpath cannot be closed.")
+					}
+				},
+				_ => {}
+			}
+
+			let mut append_path_element = |handle: BezierHandles, point: kurbo::Point| {
+				let next_point_index = self.point_domain.ids().len();
+				self.point_domain.push(point_id.next_id(), point_to_dvec2(point));
+
+				let next_segment_id = segment_id.next_id();
+				self.segment_domain.push(segment_id.next_id(), last_point_index.unwrap(), next_point_index, handle, stroke_id);
+
+				last_point_index = Some(next_point_index);
+				first_segment_id = Some(first_segment_id.unwrap_or(next_segment_id));
+				last_segment_id = Some(next_segment_id);
+			};
+
+			match *element {
+				kurbo::PathEl::LineTo(point) => append_path_element(BezierHandles::Linear, point),
+				kurbo::PathEl::QuadTo(handle, point) => append_path_element(BezierHandles::Quadratic { handle: point_to_dvec2(handle) }, point),
+				kurbo::PathEl::CurveTo(handle_start, handle_end, point) => append_path_element(
+					BezierHandles::Cubic {
+						handle_start: point_to_dvec2(handle_start),
+						handle_end: point_to_dvec2(handle_end),
+					},
+					point,
+				),
+				_ => {}
 			}
 		}
 	}
@@ -368,29 +433,29 @@ impl VectorData {
 		}
 	}
 
-	pub fn concat(&mut self, other: &Self, transform: DAffine2, node_id: u64) {
-		let point_map = other
+	pub fn concat(&mut self, additional: &Self, transform_of_additional: DAffine2, collision_hash_seed: u64) {
+		let point_map = additional
 			.point_domain
 			.ids()
 			.iter()
 			.filter(|id| self.point_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
-		let segment_map = other
+		let segment_map = additional
 			.segment_domain
 			.ids()
 			.iter()
 			.filter(|id| self.segment_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
-		let region_map = other
+		let region_map = additional
 			.region_domain
 			.ids()
 			.iter()
 			.filter(|id| self.region_domain.ids().contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)))
+			.map(|&old| (old, old.generate_from_hash(collision_hash_seed)))
 			.collect::<HashMap<_, _>>();
 
 		let id_map = IdMap {
@@ -400,14 +465,14 @@ impl VectorData {
 			region_map,
 		};
 
-		self.point_domain.concat(&other.point_domain, transform, &id_map);
-		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
-		self.region_domain.concat(&other.region_domain, transform, &id_map);
+		self.point_domain.concat(&additional.point_domain, transform_of_additional, &id_map);
+		self.segment_domain.concat(&additional.segment_domain, transform_of_additional, &id_map);
+		self.region_domain.concat(&additional.region_domain, transform_of_additional, &id_map);
 
 		// TODO: properly deal with fills such as gradients
-		self.style = other.style.clone();
+		self.style = additional.style.clone();
 
-		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
+		self.colinear_manipulators.extend(additional.colinear_manipulators.iter().copied());
 	}
 }
 
@@ -493,6 +558,13 @@ impl ManipulatorPointId {
 	pub fn as_anchor(self) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
+			_ => None,
+		}
+	}
+
+	pub fn get_segment(self) -> Option<SegmentId> {
+		match self {
+			ManipulatorPointId::PrimaryHandle(segment) | ManipulatorPointId::EndHandle(segment) => Some(segment),
 			_ => None,
 		}
 	}

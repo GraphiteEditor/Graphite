@@ -17,17 +17,18 @@ use graphene_core::raster::{
 	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
+use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
 use graphene_std::ops::XY;
-use graphene_std::transform::Footprint;
+use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::{GraphicGroupTable, RasterFrame};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterFrame};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -53,7 +54,11 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
-		.tooltip("Expose this parameter as a node input in the graph")
+		.tooltip(if exposed {
+			"Stop exposing this parameter as a node input in the graph"
+		} else {
+			"Expose this parameter as a node input in the graph"
+		})
 		.on_update(move |_parameter| {
 			Message::Batched(Box::new([
 				NodeGraphMessage::ExposeInput {
@@ -173,6 +178,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<ReferencePoint>() => reference_point_widget(default_info, false).into(),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
 						Some(x) if x == TypeId::of::<RealTimeMode>() => real_time_mode_widget(default_info),
@@ -280,6 +286,27 @@ pub fn bool_widget(parameter_widgets_info: ParameterWidgetsInfo, checkbox_input:
 				.checked(x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
 				.on_commit(commit_value)
+				.widget_holder(),
+		])
+	}
+	widgets
+}
+
+pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::General);
+
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::ReferencePoint(reference_point)) = input.as_non_exposed_value() {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			ReferencePointInput::new(reference_point)
+				.on_update(update_value(move |x: &ReferencePointInput| TaggedValue::ReferencePoint(x.value), node_id, index))
+				.disabled(disabled)
 				.widget_holder(),
 		])
 	}
@@ -1621,11 +1648,11 @@ pub(crate) fn _gpu_map_properties(parameter_widgets_info: ParameterWidgetsInfo) 
 }
 
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let grid_type_index = 1;
-	let spacing_index = 2;
-	let angles_index = 3;
-	let rows_index = 4;
-	let columns_index = 5;
+	let grid_type_index = grid::GridTypeInput::INDEX;
+	let spacing_index = grid::SpacingInput::<f64>::INDEX;
+	let angles_index = grid::AnglesInput::INDEX;
+	let rows_index = grid::RowsInput::INDEX;
+	let columns_index = grid::ColumnsInput::INDEX;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,

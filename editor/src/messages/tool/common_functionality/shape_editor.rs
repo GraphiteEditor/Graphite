@@ -104,6 +104,14 @@ impl ClosestSegment {
 		self.layer
 	}
 
+	pub fn segment(&self) -> SegmentId {
+		self.segment
+	}
+
+	pub fn points(&self) -> [PointId; 2] {
+		self.points
+	}
+
 	pub fn closest_point_to_viewport(&self) -> DVec2 {
 		self.bezier_point_to_viewport
 	}
@@ -128,9 +136,7 @@ impl ClosestSegment {
 	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64, document_metadata: &DocumentMetadata) -> bool {
 		let dist_sq = self.distance_squared(mouse_position);
 		let stroke_width = document_metadata.document_to_viewport.decompose_scale().x.max(1.) * self.stroke_width;
-		let stroke_width_sq = stroke_width * stroke_width;
-		let tolerance_sq = tolerance * tolerance;
-		(stroke_width_sq + tolerance_sq) < dist_sq
+		(stroke_width + tolerance).powi(2) < dist_sq
 	}
 
 	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
@@ -198,6 +204,28 @@ impl ClosestSegment {
 	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool) {
 		let id = self.adjusted_insert(responses);
 		shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection)
+	}
+
+	pub fn calculate_perp(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let tangent = if let (Some(handle1), Some(handle2)) = self.handle_positions(document.metadata()) {
+			(handle1 - handle2).try_normalize()
+		} else {
+			let [first_point, last_point] = self.points();
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) {
+				if let (Some(pos1), Some(pos2)) = (
+					ManipulatorPointId::Anchor(first_point).get_position(&vector_data),
+					ManipulatorPointId::Anchor(last_point).get_position(&vector_data),
+				) {
+					(pos1 - pos2).try_normalize()
+				} else {
+					None
+				}
+			} else {
+				None
+			}
+		}
+		.unwrap_or(DVec2::ZERO);
+		tangent.perp()
 	}
 }
 
@@ -729,7 +757,9 @@ impl ShapeState {
 					let length = transform.transform_vector2(unselected_position - anchor).length();
 					let position = transform.inverse().transform_vector2(direction * length);
 					let modification_type = unselected_handle.set_relative_position(position);
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					if (anchor - selected_position).length() > 1e-6 {
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
 				}
 				// If both handles are selected, average the angles of the handles
 				else {
@@ -775,6 +805,7 @@ impl ShapeState {
 		in_viewport_space: bool,
 		was_alt_dragging: bool,
 		opposite_handle_position: Option<DVec2>,
+		skip_opposite_handle: bool,
 		responses: &mut VecDeque<Message>,
 	) {
 		for (&layer, state) in &self.selected_shape_state {
@@ -816,6 +847,11 @@ impl ShapeState {
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 				let Some(other) = vector_data.other_colinear_handle(handle) else { continue };
+
+				if skip_opposite_handle {
+					continue;
+				}
+
 				if state.is_selected(other.to_manipulator_point()) {
 					// If two colinear handles are being dragged at the same time but not the anchor, it is necessary to break the colinear state.
 					let handles = [handle, other];
@@ -890,6 +926,29 @@ impl ShapeState {
 				Some((layer, opposing_handle_lengths))
 			})
 			.collect::<HashMap<_, _>>()
+	}
+
+	pub fn dissolve_segment(&self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData, segment: SegmentId, points: [PointId; 2]) {
+		// Checking which point is terminal point
+		let is_point1_terminal = vector_data.connected_count(points[0]) == 1;
+		let is_point2_terminal = vector_data.connected_count(points[1]) == 1;
+
+		// Delete the segment and terminal points
+		let modification_type = VectorModificationType::RemoveSegment { id: segment };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		for &handles in vector_data.colinear_manipulators.iter().filter(|handles| handles.iter().any(|handle| handle.segment == segment)) {
+			let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		if is_point1_terminal {
+			let modification_type = VectorModificationType::RemovePoint { id: points[0] };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+		if is_point2_terminal {
+			let modification_type = VectorModificationType::RemovePoint { id: points[1] };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 	}
 
 	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId); 2]> {
