@@ -261,9 +261,19 @@ impl LayerNodeIdentifier {
 		metadata.get_relations(self).and_then(|relations| relations.last_child)
 	}
 
-	/// Does the layer have children? If so, then it is a folder
+	/// Does the layer have children? If so, then it is a folder.
 	pub fn has_children(self, metadata: &DocumentMetadata) -> bool {
 		self.first_child(metadata).is_some()
+	}
+
+	/// Is the layer a child of the given layer?
+	pub fn is_child_of(self, metadata: &DocumentMetadata, parent: &LayerNodeIdentifier) -> bool {
+		parent.children(metadata).any(|child| child == self)
+	}
+
+	/// Is the layer an ancestor of the given layer?
+	pub fn is_ancestor_of(self, metadata: &DocumentMetadata, child: &LayerNodeIdentifier) -> bool {
+		child.ancestors(metadata).any(|ancestor| ancestor == self)
 	}
 
 	/// Iterator over all direct children (excluding self and recursive children)
