@@ -702,7 +702,7 @@ impl Fsm for TextToolFsmState {
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 
-						// AutoPanning
+						// Auto-panning
 						let messages = [
 							TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
 							TextToolMessage::PointerMove { center, lock_ratio }.into(),
@@ -725,7 +725,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::ResizingBounds | TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
