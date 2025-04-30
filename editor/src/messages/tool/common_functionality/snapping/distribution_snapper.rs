@@ -196,8 +196,8 @@ impl DistributionSnapper {
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
-		self.x(consider_x, bounds, tolerance, &mut snap_x, point);
-		self.y(consider_y, bounds, tolerance, &mut snap_y, point);
+		self.horizontal_snap(consider_x, bounds, tolerance / 2., &mut snap_x, point);
+		self.vertical_snap(consider_y, bounds, tolerance / 2., &mut snap_y, point);
 
 		match (snap_x, snap_y) {
 			(Some(x), Some(y)) => {
@@ -220,7 +220,7 @@ impl DistributionSnapper {
 		}
 	}
 
-	fn x(&self, consider_x: bool, bounds: Rect, tolerance: f64, snap_x: &mut Option<SnappedPoint>, point: &SnapCandidatePoint) {
+	fn horizontal_snap(&self, consider_x: bool, bounds: Rect, tolerance: f64, snap_x: &mut Option<SnappedPoint>, point: &SnapCandidatePoint) {
 		// Right
 		if consider_x && !self.right.is_empty() {
 			let (equal_dist, mut vec_right) = Self::top_level_matches(bounds, &self.right, tolerance, dist_right);
@@ -269,7 +269,7 @@ impl DistributionSnapper {
 		}
 	}
 
-	fn y(&self, consider_y: bool, bounds: Rect, tolerance: f64, snap_y: &mut Option<SnappedPoint>, point: &SnapCandidatePoint) {
+	fn vertical_snap(&self, consider_y: bool, bounds: Rect, tolerance: f64, snap_y: &mut Option<SnappedPoint>, point: &SnapCandidatePoint) {
 		// Down
 		if consider_y && !self.down.is_empty() {
 			let (equal_dist, mut vec_down) = Self::top_level_matches(bounds, &self.down, tolerance, dist_down);
@@ -322,7 +322,24 @@ impl DistributionSnapper {
 	}
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
-		let Some(bounds) = config.bbox else { return };
+		let Some(config_bbox) = config.bbox else { return };
+		let Some(layer_bbox) = snap_data
+			.document
+			.metadata()
+			.bounding_box_document(
+				snap_data
+					.document
+					.network_interface
+					.selected_nodes()
+					.selected_unlocked_layers(&snap_data.document.network_interface)
+					.next()
+					.expect("No selected layers"),
+			)
+			.map(|bbox| Rect::from_box(bbox))
+		else {
+			return;
+		};
+		let bounds = config_bbox.intersection(layer_bbox).expect("No Intersection");
 		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint) || !snap_data.document.snapping_state.bounding_box.distribute_evenly {
 			return;
 		}
