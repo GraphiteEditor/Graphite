@@ -1,3 +1,8 @@
+/// Accuracy to find the position on [kurbo::Bezpath].
+const POSITION_ACCURACY: f64 = 1e-3;
+/// Accuracy to find the length of the [kurbo::PathSeg].
+const PERIMETER_ACCURACY: f64 = 1e-3;
+
 use kurbo::{BezPath, ParamCurve, ParamCurveDeriv, PathSeg, Point, Shape};
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
@@ -17,24 +22,19 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
 
 pub fn tvalue_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool) -> (usize, f64) {
 	if euclidian {
-		let (segment_index, t) = t_value_to_parametric(&bezpath, BezPathTValue::GlobalEuclidean(t));
+		let (segment_index, t) = t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t));
 		let segment = bezpath.get_seg(segment_index + 1).unwrap();
 		return (segment_index, eval_pathseg_euclidian(segment, t, POSITION_ACCURACY));
 	}
-	t_value_to_parametric(&bezpath, BezPathTValue::GlobalParametric(t))
+	t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t))
 }
-
-/// Accuracy to find the position on [kurbo::Bezpath].
-const POSITION_ACCURACY: f64 = 1e-3;
-/// Accuracy to find the length of the [kurbo::PathSeg].
-const PERIMETER_ACCURACY: f64 = 1e-3;
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_upto_t / total_length` approximates the input `distance`.
 fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
-	let mut hight_t = 1.;
 	let mut mid_t = 0.5;
+	let mut high_t = 1.;
 
 	let total_length = path.perimeter(accuracy);
 
@@ -44,16 +44,16 @@ fn eval_pathseg_euclidian(path: kurbo::PathSeg, distance: f64, accuracy: f64) ->
 
 	let distance = distance.clamp(0., 1.);
 
-	while hight_t - low_t > accuracy {
+	while high_t - low_t > accuracy {
 		let current_length = path.subsegment(0.0..mid_t).perimeter(accuracy);
 		let current_distance = current_length / total_length;
 
 		if current_distance > distance {
-			hight_t = mid_t;
+			high_t = mid_t;
 		} else {
 			low_t = mid_t;
 		}
-		mid_t = (hight_t + low_t) / 2.;
+		mid_t = (high_t + low_t) / 2.;
 	}
 
 	mid_t
@@ -89,7 +89,7 @@ fn t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue) -> (usize, 
 		BezPathTValue::GlobalEuclidean(t) => {
 			let lengths = bezpath.segments().map(|bezier| bezier.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>();
 			let total_length: f64 = lengths.iter().sum();
-			global_euclidean_to_local_euclidean(&bezpath, t, lengths.as_slice(), total_length)
+			global_euclidean_to_local_euclidean(bezpath, t, lengths.as_slice(), total_length)
 		}
 		BezPathTValue::GlobalParametric(global_t) => {
 			assert!((0.0..=1.).contains(&global_t));

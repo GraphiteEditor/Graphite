@@ -1306,7 +1306,7 @@ async fn position_on_path(
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance;
 
-	let mut bezpaths: Vec<kurbo::BezPath> = vector_data.stroke_bezpath_iter().collect();
+	let mut bezpaths = vector_data.stroke_bezpath_iter().collect::<Vec<kurbo::BezPath>>();
 	let bezpath_count = bezpaths.len() as f64;
 	let progress = progress.clamp(0., bezpath_count);
 	let progress = if reverse { bezpath_count - progress } else { progress };
@@ -1316,8 +1316,7 @@ async fn position_on_path(
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
 		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		let position = position_on_bezpath(&bezpath, t, euclidian);
-		point_to_dvec2(position)
+		point_to_dvec2(position_on_bezpath(bezpath, t, euclidian))
 	})
 }
 
@@ -1340,7 +1339,7 @@ async fn tangent_on_path(
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance;
 
-	let mut bezpaths: Vec<kurbo::BezPath> = vector_data.stroke_bezpath_iter().collect();
+	let mut bezpaths = vector_data.stroke_bezpath_iter().collect::<Vec<kurbo::BezPath>>();
 	let bezpath_count = bezpaths.len() as f64;
 	let progress = progress.clamp(0., bezpath_count);
 	let progress = if reverse { bezpath_count - progress } else { progress };
@@ -1350,10 +1349,10 @@ async fn tangent_on_path(
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
 		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		let mut tangent = point_to_dvec2(tangent_on_bezpath(&bezpath, t, euclidian));
+		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian));
 		if tangent == DVec2::ZERO {
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
-			tangent = point_to_dvec2(tangent_on_bezpath(&bezpath, t, euclidian));
+			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian));
 		}
 		if tangent == DVec2::ZERO {
 			return 0.;
