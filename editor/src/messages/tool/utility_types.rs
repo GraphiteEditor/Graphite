@@ -240,9 +240,9 @@ impl LayoutHolder for ToolData {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
-						.disabled( false)
-						.active( self.active_tool_type == tool_type)
-						.tooltip( tooltip.clone())
+						.disabled(false)
+						.active(self.active_tool_type == tool_type)
+						.tooltip(tooltip.clone())
 						.tooltip_shortcut(tooltip_shortcut)
 						.on_update(move |_| {
 							if !tooltip.contains("Coming Soon") {
