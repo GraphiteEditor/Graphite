@@ -8,11 +8,9 @@ css = ["/page/donate.css", "/component/feature-box.css"]
 <section>
 <div class="block">
 
-# Support Graphite
+# Funding creativity, not corporations
 
-**Safeguard the sustainable, independent future of quality open source creative software.**
-
-Graphite is 100% built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, legal costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the big next step as support grows.
+**Own your tools. Own your art.** Invest in the sustainable, independent future of high-quality creative software that's free, and always will be.
 
 <p class="call-to-action">
 
@@ -23,10 +21,12 @@ Graphite is 100% built and funded by the community. Your contributions directly 
 
 <span>
 <a href="#supporter-memberships" class="button arrow">Donate: without an account</a>
-<em>Be done in just a few clicks</em>
+<em>Start to finish in several seconds</em>
 </span>
 
 </p>
+
+Graphite is 100% built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, operational costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the next crucial milestone.
 
 </div>
 </section>

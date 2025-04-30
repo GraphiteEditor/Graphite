@@ -275,7 +275,7 @@ pub trait GraphicElementRendered {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]>;
 
 	// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
@@ -330,7 +330,11 @@ impl GraphicElementRendered for GraphicGroupTable {
 			let alpha_blending = *instance.alpha_blending;
 
 			let mut layer = false;
-			if let Some(bounds) = self.instance_ref_iter().filter_map(|element| element.instance.bounding_box(transform)).reduce(Quad::combine_bounds) {
+			if let Some(bounds) = self
+				.instance_ref_iter()
+				.filter_map(|element| element.instance.bounding_box(transform, true))
+				.reduce(Quad::combine_bounds)
+			{
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
 					_ => alpha_blending.blend_mode.into(),
@@ -355,9 +359,9 @@ impl GraphicElementRendered for GraphicGroupTable {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.instance_ref_iter()
-			.filter_map(|element| element.instance.bounding_box(transform * *element.transform))
+			.filter_map(|element| element.instance.bounding_box(transform * *element.transform, include_stroke))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -613,9 +617,13 @@ impl GraphicElementRendered for VectorDataTable {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.instance_ref_iter()
 			.flat_map(|instance| {
+				if !include_stroke {
+					return instance.instance.bounding_box_with_transform(transform * *instance.transform);
+				}
+
 				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
 
 				let miter_limit = instance.instance.style.stroke().map(|s| s.line_join_miter_limit).unwrap_or(1.);
@@ -761,12 +769,15 @@ impl GraphicElementRendered for Artboard {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
 		if self.clip {
 			Some(artboard_bounds)
 		} else {
-			[self.graphic_group.bounding_box(transform), Some(artboard_bounds)].into_iter().flatten().reduce(Quad::combine_bounds)
+			[self.graphic_group.bounding_box(transform, include_stroke), Some(artboard_bounds)]
+				.into_iter()
+				.flatten()
+				.reduce(Quad::combine_bounds)
 		}
 	}
 
@@ -808,8 +819,10 @@ impl GraphicElementRendered for ArtboardGroupTable {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter().filter_map(|instance| instance.instance.bounding_box(transform)).reduce(Quad::combine_bounds)
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.filter_map(|instance| instance.instance.bounding_box(transform, include_stroke))
+			.reduce(Quad::combine_bounds)
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
@@ -882,7 +895,7 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
 		self.instance_ref_iter()
 			.flat_map(|instance| {
 				let transform = transform * *instance.transform;
@@ -924,7 +937,7 @@ impl GraphicElementRendered for RasterFrame {
 			let image_transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			let layer = blend_mode != Default::default();
 
-			let Some(bounds) = self.bounding_box(transform) else { return };
+			let Some(bounds) = self.bounding_box(transform, true) else { return };
 			let blending = vello::peniko::BlendMode::new(blend_mode.blend_mode.into(), vello::peniko::Compose::SrcOver);
 
 			if layer {
@@ -964,7 +977,7 @@ impl GraphicElementRendered for RasterFrame {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
 		let transform = transform * self.transform();
 		(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
@@ -1002,11 +1015,11 @@ impl GraphicElementRendered for GraphicElement {
 		}
 	}
 
-	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
-			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform),
-			GraphicElement::RasterFrame(raster) => raster.bounding_box(transform),
-			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
+			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
+			GraphicElement::RasterFrame(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}
 
@@ -1078,7 +1091,7 @@ impl<P: Primitive> GraphicElementRendered for P {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(format!("{self}")));
 	}
 
-	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
 		None
 	}
 
@@ -1106,7 +1119,7 @@ impl GraphicElementRendered for Option<Color> {
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
 
-	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
 		None
 	}
 
@@ -1130,7 +1143,7 @@ impl GraphicElementRendered for Vec<Color> {
 		}
 	}
 
-	fn bounding_box(&self, _transform: DAffine2) -> Option<[DVec2; 2]> {
+	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
 		None
 	}
 
