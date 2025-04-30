@@ -4198,7 +4198,6 @@ impl NodeNetworkInterface {
 					let Some(downstream_nodes) = outward_wires.get(&current_node) else { continue };
 					for downstream_node in downstream_nodes {
 						if let InputConnector::Node { node_id: downstream_id, .. } = downstream_node {
-							let downstream_node_output = OutputConnector::node(*downstream_id, 0);
 							if !delete_nodes.contains(downstream_id) {
 								can_delete = false;
 								break;

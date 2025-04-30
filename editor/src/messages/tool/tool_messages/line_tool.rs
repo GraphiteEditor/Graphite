@@ -448,7 +448,8 @@ fn generate_line(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: 
 #[cfg(test)]
 mod test_line_tool {
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-	use crate::{messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer, test_utils::test_prelude::*};
+	use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graph_craft::document::value::TaggedValue;
 
