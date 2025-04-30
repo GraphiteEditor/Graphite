@@ -47,7 +47,9 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		if !self.active { return; }
+		if !self.active {
+			return;
+		}
 
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -90,8 +92,7 @@ impl Pivot {
 		if !overlay_context.visibility_settings.pivot() {
 			self.active = false;
 			return;
-		}
-		else {
+		} else {
 			self.active = true;
 		}
 
@@ -119,8 +120,10 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		if !self.active { return; }
-		
+		if !self.active {
+			return;
+		}
+
 		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			// Only update the pivot when computed position is finite.
@@ -134,8 +137,10 @@ impl Pivot {
 
 	/// Set the pivot using the normalized transform that is set above.
 	pub fn set_normalized_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		if !self.active { return; }
-		
+		if !self.active {
+			return;
+		}
+
 		self.set_viewport_position(self.transform_from_normalized.transform_point2(position), document, responses);
 	}
 

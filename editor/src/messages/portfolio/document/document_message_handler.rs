@@ -1173,7 +1173,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
-				
+
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}

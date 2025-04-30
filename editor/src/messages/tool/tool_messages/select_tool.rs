@@ -1048,7 +1048,7 @@ impl Fsm for SelectToolFsmState {
 
 				let mouse_delta = snap_drag(start, current, tool_data.axis_align, axis, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 				let mouse_delta = match axis {
-					Axis::X =>  mouse_delta.project_onto(e0),
+					Axis::X => mouse_delta.project_onto(e0),
 					Axis::Y => mouse_delta.project_onto(e0.perp()),
 					Axis::None => mouse_delta,
 				};

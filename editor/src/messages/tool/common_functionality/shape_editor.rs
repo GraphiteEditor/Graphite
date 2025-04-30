@@ -573,12 +573,7 @@ impl ShapeState {
 	/// Deselects all the anchors across every selected layer.
 	pub fn deselect_all_anchors(&mut self) {
 		for (_, state) in self.selected_shape_state.iter_mut() {
-			let selected_anchor_points: Vec<ManipulatorPointId> = state
-				.selected_points
-				.iter()
-				.filter(|selected_point| selected_point.as_anchor().is_some())
-				.cloned()
-				.collect();
+			let selected_anchor_points: Vec<ManipulatorPointId> = state.selected_points.iter().filter(|selected_point| selected_point.as_anchor().is_some()).cloned().collect();
 
 			for point in selected_anchor_points {
 				state.deselect_point(point);
@@ -589,12 +584,7 @@ impl ShapeState {
 	/// Deselects all the handles across every selected layer.
 	pub fn deselect_all_handles(&mut self) {
 		for (_, state) in self.selected_shape_state.iter_mut() {
-			let selected_handle_points: Vec<ManipulatorPointId> = state
-				.selected_points
-				.iter()
-				.filter(|selected_point| selected_point.as_handle().is_some())
-				.cloned()
-				.collect();
+			let selected_handle_points: Vec<ManipulatorPointId> = state.selected_points.iter().filter(|selected_point| selected_point.as_handle().is_some()).cloned().collect();
 
 			for point in selected_handle_points {
 				state.deselect_point(point);
