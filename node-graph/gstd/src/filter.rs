@@ -4,13 +4,20 @@ use graphene_core::raster::{Bitmap, BitmapMut};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{Color, Ctx};
 
-enum ConvertFunction {
-	ToLinear,
-	ToGamma,
-}
-
-#[node_macro::node(category("Raster"))]
-async fn blur(_: impl Ctx, image_frame: ImageFrameTable<Color>, #[range((0., 100.))] radius: PixelLength, box_blur: bool, gamma: bool) -> ImageFrameTable<Color> {
+/// Blurs the image with a Gaussian or blur kernel filter.
+#[node_macro::node(category("Raster: Filter"))]
+async fn blur(
+	_: impl Ctx,
+	/// The image to be blurred.
+	image_frame: ImageFrameTable<Color>,
+	/// The radius of the blur kernel.
+	#[range((0., 100.))]
+	radius: PixelLength,
+	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
+	box_blur: bool,
+	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
+	gamma: bool,
+) -> ImageFrameTable<Color> {
 	let image_frame_transform = image_frame.transform();
 	let image_frame_alpha_blending = image_frame.one_instance_ref().alpha_blending;
 
@@ -33,19 +40,9 @@ async fn blur(_: impl Ctx, image_frame: ImageFrameTable<Color>, #[range((0., 100
 	result
 }
 
-// Helper to convert image buffer to linear/nonlinear color spaces in-place
-fn convert_color_space(image: &mut Image<Color>, convert: ConvertFunction) {
-	for pixel in image.data.iter_mut() {
-		*pixel = match convert {
-			ConvertFunction::ToLinear => pixel.to_linear_srgb(),
-			ConvertFunction::ToGamma => pixel.to_gamma_srgb(),
-		};
-	}
-}
-
 // 1D gaussian kernel
 fn gaussian_kernel(radius: f64) -> Vec<f64> {
-	// Given radius, compute size of kernel -> 3*radius (approx.)
+	// Given radius, compute the size of the kernel that's approximately three times the radius
 	let kernel_radius = (3. * radius).ceil() as usize;
 	let kernel_size = 2 * kernel_radius + 1;
 	let mut gaussian_kernel: Vec<f64> = vec![0.; kernel_size];
@@ -71,10 +68,11 @@ fn gaussian_kernel(radius: f64) -> Vec<f64> {
 
 fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
 	if gamma {
-		convert_color_space(&mut original_buffer, ConvertFunction::ToGamma)
+		original_buffer.map_pixels(|px| px.to_gamma_srgb().to_associated_alpha(px.a()));
+	} else {
+		original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
 	}
 
-	original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
 	let (width, height) = original_buffer.dimensions();
 
 	// Create 1D gaussian kernel
@@ -123,19 +121,21 @@ fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma
 	}
 
 	if gamma {
-		convert_color_space(&mut y_axis, ConvertFunction::ToLinear);
+		y_axis.map_pixels(|px| px.to_linear_srgb().to_unassociated_alpha());
+	} else {
+		y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	}
 
-	y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	y_axis
 }
 
 fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
 	if gamma {
-		convert_color_space(&mut original_buffer, ConvertFunction::ToGamma)
+		original_buffer.map_pixels(|px| px.to_gamma_srgb().to_associated_alpha(px.a()));
+	} else {
+		original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
 	}
 
-	original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
 	let (width, height) = original_buffer.dimensions();
 	let mut x_axis = Image::new(width, height, Color::TRANSPARENT);
 	let mut y_axis = Image::new(width, height, Color::TRANSPARENT);
@@ -170,9 +170,10 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 	}
 
 	if gamma {
-		convert_color_space(&mut y_axis, ConvertFunction::ToLinear);
+		y_axis.map_pixels(|px| px.to_linear_srgb().to_unassociated_alpha());
+	} else {
+		y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	}
 
-	y_axis.map_pixels(|px| px.to_unassociated_alpha());
 	y_axis
 }
