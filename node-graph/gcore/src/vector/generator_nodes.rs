@@ -150,11 +150,11 @@ impl GridSpacing for DVec2 {
 }
 
 #[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
-fn grid<T: GridSpacing>(
+fn grid<T: GridSpacing + std::cmp::PartialOrd + FromPrimitive>(
 	_: impl Ctx,
 	_primary: (),
 	grid_type: GridType,
-	#[min(0.)]
+	#[hard_min(0.)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
 	spacing: T,

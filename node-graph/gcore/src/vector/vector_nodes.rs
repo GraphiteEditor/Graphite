@@ -879,8 +879,8 @@ async fn generate_handles(
 // 	_: impl Ctx,
 // 	source: VectorDataTable,
 // 	#[default(1.)]
-// 	#[min(1.)]
-// 	#[max(8.)]
+// 	#[hard_min(1.)]
+// 	#[soft_max(8.)]
 // 	subdivisions: f64,
 // ) -> VectorDataTable {
 // 	let source_transform = source.transform();
