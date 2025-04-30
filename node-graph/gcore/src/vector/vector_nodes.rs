@@ -1,5 +1,6 @@
+use super::algorithms::bezpath_algorithms::{position_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
-use super::misc::CentroidType;
+use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
@@ -14,6 +15,7 @@ use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
+use kurbo::Affine;
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1304,16 +1306,17 @@ async fn position_on_path(
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance;
 
-	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
-	let progress = progress.clamp(0., subpaths_count);
-	let progress = if reverse { subpaths_count - progress } else { progress };
-	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+	let mut bezpaths = vector_data.stroke_bezpath_iter().collect::<Vec<kurbo::BezPath>>();
+	let bezpath_count = bezpaths.len() as f64;
+	let progress = progress.clamp(0., bezpath_count);
+	let progress = if reverse { bezpath_count - progress } else { progress };
+	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	vector_data.stroke_bezier_paths().nth(index).map_or(DVec2::ZERO, |mut subpath| {
-		subpath.apply_transform(vector_data_transform);
+	bezpaths.get_mut(index).map_or(DVec2::ZERO, |bezpath| {
+		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		let t = if progress == subpaths_count { 1. } else { progress.fract() };
-		subpath.evaluate(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) })
+		point_to_dvec2(position_on_bezpath(bezpath, t, euclidian))
 	})
 }
 
@@ -1336,19 +1339,20 @@ async fn tangent_on_path(
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance;
 
-	let subpaths_count = vector_data.stroke_bezier_paths().count() as f64;
-	let progress = progress.clamp(0., subpaths_count);
-	let progress = if reverse { subpaths_count - progress } else { progress };
-	let index = if progress >= subpaths_count { (subpaths_count - 1.) as usize } else { progress as usize };
+	let mut bezpaths = vector_data.stroke_bezpath_iter().collect::<Vec<kurbo::BezPath>>();
+	let bezpath_count = bezpaths.len() as f64;
+	let progress = progress.clamp(0., bezpath_count);
+	let progress = if reverse { bezpath_count - progress } else { progress };
+	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	vector_data.stroke_bezier_paths().nth(index).map_or(0., |mut subpath| {
-		subpath.apply_transform(vector_data_transform);
+	bezpaths.get_mut(index).map_or(0., |bezpath| {
+		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		let t = if progress == subpaths_count { 1. } else { progress.fract() };
-		let mut tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian));
 		if tangent == DVec2::ZERO {
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
-			tangent = subpath.tangent(if euclidian { SubpathTValue::GlobalEuclidean(t) } else { SubpathTValue::GlobalParametric(t) });
+			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian));
 		}
 		if tangent == DVec2::ZERO {
 			return 0.;
