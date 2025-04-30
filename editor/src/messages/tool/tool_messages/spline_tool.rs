@@ -537,6 +537,7 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 
 #[cfg(test)]
 mod test_spline_tool {
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -798,5 +799,49 @@ mod test_spline_tool {
 
 		// Assert all points are correctly positioned
 		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+	}
+
+	#[tokio::test]
+	async fn test_spline_tool_with_transformed_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Artboard, 0., 0., 500., 500., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let artboard_layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
+
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard_layer,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 1.2), 30_f64.to_radians(), DVec2::new(50., 25.)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let spline_points = [DVec2::new(100., 100.), DVec2::new(200., 150.), DVec2::new(300., 100.)];
+
+		editor.draw_spline(&spline_points).await;
+
+		let document = editor.active_document();
+
+		let mut layers = document.metadata().all_layers();
+		layers.next();
+
+		let spline_layer = layers.next().expect("Failed to find the spline layer");
+		assert!(find_spline(document, spline_layer).is_some(), "Spline node not found in the layer");
+
+		let vector_data = document.network_interface.compute_modified_vector(spline_layer).expect("Vector data not found for the spline layer");
+
+		// Verify we have the correct number of points and segments
+		let point_count = vector_data.point_domain.ids().len();
+		let segment_count = vector_data.segment_domain.ids().len();
+
+		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {}", point_count);
+		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {}", segment_count);
+
+		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
+
+		assert_point_positions(&vector_data, layer_to_viewport, &spline_points, 1e-10);
 	}
 }
