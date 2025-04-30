@@ -931,7 +931,7 @@ impl Fsm for SelectToolFsmState {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection)}
+					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotating_bounds {
@@ -967,7 +967,7 @@ impl Fsm for SelectToolFsmState {
 				// Dragging a selection box
 				else {
 					tool_data.layers_dragging = selected;
-          let extend = input.keyboard.key(extend_selection);
+					let extend = input.keyboard.key(extend_selection);
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
@@ -984,7 +984,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-            SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection)}
+						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
@@ -1051,7 +1051,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current += mouse_delta;
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1105,7 +1105,7 @@ impl Fsm for SelectToolFsmState {
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 
-						// AutoPanning
+						// Auto-panning
 						let messages = [
 							SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 							SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1194,7 +1194,7 @@ impl Fsm for SelectToolFsmState {
 				let snapped_mouse_position = mouse_position;
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1215,7 +1215,7 @@ impl Fsm for SelectToolFsmState {
 					extend_lasso(&mut tool_data.lasso_polygon, tool_data.drag_current);
 				}
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1262,7 +1262,7 @@ impl Fsm for SelectToolFsmState {
 				},
 				SelectToolMessage::PointerOutsideViewport(_),
 			) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
@@ -1277,7 +1277,7 @@ impl Fsm for SelectToolFsmState {
 				}
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
@@ -1288,13 +1288,13 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				self
 			}
 			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
 				}
@@ -1302,7 +1302,7 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
 					SelectToolMessage::PointerMove(modifier_keys).into(),
@@ -1349,11 +1349,11 @@ impl Fsm for SelectToolFsmState {
 				} else if tool_data.select_single_layer.take().is_some() {
 					// Previously, we may have had many layers selected. If the user clicks without dragging, we should just select the one layer that has been clicked.
 					if !has_dragged {
-						let intersection_list = document.click_list(input).collect::<Vec<_>>();
-						let intersection = document.find_deepest(&intersection_list);
+						let selected = document.click_list(input).collect::<Vec<_>>();
+						let intersection = document.find_deepest(&selected);
 						if let Some(intersection) = intersection {
 							tool_data.layer_selected_on_start = Some(intersection);
-							let selected = intersection_list;
+
 							match tool_data.nested_selection_behavior {
 								NestedSelectionBehavior::Shallowest if remove && !deepest => drag_shallowest_manipulation(responses, selected, tool_data, document, true, true),
 								NestedSelectionBehavior::Deepest if remove => drag_deepest_manipulation(responses, selected, tool_data, document, true),
@@ -1364,6 +1364,7 @@ impl Fsm for SelectToolFsmState {
 									drag_deepest_manipulation(responses, selected, tool_data, document, false)
 								}
 							}
+
 							tool_data.get_snap_candidates(document, input);
 
 							responses.add(DocumentMessage::StartTransaction);
