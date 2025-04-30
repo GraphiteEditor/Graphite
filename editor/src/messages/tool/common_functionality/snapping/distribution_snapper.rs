@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
+use js_sys::Math::min;
 
 #[derive(Clone, Debug, Default)]
 pub struct DistributionSnapper {
@@ -196,8 +197,8 @@ impl DistributionSnapper {
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
-		self.horizontal_snap(consider_x, bounds, tolerance / 2., &mut snap_x, point);
-		self.vertical_snap(consider_y, bounds, tolerance / 2., &mut snap_y, point);
+		self.horizontal_snap(consider_x, bounds, tolerance, &mut snap_x, point);
+		self.vertical_snap(consider_y, bounds, tolerance, &mut snap_y, point);
 
 		match (snap_x, snap_y) {
 			(Some(x), Some(y)) => {
@@ -227,11 +228,13 @@ impl DistributionSnapper {
 			if let Some(distances) = equal_dist {
 				let translation = DVec2::X * (distances.first - distances.equal);
 				vec_right.push_front(bounds.translate(translation));
-
 				for &left in Self::exact_further_matches(bounds.translate(translation), &self.left, dist_left, distances.equal, 2).iter().skip(1) {
 					vec_right.push_front(left);
 				}
+				trace!("{:?}", vec_right);
 
+				vec_right[0][0].y = min(vec_right[0][0].y, vec_right[1][1].y);
+				vec_right[0][1].y = min(vec_right[0][1].y, vec_right[1][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distances, bounds, translation, tolerance))
 			}
 		}
@@ -243,11 +246,13 @@ impl DistributionSnapper {
 				let translation = -DVec2::X * (distances.first - distances.equal);
 				vec_left.make_contiguous().reverse();
 				vec_left.push_back(bounds.translate(translation));
+				trace!("{:?}", bounds);
 
 				for &right in Self::exact_further_matches(bounds.translate(translation), &self.right, dist_right, distances.equal, 2).iter().skip(1) {
 					vec_left.push_back(right);
 				}
-
+				// vec_left[0][0].y = min(vec_left[0][0].y, vec_left[1][1].y);
+				// vec_left[0][1].y = min(vec_left[0][1].y, vec_left[1][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Left, vec_left, distances, bounds, translation, tolerance))
 			}
 		}
@@ -263,7 +268,10 @@ impl DistributionSnapper {
 				let equal = bounds.translate(translation).min().x - self.left[0].max().x;
 				let first = equal + offset;
 				let distances = DistributionMatch { first, equal };
-				let boxes = VecDeque::from([self.left[0], bounds.translate(translation), self.right[0]]);
+
+				let mut boxes = VecDeque::from([self.left[0], bounds.translate(translation), self.right[0]]);
+				boxes[1][0].y = min(boxes[1][0].y, boxes[0][1].y);
+				boxes[1][1].y = min(boxes[1][1].y, boxes[0][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::X, boxes, distances, bounds, translation, tolerance))
 			}
 		}
@@ -280,7 +288,9 @@ impl DistributionSnapper {
 				for &up in Self::exact_further_matches(bounds.translate(translation), &self.up, dist_up, distances.equal, 2).iter().skip(1) {
 					vec_down.push_front(up);
 				}
-
+				vec_down[0][0].x = min(vec_down[0][0].x, vec_down[1][1].x);
+				vec_down[0][1].x = min(vec_down[0][1].x, vec_down[1][1].x);
+				trace!("{:?}", vec_down);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distances, bounds, translation, tolerance))
 			}
 		}
@@ -296,7 +306,7 @@ impl DistributionSnapper {
 				for &down in Self::exact_further_matches(bounds.translate(translation), &self.down, dist_down, distances.equal, 2).iter().skip(1) {
 					vec_up.push_back(down);
 				}
-
+				trace!("{:?}", vec_up);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Up, vec_up, distances, bounds, translation, tolerance))
 			}
 		}
@@ -314,32 +324,17 @@ impl DistributionSnapper {
 				let first = equal + offset;
 				let distances = DistributionMatch { first, equal };
 
-				let boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
-
+				let mut boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
+				trace!("{:?}", boxes);
+				boxes[1][0].x = min(boxes[1][0].x, boxes[0][1].x);
+				boxes[1][1].x = min(boxes[1][1].x, boxes[0][1].x);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance))
 			}
 		}
 	}
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
-		let Some(config_bbox) = config.bbox else { return };
-		let Some(layer_bbox) = snap_data
-			.document
-			.metadata()
-			.bounding_box_document(
-				snap_data
-					.document
-					.network_interface
-					.selected_nodes()
-					.selected_unlocked_layers(&snap_data.document.network_interface)
-					.next()
-					.expect("No selected layers"),
-			)
-			.map(|bbox| Rect::from_box(bbox))
-		else {
-			return;
-		};
-		let bounds = config_bbox.intersection(layer_bbox).expect("No Intersection");
+		let Some(bounds) = config.bbox else { return };
 		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint) || !snap_data.document.snapping_state.bounding_box.distribute_evenly {
 			return;
 		}
