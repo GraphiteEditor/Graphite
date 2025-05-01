@@ -240,6 +240,7 @@ impl EditorTestUtils {
 
 		self.press(Key::Enter, ModifierKeys::empty()).await;
 	}
+
 	pub async fn get_selected_layer(&mut self) -> Option<LayerNodeIdentifier> {
 		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
 	}
@@ -253,6 +254,30 @@ impl EditorTestUtils {
 			},
 			modifier_keys: ModifierKeys::empty(),
 		})
+		.await;
+	}
+
+	pub async fn drag_path(&mut self, points: &[DVec2], modifier_keys: ModifierKeys) {
+		if points.is_empty() {
+			return;
+		}
+
+		let first_point = points[0];
+		self.move_mouse(first_point.x, first_point.y, modifier_keys, MouseKeys::empty()).await;
+		self.left_mousedown(first_point.x, first_point.y, modifier_keys).await;
+
+		for &point in &points[1..] {
+			self.move_mouse(point.x, point.y, modifier_keys, MouseKeys::LEFT).await;
+		}
+
+		self.mouseup(
+			EditorMouseState {
+				editor_position: points[points.len() - 1],
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys,
+		)
 		.await;
 	}
 }
