@@ -930,6 +930,8 @@ impl Color {
 
 	#[inline(always)]
 	pub fn gamma(&self, gamma: f32) -> Color {
+		let gamma = gamma.max(0.0001);
+
 		// From https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
 		let inverse_gamma = 1. / gamma;
 		self.map_rgb(|c: f32| c.powf(inverse_gamma))

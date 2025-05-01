@@ -12,6 +12,7 @@ async fn blur(
 	image_frame: ImageFrameTable<Color>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
+	#[hard_min(0.)]
 	radius: PixelLength,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
 	box_blur: bool,
