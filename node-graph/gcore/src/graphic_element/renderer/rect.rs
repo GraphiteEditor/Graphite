@@ -75,23 +75,6 @@ impl Rect {
 		mina.x <= maxb.x && minb.x <= maxa.x && mina.y <= maxb.y && minb.y <= maxa.y
 	}
 
-	/// Find intersection
-	#[must_use]
-	pub fn intersection(&self, other: Self) -> Option<Rect> {
-		if !self.intersects(other) {
-			return None;
-		}
-		let [mina, maxa] = [self[0].min(self[1]), self[0].max(self[1])];
-		let [minb, maxb] = [other[0].min(other[1]), other[0].max(other[1])];
-
-		let min_x = mina.x.max(minb.x);
-		let min_y = mina.y.max(minb.y);
-		let max_x = maxa.x.min(maxb.x);
-		let max_y = maxa.y.min(maxb.y);
-
-		Some(Rect::from_box([DVec2::new(min_x, min_y), DVec2::new(max_x, max_y)]))
-	}
-
 	/// Does this rect contain a point
 	#[must_use]
 	pub fn contains(&self, p: DVec2) -> bool {
