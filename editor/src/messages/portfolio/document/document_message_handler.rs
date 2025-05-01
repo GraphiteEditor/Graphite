@@ -12,6 +12,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
+use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
@@ -85,7 +86,7 @@ pub struct DocumentMessageHandler {
 	pub view_mode: ViewMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	pub overlays_visible: bool,
+	pub overlays_visibility_settings: OverlaysVisibilitySettings,
 	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 	pub rulers_visible: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
@@ -146,7 +147,7 @@ impl Default for DocumentMessageHandler {
 			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			overlays_visible: true,
+			overlays_visibility_settings: OverlaysVisibilitySettings::default(),
 			rulers_visible: true,
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
@@ -201,12 +202,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.navigation_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::Overlays(message) => {
-				let overlays_visible = self.overlays_visible;
+				let visibility_settings = self.overlays_visibility_settings;
+
+				// Send the overlays message to the overlays message handler
 				self.overlays_message_handler.process_message(
 					message,
 					responses,
 					OverlaysMessageData {
-						overlays_visible,
+						visibility_settings,
 						ipp,
 						device_pixel_ratio,
 					},
@@ -349,6 +352,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+				if !overlay_context.visibility_settings.artboard_name() {
+					return;
+				}
+
 				for layer in self.metadata().all_layers() {
 					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -686,15 +693,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						insert_index: calculated_insert_index,
 					});
 
-					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
-					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
-					let transform = undo_transform * layer_local_transform;
-					responses.add(GraphOperationMessage::TransformSet {
-						layer: layer_to_move,
-						transform,
-						transform_in: TransformIn::Local,
-						skip_rerender: false,
-					});
+					if layer_to_move.parent(self.metadata()) != Some(parent) {
+						let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
+						let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+						let transform = undo_transform * layer_local_transform;
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: layer_to_move,
+							transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1016,6 +1025,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
+				if !self.overlays_visibility_settings.selection_outline() {
+					return;
+				}
+
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata.all_layers().filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[])).filter(|&layer| {
 					self.network_interface.selected_nodes().layer_visible(layer, &self.network_interface) && !self.network_interface.selected_nodes().layer_locked(layer, &self.network_interface)
@@ -1135,8 +1148,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
-			DocumentMessage::SetOverlaysVisibility { visible } => {
-				self.overlays_visible = visible;
+			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
+				let visibility_settings = &mut self.overlays_visibility_settings;
+				let overlays_type = match overlays_type {
+					Some(overlays_type) => overlays_type,
+					None => {
+						visibility_settings.all = visible;
+						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(OverlaysMessage::Draw);
+						return;
+					}
+				};
+				match overlays_type {
+					OverlaysType::ArtboardName => visibility_settings.artboard_name = visible,
+					OverlaysType::CompassRose => visibility_settings.compass_rose = visible,
+					OverlaysType::QuickMeasurement => visibility_settings.quick_measurement = visible,
+					OverlaysType::TransformMeasurement => visibility_settings.transform_measurement = visible,
+					OverlaysType::TransformCage => visibility_settings.transform_cage = visible,
+					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
+					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
+					OverlaysType::Pivot => visibility_settings.pivot = visible,
+					OverlaysType::Path => visibility_settings.path = visible,
+					OverlaysType::Anchors => {
+						visibility_settings.anchors = visible;
+						responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					}
+					OverlaysType::Handles => visibility_settings.handles = visible,
+				}
+
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -1238,7 +1277,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ToggleOverlaysVisibility => {
-				self.overlays_visible = !self.overlays_visible;
+				self.overlays_visibility_settings.all = !self.overlays_visibility_settings.all();
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -1679,7 +1718,7 @@ impl DocumentMessageHandler {
 					pub view_mode: ViewMode,
 					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-					pub overlays_visible: bool,
+					pub overlays_visibility_settings: OverlaysVisibilitySettings,
 					/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 					pub rulers_visible: bool,
 					/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
@@ -1695,7 +1734,7 @@ impl DocumentMessageHandler {
 					document_ptz: old_message_handler.document_ptz,
 					document_mode: old_message_handler.document_mode,
 					view_mode: old_message_handler.view_mode,
-					overlays_visible: old_message_handler.overlays_visible,
+					overlays_visibility_settings: old_message_handler.overlays_visibility_settings,
 					rulers_visible: old_message_handler.rulers_visible,
 					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
 					snapping_state: old_message_handler.snapping_state,
@@ -2053,11 +2092,17 @@ impl DocumentMessageHandler {
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(self.overlays_visible)
+			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
 				.tooltip("Overlays")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.on_update(|optional_input: &CheckboxInput| {
+					DocumentMessage::SetOverlaysVisibility {
+						visible: optional_input.checked,
+						overlays_type: None,
+					}
+					.into()
+				})
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
@@ -2065,7 +2110,168 @@ impl DocumentMessageHandler {
 						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
 					},
 					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Granular settings in this menu are coming soon").widget_holder()],
+						widgets: vec![TextLabel::new("General").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::ArtboardName),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Artboard Name".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::TransformMeasurement),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("G/R/S Measurement".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Select Tool").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::QuickMeasurement),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Quick Measurement".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::TransformCage),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Cage".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::CompassRose),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Dial".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.pivot)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Pivot),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Pivot".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::HoverOutline),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Hover Outline".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::SelectionOutline),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Selection Outline".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Pen & Path Tools").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.path)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Path),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Path".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.anchors)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Anchors),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Anchors".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.handles)
+								.disabled(!self.overlays_visibility_settings.anchors)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Handles),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Handles".to_string()).disabled(!self.overlays_visibility_settings.anchors).widget_holder(),
+						],
 					},
 				])
 				.widget_holder(),
@@ -2212,6 +2418,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
@@ -2280,75 +2487,74 @@ impl DocumentMessageHandler {
 			.selected_layers(self.metadata())
 			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
 
-		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				DropdownInput::new(blend_mode_menu_entries)
-					.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
-					.disabled(disabled)
-					.draw_icon(false)
-					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(opacity)
-					.label("Opacity")
-					.unit("%")
-					.display_decimal_places(2)
-					.disabled(disabled)
-					.min(0.)
-					.max(100.)
-					.range_min(Some(0.))
-					.range_max(Some(100.))
-					.mode_range()
-					.on_update(|number_input: &NumberInput| {
-						if let Some(value) = number_input.value {
-							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
-						} else {
-							Message::NoOp
-						}
-					})
-					.on_commit(|_| DocumentMessage::AddTransaction.into())
-					.widget_holder(),
-				//
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				//
-				IconButton::new("NewLayer", 24)
-					.tooltip("New Layer")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-					.widget_holder(),
-				IconButton::new("Folder", 24)
-					.tooltip("Group Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-					.on_update(|_| {
-						let group_folder_type = GroupFolderType::Layer;
-						DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-					})
-					.disabled(!has_selection)
-					.widget_holder(),
-				IconButton::new("Trash", 24)
-					.tooltip("Delete Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
-					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-				//
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				//
-				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
-					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
-					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
-					.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-			],
-		}]);
+		let widgets = vec![
+			DropdownInput::new(blend_mode_menu_entries)
+				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
+				.disabled(disabled)
+				.draw_icon(false)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(opacity)
+				.label("Opacity")
+				.unit("%")
+				.display_decimal_places(2)
+				.disabled(disabled)
+				.min(0.)
+				.max(100.)
+				.range_min(Some(0.))
+				.range_max(Some(100.))
+				.mode_range()
+				.on_update(|number_input: &NumberInput| {
+					if let Some(value) = number_input.value {
+						DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
+					} else {
+						Message::NoOp
+					}
+				})
+				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.widget_holder(),
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("Trash", 24)
+				.tooltip("Delete Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+		];
+		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(layers_panel_control_bar),
