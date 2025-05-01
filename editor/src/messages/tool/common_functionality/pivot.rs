@@ -2,11 +2,11 @@
 
 use super::graph_modification_utils;
 use crate::consts::PIVOT_DIAMETER;
-use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
+use graphene_std::transform::ReferencePoint;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
@@ -18,7 +18,9 @@ pub struct Pivot {
 	/// The viewspace pivot position (if applicable)
 	pivot: Option<DVec2>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
-	old_pivot_position: PivotPosition,
+	old_pivot_position: ReferencePoint,
+	/// Used to enable and disable the pivot
+	active: bool,
 }
 
 impl Default for Pivot {
@@ -27,7 +29,8 @@ impl Default for Pivot {
 			normalized_pivot: DVec2::splat(0.5),
 			transform_from_normalized: Default::default(),
 			pivot: Default::default(),
-			old_pivot_position: PivotPosition::Center,
+			old_pivot_position: ReferencePoint::Center,
+			active: true,
 		}
 	}
 }
@@ -44,6 +47,10 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
+		if !self.active {
+			return;
+		}
+
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
 		let Some(first) = layers.next() else {
@@ -82,6 +89,13 @@ impl Pivot {
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
+		if !overlay_context.visibility_settings.pivot() {
+			self.active = false;
+			return;
+		} else {
+			self.active = true;
+		}
+
 		self.recalculate_pivot(document);
 		if let (Some(pivot), Some(data)) = (self.pivot, draw_data) {
 			overlay_context.pivot(pivot, data.0);
@@ -90,18 +104,26 @@ impl Pivot {
 
 	/// Answers if the pivot widget has changed (so we should refresh the tool bar at the top of the canvas).
 	pub fn should_refresh_pivot_position(&mut self) -> bool {
+		if !self.active {
+			return false;
+		}
+
 		let new = self.to_pivot_position();
 		let should_refresh = new != self.old_pivot_position;
 		self.old_pivot_position = new;
 		should_refresh
 	}
 
-	pub fn to_pivot_position(&self) -> PivotPosition {
+	pub fn to_pivot_position(&self) -> ReferencePoint {
 		self.normalized_pivot.into()
 	}
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if !self.active {
+			return;
+		}
+
 		for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			// Only update the pivot when computed position is finite.
@@ -115,11 +137,18 @@ impl Pivot {
 
 	/// Set the pivot using the normalized transform that is set above.
 	pub fn set_normalized_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		if !self.active {
+			return;
+		}
+
 		self.set_viewport_position(self.transform_from_normalized.transform_point2(position), document, responses);
 	}
 
 	/// Answers if the pointer is currently positioned over the pivot.
 	pub fn is_over(&self, mouse: DVec2) -> bool {
+		if !self.active {
+			return false;
+		}
 		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
 	}
 }

@@ -1,7 +1,10 @@
 use dyn_any::DynAny;
+use glam::DVec2;
+use kurbo::Point;
 
 /// Represents different ways of calculating the centroid.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum CentroidType {
 	/// The center of mass for the area of a solid shape's interior, as if made out of an infinitely flat material.
 	#[default]
@@ -10,41 +13,28 @@ pub enum CentroidType {
 	Length,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum BooleanOperation {
 	#[default]
+	#[icon("BooleanUnion")]
 	Union,
+	#[icon("BooleanSubtractFront")]
 	SubtractFront,
+	#[icon("BooleanSubtractBack")]
 	SubtractBack,
+	#[icon("BooleanIntersect")]
 	Intersect,
+	#[icon("BooleanDifference")]
 	Difference,
 }
 
-impl BooleanOperation {
-	pub fn list() -> [BooleanOperation; 5] {
-		[
-			BooleanOperation::Union,
-			BooleanOperation::SubtractFront,
-			BooleanOperation::SubtractBack,
-			BooleanOperation::Intersect,
-			BooleanOperation::Difference,
-		]
-	}
-
-	pub fn icons() -> [&'static str; 5] {
-		["BooleanUnion", "BooleanSubtractFront", "BooleanSubtractBack", "BooleanIntersect", "BooleanDifference"]
-	}
+pub trait AsU32 {
+	fn as_u32(&self) -> u32;
 }
-
-impl core::fmt::Display for BooleanOperation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			BooleanOperation::Union => write!(f, "Union"),
-			BooleanOperation::SubtractFront => write!(f, "Subtract Front"),
-			BooleanOperation::SubtractBack => write!(f, "Subtract Back"),
-			BooleanOperation::Intersect => write!(f, "Intersect"),
-			BooleanOperation::Difference => write!(f, "Difference"),
-		}
+impl AsU32 for u32 {
+	fn as_u32(&self) -> u32 {
+		*self
 	}
 }
 
@@ -86,7 +76,8 @@ impl AsI64 for f64 {
 	}
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum GridType {
 	#[default]
 	Rectangular,
@@ -94,10 +85,19 @@ pub enum GridType {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum ArcType {
 	#[default]
 	Open,
 	Closed,
 	PieSlice,
+}
+
+pub fn point_to_dvec2(point: Point) -> DVec2 {
+	DVec2 { x: point.x, y: point.y }
+}
+
+pub fn dvec2_to_point(value: DVec2) -> Point {
+	Point { x: value.x, y: value.y }
 }

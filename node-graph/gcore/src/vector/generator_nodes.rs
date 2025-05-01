@@ -101,7 +101,7 @@ fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
-	#[min(3.)]
+	#[hard_min(3.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[default(50)] radius: f64,
@@ -116,7 +116,7 @@ fn star<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[default(50)] radius: f64,
@@ -153,7 +153,7 @@ fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
 	grid_type: GridType,
-	#[min(0.)]
+	#[hard_min(0.)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
 	spacing: T,
@@ -253,9 +253,9 @@ fn isometric_grid_test() {
 
 	// Works properly
 	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance().instance.segment_bezier_iter() {
+	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		assert!(
 			((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -268,9 +268,9 @@ fn isometric_grid_test() {
 #[test]
 fn skew_isometric_grid_test() {
 	let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance().instance.segment_bezier_iter() {
+	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		let vector = bezier.start - bezier.end;
 		let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;

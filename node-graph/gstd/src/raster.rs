@@ -29,9 +29,9 @@ impl From<std::io::Error> for Error {
 #[node_macro::node(category("Debug: Raster"))]
 fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
 	let image_frame_transform = image_frame.transform();
-	let image_frame_alpha_blending = image_frame.one_instance().alpha_blending;
+	let image_frame_alpha_blending = image_frame.one_instance_ref().alpha_blending;
 
-	let image = image_frame.one_instance().instance;
+	let image = image_frame.one_instance_ref().instance;
 
 	// Resize the image using the image crate
 	let data = bytemuck::cast_vec(image.data.clone());
@@ -147,6 +147,7 @@ where
 
 	image
 }
+
 #[node_macro::node]
 fn combine_channels<
 	// _P is the color of the input image.
@@ -325,7 +326,7 @@ fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> Im
 		return image;
 	}
 
-	let image_instance = image.one_instance().instance;
+	let image_instance = image.one_instance_ref().instance;
 	if image_instance.width == 0 || image_instance.height == 0 {
 		return empty_image((), bounds, Color::TRANSPARENT);
 	}
@@ -355,7 +356,7 @@ fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> Im
 
 	let mut result = ImageFrameTable::new(new_img);
 	*result.transform_mut() = new_texture_to_layer_space;
-	*result.one_instance_mut().alpha_blending = *image.one_instance().alpha_blending;
+	*result.one_instance_mut().alpha_blending = *image.one_instance_ref().alpha_blending;
 
 	result
 }

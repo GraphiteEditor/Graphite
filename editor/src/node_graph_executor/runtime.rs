@@ -293,7 +293,7 @@ impl NodeRuntime {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				self.vector_modify.insert(parent_network_node_id, record.output.one_instance().instance.clone());
+				self.vector_modify.insert(parent_network_node_id, record.output.one_instance_ref().instance.clone());
 			} else {
 				log::warn!("failed to downcast monitor node output {parent_network_node_id:?}");
 			}
@@ -315,7 +315,7 @@ impl NodeRuntime {
 			return;
 		}
 
-		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
+		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
 
 		// Render the thumbnail from a `GraphicElement` into an SVG string
 		let render_params = RenderParams::new(ViewMode::Normal, bounds, true, false, false);
