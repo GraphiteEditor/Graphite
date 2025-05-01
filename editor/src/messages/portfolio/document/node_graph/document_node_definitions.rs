@@ -1,3 +1,4 @@
+use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo};
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -3212,7 +3213,9 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let noise_type_row = node_properties::noise_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true));
+			let noise_type_row = enum_choice::<NoiseType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.property_row();
 			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
 		}),
 	);
@@ -3221,7 +3224,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let domain_warp_type = node_properties::domain_warp_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
+			let domain_warp_type = enum_choice::<DomainWarpType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active)
+				.property_row();
 			Ok(vec![domain_warp_type])
 		}),
 	);
@@ -3242,7 +3248,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_type_row = node_properties::fractal_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
+			let fractal_type_row = enum_choice::<FractalType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active)
+				.property_row();
 			Ok(vec![fractal_type_row])
 		}),
 	);
@@ -3333,10 +3342,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_distance_function_row = node_properties::cellular_distance_function_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				!coherent_noise_active || !cellular_noise_active,
-			);
+			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active || !cellular_noise_active)
+				.property_row();
 			Ok(vec![cellular_distance_function_row])
 		}),
 	);
@@ -3345,10 +3354,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_return_type = node_properties::cellular_return_type_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				!coherent_noise_active || !cellular_noise_active,
-			);
+			let cellular_return_type = enum_choice::<CellularReturnType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active || !cellular_noise_active)
+				.property_row();
 			Ok(vec![cellular_return_type])
 		}),
 	);
