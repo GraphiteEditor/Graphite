@@ -429,14 +429,18 @@ where
 async fn round_corners(
 	_: impl Ctx,
 	source: VectorDataTable,
-	#[min(0.)]
+	#[hard_min(0.)]
 	#[default(10.)]
 	radius: PixelLength,
 	#[range((0., 1.))]
+	#[hard_min(0.)]
+	#[hard_max(1.)]
 	#[default(0.5)]
 	roundness: f64,
 	#[default(100.)] edge_length_limit: Percentage,
 	#[range((0., 180.))]
+	#[hard_min(0.)]
+	#[hard_max(180.)]
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> VectorDataTable {
@@ -538,7 +542,7 @@ async fn spatial_merge_by_distance(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(0.1)]
-	#[min(0.0001)]
+	#[hard_min(0.0001)]
 	distance: f64,
 ) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
@@ -748,7 +752,7 @@ async fn remove_handles(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(10.)]
-	#[min(0.)]
+	#[soft_min(0.)]
 	max_handle_distance: f64,
 ) -> VectorDataTable {
 	let vector_data_transform = vector_data.transform();
@@ -879,8 +883,8 @@ async fn generate_handles(
 // 	_: impl Ctx,
 // 	source: VectorDataTable,
 // 	#[default(1.)]
-// 	#[min(1.)]
-// 	#[max(8.)]
+// 	#[hard_min(1.)]
+// 	#[soft_max(8.)]
 // 	subdivisions: f64,
 // ) -> VectorDataTable {
 // 	let source_transform = source.transform();
@@ -1367,7 +1371,7 @@ async fn poisson_disk_points(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(10.)]
-	#[min(0.01)]
+	#[hard_min(0.01)]
 	separation_disk_diameter: f64,
 	seed: SeedValue,
 ) -> VectorDataTable {

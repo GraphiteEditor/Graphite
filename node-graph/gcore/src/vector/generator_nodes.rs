@@ -101,7 +101,7 @@ fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
-	#[min(3.)]
+	#[hard_min(3.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[default(50)] radius: f64,
@@ -116,7 +116,7 @@ fn star<T: AsU64>(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	#[implementations(u32, u64, f64)]
 	sides: T,
 	#[default(50)] radius: f64,
@@ -153,7 +153,7 @@ fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
 	grid_type: GridType,
-	#[min(0.)]
+	#[hard_min(0.)]
 	#[default(10)]
 	#[implementations(f64, DVec2)]
 	spacing: T,
