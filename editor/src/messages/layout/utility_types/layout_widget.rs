@@ -373,7 +373,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip,
 				Widget::TextLabel(x) => &mut x.tooltip,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
-				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
+				Widget::InvisibleStandinInput(_) | Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&tooltip);
@@ -546,7 +546,7 @@ pub enum Widget {
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
 	ParameterExposeButton(ParameterExposeButton),
-	PivotInput(PivotInput),
+	ReferencePointInput(ReferencePointInput),
 	PopoverButton(PopoverButton),
 	RadioInput(RadioInput),
 	Separator(Separator),
@@ -621,7 +621,7 @@ impl DiffUpdate {
 				| Widget::CurveInput(_)
 				| Widget::InvisibleStandinInput(_)
 				| Widget::NodeCatalog(_)
-				| Widget::PivotInput(_)
+				| Widget::ReferencePointInput(_)
 				| Widget::RadioInput(_)
 				| Widget::Separator(_)
 				| Widget::TextAreaInput(_)

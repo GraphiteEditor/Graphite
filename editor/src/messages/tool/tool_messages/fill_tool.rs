@@ -1,18 +1,23 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_core::vector::style::Fill;
+
 #[derive(Default)]
 pub struct FillTool {
 	fsm_state: FillToolFsmState,
 }
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,
+	WorkingColorChanged,
+	Overlays(OverlayContext),
 
 	// Tool-specific messages
+	PointerMove,
 	PointerUp,
 	FillPrimaryColor,
 	FillSecondaryColor,
@@ -45,8 +50,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 			FillToolFsmState::Ready => actions!(FillToolMessageDiscriminant;
 				FillPrimaryColor,
 				FillSecondaryColor,
+				PointerMove,
 			),
 			FillToolFsmState::Filling => actions!(FillToolMessageDiscriminant;
+				PointerMove,
 				PointerUp,
 				Abort,
 			),
@@ -58,6 +65,8 @@ impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
+			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
+			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
 	}
@@ -82,6 +91,23 @@ impl Fsm for FillToolFsmState {
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
+			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+				// Choose the working color to preview
+				let use_secondary = input.keyboard.get(Key::Shift as usize);
+				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
+
+				// Get the layer the user is hovering over
+				if let Some(layer) = document.click(input) {
+					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
+				}
+
+				self
+			}
+			(_, FillToolMessage::PointerMove | FillToolMessage::WorkingColorChanged) => {
+				// Generate the hover outline
+				responses.add(OverlaysMessage::Draw);
+				self
+			}
 			(FillToolFsmState::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;

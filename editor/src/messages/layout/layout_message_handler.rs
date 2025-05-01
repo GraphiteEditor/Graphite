@@ -276,13 +276,13 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::PivotInput(pivot_input) => {
+			Widget::ReferencePointInput(reference_point_input) => {
 				let callback_message = match action {
-					WidgetValueAction::Commit => (pivot_input.on_commit.callback)(&()),
+					WidgetValueAction::Commit => (reference_point_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_str().expect("PivotInput update was not of type: u64");
-						pivot_input.position = update_value.into();
-						(pivot_input.on_update.callback)(pivot_input)
+						let update_value = value.as_str().expect("ReferencePointInput update was not of type: u64");
+						reference_point_input.value = update_value.into();
+						(reference_point_input.on_update.callback)(reference_point_input)
 					}
 				};
 

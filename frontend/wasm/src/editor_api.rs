@@ -490,6 +490,13 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Visit the given URL
+	#[wasm_bindgen(js_name = visitUrl)]
+	pub fn visit_url(&self, url: String) {
+		let message = FrontendMessage::TriggerVisitLink { url };
+		self.dispatch(message);
+	}
+
 	/// Paste layers from a serialized json representation
 	#[wasm_bindgen(js_name = pasteSerializedData)]
 	pub fn paste_serialized_data(&self, data: String) {
@@ -800,7 +807,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", &[node_id]);
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", "", &[node_id]);
 				}
 			}
 		}

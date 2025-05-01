@@ -7,6 +7,7 @@ pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
+use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
@@ -233,6 +234,7 @@ tagged_value! {
 	DocumentNode(DocumentNode),
 	Curve(graphene_core::raster::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
+	ReferencePoint(graphene_core::transform::ReferencePoint),
 	Palette(Vec<Color>),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
 	CentroidType(graphene_core::vector::misc::CentroidType),
@@ -302,6 +304,32 @@ impl TaggedValue {
 			None
 		}
 
+		fn to_reference_point(input: &str) -> Option<ReferencePoint> {
+			let mut choices = input.split("::");
+			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
+			if first == "ReferencePoint" {
+				return Some(match second {
+					"None" => ReferencePoint::None,
+					"TopLeft" => ReferencePoint::TopLeft,
+					"TopCenter" => ReferencePoint::TopCenter,
+					"TopRight" => ReferencePoint::TopRight,
+					"CenterLeft" => ReferencePoint::CenterLeft,
+					"Center" => ReferencePoint::Center,
+					"CenterRight" => ReferencePoint::CenterRight,
+					"BottomLeft" => ReferencePoint::BottomLeft,
+					"BottomCenter" => ReferencePoint::BottomCenter,
+					"BottomRight" => ReferencePoint::BottomRight,
+					_ => {
+						log::error!("Invalid ReferencePoint default type variant: {}", input);
+						return None;
+					}
+				});
+			}
+
+			log::error!("Invalid ReferencePoint default type: {}", input);
+			None
+		}
+
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
@@ -320,6 +348,7 @@ impl TaggedValue {
 					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
 					x if x == TypeId::of::<Option<Color>>() => to_color(string).map(|color| TaggedValue::OptionalColor(Some(color)))?,
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
+					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
 				};
 				Some(ty)
