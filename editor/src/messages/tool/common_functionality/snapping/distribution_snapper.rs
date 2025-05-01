@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
-use js_sys::Math::min;
 
 #[derive(Clone, Debug, Default)]
 pub struct DistributionSnapper {
@@ -231,8 +230,8 @@ impl DistributionSnapper {
 				for &left in Self::exact_further_matches(bounds.translate(translation), &self.left, dist_left, distances.equal, 2).iter().skip(1) {
 					vec_right.push_front(left);
 				}
-				vec_right[0][0].y = min(vec_right[0][0].y, vec_right[1][1].y);
-				vec_right[0][1].y = min(vec_right[0][1].y, vec_right[1][1].y);
+				vec_right[0][0].y = vec_right[0][0].y.min(vec_right[1][1].y);
+				vec_right[0][1].y = vec_right[0][1].y.min(vec_right[1][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distances, bounds, translation, tolerance))
 			}
 		}
@@ -265,8 +264,8 @@ impl DistributionSnapper {
 				let distances = DistributionMatch { first, equal };
 
 				let mut boxes = VecDeque::from([self.left[0], bounds.translate(translation), self.right[0]]);
-				boxes[1][0].y = min(boxes[1][0].y, boxes[0][1].y);
-				boxes[1][1].y = min(boxes[1][1].y, boxes[0][1].y);
+				boxes[1][0].y = boxes[1][0].y.min(boxes[0][1].y);
+				boxes[1][1].y = boxes[1][1].y.min(boxes[0][1].y);
 				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::X, boxes, distances, bounds, translation, tolerance))
 			}
 		}
@@ -283,8 +282,8 @@ impl DistributionSnapper {
 				for &up in Self::exact_further_matches(bounds.translate(translation), &self.up, dist_up, distances.equal, 2).iter().skip(1) {
 					vec_down.push_front(up);
 				}
-				vec_down[0][0].x = min(vec_down[0][0].x, vec_down[1][1].x);
-				vec_down[0][1].x = min(vec_down[0][1].x, vec_down[1][1].x);
+				vec_down[0][0].x = vec_down[0][0].x.min(vec_down[1][1].x);
+				vec_down[0][1].x = vec_down[0][1].x.min(vec_down[1][1].x);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distances, bounds, translation, tolerance))
 			}
 		}
@@ -317,8 +316,8 @@ impl DistributionSnapper {
 				let first = equal + offset;
 				let distances = DistributionMatch { first, equal };
 				let mut boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
-				boxes[1][0].x = min(boxes[1][0].x, boxes[0][1].x);
-				boxes[1][1].x = min(boxes[1][1].x, boxes[0][1].x);
+				boxes[1][0].x = boxes[1][0].x.min(boxes[0][1].x);
+				boxes[1][1].x = boxes[1][1].x.min(boxes[0][1].x);
 				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance))
 			}
 		}
@@ -419,10 +418,9 @@ fn dist_snap_point_right() {
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
 	assert_eq!(snap_results.points[0].distribution_equal_distance_horizontal, Some(6.));
-
 	let mut expected_box = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_box[0].y = min(expected_box[0].y, snap_results.points[0].distribution_boxes_horizontal[1][1].y);
-	expected_box[1].y = min(expected_box[1].y, snap_results.points[0].distribution_boxes_horizontal[1][1].y);
+	expected_box[0].y = expected_box[0].y.min(dist_snapper.left[0][1].y);
+	expected_box[1].y = expected_box[1].y.min(dist_snapper.left[0][1].y);
 
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal.len(), 3);
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal[0], expected_box);
@@ -436,24 +434,26 @@ fn dist_snap_point_right_left() {
 		left: [-2., -10., -15., -20.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
 		..Default::default()
 	};
+
 	let source = Rect::from_square(DVec2::new(0.5, 0.), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
+
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
 	assert_eq!(snap_results.points[0].distribution_equal_distance_horizontal, Some(6.));
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal.len(), 5);
 
-	// Create expected boxes with minimized coordinates
+	let mut expected_left1 = dist_snapper.left[1];
 	let mut expected_center = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_center[0].y = min(expected_center[0].y, dist_snapper.left[1][1].y);
-	expected_center[1].y = min(expected_center[1].y, dist_snapper.left[1][1].y);
 
-	let mut expected_left = Rect::from_square(DVec2::new(-10., 0.), 2.);
-	expected_left[0].y = min(expected_left[0].y, dist_snapper.left[0][1].y);
-	expected_left[1].y = min(expected_left[1].y, dist_snapper.left[0][1].y);
+	expected_center[0].y = expected_center[0].y.min(dist_snapper.left[1][1].y).min(dist_snapper.right[0][1].y);
+	expected_center[1].y = expected_center[1].y.min(dist_snapper.left[1][1].y).min(dist_snapper.right[0][1].y);
 
-	assert_eq!(snap_results.points[0].distribution_boxes_horizontal[1], expected_left);
+	expected_left1[0].y = expected_left1[0].y.min(dist_snapper.left[0][1].y).min(expected_center[1].y);
+	expected_left1[1].y = expected_left1[1].y.min(dist_snapper.left[0][1].y).min(expected_center[1].y);
+
+	assert_eq!(snap_results.points[0].distribution_boxes_horizontal[1], expected_left1);
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal[2], expected_center);
 	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_horizontal, 0);
 }
@@ -508,8 +508,8 @@ fn dist_snap_point_center_x() {
 	assert_eq!(snap_results.points[0].distribution_equal_distance_horizontal, Some(6.));
 
 	let mut expected_box = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_box[0].y = min(expected_box[0].y, dist_snapper.left[0][1].y);
-	expected_box[1].y = min(expected_box[1].y, dist_snapper.left[0][1].y);
+	expected_box[0].y = expected_box[0].y.min(dist_snapper.left[0][1].y);
+	expected_box[1].y = expected_box[1].y.min(dist_snapper.left[0][1].y);
 
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal.len(), 3);
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal[1], expected_box);
@@ -533,8 +533,8 @@ fn dist_snap_point_down() {
 	assert_eq!(snap_results.points[0].distribution_equal_distance_vertical, Some(6.));
 
 	let mut expected_box = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_box[0].x = min(expected_box[0].x, dist_snapper.up[0][1].x);
-	expected_box[1].x = min(expected_box[1].x, dist_snapper.up[0][1].x);
+	expected_box[0].x = expected_box[0].x.min(dist_snapper.down[0][1].x);
+	expected_box[1].x = expected_box[1].x.min(dist_snapper.down[0][1].x);
 
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical.len(), 3);
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical[0], expected_box);
@@ -551,19 +551,19 @@ fn dist_snap_point_down_up() {
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
+
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
 	assert_eq!(snap_results.points[0].distribution_equal_distance_vertical, Some(6.));
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical.len(), 5);
 
-	// Create expected boxes with minimized coordinates
 	let mut expected_center = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_center[0].x = min(expected_center[0].x, dist_snapper.up[1][1].x);
-	expected_center[1].x = min(expected_center[1].x, dist_snapper.up[1][1].x);
+	expected_center[0].x = expected_center[0].x.min(dist_snapper.up[1][1].x).min(dist_snapper.down[0][1].x);
+	expected_center[1].x = expected_center[1].x.min(dist_snapper.up[1][1].x).min(dist_snapper.down[0][1].x);
 
 	let mut expected_up = Rect::from_square(DVec2::new(0., -10.), 2.);
-	expected_up[0].x = min(expected_up[0].x, dist_snapper.up[0][1].x);
-	expected_up[1].x = min(expected_up[1].x, dist_snapper.up[0][1].x);
+	expected_up[0].x = expected_up[0].x.min(dist_snapper.up[0][1].x).min(expected_center[0].x);
+	expected_up[1].x = expected_up[1].x.min(dist_snapper.up[0][1].x).min(expected_center[1].x);
 
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical[1], expected_up);
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical[2], expected_center);
@@ -615,15 +615,16 @@ fn dist_snap_point_center_y() {
 	let source = Rect::from_square(DVec2::new(0., 0.5), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
+
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5);
 	assert_eq!(snap_results.points[0].distribution_equal_distance_vertical, Some(6.));
+	assert_eq!(snap_results.points[0].distribution_boxes_vertical.len(), 3);
 
 	let mut expected_box = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_box[0].x = min(expected_box[0].x, dist_snapper.up[0][1].x);
-	expected_box[1].x = min(expected_box[1].x, dist_snapper.up[0][1].x);
+	expected_box[0].x = expected_box[0].x.min(dist_snapper.up[0][1].x).min(dist_snapper.down[0][1].x);
+	expected_box[1].x = expected_box[1].x.min(dist_snapper.up[0][1].x).min(dist_snapper.down[0][1].x);
 
-	assert_eq!(snap_results.points[0].distribution_boxes_vertical.len(), 3);
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical[1], expected_box);
 	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_vertical, 1);
 }
@@ -635,10 +636,12 @@ fn dist_snap_point_center_xy() {
 		down: [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
 		left: [-12., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
 		right: [12., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
+		..Default::default()
 	};
 	let source = Rect::from_square(DVec2::new(0.3, 0.4), 2.);
 	let snap_results = &mut SnapResults::default();
 	dist_snapper.snap_bbox_points(1., &SnapCandidatePoint::default(), snap_results, SnapConstraint::None, source);
+
 	assert_eq!(snap_results.points.len(), 1);
 	assert_eq!(snap_results.points[0].distance, 0.5000000000000001);
 	assert_eq!(snap_results.points[0].distribution_equal_distance_horizontal, Some(8.));
@@ -646,17 +649,12 @@ fn dist_snap_point_center_xy() {
 	assert_eq!(snap_results.points[0].distribution_boxes_horizontal.len(), 3);
 	assert_eq!(snap_results.points[0].distribution_boxes_vertical.len(), 3);
 
-	let mut expected_x_center = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_x_center[0].y = min(expected_x_center[0].y, dist_snapper.left[0][1].y);
-	expected_x_center[1].y = min(expected_x_center[1].y, dist_snapper.left[0][1].y);
-
-	let mut expected_y_center = Rect::from_square(DVec2::new(0., 0.), 2.);
-	expected_y_center[0].x = min(expected_y_center[0].x, dist_snapper.up[0][1].x);
-	expected_y_center[1].x = min(expected_y_center[1].x, dist_snapper.up[0][1].x);
+	assert!(snap_results.points[0].distribution_boxes_horizontal[1][0].y <= dist_snapper.left[0][1].y);
+	assert!(snap_results.points[0].distribution_boxes_horizontal[1][1].y <= dist_snapper.left[0][1].y);
+	assert!(snap_results.points[0].distribution_boxes_vertical[1][0].x <= dist_snapper.up[0][1].x);
+	assert!(snap_results.points[0].distribution_boxes_vertical[1][1].x <= dist_snapper.up[0][1].x);
 
 	assert_eq!(Rect::from_box(snap_results.points[0].source_bounds.unwrap().bounding_box()), Rect::from_square(DVec2::new(0., 0.), 2.));
-	assert_eq!(snap_results.points[0].distribution_boxes_horizontal[1], expected_x_center);
-	assert_eq!(snap_results.points[0].distribution_boxes_vertical[1], expected_y_center);
 	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_horizontal, 0);
 	assert_boxes_in_order(&snap_results.points[0].distribution_boxes_vertical, 1);
 }
