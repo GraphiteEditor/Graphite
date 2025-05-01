@@ -9,7 +9,7 @@ pub struct DialogMessageData<'a> {
 }
 
 /// Stores the dialogs which require state. These are the ones that have their own message handlers, and are not the ones defined in `simple_dialogs`.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, ExtractField)]
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,

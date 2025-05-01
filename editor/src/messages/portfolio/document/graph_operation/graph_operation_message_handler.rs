@@ -27,7 +27,7 @@ pub struct GraphOperationMessageData<'a> {
 	pub node_graph: &'a mut NodeGraphMessageHandler,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct GraphOperationMessageHandler {}
 
 // GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.

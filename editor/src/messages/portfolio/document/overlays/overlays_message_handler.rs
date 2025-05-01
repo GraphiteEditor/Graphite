@@ -8,7 +8,7 @@ pub struct OverlaysMessageData<'a> {
 	pub device_pixel_ratio: f64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
 	#[cfg(target_arch = "wasm32")]

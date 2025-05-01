@@ -8,7 +8,7 @@ pub struct KeyMappingMessageData<'a> {
 	pub actions: ActionList,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct KeyMappingMessageHandler {
 	mapping_handler: InputMapperMessageHandler,
 }

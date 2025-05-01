@@ -1,6 +1,6 @@
 use crate::messages::prelude::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct GlobalsMessageHandler {}
 
 #[message_handler_data]

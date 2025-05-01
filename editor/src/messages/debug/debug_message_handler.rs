@@ -1,7 +1,7 @@
 use super::utility_types::MessageLoggingVerbosity;
 use crate::messages::prelude::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct DebugMessageHandler {
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 }

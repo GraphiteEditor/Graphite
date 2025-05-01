@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::prelude::*;
 use graphene_std::vector::misc::BooleanOperation;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
 	pub has_active_document: bool,
 	pub rulers_visible: bool,

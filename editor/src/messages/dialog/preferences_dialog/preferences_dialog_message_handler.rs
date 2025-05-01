@@ -10,7 +10,7 @@ pub struct PreferencesDialogMessageData<'a> {
 }
 
 /// A dialog to allow users to customize Graphite editor options
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct PreferencesDialogMessageHandler {}
 
 #[message_handler_data]

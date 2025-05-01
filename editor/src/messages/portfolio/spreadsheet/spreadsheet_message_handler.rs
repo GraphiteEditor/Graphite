@@ -13,7 +13,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 /// The spreadsheet UI allows for instance data to be previewed.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, ExtractField)]
 pub struct SpreadsheetMessageHandler {
 	/// Sets whether or not the spreadsheet is drawn.
 	pub spreadsheet_view_open: bool,

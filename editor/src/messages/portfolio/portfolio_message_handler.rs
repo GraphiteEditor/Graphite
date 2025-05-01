@@ -37,7 +37,7 @@ pub struct PortfolioMessageData<'a> {
 	pub animation: &'a AnimationMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,

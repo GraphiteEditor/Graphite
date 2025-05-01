@@ -24,7 +24,7 @@ enum AnimationState {
 	},
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, ExtractField)]
 pub struct AnimationMessageHandler {
 	/// Used to re-send the UI on the next frame after playback starts
 	live_preview_recently_zero: bool,

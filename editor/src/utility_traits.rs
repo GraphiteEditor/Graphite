@@ -52,4 +52,8 @@ pub trait HierarchicalTree {
 	fn message_handler_data_str() -> Vec<String> {
 		Vec::new()
 	}
+
+	fn message_handler_str() -> Vec<String> {
+		Vec::new()
+	}
 }

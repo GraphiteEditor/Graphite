@@ -4,7 +4,7 @@ use glam::{IVec2, UVec2};
 use graph_craft::document::NodeId;
 
 /// A dialog to allow users to set some initial options about a new document.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct NewDocumentDialogMessageHandler {
 	pub name: String,
 	pub infinite: bool,

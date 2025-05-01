@@ -9,7 +9,7 @@ pub struct ExportDialogMessageData<'a> {
 }
 
 /// A dialog to allow users to customize their file export.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ExtractField)]
 pub struct ExportDialogMessageHandler {
 	pub file_type: FileType,
 	pub scale_factor: f64,

@@ -64,14 +64,13 @@ mod test {
 
 	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool) {
 		// Print the current node
-		let (branch, child_prefix) = match &tree.data_fields() {
-			Some(_) => ("├── ", format!("{}│   ", prefix)),
-			None => {
-				if is_last {
-					("└── ", format!("{}    ", prefix))
-				} else {
-					("├── ", format!("{}│   ", prefix))
-				}
+		let (branch, child_prefix) = if tree.has_message_handler_data_fields() || tree.has_message_handler_fields() {
+			("├── ", format!("{}│   ", prefix))
+		} else {
+			if is_last {
+				("└── ", format!("{}    ", prefix))
+			} else {
+				("├── ", format!("{}│   ", prefix))
 			}
 		};
 
@@ -86,8 +85,24 @@ mod test {
 			}
 		}
 
+		// Print handler field if any
+		if let Some(data) = tree.message_handler_fields() {
+			let len = data.fields().len();
+			let (branch, child_prefix) = if tree.has_message_handler_data_fields() {
+				("├── ", format!("{}│   ", prefix))
+			} else {
+				("└── ", format!("{}    ", prefix))
+			};
+			println!("{}{}{}", prefix, branch, data.name());
+			for (i, field) in data.fields().iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+				println!("{}{}{}", child_prefix, branch, field);
+			}
+		}
+
 		// Print data field if any
-		if let Some(data) = tree.data_fields() {
+		if let Some(data) = tree.message_handler_data_fields() {
 			let len = data.fields().len();
 			println!("{}{}{}", prefix, "└── ", data.name());
 			for (i, field) in data.fields().iter().enumerate() {

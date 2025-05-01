@@ -38,7 +38,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ExtractField)]
 pub struct NodeGraphMessageHandler {
 	// TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,

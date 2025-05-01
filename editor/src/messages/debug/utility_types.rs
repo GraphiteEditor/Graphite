@@ -26,7 +26,8 @@ impl MessageData {
 pub struct DebugMessageTree {
 	name: String,
 	variants: Option<Vec<DebugMessageTree>>,
-	data: Option<MessageData>,
+	message_handler: Option<MessageData>,
+	message_handler_data: Option<MessageData>,
 }
 
 impl DebugMessageTree {
@@ -34,7 +35,8 @@ impl DebugMessageTree {
 		DebugMessageTree {
 			name: name.to_string(),
 			variants: None,
-			data: None,
+			message_handler: None,
+			message_handler_data: None,
 		}
 	}
 
@@ -46,8 +48,12 @@ impl DebugMessageTree {
 		}
 	}
 
-	pub fn add_data_field(&mut self, name: String, fields: Vec<String>) {
-		self.data = Some(MessageData { name, fields });
+	pub fn add_message_handler_data_field(&mut self, name: String, fields: Vec<String>) {
+		self.message_handler_data = Some(MessageData { name, fields });
+	}
+
+	pub fn add_message_handler_field(&mut self, name: String, fields: Vec<String>) {
+		self.message_handler = Some(MessageData { name, fields });
 	}
 
 	pub fn name(&self) -> &str {
@@ -58,7 +64,25 @@ impl DebugMessageTree {
 		self.variants.as_ref()
 	}
 
-	pub fn data_fields(&self) -> Option<&MessageData> {
-		self.data.as_ref()
+	pub fn message_handler_data_fields(&self) -> Option<&MessageData> {
+		self.message_handler_data.as_ref()
+	}
+
+	pub fn message_handler_fields(&self) -> Option<&MessageData> {
+		self.message_handler.as_ref()
+	}
+
+	pub fn has_message_handler_data_fields(&self) -> bool {
+		match self.message_handler_data_fields() {
+			Some(_) => true,
+			None => false,
+		}
+	}
+
+	pub fn has_message_handler_fields(&self) -> bool {
+		match self.message_handler_fields() {
+			Some(_) => true,
+			None => false,
+		}
 	}
 }

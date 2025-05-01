@@ -11,7 +11,7 @@ pub struct InputMapperMessageData<'a> {
 	pub actions: ActionList,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct InputMapperMessageHandler {
 	mapping: Mapping,
 }

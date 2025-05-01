@@ -5,7 +5,7 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use graph_craft::wasm_application_io::EditorPreferences;
 
-#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
 pub struct PreferencesMessageHandler {
 	// pub imaginate_server_hostname: String,
 	// pub imaginate_refresh_frequency: f64,

@@ -1,6 +1,6 @@
 use crate::messages::prelude::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct BroadcastMessageHandler {
 	listeners: HashMap<BroadcastEvent, Vec<Message>>,
 }

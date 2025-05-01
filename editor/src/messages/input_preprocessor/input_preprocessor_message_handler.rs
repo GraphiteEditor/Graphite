@@ -11,7 +11,7 @@ pub struct InputPreprocessorMessageData {
 	pub keyboard_platform: KeyboardPlatformLayout,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct InputPreprocessorMessageHandler {
 	pub frame_time: FrameTimeInfo,
 	pub time: u64,

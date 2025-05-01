@@ -46,7 +46,7 @@ pub struct DocumentMessageData<'a> {
 	pub device_pixel_ratio: f64,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
 #[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================

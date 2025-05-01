@@ -20,7 +20,7 @@ const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayer
 const SLOW_KEY: Key = Key::Shift;
 const INCREMENTS_KEY: Key = Key::Control;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
 	pub transform_operation: TransformOperation,
 

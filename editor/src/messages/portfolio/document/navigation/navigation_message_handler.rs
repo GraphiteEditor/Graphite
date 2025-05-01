@@ -24,7 +24,7 @@ pub struct NavigationMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, ExtractField)]
 pub struct NavigationMessageHandler {
 	navigation_operation: NavigationOperation,
 	mouse_position: ViewportPosition,
