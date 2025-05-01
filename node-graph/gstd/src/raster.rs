@@ -147,6 +147,7 @@ where
 
 	image
 }
+
 #[node_macro::node]
 fn combine_channels<
 	// _P is the color of the input image.
