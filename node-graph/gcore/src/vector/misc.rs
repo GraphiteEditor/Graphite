@@ -19,17 +19,12 @@ pub enum BooleanOperation {
 	#[default]
 	#[icon("BooleanUnion")]
 	Union,
-
 	#[icon("BooleanSubtractFront")]
 	SubtractFront,
-
-	/// Output shape contains points which are contained by the front shape but *not* by the back shape.
 	#[icon("BooleanSubtractBack")]
 	SubtractBack,
-
 	#[icon("BooleanIntersect")]
 	Intersect,
-
 	#[icon("BooleanDifference")]
 	Difference,
 }
@@ -39,7 +34,7 @@ pub trait AsU32 {
 }
 impl AsU32 for u32 {
 	fn as_u32(&self) -> u32 {
-		*self as u32
+		*self
 	}
 }
 

@@ -38,6 +38,7 @@ use spirv_std::num_traits::float::Float;
 #[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
+	#[label("sRGB")]
 	SRGB,
 	Perceptual,
 	AverageChannels,
@@ -821,10 +822,11 @@ async fn vibrance<T: Adjust<Color>>(
 	image
 }
 
+/// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
-/// Color Channel
+#[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
 	Red,
@@ -832,10 +834,11 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
+/// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
-/// Color Channel
+#[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -844,21 +847,18 @@ pub enum RedGreenBlueAlpha {
 	Alpha,
 }
 
+/// Style of noise pattern
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
-/// Style of noise pattern
 pub enum NoiseType {
 	#[default]
 	Perlin,
-
 	#[label("OpenSimplex2")]
 	OpenSimplex2,
-
 	#[label("OpenSimplex2S")]
 	OpenSimplex2S,
-
 	Cellular,
 	ValueCubic,
 	Value,
@@ -882,10 +882,10 @@ pub enum FractalType {
 	DomainWarpIndependent,
 }
 
+/// Distance function used by the cellular noise
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
-/// Distance function used by the cellular noise
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -915,21 +915,18 @@ pub enum CellularReturnType {
 	Division,
 }
 
+/// Type of domain warp
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
-/// Type of domain warp
 pub enum DomainWarpType {
 	#[default]
 	None,
-
 	#[label("OpenSimplex2")]
 	OpenSimplex2,
-
 	#[label("OpenSimplex2 Reduced")]
 	OpenSimplex2Reduced,
-
 	BasicGrid,
 }
 
@@ -1032,20 +1029,12 @@ async fn channel_mixer<T: Adjust<Color>>(
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
 	Relative,
 	Absolute,
-}
-
-impl core::fmt::Display for RelativeAbsolute {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RelativeAbsolute::Relative => write!(f, "Relative"),
-			RelativeAbsolute::Absolute => write!(f, "Absolute"),
-		}
-	}
 }
 
 #[repr(C)]

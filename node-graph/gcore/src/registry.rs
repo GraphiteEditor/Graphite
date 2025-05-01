@@ -65,19 +65,19 @@ pub enum ChoiceWidgetHint {
 	RadioButtons,
 }
 
-// Translation struct between macro and definition
+/// Translation struct between macro and definition.
 #[derive(Clone, Debug)]
 pub struct VariantMetadata {
-	/// Name as declared in source code
+	/// Name as declared in source code.
 	pub name: Cow<'static, str>,
 
-	/// Name to be displayed in UI
+	/// Name to be displayed in UI.
 	pub label: Cow<'static, str>,
 
-	/// User-facing documentation text
+	/// User-facing documentation text.
 	pub docstring: Option<Cow<'static, str>>,
 
-	/// Name of icon to display in radio buttons and such
+	/// Name of icon to display in radio buttons and such.
 	pub icon: Option<Cow<'static, str>>,
 }
 

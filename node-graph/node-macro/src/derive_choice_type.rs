@@ -7,7 +7,7 @@ pub fn derive_choice_type_impl(input_item: TokenStream) -> syn::Result<TokenStre
 	let input = syn::parse2::<DeriveInput>(input_item).unwrap();
 
 	match input.data {
-		syn::Data::Enum(en) => derive_enum(&input.attrs, input.ident, en),
+		syn::Data::Enum(data_enum) => derive_enum(&input.attrs, input.ident, data_enum),
 		_ => Err(syn::Error::new(input.ident.span(), "Only enums are supported at the moment")),
 	}
 }
@@ -23,13 +23,13 @@ enum WidgetHint {
 }
 impl Parse for WidgetHint {
 	fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-		let tok: Ident = input.parse()?;
-		if tok == "Radio" {
+		let tokens: Ident = input.parse()?;
+		if tokens == "Radio" {
 			Ok(Self::Radio)
-		} else if tok == "Dropdown" {
+		} else if tokens == "Dropdown" {
 			Ok(Self::Dropdown)
 		} else {
-			Err(syn::Error::new_spanned(tok, "Widget must be either Radio or Dropdown"))
+			Err(syn::Error::new_spanned(tokens, "Widget must be either Radio or Dropdown"))
 		}
 	}
 }
@@ -41,20 +41,20 @@ struct BasicItem {
 	icon: Option<String>,
 }
 impl BasicItem {
-	fn read_attr(&mut self, attr: &Attribute) -> syn::Result<()> {
-		if attr.path().is_ident("label") {
-			let tok: LitStr = attr.parse_args()?;
-			self.label = tok.value();
+	fn read_attribute(&mut self, attribute: &Attribute) -> syn::Result<()> {
+		if attribute.path().is_ident("label") {
+			let token: LitStr = attribute.parse_args()?;
+			self.label = token.value();
 		}
-		if attr.path().is_ident("icon") {
-			let tok: LitStr = attr.parse_args()?;
-			self.icon = Some(tok.value());
+		if attribute.path().is_ident("icon") {
+			let token: LitStr = attribute.parse_args()?;
+			self.icon = Some(token.value());
 		}
-		if attr.path().is_ident("doc") {
-			if let Meta::NameValue(nv) = &attr.meta {
-				if let Expr::Lit(el) = &nv.value {
-					if let syn::Lit::Str(tok) = &el.lit {
-						self.description = Some(tok.value());
+		if attribute.path().is_ident("doc") {
+			if let Meta::NameValue(meta_name_value) = &attribute.meta {
+				if let Expr::Lit(el) = &meta_name_value.value {
+					if let syn::Lit::Str(token) = &el.lit {
+						self.description = Some(token.value());
 					}
 				}
 			}
@@ -68,44 +68,46 @@ struct Variant {
 	basic_item: BasicItem,
 }
 
-fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> syn::Result<TokenStream> {
+fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum) -> syn::Result<TokenStream> {
 	let mut enum_info = Type {
 		basic_item: BasicItem::default(),
 		widget_hint: WidgetHint::Dropdown,
 	};
-	for att in enum_attrs {
-		enum_info.basic_item.read_attr(att)?;
-		if att.path().is_ident("widget") {
-			enum_info.widget_hint = att.parse_args()?;
+	for attribute in enum_attributes {
+		enum_info.basic_item.read_attribute(attribute)?;
+		if attribute.path().is_ident("widget") {
+			enum_info.widget_hint = attribute.parse_args()?;
 		}
 	}
 
 	let mut variants = vec![Vec::new()];
-	for va in &input.variants {
+	for variant in &input.variants {
 		let mut basic_item = BasicItem::default();
 
-		for attr in &va.attrs {
-			if attr.path().is_ident("menu_separator") {
-				attr.meta.require_path_only()?;
+		for attribute in &variant.attrs {
+			if attribute.path().is_ident("menu_separator") {
+				attribute.meta.require_path_only()?;
 				variants.push(Vec::new());
 			}
-			basic_item.read_attr(attr)?;
+			basic_item.read_attribute(attribute)?;
 		}
 
-		if basic_item.label.len() == 0 {
-			basic_item.label = ident_to_label(&va.ident);
+		if basic_item.label.is_empty() {
+			basic_item.label = ident_to_label(&variant.ident);
 		}
 
-		variants.last_mut().unwrap().push(Variant { name: va.ident.clone(), basic_item })
+		variants.last_mut().unwrap().push(Variant {
+			name: variant.ident.clone(),
+			basic_item,
+		})
 	}
 	let display_arm: Vec<_> = variants
 		.iter()
-		.map(|vg| vg.iter())
-		.flatten()
-		.map(|v| {
-			let vn = &v.name;
-			let vl = &v.basic_item.label;
-			quote! { #name::#vn => write!(f, #vl), }
+		.flat_map(|variants| variants.iter())
+		.map(|variant| {
+			let variant_name = &variant.name;
+			let variant_label = &variant.basic_item.label;
+			quote! { #name::#variant_name => write!(f, #variant_label), }
 		})
 		.collect();
 
@@ -117,9 +119,9 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 	})?;
 	let crate_name = match crate_name {
 		proc_macro_crate::FoundCrate::Itself => quote!(crate),
-		proc_macro_crate::FoundCrate::Name(n) => {
-			let i = Ident::new(&n, Span::call_site());
-			quote! {#i}
+		proc_macro_crate::FoundCrate::Name(name) => {
+			let identifier = Ident::new(&name, Span::call_site());
+			quote! { #identifier }
 		}
 	};
 
@@ -128,36 +130,38 @@ fn derive_enum(enum_attrs: &[Attribute], name: Ident, input: syn::DataEnum) -> s
 			let s = s.trim();
 			quote! { Some(#s) }
 		}
-		None => {
-			quote! { None }
-		}
+		None => quote! { None },
 	};
 	let group: Vec<_> = variants
 		.iter()
-		.map(|vg| {
-			let items = vg
+		.map(|variants| {
+			let items = variants
 				.iter()
-				.map(|v| {
-					let vname = &v.name;
-					let vname_str = v.name.to_string();
-					let label = &v.basic_item.label;
-					let docstring = match &v.basic_item.description {
+				.map(|variant| {
+					let vname = &variant.name;
+					let vname_str = variant.name.to_string();
+					let label = &variant.basic_item.label;
+					let docstring = match &variant.basic_item.description {
 						Some(s) => {
 							let s = s.trim();
 							quote! { Some(::alloc::borrow::Cow::Borrowed(#s)) }
 						}
 						None => quote! { None },
 					};
-					let icon = match &v.basic_item.icon {
+					let icon = match &variant.basic_item.icon {
 						Some(s) => quote! { Some(::alloc::borrow::Cow::Borrowed(#s)) },
 						None => quote! { None },
 					};
-					quote! { ( #name::#vname, #crate_name::registry::VariantMetadata {
-						name: ::alloc::borrow::Cow::Borrowed(#vname_str),
-						label: ::alloc::borrow::Cow::Borrowed(#label),
-						docstring: #docstring,
-						icon: #icon,
-					}), }
+					quote! {
+						(
+							#name::#vname, #crate_name::registry::VariantMetadata {
+								name: ::alloc::borrow::Cow::Borrowed(#vname_str),
+								label: ::alloc::borrow::Cow::Borrowed(#label),
+								docstring: #docstring,
+								icon: #icon,
+							}
+						),
+					}
 				})
 				.collect::<Vec<_>>();
 			quote! { &[ #(#items)* ], }

@@ -533,11 +533,11 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 	}
 }
 
+/// The X or Y component of a vector2.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
-/// X or Y Component of Vector2
 pub enum XY {
 	#[default]
 	X,

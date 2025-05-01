@@ -4,7 +4,6 @@ const DAY: f64 = 1000. * 3600. * 24.;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, dyn_any::DynAny, Default, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Real Time Mode
 pub enum RealTimeMode {
 	#[label("UTC")]
 	Utc,

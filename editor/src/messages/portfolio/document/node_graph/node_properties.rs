@@ -5,6 +5,7 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
+use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
@@ -16,7 +17,6 @@ use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_core::registry::ChoiceTypeStatic;
 use graphene_core::text::Font;
 use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
@@ -86,6 +86,10 @@ pub fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	]);
 }
 
+pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType) -> Vec<WidgetHolder> {
+	start_widgets_exposable(parameter_widgets_info, data_type, true)
+}
+
 pub fn start_widgets_exposable(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType, exposable: bool) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo {
 		document_node,
@@ -111,10 +115,6 @@ pub fn start_widgets_exposable(parameter_widgets_info: ParameterWidgetsInfo, dat
 	}
 
 	widgets
-}
-
-pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo, data_type: FrontendGraphDataType) -> Vec<WidgetHolder> {
-	start_widgets_exposable(parameter_widgets_info, data_type, true)
 }
 
 pub(crate) fn property_from_type(
@@ -169,46 +169,67 @@ pub(crate) fn property_from_type(
 				_ => {
 					use std::any::TypeId;
 					match concrete_type.id {
-						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
+						// ===============
+						// PRIMITIVE TYPES
+						// ===============
 						Some(x) if x == TypeId::of::<f64>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
 						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX)))).into(),
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
+						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<DVec2>() => vector2_widget(default_info, "X", "Y", "", None),
 						Some(x) if x == TypeId::of::<UVec2>() => vector2_widget(default_info, "X", "Y", "", Some(0.)),
 						Some(x) if x == TypeId::of::<IVec2>() => vector2_widget(default_info, "X", "Y", "", None),
+						// ==========================
+						// PRIMITIVE COLLECTION TYPES
+						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vector2_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
+						// ====================
+						// GRAPHICAL DATA TYPES
+						// ====================
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<ReferencePoint>() => reference_point_widget(default_info, false).into(),
+						// ============
+						// STRUCT TYPES
+						// ============
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
+						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
+						// ===============================
+						// MANUALLY IMPLEMENTED ENUM TYPES
+						// ===============================
+						Some(x) if x == TypeId::of::<ReferencePoint>() => reference_point_widget(default_info, false).into(),
 						Some(x) if x == TypeId::of::<BlendMode>() => blend_mode_widget(default_info),
+						// =========================
+						// AUTO-GENERATED ENUM TYPES
+						// =========================
+						Some(x) if x == TypeId::of::<FillType>() => enum_choice::<FillType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<GradientType>() => enum_choice::<GradientType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RealTimeMode>() => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlue>() => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<RedGreenBlueAlpha>() => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<XY>() => enum_choice::<XY>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<NoiseType>() => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<FractalType>() => fractal_type_widget(default_info, false),
-						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => cellular_distance_function_widget(default_info, false),
-						Some(x) if x == TypeId::of::<CellularReturnType>() => cellular_return_type_widget(default_info, false),
-						Some(x) if x == TypeId::of::<DomainWarpType>() => domain_warp_type_widget(default_info, false),
-						Some(x) if x == TypeId::of::<RelativeAbsolute>() => relative_absolute_widget(default_info),
+						Some(x) if x == TypeId::of::<FractalType>() => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if x == TypeId::of::<CellularDistanceFunction>() => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if x == TypeId::of::<CellularReturnType>() => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if x == TypeId::of::<DomainWarpType>() => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if x == TypeId::of::<RelativeAbsolute>() => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<GridType>() => enum_choice::<GridType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LineCap>() => enum_choice::<LineCap>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LineJoin>() => enum_choice::<LineJoin>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<FillType>() => fill_type_widget(default_info),
-						Some(x) if x == TypeId::of::<GradientType>() => gradient_type_widget(default_info),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						// =====
+						// OTHER
+						// =====
 						_ => {
 							let mut widgets = start_widgets(default_info, FrontendGraphDataType::General);
 							widgets.extend_from_slice(&[
@@ -236,184 +257,6 @@ pub(crate) fn property_from_type(
 
 	Ok(extra_widgets)
 }
-
-pub mod choice {
-	use super::ParameterWidgetsInfo;
-	use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
-	use crate::messages::tool::tool_messages::tool_prelude::*;
-	use graph_craft::document::value::TaggedValue;
-	use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint, VariantMetadata};
-	use std::marker::PhantomData;
-
-	pub trait WidgetFactory {
-		type Value: Clone + 'static;
-
-		fn disabled(self, disabled: bool) -> Self;
-		fn build<U, C>(&self, current: Self::Value, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
-		where
-			U: Fn(&Self::Value) -> Message + 'static + Send + Sync,
-			C: Fn(&()) -> Message + 'static + Send + Sync;
-		fn description(&self) -> Option<&str>;
-	}
-
-	pub fn enum_choice<E: ChoiceTypeStatic>() -> EnumChoice<E> {
-		EnumChoice {
-			disabled: false,
-			phantom: PhantomData,
-		}
-	}
-
-	pub struct EnumChoice<E> {
-		disabled: bool,
-		phantom: PhantomData<E>,
-	}
-
-	impl<E: ChoiceTypeStatic + 'static> EnumChoice<E> {
-		pub fn for_socket(self, parameter_info: ParameterWidgetsInfo) -> ForSocket<Self> {
-			ForSocket {
-				widget_factory: self,
-				parameter_info,
-				exposable: true,
-			}
-		}
-		pub fn for_value(self, current: E) -> ForValue<Self> {
-			todo!()
-		}
-		pub fn disabled(self, disabled: bool) -> Self {
-			Self { disabled, ..self }
-		}
-
-		pub fn into_menu_entries(self, action: impl Fn(E) -> Message + 'static + Send + Sync) -> Vec<Vec<MenuBarEntry>> {
-			todo!()
-		}
-
-		fn dropdown<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
-		where
-			U: Fn(&E) -> Message + 'static + Send + Sync,
-			C: Fn(&()) -> Message + 'static + Send + Sync,
-		{
-			let items = E::list()
-				.into_iter()
-				.map(|group| {
-					group
-						.into_iter()
-						.map(|(item, metadata)| {
-							let item = item.clone();
-							let updater = updater_factory();
-							let committer = committer_factory();
-							MenuListEntry::new(metadata.name.as_ref())
-								.label(metadata.label.as_ref())
-								.on_update(move |_| updater(&item))
-								.on_commit(committer)
-						})
-						.collect()
-				})
-				.collect();
-			DropdownInput::new(items).disabled(self.disabled).selected_index(Some(current.as_u32())).widget_holder()
-		}
-
-		fn radio_buttons<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
-		where
-			U: Fn(&E) -> Message + 'static + Send + Sync,
-			C: Fn(&()) -> Message + 'static + Send + Sync,
-		{
-			let items = E::list()
-				.into_iter()
-				.map(|group| group.into_iter())
-				.flatten()
-				.map(|(item, var_meta)| {
-					let item = item.clone();
-					let updater = updater_factory();
-					let committer = committer_factory();
-					let red = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(&item)).on_commit(committer);
-					let red = match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
-						(None, None) => red.label(var_meta.label.as_ref()),
-						(None, Some(doc)) => red.label(var_meta.label.as_ref()).tooltip(doc),
-						(Some(icon), None) => red.icon(icon).tooltip(var_meta.label.as_ref()),
-						(Some(icon), Some(doc)) => red.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
-					};
-					red
-				})
-				.collect();
-			RadioInput::new(items).selected_index(Some(current.as_u32())).widget_holder()
-		}
-	}
-	impl<E: ChoiceTypeStatic + 'static> WidgetFactory for EnumChoice<E> {
-		type Value = E;
-		fn disabled(self, disabled: bool) -> Self {
-			Self { disabled, ..self }
-		}
-
-		fn description(&self) -> Option<&str> {
-			E::DESCRIPTION
-		}
-
-		fn build<U, C>(&self, current: Self::Value, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
-		where
-			U: Fn(&Self::Value) -> Message + 'static + Send + Sync,
-			C: Fn(&()) -> Message + 'static + Send + Sync,
-		{
-			match E::WIDGET_HINT {
-				ChoiceWidgetHint::Dropdown => self.dropdown(current, updater_factory, committer_factory),
-				ChoiceWidgetHint::RadioButtons => self.radio_buttons(current, updater_factory, committer_factory),
-			}
-		}
-	}
-
-	pub struct ForSocket<'p, W> {
-		widget_factory: W,
-		parameter_info: ParameterWidgetsInfo<'p>,
-		exposable: bool,
-	}
-
-	impl<'p, W> ForSocket<'p, W>
-	where
-		W: WidgetFactory,
-		for<'a> &'a W::Value: TryFrom<&'a TaggedValue>,
-		W::Value: Clone,
-		TaggedValue: From<W::Value>,
-	{
-		pub fn disabled(self, disabled: bool) -> Self {
-			Self {
-				widget_factory: self.widget_factory.disabled(disabled),
-				..self
-			}
-		}
-
-		pub fn exposable(self, exposable: bool) -> Self {
-			Self { exposable, ..self }
-		}
-
-		pub fn property_row(self) -> LayoutGroup {
-			let ParameterWidgetsInfo { document_node, node_id, index, .. } = self.parameter_info;
-
-			let mut widgets = super::start_widgets_exposable(self.parameter_info, FrontendGraphDataType::General, self.exposable);
-
-			let Some(input) = document_node.inputs.get(index) else {
-				log::warn!("A widget failed to be built because its node's input index is invalid.");
-				return LayoutGroup::Row { widgets: vec![] };
-			};
-
-			let input: Option<W::Value> = input.as_non_exposed_value().and_then(|v| <&W::Value as TryFrom<&TaggedValue>>::try_from(v).ok()).map(Clone::clone);
-
-			if let Some(current) = input {
-				let committer = || super::commit_value;
-				let updater = || super::update_value(move |v: &W::Value| TaggedValue::from(v.clone()), node_id, index);
-				let widget = self.widget_factory.build(current, updater, committer);
-				widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), widget]);
-			}
-			let mut row = LayoutGroup::Row { widgets };
-			if let Some(desc) = self.widget_factory.description() {
-				row = row.with_tooltip(desc);
-			}
-			row
-		}
-	}
-
-	pub struct ForValue<W>(PhantomData<W>);
-}
-
-use choice::enum_choice;
 
 pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
@@ -953,49 +796,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 	widgets
 }
 
-pub fn noise_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	enum_choice::<NoiseType>().for_socket(parameter_widgets_info).property_row()
-}
-
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn fractal_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	enum_choice::<FractalType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
-}
-
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn cellular_distance_function_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	enum_choice::<CellularDistanceFunction>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
-}
-
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn cellular_return_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	enum_choice::<CellularReturnType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
-}
-
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn domain_warp_type_widget(parameter_widgets_info: ParameterWidgetsInfo, disabled: bool) -> LayoutGroup {
-	enum_choice::<DomainWarpType>().for_socket(parameter_widgets_info).disabled(disabled).property_row()
-}
-
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
-pub fn relative_absolute_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
-
-	vec![
-		DropdownInput::new(vec![vec![
-			MenuListEntry::new("Relative")
-				.label("Relative")
-				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, index)),
-			MenuListEntry::new("Absolute")
-				.label("Absolute")
-				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, index)),
-		]])
-		.widget_holder(),
-	]
-	.into()
-}
-
-// TODO: Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Auto-generate this enum dropdown menu widget
 pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
@@ -1028,40 +829,6 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
-}
-
-pub fn fill_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
-
-	vec![
-		DropdownInput::new(vec![vec![
-			MenuListEntry::new("Solid")
-				.label("Solid")
-				.on_update(update_value(|_| TaggedValue::FillType(FillType::Solid), node_id, index)),
-			MenuListEntry::new("Gradient")
-				.label("Gradient")
-				.on_update(update_value(|_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
-		]])
-		.widget_holder(),
-	]
-	.into()
-}
-
-pub fn gradient_type_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
-	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
-
-	vec![
-		DropdownInput::new(vec![vec![
-			MenuListEntry::new("Linear")
-				.label("Linear")
-				.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
-			MenuListEntry::new("Radial")
-				.label("Radial")
-				.on_update(update_value(|_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
-		]])
-		.widget_holder(),
-	]
-	.into()
 }
 
 pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: ColorInput) -> LayoutGroup {
@@ -1211,40 +978,19 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 
 	// Monochrome
 	let monochrome_index = 1;
-	let monochrome = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, monochrome_index, true, context), CheckboxInput::default());
-	let is_monochrome = match document_node.inputs[monochrome_index].as_value() {
+	let is_monochrome = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, monochrome_index, true, context), CheckboxInput::default());
+	let is_monochrome_value = match document_node.inputs[monochrome_index].as_value() {
 		Some(TaggedValue::Bool(monochrome_choice)) => *monochrome_choice,
 		_ => false,
 	};
 
 	// Output channel choice
 	let output_channel_index = 18;
-	let mut output_channel = vec![TextLabel::new("Output Channel").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-	add_blank_assist(&mut output_channel);
-
-	let Some(input) = document_node.inputs.get(output_channel_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let Some(&TaggedValue::RedGreenBlue(choice)) = input.as_non_exposed_value() {
-		let entries = vec![
-			RadioEntryData::new(format!("{:?}", RedGreenBlue::Red))
-				.label(RedGreenBlue::Red.to_string())
-				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Red), node_id, output_channel_index))
-				.on_commit(commit_value),
-			RadioEntryData::new(format!("{:?}", RedGreenBlue::Green))
-				.label(RedGreenBlue::Green.to_string())
-				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Green), node_id, output_channel_index))
-				.on_commit(commit_value),
-			RadioEntryData::new(format!("{:?}", RedGreenBlue::Blue))
-				.label(RedGreenBlue::Blue.to_string())
-				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Blue), node_id, output_channel_index))
-				.on_commit(commit_value),
-		];
-		output_channel.extend([RadioInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
-	};
-
-	let is_output_channel = match &document_node.inputs[output_channel_index].as_value() {
+	let output_channel = enum_choice::<RedGreenBlue>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, output_channel_index, true, context))
+		.exposable(false)
+		.property_row();
+	let output_channel_value = match &document_node.inputs[output_channel_index].as_value() {
 		Some(TaggedValue::RedGreenBlue(choice)) => choice,
 		_ => {
 			warn!("Channel Mixer node properties panel could not be displayed.");
@@ -1253,7 +999,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	};
 
 	// Output Channel modes
-	let (red_output_index, green_output_index, blue_output_index, constant_output_index) = match (is_monochrome, is_output_channel) {
+	let (red_output_index, green_output_index, blue_output_index, constant_output_index) = match (is_monochrome_value, output_channel_value) {
 		(true, _) => (2, 3, 4, 5),
 		(false, RedGreenBlue::Red) => (6, 7, 8, 9),
 		(false, RedGreenBlue::Green) => (10, 11, 12, 13),
@@ -1266,11 +1012,11 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	let constant = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, constant_output_index, true, context), number_input);
 
 	// Monochrome
-	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
+	let mut layout = vec![LayoutGroup::Row { widgets: is_monochrome }];
 	// Output channel choice
-	if !is_monochrome {
-		layout.push(LayoutGroup::Row { widgets: output_channel });
-	};
+	if !is_monochrome_value {
+		layout.push(output_channel);
+	}
 	// Channel values
 	layout.extend([
 		LayoutGroup::Row { widgets: red },
@@ -1291,19 +1037,9 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	};
 	// Colors choice
 	let colors_index = 38;
-	/*let mut colors = vec![TextLabel::new("Colors").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-	add_blank_assist(&mut colors);
 
-	let Some(input) = document_node.inputs.get(colors_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let Some(&TaggedValue::SelectiveColorChoice(choice)) = input.as_non_exposed_value() {
-		colors.extend([radio_buttons(enum_source::<SelectiveColorChoice>(), node_id, colors_index, choice).widget_holder()]);
-	}*/
-
-	let colours = enum_choice::<SelectiveColorChoice>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, colors_index, false, context))
+	let colors = enum_choice::<SelectiveColorChoice>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, colors_index, true, context))
 		.exposable(false)
 		.property_row();
 
@@ -1335,38 +1071,20 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 
 	// Mode
 	let mode_index = 1;
-	let mut mode = start_widgets(ParameterWidgetsInfo::from_index(document_node, node_id, mode_index, true, context), FrontendGraphDataType::General);
-	mode.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
-	let Some(input) = document_node.inputs.get(mode_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let Some(&TaggedValue::RelativeAbsolute(relative_or_absolute)) = input.as_non_exposed_value() {
-		let entries = vec![
-			RadioEntryData::new("relative")
-				.label("Relative")
-				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, mode_index))
-				.on_commit(commit_value),
-			RadioEntryData::new("absolute")
-				.label("Absolute")
-				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, mode_index))
-				.on_commit(commit_value),
-		];
-		mode.push(RadioInput::new(entries).selected_index(Some(relative_or_absolute as u32)).widget_holder());
-	};
+	let mode = enum_choice::<RelativeAbsolute>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, mode_index, true, context))
+		.property_row();
 
 	vec![
 		// Colors choice
-		//LayoutGroup::Row { widgets: colors },
-		colours,
+		colors,
 		// CMYK
 		LayoutGroup::Row { widgets: cyan },
 		LayoutGroup::Row { widgets: magenta },
 		LayoutGroup::Row { widgets: yellow },
 		LayoutGroup::Row { widgets: black },
 		// Mode
-		LayoutGroup::Row { widgets: mode },
+		mode,
 	]
 }
 
@@ -1839,7 +1557,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let new_gradient2 = gradient.clone();
 
 		let entries = vec![
-			RadioEntryData::new("linear")
+			RadioEntryData::new("Linear")
 				.label("Linear")
 				.on_update(update_value(
 					move |_| {
@@ -1851,7 +1569,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					fill_index,
 				))
 				.on_commit(commit_value),
-			RadioEntryData::new("radial")
+			RadioEntryData::new("Radial")
 				.label("Radial")
 				.on_update(update_value(
 					move |_| {
@@ -2057,4 +1775,188 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			blank_assist,
 		}
 	}
+}
+
+pub mod choice {
+	use super::ParameterWidgetsInfo;
+	use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
+	use crate::messages::tool::tool_messages::tool_prelude::*;
+	use graph_craft::document::value::TaggedValue;
+	use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
+	use std::marker::PhantomData;
+
+	pub trait WidgetFactory {
+		type Value: Clone + 'static;
+
+		fn disabled(self, disabled: bool) -> Self;
+
+		fn build<U, C>(&self, current: Self::Value, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&Self::Value) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync;
+
+		fn description(&self) -> Option<&str>;
+	}
+
+	pub fn enum_choice<E: ChoiceTypeStatic>() -> EnumChoice<E> {
+		EnumChoice {
+			disabled: false,
+			phantom: PhantomData,
+		}
+	}
+
+	pub struct EnumChoice<E> {
+		disabled: bool,
+		phantom: PhantomData<E>,
+	}
+
+	impl<E: ChoiceTypeStatic + 'static> EnumChoice<E> {
+		pub fn for_socket(self, parameter_info: ParameterWidgetsInfo) -> ForSocket<Self> {
+			ForSocket {
+				widget_factory: self,
+				parameter_info,
+				exposable: true,
+			}
+		}
+
+		/// Not yet implemented!
+		pub fn for_value(self, _current: E) -> ForValue<Self> {
+			todo!()
+		}
+
+		pub fn disabled(self, disabled: bool) -> Self {
+			Self { disabled, ..self }
+		}
+
+		/// Not yet implemented!
+		pub fn into_menu_entries(self, _action: impl Fn(E) -> Message + 'static + Send + Sync) -> Vec<Vec<MenuBarEntry>> {
+			todo!()
+		}
+
+		fn dropdown_menu<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&E) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync,
+		{
+			let items = E::list()
+				.into_iter()
+				.map(|group| {
+					group
+						.into_iter()
+						.map(|(item, metadata)| {
+							let item = item.clone();
+							let updater = updater_factory();
+							let committer = committer_factory();
+							MenuListEntry::new(metadata.name.as_ref())
+								.label(metadata.label.as_ref())
+								.on_update(move |_| updater(&item))
+								.on_commit(committer)
+						})
+						.collect()
+				})
+				.collect();
+			DropdownInput::new(items).disabled(self.disabled).selected_index(Some(current.as_u32())).widget_holder()
+		}
+
+		fn radio_buttons<U, C>(&self, current: E, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&E) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync,
+		{
+			let items = E::list()
+				.into_iter()
+				.map(|group| group.into_iter())
+				.flatten()
+				.map(|(item, var_meta)| {
+					let item = item.clone();
+					let updater = updater_factory();
+					let committer = committer_factory();
+					let entry = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(&item)).on_commit(committer);
+					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
+						(None, None) => entry.label(var_meta.label.as_ref()),
+						(None, Some(doc)) => entry.label(var_meta.label.as_ref()).tooltip(doc),
+						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label.as_ref()),
+						(Some(icon), Some(doc)) => entry.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
+					}
+				})
+				.collect();
+			RadioInput::new(items).selected_index(Some(current.as_u32())).widget_holder()
+		}
+	}
+
+	impl<E: ChoiceTypeStatic + 'static> WidgetFactory for EnumChoice<E> {
+		type Value = E;
+
+		fn disabled(self, disabled: bool) -> Self {
+			Self { disabled, ..self }
+		}
+
+		fn description(&self) -> Option<&str> {
+			E::DESCRIPTION
+		}
+
+		fn build<U, C>(&self, current: Self::Value, updater_factory: impl Fn() -> U, committer_factory: impl Fn() -> C) -> WidgetHolder
+		where
+			U: Fn(&Self::Value) -> Message + 'static + Send + Sync,
+			C: Fn(&()) -> Message + 'static + Send + Sync,
+		{
+			match E::WIDGET_HINT {
+				ChoiceWidgetHint::Dropdown => self.dropdown_menu(current, updater_factory, committer_factory),
+				ChoiceWidgetHint::RadioButtons => self.radio_buttons(current, updater_factory, committer_factory),
+			}
+		}
+	}
+
+	pub struct ForSocket<'p, W> {
+		widget_factory: W,
+		parameter_info: ParameterWidgetsInfo<'p>,
+		exposable: bool,
+	}
+
+	impl<'p, W> ForSocket<'p, W>
+	where
+		W: WidgetFactory,
+		W::Value: Clone,
+		for<'a> &'a W::Value: TryFrom<&'a TaggedValue>,
+		TaggedValue: From<W::Value>,
+	{
+		pub fn disabled(self, disabled: bool) -> Self {
+			Self {
+				widget_factory: self.widget_factory.disabled(disabled),
+				..self
+			}
+		}
+
+		pub fn exposable(self, exposable: bool) -> Self {
+			Self { exposable, ..self }
+		}
+
+		pub fn property_row(self) -> LayoutGroup {
+			let ParameterWidgetsInfo { document_node, node_id, index, .. } = self.parameter_info;
+
+			let mut widgets = super::start_widgets_exposable(self.parameter_info, FrontendGraphDataType::General, self.exposable);
+
+			let Some(input) = document_node.inputs.get(index) else {
+				log::warn!("A widget failed to be built because its node's input index is invalid.");
+				return LayoutGroup::Row { widgets: vec![] };
+			};
+
+			let input: Option<W::Value> = input.as_non_exposed_value().and_then(|v| <&W::Value as TryFrom<&TaggedValue>>::try_from(v).ok()).map(Clone::clone);
+
+			if let Some(current) = input {
+				let committer = || super::commit_value;
+				let updater = || super::update_value(move |v: &W::Value| TaggedValue::from(v.clone()), node_id, index);
+				let widget = self.widget_factory.build(current, updater, committer);
+				widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_holder(), widget]);
+			}
+
+			let mut row = LayoutGroup::Row { widgets };
+			if let Some(desc) = self.widget_factory.description() {
+				row = row.with_tooltip(desc);
+			}
+			row
+		}
+	}
+
+	pub struct ForValue<W>(PhantomData<W>);
 }

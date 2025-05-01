@@ -7,7 +7,8 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::fmt::Write;
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum GradientType {
 	#[default]
 	Linear,
@@ -462,7 +463,8 @@ impl From<Fill> for FillChoice {
 
 /// Enum describing the type of [Fill].
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum FillType {
 	#[default]
 	Solid,
