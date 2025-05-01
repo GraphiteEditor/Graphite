@@ -433,10 +433,14 @@ async fn round_corners(
 	#[default(10.)]
 	radius: PixelLength,
 	#[range((0., 1.))]
+	#[hard_min(0.)]
+	#[hard_max(1.)]
 	#[default(0.5)]
 	roundness: f64,
 	#[default(100.)] edge_length_limit: Percentage,
 	#[range((0., 180.))]
+	#[hard_min(0.)]
+	#[hard_max(180.)]
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> VectorDataTable {

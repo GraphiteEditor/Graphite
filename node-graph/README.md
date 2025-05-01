@@ -102,7 +102,7 @@ Instead of manually implementing the `Node` trait with complex generics, one can
 
 ```rs
 #[node_macro::node(category("Raster: Adjustments"))]
-fn opacity(_input: (), #[default(424242)] color: Color,#[soft_min(0.1)] opacity_multiplier: f64) -> Color {
+fn opacity(_input: (), #[default(424242)] color: Color, #[soft_min(0.1)] opacity_multiplier: f64) -> Color {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }

@@ -1,3 +1,5 @@
+// TODO(TrueDoctor): Replace this with the more idiomatic approach instead of using `trait Clampable`.
+
 /// A trait for types that can be clamped within a min/max range defined by f64.
 pub trait Clampable: Sized {
 	/// Clamps the value to be no less than `min`.

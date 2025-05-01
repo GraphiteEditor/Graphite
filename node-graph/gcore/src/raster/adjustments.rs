@@ -1435,6 +1435,7 @@ async fn exposure<T: Adjust<Color>>(
 	offset: f64,
 	#[default(1.)]
 	#[range((0.01, 10.))]
+	#[hard_min(0.0001)]
 	gamma_correction: f64,
 ) -> T {
 	input.adjust(|color| {

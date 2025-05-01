@@ -6,7 +6,7 @@ async fn image_color_palette(
 	_: impl Ctx,
 	image: ImageFrameTable<Color>,
 	#[hard_min(1.)]
-	#[hard_max(28.)]
+	#[soft_max(28.)]
 	max_size: u32,
 ) -> Vec<Color> {
 	const GRID: f32 = 3.;
