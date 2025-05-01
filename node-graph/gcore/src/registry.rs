@@ -1,5 +1,6 @@
 use crate::{Node, NodeIO, NodeIOTypes, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -51,6 +52,33 @@ pub struct FieldMetadata {
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
+}
+
+pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
+	const WIDGET_HINT: ChoiceWidgetHint;
+	const DESCRIPTION: Option<&'static str>;
+	fn list() -> &'static [&'static [(Self, VariantMetadata)]];
+}
+
+pub enum ChoiceWidgetHint {
+	Dropdown,
+	RadioButtons,
+}
+
+/// Translation struct between macro and definition.
+#[derive(Clone, Debug)]
+pub struct VariantMetadata {
+	/// Name as declared in source code.
+	pub name: Cow<'static, str>,
+
+	/// Name to be displayed in UI.
+	pub label: Cow<'static, str>,
+
+	/// User-facing documentation text.
+	pub docstring: Option<Cow<'static, str>>,
+
+	/// Name of icon to display in radio buttons and such.
+	pub icon: Option<Cow<'static, str>>,
 }
 
 #[derive(Clone, Debug)]
