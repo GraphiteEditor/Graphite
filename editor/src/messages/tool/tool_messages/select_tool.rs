@@ -516,17 +516,19 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers, but not artboards
-				for layer in document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-				{
-					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+				if overlay_context.visibility_settings.selection_outline() {
+					for layer in document
+						.network_interface
+						.selected_nodes()
+						.selected_visible_and_unlocked_layers(&document.network_interface)
+						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+					{
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 
-					if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-						let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-						overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
+						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+							overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
+						}
 					}
 				}
 
@@ -566,11 +568,13 @@ impl Fsm for SelectToolFsmState {
 					let click = document.click(input);
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						if overlay_context.visibility_settings.hover_outline() {
+							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						}
 
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-						if !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
+						if overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
 							// Get all selected layers and compute their viewport-aligned AABB
 							let selected_bounds_viewport = document
 								.network_interface
@@ -602,13 +606,15 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				if let Some(bounds) = bounds {
-					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+				if overlay_context.visibility_settings.transform_cage() {
+					if let Some(bounds) = bounds {
+						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
-					bounding_box_manager.bounds = bounds;
-					bounding_box_manager.transform = transform;
-					bounding_box_manager.transform_tampered = transform_tampered;
-					bounding_box_manager.render_overlays(&mut overlay_context, true);
+						bounding_box_manager.bounds = bounds;
+						bounding_box_manager.transform = transform;
+						bounding_box_manager.transform_tampered = transform_tampered;
+						bounding_box_manager.render_overlays(&mut overlay_context, true);
+					}
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -673,71 +679,74 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
 
 				// Update compass rose
-				tool_data.compass_rose.refresh_position(document);
-				let compass_center = tool_data.compass_rose.compass_rose_position();
-				if !matches!(self, Self::Dragging { .. }) {
-					tool_data.line_center = compass_center;
-				}
-				overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
+				if overlay_context.visibility_settings.compass_rose() {
+					tool_data.compass_rose.refresh_position(document);
+					let compass_center = tool_data.compass_rose.compass_rose_position();
+					if !matches!(self, Self::Dragging { .. }) {
+						tool_data.line_center = compass_center;
+					}
 
-				let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
-					Some((axis, false))
-				} else {
-					compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
-				};
+					overlay_context.compass_rose(compass_center, angle, show_compass_with_ring);
 
-				if show_compass_with_ring.is_some() {
-					if let Some((axis, hover)) = axis_state {
-						if axis.is_constraint() {
-							let e0 = tool_data
-								.bounding_box_manager
-								.as_ref()
-								.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
-								.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
+					let axis_state = if let SelectToolFsmState::Dragging { axis, .. } = self {
+						Some((axis, false))
+					} else {
+						compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
+					};
 
-							let (direction, color) = match axis {
-								Axis::X => (e0, COLOR_OVERLAY_RED),
-								Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
-								_ => unreachable!(),
-							};
+					if show_compass_with_ring.is_some() {
+						if let Some((axis, hover)) = axis_state {
+							if axis.is_constraint() {
+								let e0 = tool_data
+									.bounding_box_manager
+									.as_ref()
+									.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
+									.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-							let viewport_diagonal = input.viewport_bounds.size().length();
+								let (direction, color) = match axis {
+									Axis::X => (e0, COLOR_OVERLAY_RED),
+									Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+									_ => unreachable!(),
+								};
 
-							let color = if !hover {
-								color
-							} else {
-								let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-								&format!("#{}", color_string)
-							};
-							let line_center = tool_data.line_center;
-							overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
+								let viewport_diagonal = input.viewport_bounds.size().length();
+
+								let color = if !hover {
+									color
+								} else {
+									let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+									&format!("#{}", color_string)
+								};
+								let line_center = tool_data.line_center;
+								overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
+							}
 						}
 					}
-				}
 
-				if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
-					let mouse_position = mouse_position - tool_data.drag_start;
-					let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-					let angle = -mouse_position.angle_to(DVec2::X);
-					let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
+					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
+						let mouse_position = mouse_position - tool_data.drag_start;
+						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+						let angle = -mouse_position.angle_to(DVec2::X);
+						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-					let extension = tool_data.drag_current - tool_data.drag_start;
-					let origin = compass_center - extension;
-					let viewport_diagonal = input.viewport_bounds.size().length();
+						let extension = tool_data.drag_current - tool_data.drag_start;
+						let origin = compass_center - extension;
+						let viewport_diagonal = input.viewport_bounds.size().length();
 
-					let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
-					let perp = edge.perp();
+						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
+						let perp = edge.perp();
 
-					let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
-						(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
-					} else {
-						(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
-					};
-					let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-					perp_color.insert(0, '#');
-					let perp_color = perp_color.as_str();
-					overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
-					overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
+						let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
+							(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
+						} else {
+							(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
+						};
+						let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+						perp_color.insert(0, '#');
+						let perp_color = perp_color.as_str();
+						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
+						overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
+					}
 				}
 
 				// Check if the tool is in selection mode
@@ -768,8 +777,11 @@ impl Fsm for SelectToolFsmState {
 						SelectionMode::Directional => unreachable!(),
 					});
 
-					for layer in layers_to_outline {
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					if overlay_context.visibility_settings.selection_outline() {
+						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
+						for layer in layers_to_outline {
+							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						}
 					}
 
 					// Update the selection box
@@ -854,7 +866,7 @@ impl Fsm for SelectToolFsmState {
 				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
-				let can_grab_compass_rose = compass_rose_state.can_grab() && show_compass;
+				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 				let is_flat_layer = tool_data
 					.bounding_box_manager
 					.as_ref()
