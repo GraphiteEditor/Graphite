@@ -296,7 +296,12 @@ fn snap_tangents(path: &SnapCandidatePath, tangents: bool, point: &SnapCandidate
 		let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
 
 		if let Some(closest_point) = closest_point_along_line(neighbor, point.document_point, &path.document_curve, tolerance, 20) {
-			let tangent = (tangent_point - neighbor).normalize();
+			let tangent_vector = tangent_point - neighbor;
+			if tangent_vector.length_squared() < f64::EPSILON {
+				continue;
+			}
+			let tangent = tangent_vector.normalize();
+
 			let offset = (point.document_point - tangent_point).dot(tangent);
 			let snap_to = tangent_point + tangent * offset;
 
@@ -320,23 +325,24 @@ fn closest_point_along_line(start: DVec2, end: DVec2, curve: &Bezier, tolerance:
 	let mut closest_point = None;
 	let mut closest_distance = f64::INFINITY;
 
+	let line_direction = end - start;
+	if line_direction.length_squared() < f64::EPSILON {
+		return None;
+	}
+	let line_direction_normalized = line_direction.normalize();
+
 	for i in 0..=max_iterations {
 		let t = i as f64 / max_iterations as f64;
 
 		let curve_point = curve.evaluate(TValue::Parametric(t));
 		let tangent = curve.tangent(TValue::Parametric(t));
-		if tangent.length_squared() == 0.0 {
+		if tangent.length_squared() < f64::EPSILON {
 			continue;
 		}
 
-		let line_direction = end - start;
-		if line_direction.length_squared() == 0.0 {
-			break;
-		}
-
 		let v = curve_point - start;
-		let projected_distance = v.dot(line_direction.normalize());
-		let projected_point = start + projected_distance * line_direction.normalize();
+		let projected_distance = v.dot(line_direction_normalized);
+		let projected_point = start + projected_distance * line_direction_normalized;
 
 		let distance = projected_point.distance(curve_point);
 
