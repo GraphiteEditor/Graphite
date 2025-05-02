@@ -1,9 +1,9 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::*;
-use crate::messages::prelude::*;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
+use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
 pub struct DistributionSnapper {
@@ -79,18 +79,21 @@ impl DistributionSnapper {
 		let screen_bounds = (document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()])).bounding_box();
 		let max_extent = (screen_bounds[1] - screen_bounds[0]).abs().max_element();
 
+		// Collect artboard bounds
 		for layer in document.metadata().all_layers() {
 			if document.network_interface.is_artboard(&layer.to_node(), &[]) && !snap_data.ignore.contains(&layer) {
 				self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);
 			}
 		}
 
+		// Collect alignment candidate bounds
 		for &layer in snap_data.alignment_candidates.map_or([].as_slice(), |candidates| candidates.as_slice()) {
 			if !snap_data.ignore_bounds(layer) {
 				self.add_bounds(layer, snap_data, bbox_to_snap, max_extent);
 			}
 		}
 
+		// Sort and merge intersecting rectangles
 		self.right.sort_unstable_by(|a, b| a.center().x.total_cmp(&b.center().x));
 		self.left.sort_unstable_by(|a, b| b.center().x.total_cmp(&a.center().x));
 		self.down.sort_unstable_by(|a, b| a.center().y.total_cmp(&b.center().y));
@@ -184,13 +187,11 @@ impl DistributionSnapper {
 	fn snap_bbox_points(&self, tolerance: f64, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, bounds: Rect) {
 		let mut consider_x = true;
 		let mut consider_y = true;
+
 		if let SnapConstraint::Line { direction, .. } = constraint {
 			let direction = direction.normalize_or_zero();
-			if direction.x == 0. {
-				consider_x = false;
-			} else if direction.y == 0. {
-				consider_y = false;
-			}
+			consider_x = direction.x != 0.;
+			consider_y = direction.y != 0.;
 		}
 
 		let mut snap_x: Option<SnappedPoint> = None;
@@ -221,40 +222,54 @@ impl DistributionSnapper {
 	}
 
 	fn horizontal_snap(&self, consider_x: bool, bounds: Rect, tolerance: f64, snap_x: &mut Option<SnappedPoint>, point: &SnapCandidatePoint) {
-		// Right
-		if consider_x && !self.right.is_empty() {
+		if !consider_x {
+			return;
+		}
+
+		// Try right distribution first
+		if !self.right.is_empty() {
 			let (equal_dist, mut vec_right) = Self::top_level_matches(bounds, &self.right, tolerance, dist_right);
 			if let Some(distances) = equal_dist {
 				let translation = DVec2::X * (distances.first - distances.equal);
 				vec_right.push_front(bounds.translate(translation));
+
+				// Find matching left distribution
 				for &left in Self::exact_further_matches(bounds.translate(translation), &self.left, dist_left, distances.equal, 2).iter().skip(1) {
 					vec_right.push_front(left);
 				}
-				vec_right[0][0].y = vec_right[0][0].y.min(vec_right[1][1].y);
-				vec_right[0][1].y = vec_right[0][1].y.min(vec_right[1][1].y);
-				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distances, bounds, translation, tolerance))
+
+				// Adjust bounds to maintain alignment
+				if vec_right.len() > 1 {
+					vec_right[0][0].y = vec_right[0][0].y.min(vec_right[1][1].y);
+					vec_right[0][1].y = vec_right[0][1].y.min(vec_right[1][1].y);
+				}
+
+				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Right, vec_right, distances, bounds, translation, tolerance));
+				return;
 			}
 		}
 
-		// Left
-		if consider_x && !self.left.is_empty() && snap_x.is_none() {
+		// Try left distribution if right didn't work
+		if !self.left.is_empty() {
 			let (equal_dist, mut vec_left) = Self::top_level_matches(bounds, &self.left, tolerance, dist_left);
 			if let Some(distances) = equal_dist {
 				let translation = -DVec2::X * (distances.first - distances.equal);
 				vec_left.make_contiguous().reverse();
 				vec_left.push_back(bounds.translate(translation));
 
+				// Find matching right distribution
 				for &right in Self::exact_further_matches(bounds.translate(translation), &self.right, dist_right, distances.equal, 2).iter().skip(1) {
 					vec_left.push_back(right);
 				}
-				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Left, vec_left, distances, bounds, translation, tolerance))
+
+				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Left, vec_left, distances, bounds, translation, tolerance));
+				return;
 			}
 		}
 
-		// Center X
-		if consider_x && !self.left.is_empty() && !self.right.is_empty() && snap_x.is_none() {
+		// Try center distribution if both sides exist
+		if !self.left.is_empty() && !self.right.is_empty() {
 			let target_x = (self.right[0].min() + self.left[0].max()).x / 2.;
-
 			let offset = target_x - bounds.center().x;
 
 			if offset.abs() < tolerance {
@@ -264,68 +279,91 @@ impl DistributionSnapper {
 				let distances = DistributionMatch { first, equal };
 
 				let mut boxes = VecDeque::from([self.left[0], bounds.translate(translation), self.right[0]]);
-				boxes[1][0].y = boxes[1][0].y.min(boxes[0][1].y);
-				boxes[1][1].y = boxes[1][1].y.min(boxes[0][1].y);
-				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::X, boxes, distances, bounds, translation, tolerance))
+
+				// Adjust bounds to maintain alignment
+				if boxes.len() > 1 {
+					boxes[1][0].y = boxes[1][0].y.min(boxes[0][1].y);
+					boxes[1][1].y = boxes[1][1].y.min(boxes[0][1].y);
+				}
+
+				*snap_x = Some(SnappedPoint::distribute(point, DistributionSnapTarget::X, boxes, distances, bounds, translation, tolerance));
 			}
 		}
 	}
 
 	fn vertical_snap(&self, consider_y: bool, bounds: Rect, tolerance: f64, snap_y: &mut Option<SnappedPoint>, point: &SnapCandidatePoint) {
-		// Down
-		if consider_y && !self.down.is_empty() {
+		if !consider_y {
+			return;
+		}
+
+		// Try down distribution first
+		if !self.down.is_empty() {
 			let (equal_dist, mut vec_down) = Self::top_level_matches(bounds, &self.down, tolerance, dist_down);
 			if let Some(distances) = equal_dist {
 				let translation = DVec2::Y * (distances.first - distances.equal);
 				vec_down.push_front(bounds.translate(translation));
 
+				// Find matching up distribution
 				for &up in Self::exact_further_matches(bounds.translate(translation), &self.up, dist_up, distances.equal, 2).iter().skip(1) {
 					vec_down.push_front(up);
 				}
-				vec_down[0][0].x = vec_down[0][0].x.min(vec_down[1][1].x);
-				vec_down[0][1].x = vec_down[0][1].x.min(vec_down[1][1].x);
-				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distances, bounds, translation, tolerance))
+
+				// Adjust bounds to maintain alignment
+				if vec_down.len() > 1 {
+					vec_down[0][0].x = vec_down[0][0].x.min(vec_down[1][1].x);
+					vec_down[0][1].x = vec_down[0][1].x.min(vec_down[1][1].x);
+				}
+
+				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Down, vec_down, distances, bounds, translation, tolerance));
+				return;
 			}
 		}
 
-		// Up
-		if consider_y && !self.up.is_empty() && snap_y.is_none() {
+		// Try up distribution if down didn't work
+		if !self.up.is_empty() {
 			let (equal_dist, mut vec_up) = Self::top_level_matches(bounds, &self.up, tolerance, dist_up);
 			if let Some(distances) = equal_dist {
 				let translation = -DVec2::Y * (distances.first - distances.equal);
 				vec_up.make_contiguous().reverse();
 				vec_up.push_back(bounds.translate(translation));
 
+				// Find matching down distribution
 				for &down in Self::exact_further_matches(bounds.translate(translation), &self.down, dist_down, distances.equal, 2).iter().skip(1) {
 					vec_up.push_back(down);
 				}
-				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Up, vec_up, distances, bounds, translation, tolerance))
+
+				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Up, vec_up, distances, bounds, translation, tolerance));
+				return;
 			}
 		}
 
-		// Center Y
-		if consider_y && !self.up.is_empty() && !self.down.is_empty() && snap_y.is_none() {
+		// Try center distribution if both sides exist
+		if !self.up.is_empty() && !self.down.is_empty() {
 			let target_y = (self.down[0].min() + self.up[0].max()).y / 2.;
-
 			let offset = target_y - bounds.center().y;
 
 			if offset.abs() < tolerance {
 				let translation = DVec2::Y * offset;
-
 				let equal = bounds.translate(translation).min().y - self.up[0].max().y;
 				let first = equal + offset;
 				let distances = DistributionMatch { first, equal };
+
 				let mut boxes = VecDeque::from([self.up[0], bounds.translate(translation), self.down[0]]);
-				boxes[1][0].x = boxes[1][0].x.min(boxes[0][1].x);
-				boxes[1][1].x = boxes[1][1].x.min(boxes[0][1].x);
-				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance))
+
+				// Adjust bounds to maintain alignment
+				if boxes.len() > 1 {
+					boxes[1][0].x = boxes[1][0].x.min(boxes[0][1].x);
+					boxes[1][1].x = boxes[1][1].x.min(boxes[0][1].x);
+				}
+
+				*snap_y = Some(SnappedPoint::distribute(point, DistributionSnapTarget::Y, boxes, distances, bounds, translation, tolerance));
 			}
 		}
 	}
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		let Some(bounds) = config.bbox else { return };
-		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint) || !snap_data.document.snapping_state.bounding_box.distribute_evenly {
+		if !snap_data.document.snapping_state.bounding_box.distribute_evenly {
 			return;
 		}
 
@@ -335,7 +373,7 @@ impl DistributionSnapper {
 
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		let Some(bounds) = config.bbox else { return };
-		if point.source != SnapSource::BoundingBox(BoundingBoxSnapSource::CenterPoint) || !snap_data.document.snapping_state.bounding_box.distribute_evenly {
+		if !snap_data.document.snapping_state.bounding_box.distribute_evenly {
 			return;
 		}
 
