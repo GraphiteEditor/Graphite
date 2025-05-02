@@ -79,7 +79,7 @@ impl LayoutHolder for RectangleTool {
 			true,
 			|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -89,7 +89,7 @@ impl LayoutHolder for RectangleTool {
 			true,
 			|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -241,7 +241,7 @@ impl Fsm for RectangleToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_translation((start + end) / 2.),
-							transform_in: TransformIn::Local,
+							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
 					}

@@ -99,6 +99,7 @@ impl SnappingState {
 				PathSnapTarget::NormalToPath => self.path.normal_to_path,
 				PathSnapTarget::TangentToPath => self.path.tangent_to_path,
 				PathSnapTarget::IntersectionPoint => self.path.path_intersection_point,
+				PathSnapTarget::PerpendicularToEndpoint => self.path.perpendicular_from_endpoint,
 			},
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
@@ -142,6 +143,7 @@ pub struct PathSnapping {
 	pub tangent_to_path: bool,
 	pub path_intersection_point: bool,
 	pub align_with_anchor_point: bool, // TODO: Rename
+	pub perpendicular_from_endpoint: bool,
 }
 
 impl Default for PathSnapping {
@@ -154,32 +156,40 @@ impl Default for PathSnapping {
 			tangent_to_path: true,
 			path_intersection_point: true,
 			align_with_anchor_point: true,
+			perpendicular_from_endpoint: true,
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum GridType {
-	Rectangle { spacing: DVec2 },
-	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
+	#[serde(alias = "Rectangle")]
+	Rectangular {
+		spacing: DVec2,
+	},
+	Isometric {
+		y_axis_spacing: f64,
+		angle_a: f64,
+		angle_b: f64,
+	},
 }
 
 impl Default for GridType {
 	fn default() -> Self {
-		Self::RECTANGLE
+		Self::RECTANGULAR
 	}
 }
 
 impl GridType {
-	pub const RECTANGLE: Self = GridType::Rectangle { spacing: DVec2::ONE };
+	pub const RECTANGULAR: Self = GridType::Rectangular { spacing: DVec2::ONE };
 	pub const ISOMETRIC: Self = GridType::Isometric {
 		y_axis_spacing: 1.,
 		angle_a: 30.,
 		angle_b: 30.,
 	};
-	pub fn rect_spacing(&mut self) -> Option<&mut DVec2> {
+	pub fn rectangular_spacing(&mut self) -> Option<&mut DVec2> {
 		match self {
-			Self::Rectangle { spacing } => Some(spacing),
+			Self::Rectangular { spacing } => Some(spacing),
 			_ => None,
 		}
 	}
@@ -217,10 +227,7 @@ impl Default for GridSnapping {
 		Self {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
-			grid_color: COLOR_OVERLAY_GRAY
-				.strip_prefix('#')
-				.and_then(Color::from_rgb_str)
-				.expect("Should create Color from prefixed hex string"),
+			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
 			dot_display: false,
 		}
 	}
@@ -472,6 +479,7 @@ pub enum PathSnapTarget {
 	NormalToPath,
 	TangentToPath,
 	IntersectionPoint,
+	PerpendicularToEndpoint,
 }
 
 impl fmt::Display for PathSnapTarget {
@@ -483,6 +491,7 @@ impl fmt::Display for PathSnapTarget {
 			PathSnapTarget::NormalToPath => write!(f, "Path: Normal to Path"),
 			PathSnapTarget::TangentToPath => write!(f, "Path: Tangent to Path"),
 			PathSnapTarget::IntersectionPoint => write!(f, "Path: Intersection Point"),
+			PathSnapTarget::PerpendicularToEndpoint => write!(f, "Path: Perp. to Endpoint"),
 		}
 	}
 }
@@ -529,6 +538,7 @@ pub enum AlignmentSnapTarget {
 	ArtboardCenterPoint,
 	AlignWithAnchorPoint,
 	IntersectionPoint,
+	PerpendicularToEndpoint,
 }
 
 impl fmt::Display for AlignmentSnapTarget {
@@ -540,6 +550,7 @@ impl fmt::Display for AlignmentSnapTarget {
 			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
 			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
 			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
+			AlignmentSnapTarget::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),
 		}
 	}
 }

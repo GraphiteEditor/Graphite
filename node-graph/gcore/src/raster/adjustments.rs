@@ -34,38 +34,16 @@ use spirv_std::num_traits::float::Float;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
+	#[label("sRGB")]
 	SRGB,
 	Perceptual,
 	AverageChannels,
 	MinimumChannels,
 	MaximumChannels,
-}
-
-impl LuminanceCalculation {
-	pub fn list() -> [LuminanceCalculation; 5] {
-		[
-			LuminanceCalculation::SRGB,
-			LuminanceCalculation::Perceptual,
-			LuminanceCalculation::AverageChannels,
-			LuminanceCalculation::MinimumChannels,
-			LuminanceCalculation::MaximumChannels,
-		]
-	}
-}
-
-impl core::fmt::Display for LuminanceCalculation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			LuminanceCalculation::SRGB => write!(f, "sRGB"),
-			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
-			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
-			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
-			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
-		}
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -598,7 +576,7 @@ impl Blend<Color> for ImageFrameTable<Color> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		let mut result = self.clone();
 
-		for (over, under) in result.instances_mut().zip(under.instances()) {
+		for (over, under) in result.instance_mut_iter().zip(under.instance_ref_iter()) {
 			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 			*over.instance = Image {
@@ -614,21 +592,21 @@ impl Blend<Color> for ImageFrameTable<Color> {
 }
 impl Blend<Color> for GradientStops {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+		let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
 		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
 		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
 		let stops = combined_stops
 			.into_iter()
 			.map(|&position| {
-				let over_color = self.evalute(position);
-				let under_color = under.evalute(position);
+				let over_color = self.evaluate(position);
+				let under_color = under.evaluate(position);
 				let color = blend_fn(over_color, under_color);
 				(position, color)
 			})
 			.collect::<Vec<_>>();
 
-		GradientStops(stops)
+		GradientStops::new(stops)
 	}
 }
 
@@ -721,7 +699,7 @@ impl Adjust<Color> for Option<Color> {
 }
 impl Adjust<Color> for GradientStops {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for (_pos, c) in self.0.iter_mut() {
+		for (_pos, c) in self.iter_mut() {
 			*c = map_fn(c);
 		}
 	}
@@ -731,7 +709,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			for c in instance.instance.data.iter_mut() {
 				*c = map_fn(c);
 			}
@@ -770,7 +748,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evalute(intensity as f64)
+		gradient.evaluate(intensity as f64)
 	});
 
 	image
@@ -844,9 +822,11 @@ async fn vibrance<T: Adjust<Color>>(
 	image
 }
 
+/// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
 	Red,
@@ -854,19 +834,11 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
-impl core::fmt::Display for RedGreenBlue {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RedGreenBlue::Red => write!(f, "Red"),
-			RedGreenBlue::Green => write!(f, "Green"),
-			RedGreenBlue::Blue => write!(f, "Blue"),
-		}
-	}
-}
-
+/// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -875,24 +847,17 @@ pub enum RedGreenBlueAlpha {
 	Alpha,
 }
 
-impl core::fmt::Display for RedGreenBlueAlpha {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RedGreenBlueAlpha::Red => write!(f, "Red"),
-			RedGreenBlueAlpha::Green => write!(f, "Green"),
-			RedGreenBlueAlpha::Blue => write!(f, "Blue"),
-			RedGreenBlueAlpha::Alpha => write!(f, "Alpha"),
-		}
-	}
-}
-
+/// Style of noise pattern
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
 	Perlin,
+	#[label("OpenSimplex2")]
 	OpenSimplex2,
+	#[label("OpenSimplex2S")]
 	OpenSimplex2S,
 	Cellular,
 	ValueCubic,
@@ -900,174 +865,69 @@ pub enum NoiseType {
 	WhiteNoise,
 }
 
-impl core::fmt::Display for NoiseType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			NoiseType::Perlin => write!(f, "Perlin"),
-			NoiseType::OpenSimplex2 => write!(f, "OpenSimplex2"),
-			NoiseType::OpenSimplex2S => write!(f, "OpenSimplex2S"),
-			NoiseType::Cellular => write!(f, "Cellular"),
-			NoiseType::ValueCubic => write!(f, "Value Cubic"),
-			NoiseType::Value => write!(f, "Value"),
-			NoiseType::WhiteNoise => write!(f, "White Noise"),
-		}
-	}
-}
-
-impl NoiseType {
-	pub fn list() -> &'static [NoiseType; 7] {
-		&[
-			NoiseType::Perlin,
-			NoiseType::OpenSimplex2,
-			NoiseType::OpenSimplex2S,
-			NoiseType::Cellular,
-			NoiseType::ValueCubic,
-			NoiseType::Value,
-			NoiseType::WhiteNoise,
-		]
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+/// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
 	None,
+	#[label("Fractional Brownian Motion")]
 	FBm,
 	Ridged,
 	PingPong,
+	#[label("Progressive (Domain Warp Only)")]
 	DomainWarpProgressive,
+	#[label("Independent (Domain Warp Only)")]
 	DomainWarpIndependent,
 }
 
-impl core::fmt::Display for FractalType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			FractalType::None => write!(f, "None"),
-			FractalType::FBm => write!(f, "Fractional Brownian Motion"),
-			FractalType::Ridged => write!(f, "Ridged"),
-			FractalType::PingPong => write!(f, "Ping Pong"),
-			FractalType::DomainWarpProgressive => write!(f, "Progressive (Domain Warp Only)"),
-			FractalType::DomainWarpIndependent => write!(f, "Independent (Domain Warp Only)"),
-		}
-	}
-}
-
-impl FractalType {
-	pub fn list() -> &'static [FractalType; 6] {
-		&[
-			FractalType::None,
-			FractalType::FBm,
-			FractalType::Ridged,
-			FractalType::PingPong,
-			FractalType::DomainWarpProgressive,
-			FractalType::DomainWarpIndependent,
-		]
-	}
-}
-
+/// Distance function used by the cellular noise
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
+	#[label("Euclidean Squared (Faster)")]
 	EuclideanSq,
 	Manhattan,
 	Hybrid,
 }
 
-impl core::fmt::Display for CellularDistanceFunction {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			CellularDistanceFunction::Euclidean => write!(f, "Euclidean"),
-			CellularDistanceFunction::EuclideanSq => write!(f, "Euclidean Squared (Faster)"),
-			CellularDistanceFunction::Manhattan => write!(f, "Manhattan"),
-			CellularDistanceFunction::Hybrid => write!(f, "Hybrid"),
-		}
-	}
-}
-
-impl CellularDistanceFunction {
-	pub fn list() -> &'static [CellularDistanceFunction; 4] {
-		&[
-			CellularDistanceFunction::Euclidean,
-			CellularDistanceFunction::EuclideanSq,
-			CellularDistanceFunction::Manhattan,
-			CellularDistanceFunction::Hybrid,
-		]
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
+	#[label("Nearest (F1)")]
 	Nearest,
+	#[label("Next Nearest (F2)")]
 	NextNearest,
+	#[label("Average (F1 / 2 + F2 / 2)")]
 	Average,
+	#[label("Difference (F2 - F1)")]
 	Difference,
+	#[label("Product (F2 * F1 / 2)")]
 	Product,
+	#[label("Division (F1 / F2)")]
 	Division,
 }
 
-impl core::fmt::Display for CellularReturnType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			CellularReturnType::CellValue => write!(f, "Cell Value"),
-			CellularReturnType::Nearest => write!(f, "Nearest (F1)"),
-			CellularReturnType::NextNearest => write!(f, "Next Nearest (F2)"),
-			CellularReturnType::Average => write!(f, "Average (F1 / 2 + F2 / 2)"),
-			CellularReturnType::Difference => write!(f, "Difference (F2 - F1)"),
-			CellularReturnType::Product => write!(f, "Product (F2 * F1 / 2)"),
-			CellularReturnType::Division => write!(f, "Division (F1 / F2)"),
-		}
-	}
-}
-
-impl CellularReturnType {
-	pub fn list() -> &'static [CellularReturnType; 7] {
-		&[
-			CellularReturnType::CellValue,
-			CellularReturnType::Nearest,
-			CellularReturnType::NextNearest,
-			CellularReturnType::Average,
-			CellularReturnType::Difference,
-			CellularReturnType::Product,
-			CellularReturnType::Division,
-		]
-	}
-}
-
+/// Type of domain warp
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
 	None,
+	#[label("OpenSimplex2")]
 	OpenSimplex2,
+	#[label("OpenSimplex2 Reduced")]
 	OpenSimplex2Reduced,
 	BasicGrid,
-}
-
-impl core::fmt::Display for DomainWarpType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			DomainWarpType::None => write!(f, "None"),
-			DomainWarpType::OpenSimplex2 => write!(f, "OpenSimplex2"),
-			DomainWarpType::OpenSimplex2Reduced => write!(f, "OpenSimplex2 Reduced"),
-			DomainWarpType::BasicGrid => write!(f, "Basic Grid"),
-		}
-	}
-}
-
-impl DomainWarpType {
-	pub fn list() -> &'static [DomainWarpType; 4] {
-		&[DomainWarpType::None, DomainWarpType::OpenSimplex2, DomainWarpType::OpenSimplex2Reduced, DomainWarpType::BasicGrid]
-	}
 }
 
 // Aims for interoperable compatibility with:
@@ -1169,26 +1029,18 @@ async fn channel_mixer<T: Adjust<Color>>(
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
 	Relative,
 	Absolute,
 }
 
-impl core::fmt::Display for RelativeAbsolute {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RelativeAbsolute::Relative => write!(f, "Relative"),
-			RelativeAbsolute::Absolute => write!(f, "Absolute"),
-		}
-	}
-}
-
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1197,25 +1049,11 @@ pub enum SelectiveColorChoice {
 	Cyans,
 	Blues,
 	Magentas,
+
+	#[menu_separator]
 	Whites,
 	Neutrals,
 	Blacks,
-}
-
-impl core::fmt::Display for SelectiveColorChoice {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			SelectiveColorChoice::Reds => write!(f, "Reds"),
-			SelectiveColorChoice::Yellows => write!(f, "Yellows"),
-			SelectiveColorChoice::Greens => write!(f, "Greens"),
-			SelectiveColorChoice::Cyans => write!(f, "Cyans"),
-			SelectiveColorChoice::Blues => write!(f, "Blues"),
-			SelectiveColorChoice::Magentas => write!(f, "Magentas"),
-			SelectiveColorChoice::Whites => write!(f, "Whites"),
-			SelectiveColorChoice::Neutrals => write!(f, "Neutrals"),
-			SelectiveColorChoice::Blacks => write!(f, "Blacks"),
-		}
-	}
 }
 
 // Aims for interoperable compatibility with:
@@ -1360,14 +1198,14 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1377,7 +1215,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1399,7 +1237,7 @@ async fn posterize<T: Adjust<Color>>(
 	)]
 	mut input: T,
 	#[default(4)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	levels: u32,
 ) -> T {
 	input.adjust(|color| {
@@ -1435,6 +1273,7 @@ async fn exposure<T: Adjust<Color>>(
 	offset: f64,
 	#[default(1.)]
 	#[range((0.01, 10.))]
+	#[hard_min(0.0001)]
 	gamma_correction: f64,
 ) -> T {
 	input.adjust(|color| {
@@ -1577,7 +1416,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.instances().next().unwrap().instance;
+		let result = result.instance_ref_iter().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

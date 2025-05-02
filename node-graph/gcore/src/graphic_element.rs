@@ -1,5 +1,5 @@
 use crate::application_io::{ImageTexture, TextureFrameTable};
-use crate::instances::Instances;
+use crate::instances::{Instance, Instances};
 use crate::raster::BlendMode;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::TransformMut;
@@ -67,10 +67,12 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 		EitherFormat::OldGraphicGroup(old) => {
 			let mut graphic_group_table = GraphicGroupTable::empty();
 			for (graphic_element, source_node_id) in old.elements {
-				let last = graphic_group_table.push(graphic_element);
-				*last.source_node_id = source_node_id;
-				*last.transform = old.transform;
-				*last.alpha_blending = old.alpha_blending;
+				graphic_group_table.push(Instance {
+					instance: graphic_element,
+					transform: old.transform,
+					alpha_blending: old.alpha_blending,
+					source_node_id,
+				});
 			}
 			graphic_group_table
 		}
@@ -78,12 +80,14 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<OldGraphicGroupTable>(value.clone()) {
 				let mut graphic_group_table = GraphicGroupTable::empty();
-				for instance in old_table.instances() {
+				for instance in old_table.instance_ref_iter() {
 					for (graphic_element, source_node_id) in &instance.instance.elements {
-						let new_row = graphic_group_table.push(graphic_element.clone());
-						*new_row.source_node_id = *source_node_id;
-						*new_row.transform = *instance.transform;
-						*new_row.alpha_blending = *instance.alpha_blending;
+						graphic_group_table.push(Instance {
+							instance: graphic_element.clone(),
+							transform: *instance.transform,
+							alpha_blending: *instance.alpha_blending,
+							source_node_id: *source_node_id,
+						});
 					}
 				}
 				graphic_group_table
@@ -276,8 +280,12 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 		EitherFormat::ArtboardGroup(artboard_group) => {
 			let mut table = ArtboardGroupTable::empty();
 			for (artboard, source_node_id) in artboard_group.artboards {
-				let pushed = table.push(artboard);
-				*pushed.source_node_id = source_node_id;
+				table.push(Instance {
+					instance: artboard,
+					transform: DAffine2::IDENTITY,
+					alpha_blending: AlphaBlending::default(),
+					source_node_id,
+				});
 			}
 			table
 		}
@@ -290,36 +298,16 @@ pub type ArtboardGroupTable = Instances<Artboard>;
 #[node_macro::node(category(""))]
 async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
 	// Get the penultimate element of the node path, or None if the path is too short
-	let pushed = stack.push(element);
-	*pushed.source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+
+	stack.push(Instance {
+		instance: element,
+		transform: DAffine2::IDENTITY,
+		alpha_blending: AlphaBlending::default(),
+		source_node_id,
+	});
 
 	stack
-}
-
-// TODO: Once we have nicely working spreadsheet tables, test this and make it nicely user-facing and move it from "Debug" to "General"
-#[node_macro::node(category("Debug"))]
-async fn concatenate<T: Clone>(
-	_: impl Ctx,
-	#[implementations(
-		GraphicGroupTable,
-	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
-	)]
-	from: Instances<T>,
-	#[expose]
-	#[implementations(
-		GraphicGroupTable,
-	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
-	)]
-	mut to: Instances<T>,
-) -> Instances<T> {
-	for instance in from.instances() {
-		to.push_instance(instance);
-	}
-	to
 }
 
 #[node_macro::node(category("Debug"))]
@@ -354,7 +342,7 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool, recursion_depth: usize) {
-		for current_instance in current_group_table.instances() {
+		for current_instance in current_group_table.instance_ref_iter() {
 			let current_element = current_instance.instance.clone();
 			let reference = *current_instance.source_node_id;
 
@@ -364,7 +352,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				// If we're allowed to recurse, flatten any GraphicGroups we encounter
 				GraphicElement::GraphicGroup(mut current_element) if recurse => {
 					// Apply the parent group's transform to all child elements
-					for graphic_element in current_element.instances_mut() {
+					for graphic_element in current_element.instance_mut_iter() {
 						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
 					}
 
@@ -372,10 +360,12 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 				}
 				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
 				_ => {
-					let pushed = output_group_table.push(current_element);
-					*pushed.source_node_id = reference;
-					// Apply the parent group's transform to the leaf element
-					*pushed.transform = *current_instance.transform * *pushed.transform;
+					output_group_table.push(Instance {
+						instance: current_element,
+						transform: *current_instance.transform,
+						alpha_blending: *current_instance.alpha_blending,
+						source_node_id: reference,
+					});
 				}
 			}
 		}
@@ -427,8 +417,12 @@ async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artb
 	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
-	let pushed = artboards.push(artboard);
-	*pushed.source_node_id = encapsulating_node_id;
+	artboards.push(Instance {
+		instance: artboard,
+		transform: DAffine2::IDENTITY,
+		alpha_blending: AlphaBlending::default(),
+		source_node_id: encapsulating_node_id,
+	});
 
 	artboards
 }

@@ -8,15 +8,16 @@ fn draw_dashed_line(line_start: DVec2, line_end: DVec2, transform: DAffine2, ove
 	let min_viewport = transform.transform_point2(line_start);
 	let max_viewport = transform.transform_point2(line_end);
 
-	overlay_context.dashed_line(min_viewport, max_viewport, None, Some(2.), Some(2.), Some(0.5));
+	overlay_context.dashed_line(min_viewport, max_viewport, None, None, Some(2.), Some(2.), Some(0.5));
 }
+
 /// Draws a solid line with a length annotation between two points transformed by the given affine transformations.
 fn draw_line_with_length(line_start: DVec2, line_end: DVec2, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext, label_alignment: LabelAlignment) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
 	let min_viewport = transform.transform_point2(line_start);
 	let max_viewport = transform.transform_point2(line_end);
 
-	overlay_context.line(min_viewport, max_viewport, None);
+	overlay_context.line(min_viewport, max_viewport, None, None);
 
 	// Remove trailing zeros from the formatted string
 	let length = format!("{:.2}", transform_to_document.transform_vector2(line_end - line_start).length())

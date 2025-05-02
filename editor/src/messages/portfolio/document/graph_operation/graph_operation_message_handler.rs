@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
@@ -240,7 +240,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
-						alias: network_interface.frontend_display_name(&artboard.to_node(), &[]),
+						alias: network_interface.display_name(&artboard.to_node(), &[]),
 						skip_adding_history_step: true,
 					});
 
@@ -330,6 +330,9 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	let layer = modify_inputs.create_layer(id);
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
+	if let Some(upstream_layer) = layer.next_sibling(modify_inputs.network_interface.document_metadata()) {
+		modify_inputs.network_interface.shift_node(&upstream_layer.to_node(), IVec2::new(0, 3), &[]);
+	}
 	match node {
 		usvg::Node::Group(group) => {
 			for child in group.children() {
@@ -386,6 +389,7 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 			},
 			line_join_miter_limit: stroke.miterlimit().get() as f64,
 			transform,
+			non_scaling: false,
 		})
 	}
 }
@@ -410,7 +414,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops(stops);
+			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient {
 				start,
@@ -437,7 +441,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops(stops);
+			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient {
 				start,

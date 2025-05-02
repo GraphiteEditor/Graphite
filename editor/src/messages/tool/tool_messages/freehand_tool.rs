@@ -97,7 +97,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -107,7 +107,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -339,4 +339,384 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 
 	tool_data.dragged = true;
 	tool_data.end_point = Some((position, id));
+}
+
+#[cfg(test)]
+mod test_freehand {
+	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_width;
+	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
+	use crate::test_utils::test_prelude::*;
+	use glam::{DAffine2, DVec2};
+	use graphene_core::vector::VectorData;
+
+	async fn get_vector_data(editor: &mut EditorTestUtils) -> Vec<(VectorData, DAffine2)> {
+		let document = editor.active_document();
+		let layers = document.metadata().all_layers();
+
+		layers
+			.filter_map(|layer| {
+				let vector_data = document.network_interface.compute_modified_vector(layer)?;
+				let transform = document.metadata().transform_to_viewport(layer);
+				Some((vector_data, transform))
+			})
+			.collect()
+	}
+
+	fn verify_path_points(vector_data_list: &[(VectorData, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
+		if vector_data_list.len() == 0 {
+			return Err("No vector data found after drawing".to_string());
+		}
+
+		let path_data = vector_data_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
+
+		let (vector_data, transform) = path_data;
+		let point_count = vector_data.point_domain.ids().len();
+		let segment_count = vector_data.segment_domain.ids().len();
+
+		let actual_positions: Vec<DVec2> = vector_data
+			.point_domain
+			.ids()
+			.iter()
+			.filter_map(|&point_id| {
+				let position = vector_data.point_domain.position_from_id(point_id)?;
+				Some(transform.transform_point2(position))
+			})
+			.collect();
+
+		if segment_count != point_count - 1 {
+			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));
+		}
+
+		if point_count != expected_captured_points.len() {
+			return Err(format!("Expected {} points, got {}", expected_captured_points.len(), point_count));
+		}
+
+		for (i, (&expected, &actual)) in expected_captured_points.iter().zip(actual_positions.iter()).enumerate() {
+			let distance = (expected - actual).length();
+			if distance >= tolerance {
+				return Err(format!("Point {} position mismatch: expected {:?}, got {:?} (distance: {})", i, expected, actual, distance));
+			}
+		}
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_freehand_transformed_artboard() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Artboard, 0., 0., 500., 500., ModifierKeys::empty()).await;
+
+		let metadata = editor.active_document().metadata();
+		let artboard = metadata.all_layers().next().unwrap();
+
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard,
+				transform: DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.3, DVec2::new(10.0, -5.0)),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.select_tool(ToolType::Freehand).await;
+
+		let mouse_points = [DVec2::new(150.0, 100.0), DVec2::new(200.0, 150.0), DVec2::new(250.0, 130.0), DVec2::new(300.0, 170.0)];
+
+		// Expected points that will actually be captured by the tool
+		let expected_captured_points = &mouse_points[1..];
+		editor.drag_path(&mouse_points, ModifierKeys::empty()).await;
+
+		let vector_data_list = get_vector_data(&mut editor).await;
+		verify_path_points(&vector_data_list, expected_captured_points, 1.0).expect("Path points verification failed");
+	}
+
+	#[tokio::test]
+	async fn test_extend_existing_path() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let initial_points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+
+		editor.select_tool(ToolType::Freehand).await;
+
+		let first_point = initial_points[0];
+		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(first_point.x, first_point.y, ModifierKeys::empty()).await;
+
+		for &point in &initial_points[1..] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		}
+
+		let last_initial_point = initial_points[initial_points.len() - 1];
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: last_initial_point,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let initial_vector_data = get_vector_data(&mut editor).await;
+		assert!(!initial_vector_data.is_empty(), "No vector data found after initial drawing");
+
+		let (initial_data, transform) = &initial_vector_data[0];
+		let initial_point_count = initial_data.point_domain.ids().len();
+		let initial_segment_count = initial_data.segment_domain.ids().len();
+
+		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {}", initial_point_count);
+		assert_eq!(
+			initial_segment_count,
+			initial_point_count - 1,
+			"Expected {} segments in initial path, found {}",
+			initial_point_count - 1,
+			initial_segment_count
+		);
+
+		let extendable_points = initial_data.extendable_points(false).collect::<Vec<_>>();
+		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
+
+		let endpoint_id = extendable_points[0];
+		let endpoint_pos_option = initial_data.point_domain.position_from_id(endpoint_id);
+		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
+
+		let endpoint_pos = endpoint_pos_option.unwrap();
+		let endpoint_viewport_pos = transform.transform_point2(endpoint_pos);
+
+		assert!(endpoint_viewport_pos.is_finite(), "Endpoint position is not finite");
+
+		let extension_points = [DVec2::new(400.0, 200.0), DVec2::new(500.0, 100.0)];
+
+		let layer_node_id = {
+			let document = editor.active_document();
+			let layer = document.metadata().all_layers().next().unwrap();
+			layer.to_node()
+		};
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_node_id] }).await;
+
+		editor.select_tool(ToolType::Freehand).await;
+
+		editor.move_mouse(endpoint_viewport_pos.x, endpoint_viewport_pos.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(endpoint_viewport_pos.x, endpoint_viewport_pos.y, ModifierKeys::empty()).await;
+
+		for &point in &extension_points {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		}
+
+		let last_extension_point = extension_points[extension_points.len() - 1];
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: last_extension_point,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let extended_vector_data = get_vector_data(&mut editor).await;
+		assert!(!extended_vector_data.is_empty(), "No vector data found after extension");
+
+		let (extended_data, _) = &extended_vector_data[0];
+		let extended_point_count = extended_data.point_domain.ids().len();
+		let extended_segment_count = extended_data.segment_domain.ids().len();
+
+		assert!(
+			extended_point_count > initial_point_count,
+			"Expected more points after extension, initial: {}, after extension: {}",
+			initial_point_count,
+			extended_point_count
+		);
+
+		assert_eq!(
+			extended_segment_count,
+			extended_point_count - 1,
+			"Expected segments to be one less than points, points: {}, segments: {}",
+			extended_point_count,
+			extended_segment_count
+		);
+
+		let layer_count = {
+			let document = editor.active_document();
+			document.metadata().all_layers().count()
+		};
+		assert_eq!(layer_count, 1, "Expected only one layer after extending path");
+	}
+
+	#[tokio::test]
+	async fn test_append_to_selected_layer_with_shift() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_tool(ToolType::Freehand).await;
+
+		let initial_points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+
+		let first_point = initial_points[0];
+		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(first_point.x, first_point.y, ModifierKeys::empty()).await;
+
+		for &point in &initial_points[1..] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		}
+
+		let last_initial_point = initial_points[initial_points.len() - 1];
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: last_initial_point,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let initial_vector_data = get_vector_data(&mut editor).await;
+		assert!(!initial_vector_data.is_empty(), "No vector data found after initial drawing");
+
+		let (initial_data, _) = &initial_vector_data[0];
+		let initial_point_count = initial_data.point_domain.ids().len();
+		let initial_segment_count = initial_data.segment_domain.ids().len();
+
+		let existing_layer_id = {
+			let document = editor.active_document();
+			let layer = document.metadata().all_layers().next().unwrap();
+			layer
+		};
+
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![existing_layer_id.to_node()],
+			})
+			.await;
+
+		let second_path_points = [DVec2::new(400.0, 100.0), DVec2::new(500.0, 200.0), DVec2::new(600.0, 100.0)];
+
+		let first_second_point = second_path_points[0];
+		editor.move_mouse(first_second_point.x, first_second_point.y, ModifierKeys::SHIFT, MouseKeys::empty()).await;
+
+		editor
+			.mousedown(
+				EditorMouseState {
+					editor_position: first_second_point,
+					mouse_keys: MouseKeys::LEFT,
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::SHIFT,
+			)
+			.await;
+
+		for &point in &second_path_points[1..] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::SHIFT, MouseKeys::LEFT).await;
+		}
+
+		let last_second_point = second_path_points[second_path_points.len() - 1];
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: last_second_point,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::SHIFT,
+			)
+			.await;
+
+		let final_vector_data = get_vector_data(&mut editor).await;
+		assert!(!final_vector_data.is_empty(), "No vector data found after second drawing");
+
+		// Verify we still have only one layer
+		let layer_count = {
+			let document = editor.active_document();
+			document.metadata().all_layers().count()
+		};
+		assert_eq!(layer_count, 1, "Expected only one layer after drawing with Shift key");
+
+		let (final_data, _) = &final_vector_data[0];
+		let final_point_count = final_data.point_domain.ids().len();
+		let final_segment_count = final_data.segment_domain.ids().len();
+
+		assert!(
+			final_point_count > initial_point_count,
+			"Expected more points after appending to layer, initial: {}, after append: {}",
+			initial_point_count,
+			final_point_count
+		);
+
+		let expected_new_points = second_path_points.len();
+		let expected_new_segments = expected_new_points - 1;
+
+		assert_eq!(
+			final_point_count,
+			initial_point_count + expected_new_points,
+			"Expected {} total points after append",
+			initial_point_count + expected_new_points
+		);
+
+		assert_eq!(
+			final_segment_count,
+			initial_segment_count + expected_new_segments,
+			"Expected {} total segments after append",
+			initial_segment_count + expected_new_segments
+		);
+	}
+
+	#[tokio::test]
+	async fn test_line_weight_affects_stroke_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_tool(ToolType::Freehand).await;
+
+		let custom_line_weight = 5.0;
+		editor
+			.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::LineWeight(custom_line_weight))))
+			.await;
+
+		let points = [DVec2::new(100.0, 100.0), DVec2::new(200.0, 200.0), DVec2::new(300.0, 100.0)];
+
+		let first_point = points[0];
+		editor.move_mouse(first_point.x, first_point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(first_point.x, first_point.y, ModifierKeys::empty()).await;
+
+		for &point in &points[1..] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		}
+
+		let last_point = points[points.len() - 1];
+		editor
+			.mouseup(
+				EditorMouseState {
+					editor_position: last_point,
+					mouse_keys: MouseKeys::empty(),
+					scroll_delta: ScrollDelta::default(),
+				},
+				ModifierKeys::empty(),
+			)
+			.await;
+
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let stroke_width = get_stroke_width(layer, &document.network_interface);
+
+		assert!(stroke_width.is_some(), "Stroke width should be available on the created path");
+
+		assert_eq!(
+			stroke_width.unwrap(),
+			custom_line_weight,
+			"Stroke width should match the custom line weight (expected {}, got {})",
+			custom_line_weight,
+			stroke_width.unwrap()
+		);
+	}
 }

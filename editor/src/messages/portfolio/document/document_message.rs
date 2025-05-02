@@ -1,6 +1,7 @@
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlaysType;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
@@ -71,13 +72,13 @@ pub enum DocumentMessage {
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
-	ImaginateGenerate {
-		imaginate_node: Vec<NodeId>,
-	},
-	ImaginateRandom {
-		imaginate_node: Vec<NodeId>,
-		then_generate: bool,
-	},
+	// ImaginateGenerate {
+	// 	imaginate_node: Vec<NodeId>,
+	// },
+	// ImaginateRandom {
+	// 	imaginate_node: Vec<NodeId>,
+	// 	then_generate: bool,
+	// },
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
@@ -143,6 +144,7 @@ pub enum DocumentMessage {
 	},
 	SetOverlaysVisibility {
 		visible: bool,
+		overlays_type: Option<OverlaysType>,
 	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
@@ -159,6 +161,7 @@ pub enum DocumentMessage {
 	SetViewMode {
 		view_mode: ViewMode,
 	},
+	AddTransaction,
 	StartTransaction,
 	EndTransaction,
 	CommitTransaction,
@@ -166,7 +169,6 @@ pub enum DocumentMessage {
 	RepeatedAbortTransaction {
 		undo_count: usize,
 	},
-	AddTransaction,
 	ToggleLayerExpansion {
 		id: NodeId,
 		recursive: bool,

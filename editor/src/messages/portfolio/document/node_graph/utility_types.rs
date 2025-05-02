@@ -48,6 +48,7 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	#[serde(rename = "validTypes")]
@@ -61,6 +62,7 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	#[serde(rename = "connectedTo")]
@@ -107,6 +109,8 @@ pub struct FrontendNodeWire {
 pub struct FrontendNodeType {
 	pub name: String,
 	pub category: String,
+	#[serde(rename = "inputTypes")]
+	pub input_types: Option<Vec<String>>,
 }
 
 impl FrontendNodeType {
@@ -114,6 +118,23 @@ impl FrontendNodeType {
 		Self {
 			name: name.to_string(),
 			category: category.to_string(),
+			input_types: None,
+		}
+	}
+
+	pub fn with_input_types(name: &'static str, category: &'static str, input_types: Vec<String>) -> Self {
+		Self {
+			name: name.to_string(),
+			category: category.to_string(),
+			input_types: Some(input_types),
+		}
+	}
+
+	pub fn with_owned_strings_and_input_types(name: String, category: String, input_types: Vec<String>) -> Self {
+		Self {
+			name,
+			category,
+			input_types: Some(input_types),
 		}
 	}
 }
@@ -162,7 +183,11 @@ pub enum ContextMenuData {
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
 	},
-	CreateNode,
+	CreateNode {
+		#[serde(rename = "compatibleType")]
+		#[serde(default)]
+		compatible_type: Option<String>,
+	},
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

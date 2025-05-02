@@ -292,7 +292,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(GraphicGroupTable) {
 				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
 					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
@@ -413,21 +413,13 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn transform_set_direct(&mut self, transform: DAffine2, skip_rerender: bool, transform_node_id: Option<NodeId>) {
 		// If the Transform node didn't exist yet, create it now
 		let Some(transform_node_id) = transform_node_id.or_else(|| {
-			// Check if the transform is the identity transform within an epsilon
-			let is_identity = {
-				let transform = transform.to_scale_angle_translation();
-				let identity = DAffine2::IDENTITY.to_scale_angle_translation();
-
-				(transform.0.x - identity.0.x).abs() < 1e-6
-					&& (transform.0.y - identity.0.y).abs() < 1e-6
-					&& (transform.1 - identity.1).abs() < 1e-6
-					&& (transform.2.x - identity.2.x).abs() < 1e-6
-					&& (transform.2.y - identity.2.y).abs() < 1e-6
-			};
-
-			// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
-			if is_identity {
-				return None;
+			// Check if the transform is the identity transform and if so, don't create a new Transform node
+			if let Some((scale, angle, translation)) = (transform.matrix2.determinant() != 0.).then(|| transform.to_scale_angle_translation()) {
+				// Check if the transform is the identity transform within an epsilon
+				if scale.x.abs() < 1e-6 && scale.y.abs() < 1e-6 && angle.abs() < 1e-6 && translation.x.abs() < 1e-6 && translation.y.abs() < 1e-6 {
+					// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
+					return None;
+				}
 			}
 
 			// Create the Transform node

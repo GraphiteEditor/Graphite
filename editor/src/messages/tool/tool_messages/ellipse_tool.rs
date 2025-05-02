@@ -91,7 +91,7 @@ impl LayoutHolder for EllipseTool {
 			true,
 			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -101,7 +101,7 @@ impl LayoutHolder for EllipseTool {
 			true,
 			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -236,7 +236,7 @@ impl Fsm for EllipseToolFsmState {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_translation((start + end) / 2.),
-							transform_in: TransformIn::Local,
+							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
 					}
@@ -400,17 +400,14 @@ mod test_ellipse {
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		println!("{ellipse:?}");
-		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
-		// assert_eq!(ellipse[0].radius_x, 5.);
-		// assert_eq!(ellipse[0].radius_y, 5.);
+		assert_eq!(ellipse[0].radius_x, 5.);
+		assert_eq!(ellipse[0].radius_y, 5.);
 
-		// assert!(ellipse[0]
-		// 	.transform
-		// 	.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001));
-
-		float_eq!(ellipse[0].radius_x, 11. / core::f64::consts::SQRT_2 / 2.);
-		float_eq!(ellipse[0].radius_y, 11. / core::f64::consts::SQRT_2 / 2.);
-		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_translation(DVec2::splat(11. / core::f64::consts::SQRT_2 / 2.)), 0.001));
+		assert!(
+			ellipse[0]
+				.transform
+				.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001)
+		);
 	}
 
 	#[tokio::test]
@@ -427,13 +424,9 @@ mod test_ellipse {
 
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
-		// TODO: re-enable after https://github.com/GraphiteEditor/Graphite/issues/2370
-		// assert_eq!(ellipse[0].radius_x, 10.);
-		// assert_eq!(ellipse[0].radius_y, 10.);
-		// assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
-		float_eq!(ellipse[0].radius_x, 11. / core::f64::consts::SQRT_2);
-		float_eq!(ellipse[0].radius_y, 11. / core::f64::consts::SQRT_2);
-		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::IDENTITY, 0.001));
+		assert_eq!(ellipse[0].radius_x, 10.);
+		assert_eq!(ellipse[0].radius_y, 10.);
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
 	}
 
 	#[tokio::test]

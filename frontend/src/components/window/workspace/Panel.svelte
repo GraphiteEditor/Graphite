@@ -2,11 +2,13 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
+	import Spreadsheet from "@graphite/components/panels/Spreadsheet.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
 		Layers,
 		Properties,
+		Spreadsheet,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>
@@ -168,6 +170,11 @@
 							<tr>
 								<td colspan="2">
 									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+								</td>
+							</tr>
+							<tr>
+								<td colspan="2">
+									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
 								</td>
 							</tr>
 						</table>

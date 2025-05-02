@@ -1,7 +1,6 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ViewportBounds};
 use crate::messages::prelude::*;
-use core::time::Duration;
 
 #[impl_message(Message, InputPreprocessor)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -13,6 +12,6 @@ pub enum InputPreprocessorMessage {
 	PointerDown { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerMove { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerUp { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
-	FrameTimeAdvance { timestamp: Duration },
+	CurrentTime { timestamp: u64 },
 	WheelScroll { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 }

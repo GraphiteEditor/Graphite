@@ -1,11 +1,10 @@
-use graphene_std::imaginate::ImaginatePersistentData;
 use graphene_std::text::FontCache;
 
 #[derive(Debug, Default)]
 pub struct PersistentData {
 	pub font_cache: FontCache,
-	pub imaginate: ImaginatePersistentData,
 	pub use_vello: bool,
+	// pub imaginate: ImaginatePersistentData,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
@@ -45,6 +44,7 @@ pub enum PanelType {
 	Document,
 	Layers,
 	Properties,
+	Spreadsheet,
 }
 
 impl From<String> for PanelType {
@@ -53,6 +53,7 @@ impl From<String> for PanelType {
 			"Document" => PanelType::Document,
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
+			"Spreadsheet" => PanelType::Spreadsheet,
 			_ => panic!("Unknown panel type: {}", value),
 		}
 	}

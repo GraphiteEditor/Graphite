@@ -1,12 +1,13 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
 use crate::raster::image::ImageFrameTable;
-use crate::registry::types::Percentage;
+use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 use core::marker::PhantomData;
 use core::ops::{Add, Div, Mul, Rem, Sub};
-use glam::DVec2;
+use dyn_any::DynAny;
+use glam::{DVec2, IVec2, UVec2};
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
@@ -113,14 +114,22 @@ fn multiply<U: Mul<T>, T>(
 }
 
 /// The division operation (÷) calculates the quotient of two numbers.
+///
+/// Produces 0 if the denominator is 0.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn divide<U: Div<T>, T>(
+fn divide<U: Div<T> + Default + PartialEq, T: Default + PartialEq>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(1.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, f64, DVec2)]
 	denominator: T,
-) -> <U as Div<T>>::Output {
+) -> <U as Div<T>>::Output
+where
+	<U as Div<T>>::Output: Default,
+{
+	if denominator == T::default() {
+		return <U as Div<T>>::Output::default();
+	}
 	numerator / denominator
 }
 
@@ -219,23 +228,35 @@ fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
-/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value.
+/// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
+/// atan: the angle whose tangent is the specified scalar number.
+/// atan2: the angle of a ray from the origin to the specified vector2 point.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians { value.atan() } else { value.atan().to_degrees() }
+fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
+	value.atan(radians)
 }
 
-/// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
-#[node_macro::node(name("Tangent Inverse 2-Argument"), category("Math: Trig"))]
-fn tangent_inverse_2_argument<U: num_traits::float::Float>(
-	_: impl Ctx,
-	#[implementations(f64, f32)] y: U,
-	#[expose]
-	#[implementations(f64, f32)]
-	x: U,
-	radians: bool,
-) -> U {
-	if radians { y.atan2(x) } else { y.atan2(x).to_degrees() }
+pub trait TangentInverse {
+	type Output: num_traits::float::Float;
+	fn atan(self, radians: bool) -> Self::Output;
+}
+impl TangentInverse for f32 {
+	type Output = f32;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for f64 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for glam::DVec2 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.y.atan2(self.x) } else { self.y.atan2(self.x).to_degrees() }
+	}
 }
 
 /// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
@@ -272,6 +293,12 @@ fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)]
 	value.to_u64().unwrap()
 }
 
+/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
+	value.to_f64().unwrap()
+}
+
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
@@ -299,19 +326,13 @@ fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn min<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value < other_value {
-		true => value,
-		false => other_value,
-	}
+	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn max<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value > other_value {
-		true => value,
-		false => other_value,
-	}
+	if value > other_value { value } else { other_value }
 }
 
 /// The clamp function (clamp) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
@@ -337,10 +358,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value == value
 }
@@ -350,12 +368,33 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 fn not_equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value != value
+}
+
+/// The less-than operation (<) compares two values and returns true if the first value is less than the second, or false if it is not.
+/// If enabled with "Or Equal", the less-than-or-equal operation (<=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn less_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value <= other_value } else { value < other_value }
+}
+
+/// The greater-than operation (>) compares two values and returns true if the first value is greater than the second, or false if it is not.
+/// If enabled with "Or Equal", the greater-than-or-equal operation (>=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn greater_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value >= other_value } else { value > other_value }
 }
 
 /// The logical or operation (||) returns true if either of the two inputs are true, or false if both are false.
@@ -406,6 +445,37 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 	color
 }
 
+// // Aims for interoperable compatibility with:
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+// #[node_macro::node(category("Raster: Adjustment"))]
+// async fn gradient_map<T: Adjust<Color>>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		Color,
+// 		ImageFrameTable<Color>,
+// 		GradientStops,
+// 	)]
+// 	mut image: T,
+// 	gradient: GradientStops,
+// 	reverse: bool,
+// ) -> T {
+// 	image.adjust(|color| {
+// 		let intensity = color.luminance_srgb();
+// 		let intensity = if reverse { 1. - intensity } else { intensity };
+// 		gradient.evaluate(intensity as f64)
+// 	});
+
+// 	image
+// }
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("General"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
+	let position = position.clamp(0., 1.);
+	gradient.evaluate(position)
+}
+
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
@@ -416,6 +486,12 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 #[node_macro::node(category("Value"))]
 fn blend_mode_value(_: impl Ctx, _primary: (), blend_mode: BlendMode) -> BlendMode {
 	blend_mode
+}
+
+/// Constructs a string value which may be set to any plain text.
+#[node_macro::node(category("Value"))]
+fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+	string
 }
 
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
@@ -446,6 +522,26 @@ fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Colo
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
+}
+
+/// Obtain the X or Y component of a vector2.
+#[node_macro::node(name("Extract XY"), category("Math: Vector"))]
+fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: T, axis: XY) -> f64 {
+	match axis {
+		XY::X => vector.into().x,
+		XY::Y => vector.into().y,
+	}
+}
+
+/// The X or Y component of a vector2.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum XY {
+	#[default]
+	X,
+	Y,
 }
 
 // TODO: Rename to "Passthrough"

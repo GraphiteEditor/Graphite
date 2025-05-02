@@ -21,13 +21,13 @@ fn easier_string_assignment(field_ty: &Type, field_ident: &Ident) -> (TokenStrea
 			// Based on https://stackoverflow.com/questions/66906261/rust-proc-macro-derive-how-do-i-check-if-a-field-is-of-a-primitive-type-like-b
 			if last_segment.ident == Ident::new("String", last_segment.ident.span()) {
 				return (
-					quote::quote_spanned!(type_path.span() => impl Into<String>),
-					quote::quote_spanned!(field_ident.span() => #field_ident.into()),
+					quote::quote_spanned!(type_path.span()=> impl Into<String>),
+					quote::quote_spanned!(field_ident.span()=> #field_ident.into()),
 				);
 			}
 		}
 	}
-	(quote::quote_spanned!(field_ty.span() => #field_ty), quote::quote_spanned!(field_ident.span() => #field_ident))
+	(quote::quote_spanned!(field_ty.span()=> #field_ty), quote::quote_spanned!(field_ident.span()=> #field_ident))
 }
 
 /// Extract the identifier of the field (which should always be present)
@@ -54,8 +54,8 @@ fn find_type_and_assignment(field: &Field) -> syn::Result<(TokenStream2, TokenSt
 				if let Some(first_generic) = generic_args.args.first() {
 					if last_segment.ident == Ident::new("WidgetCallback", last_segment.ident.span()) {
 						// Assign builder pattern to assign the closure directly
-						function_input_ty = quote::quote_spanned!(field_ty.span() => impl Fn(&#first_generic) -> crate::messages::message::Message + 'static + Send + Sync);
-						assignment = quote::quote_spanned!(field_ident.span() => crate::messages::layout::utility_types::layout_widget::WidgetCallback::new(#field_ident));
+						function_input_ty = quote::quote_spanned!(field_ty.span()=> impl Fn(&#first_generic) -> crate::messages::message::Message + 'static + Send + Sync);
+						assignment = quote::quote_spanned!(field_ident.span()=> crate::messages::layout::utility_types::layout_widget::WidgetCallback::new(#field_ident));
 					}
 				}
 			}
@@ -78,7 +78,7 @@ fn construct_builder(field: &Field) -> syn::Result<TokenStream2> {
 	let (function_input_ty, assignment) = find_type_and_assignment(field)?;
 
 	// Create builder function
-	Ok(quote::quote_spanned!(field.span() =>
+	Ok(quote::quote_spanned!(field.span()=>
 		#[doc = #doc_comment]
 		pub fn #field_ident(mut self, #field_ident: #function_input_ty) -> Self{
 			self.#field_ident = #assignment;

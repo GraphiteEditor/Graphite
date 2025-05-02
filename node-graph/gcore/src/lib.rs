@@ -9,15 +9,18 @@ use core::future::Future;
 #[cfg(feature = "log")]
 extern crate log;
 pub use crate as graphene_core;
+pub use num_traits;
 
 #[cfg(feature = "reflections")]
 pub use ctor;
 
+pub mod animation;
 pub mod consts;
 pub mod context;
 pub mod generic;
 pub mod instances;
 pub mod logic;
+pub mod misc;
 pub mod ops;
 pub mod structural;
 #[cfg(feature = "std")]

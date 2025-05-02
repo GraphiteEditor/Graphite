@@ -9,7 +9,6 @@ use spirv_std::num_traits::Euclid;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
-use std::fmt::Write;
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -388,7 +387,7 @@ impl Color {
 		Color::from_rgbaf32_unchecked(red * alpha, green * alpha, blue * alpha, alpha)
 	}
 
-	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`.
+	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`, premultiplied by alpha.
 	///
 	/// # Examples
 	/// ```
@@ -402,7 +401,8 @@ impl Color {
 		Color::from_rgba8_srgb(red, green, blue, 255)
 	}
 
-	/// Return an SDR `Color` given RGBA channels from `0` to `255`.
+	// TODO: Should this be premult?
+	/// Return an SDR `Color` given RGBA channels from `0` to `255`, premultiplied by alpha.
 	///
 	/// # Examples
 	/// ```
@@ -411,16 +411,13 @@ impl Color {
 	/// ```
 	#[inline(always)]
 	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
-		let alpha = alpha as f32 / 255.;
 		let map_range = |int_color| int_color as f32 / 255.;
-		Color {
-			red: map_range(red),
-			green: map_range(green),
-			blue: map_range(blue),
-			alpha,
-		}
-		.to_linear_srgb()
-		.map_rgb(|channel| channel * alpha)
+
+		let red = map_range(red);
+		let green = map_range(green);
+		let blue = map_range(blue);
+		let alpha = map_range(alpha);
+		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
@@ -788,56 +785,49 @@ impl Color {
 		(self.red, self.green, self.blue, self.alpha)
 	}
 
-	/// Return an 8-character RGBA hex string (without a # prefix).
+	/// Return an 8-character RGBA hex string (without a # prefix). Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a261", color.rgba_hex())
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
+	/// assert_eq!("3240a261", color.to_rgba_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
 	#[cfg(feature = "std")]
-	pub fn rgba_hex(&self) -> String {
+	pub fn to_rgba_hex_srgb(&self) -> String {
+		let gamma = self.to_gamma_srgb();
 		format!(
 			"{:02x?}{:02x?}{:02x?}{:02x?}",
-			(self.r() * 255.) as u8,
-			(self.g() * 255.) as u8,
-			(self.b() * 255.) as u8,
-			(self.a() * 255.) as u8,
+			(gamma.r() * 255.) as u8,
+			(gamma.g() * 255.) as u8,
+			(gamma.b() * 255.) as u8,
+			(gamma.a() * 255.) as u8,
 		)
 	}
 
-	/// Return a 6-character RGB, or 8-character RGBA, hex string (without a # prefix). The shorter form is used if the alpha is 1.
-	///
-	/// # Examples
+	/// Return a 6-character RGB hex string (without a # prefix). Use this if the [`Color`] is in linear space.
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color1 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a261", color1.rgb_optional_a_hex());
-	/// let color2 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0xFF).to_gamma_srgb();
-	/// assert_eq!("5267fa", color2.rgb_optional_a_hex());
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
+	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
 	#[cfg(feature = "std")]
-	pub fn rgb_optional_a_hex(&self) -> String {
-		let mut result = format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8);
-		if self.a() < 1. {
-			let _ = write!(&mut result, "{:02x?}", (self.a() * 255.) as u8);
-		}
-		result
+	pub fn to_rgb_hex_srgb(&self) -> String {
+		self.to_gamma_srgb().to_rgb_hex_srgb_from_gamma()
 	}
 
-	/// Return a 6-character RGB hex string (without a # prefix).
+	/// Return a 6-character RGB hex string (without a # prefix). Use this if the [`Color`] is in gamma space.
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a2", color.rgb_hex())
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
+	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
 	#[cfg(feature = "std")]
-	pub fn rgb_hex(&self) -> String {
+	pub fn to_rgb_hex_srgb_from_gamma(&self) -> String {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
 
-	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.
+	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
 	/// ```
@@ -908,6 +898,7 @@ impl Color {
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
+	///
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
@@ -939,6 +930,8 @@ impl Color {
 
 	#[inline(always)]
 	pub fn gamma(&self, gamma: f32) -> Color {
+		let gamma = gamma.max(0.0001);
+
 		// From https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
 		let inverse_gamma = 1. / gamma;
 		self.map_rgb(|c: f32| c.powf(inverse_gamma))

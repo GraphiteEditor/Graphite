@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapp
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+use crate::messages::portfolio::document::utility_types::transformation::TransformType;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -82,8 +83,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, rubber_band: false }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
-		entry!(KeyDown(MouseLeft); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
+		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),
+		entry!(KeyDown(MouseLeft); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),
 		entry!(KeyDown(MouseRight); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(KeyX); action_dispatch=TransformLayerMessage::ConstrainX),
@@ -178,11 +179,11 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		//
 		// ImaginateToolMessage
-		entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
-		entry!(KeyUp(MouseLeft); action_dispatch=ImaginateToolMessage::DragStop),
-		entry!(KeyDown(MouseRight); action_dispatch=ImaginateToolMessage::Abort),
-		entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		// entry!(KeyDown(MouseLeft); action_dispatch=ImaginateToolMessage::DragStart),
+		// entry!(KeyUp(MouseLeft); action_dispatch=ImaginateToolMessage::DragStop),
+		// entry!(KeyDown(MouseRight); action_dispatch=ImaginateToolMessage::Abort),
+		// entry!(KeyDown(Escape); action_dispatch=ImaginateToolMessage::Abort),
+		// entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=ImaginateToolMessage::Resize { center: Alt, lock_ratio: Shift }),
 		//
 		// EllipseToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=EllipseToolMessage::DragStart),
@@ -211,13 +212,13 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDownNoRepeat(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
-		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { direct_insert_without_sliding: Control, extend_selection: Shift, lasso_select: Control }),
+		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { extend_selection: Shift, lasso_select: Control, handle_drag_from_anchor: Alt }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
 		entry!(KeyDown(Escape); action_dispatch=PathToolMessage::Escape),
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control }),
+		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),
@@ -253,10 +254,11 @@ pub fn input_mappings() -> Mapping {
 		//
 		// PenToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
+		entry!(KeyDownNoRepeat(Tab); action_dispatch=PenToolMessage::SwapHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
-		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Confirm),
-		entry!(KeyDown(Escape); action_dispatch=PenToolMessage::Confirm),
+		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=PenToolMessage::Abort),
 		entry!(KeyDown(Enter); action_dispatch=PenToolMessage::Confirm),
 		entry!(KeyDown(Delete); action_dispatch=PenToolMessage::RemovePreviousHandle),
 		entry!(KeyDown(Backspace); action_dispatch=PenToolMessage::RemovePreviousHandle),
@@ -280,6 +282,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=SplineToolMessage::Confirm),
 		//
 		// FillToolMessage
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=FillToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=FillToolMessage::FillPrimaryColor),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=FillToolMessage::FillSecondaryColor),
 		entry!(KeyUp(MouseLeft); action_dispatch=FillToolMessage::PointerUp),
@@ -373,9 +376,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(ArrowRight); action_dispatch=DocumentMessage::NudgeSelectedLayers { delta_x: NUDGE_AMOUNT, delta_y: 0., resize: Alt, resize_opposite_corner: Control }),
 		//
 		// TransformLayerMessage
-		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
-		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),
-		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
+		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Grab }),
+		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Rotate }),
+		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginGRS { transform_type: TransformType::Scale }),
 		entry!(KeyDown(Digit0); action_dispatch=TransformLayerMessage::TypeDigit { digit: 0 }),
 		entry!(KeyDown(Digit1); action_dispatch=TransformLayerMessage::TypeDigit { digit: 1 }),
 		entry!(KeyDown(Digit2); action_dispatch=TransformLayerMessage::TypeDigit { digit: 2 }),
@@ -429,6 +432,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Digit0); modifiers=[Alt], action_dispatch=DebugMessage::MessageOff),
 		entry!(KeyDown(Digit1); modifiers=[Alt], action_dispatch=DebugMessage::MessageNames),
 		entry!(KeyDown(Digit2); modifiers=[Alt], action_dispatch=DebugMessage::MessageContents),
+		// AnimationMessage
+		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
+		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
 	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 
