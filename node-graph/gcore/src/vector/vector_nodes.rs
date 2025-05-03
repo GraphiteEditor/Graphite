@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{position_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{position_on_bezpath, t_value_to_parametric, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -9,13 +9,15 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
+use crate::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
+use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::Affine;
+use kurbo::{Affine, BezPath, ParamCurve, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1139,6 +1141,79 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
+	// Limit the smallest spacing to something sensible to avoid freezing the application.
+	let spacing = spacing.max(0.01);
+	log::info!("sample_points using kurbo");
+
+	let vector_data_transform = vector_data.transform();
+
+	// Create an iterator over the bezier segments with enumeration and peeking capability.
+	let bezpaths = vector_data.one_instance_ref().instance.stroke_bezpath_iter();
+
+	// Initialize the result VectorData with the same transformation as the input.
+	let mut result = VectorDataTable::default();
+	*result.transform_mut() = vector_data_transform;
+
+	for bezpath in bezpaths {
+		let mut sample_bezpath = BezPath::new();
+
+		// Calculate the total length of the collected segments.
+		let total_length: f64 = bezpath.segments().map(|s| s.perimeter(0.001)).sum();
+
+		// Adjust the usable length by subtracting start and stop offsets.
+		let mut used_length = total_length - start_offset - stop_offset;
+		log::info!("used_length {:?}", used_length);
+
+		if used_length <= 0. {
+			continue;
+		}
+
+		// Determine the number of points to generate along the path.
+		let count = if adaptive_spacing {
+			// Calculate point count to evenly distribute points while covering the entire path.
+			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
+			(used_length / spacing).round()
+		} else {
+			// Calculate point count based on exact spacing, which may not cover the entire path.
+
+			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+			let c = (used_length / spacing + f64::EPSILON).floor();
+			used_length -= used_length % spacing;
+			c
+		};
+		info!("count {}", count);
+
+		// Skip if there are no points to generate.
+		if count < 1. {
+			continue;
+		}
+		// Generate points along the path based on calculated intervals.
+		let max_c = count as usize;
+		for c in 0..=max_c {
+			let fraction = c as f64 / count;
+			let total_distance = fraction * used_length + start_offset;
+			let t = total_distance / total_length;
+			let point = position_on_bezpath(&bezpath, t, true);
+			if sample_bezpath.elements().len() == 0 {
+				sample_bezpath.move_to(point)
+			} else {
+				sample_bezpath.line_to(point)
+			}
+		}
+
+		info!("bezpath {:?}", sample_bezpath);
+		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
+	}
+	// Transfer the style from the input vector data to the result.
+	result.one_instance_mut().instance.style = vector_data.one_instance_ref().instance.style.clone();
+	result.one_instance_mut().instance.style.set_stroke_transform(vector_data_transform);
+
+	// Return the resulting vector data with newly generated points and segments.
+	result
+}
+
+#[node_macro::node(category(""), path(graphene_core::vector))]
+async fn sample_points2(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
 	// Limit the smallest spacing to something sensible to avoid freezing the application.
 	let spacing = spacing.max(0.01);
 

@@ -31,7 +31,7 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool) -> (usi
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_upto_t / total_length` approximates the input `distance`.
-fn eval_pathseg_euclidean(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
+pub fn eval_pathseg_euclidean(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
 	let mut high_t = 1.;
