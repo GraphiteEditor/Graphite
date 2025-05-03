@@ -536,10 +536,12 @@ impl Fsm for SelectToolFsmState {
 						}
 
 						let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
-						for &position in vector_data.point_domain.positions() {
+						for &point_id in vector_data.point_domain.ids() {
 							// Check if the point in the layer is not part of a segment
-							if vector_data.segment_domain.ids().is_empty() {
-								overlay_context.outline_free_floating_anchor(layer_to_viewport.transform_point2(position));
+							if vector_data.connected_count(point_id) == 0 {
+								if let Some(position) = vector_data.point_domain.position_from_id(point_id) {
+									overlay_context.outline_free_floating_anchor(layer_to_viewport.transform_point2(position));
+								}
 							}
 						}
 					}
@@ -586,10 +588,12 @@ impl Fsm for SelectToolFsmState {
 							overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport);
 
 							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-								for &position in vector_data.point_domain.positions() {
+								for &point_id in vector_data.point_domain.ids() {
 									// Check if the point in the layer is not part of a segment
-									if vector_data.segment_domain.ids().is_empty() {
-										overlay_context.outline_free_floating_anchor(layer_to_viewport.transform_point2(position));
+									if vector_data.connected_count(point_id) == 0 {
+										if let Some(position) = vector_data.point_domain.position_from_id(point_id) {
+											overlay_context.outline_free_floating_anchor(layer_to_viewport.transform_point2(position));
+										}
 									}
 								}
 							}
