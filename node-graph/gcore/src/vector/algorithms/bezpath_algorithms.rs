@@ -1,7 +1,7 @@
 /// Accuracy to find the position on [kurbo::Bezpath].
 const POSITION_ACCURACY: f64 = 1e-3;
 /// Accuracy to find the length of the [kurbo::PathSeg].
-const PERIMETER_ACCURACY: f64 = 1e-3;
+pub const PERIMETER_ACCURACY: f64 = 1e-3;
 
 use kurbo::{BezPath, ParamCurve, ParamCurveDeriv, PathSeg, Point, Shape};
 

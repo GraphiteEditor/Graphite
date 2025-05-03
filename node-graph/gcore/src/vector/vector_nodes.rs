@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{position_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{PERIMETER_ACCURACY, position_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -1143,6 +1143,9 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	let spacing = spacing.max(0.01);
 
 	let vector_data_transform = vector_data.transform();
+	// Using [stroke_bezpath_iter] so that the [subpath_segment_lengths] is aligned to the segments of each bezpaths.
+	// So we can index into [subpath_segment_lengths] to get the length of the segments.
+	// NOTE: [subpath_segment_lengths] has precalulated lengths with transformation applied.
 	let bezpaths = vector_data.one_instance_ref().instance.stroke_bezpath_iter();
 
 	// Initialize the result VectorData with the same transformation as the input.
@@ -1180,9 +1183,9 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			// Calculate point count based on exact spacing, which may not cover the entire path.
 
 			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-			let c = (used_length / spacing + f64::EPSILON).floor();
+			let count = (used_length / spacing + f64::EPSILON).floor();
 			used_length -= used_length % spacing;
-			c
+			count
 		};
 
 		// Skip if there are no points to generate.
@@ -1205,7 +1208,9 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			}
 		}
 
+		// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
 		sample_bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()).inverse());
+		// Append the bezpath (subpath) that connects generated points by lines.
 		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
 	}
 	// Transfer the style from the input vector data to the result.
@@ -1353,12 +1358,12 @@ async fn poisson_disk_points(
 async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> Vec<f64> {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance;
-	info!("subpath_segment_length");
+
 	vector_data
 		.stroke_bezpath_iter()
 		.flat_map(|mut bezpath| {
 			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			bezpath.segments().map(|s| s.perimeter(0.001)).collect::<Vec<f64>>()
+			bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>()
 		})
 		.collect()
 }
