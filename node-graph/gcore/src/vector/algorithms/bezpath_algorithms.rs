@@ -82,14 +82,14 @@ enum BezPathTValue {
 /// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
 /// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
 fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, segments_length: Option<&[f64]>) -> (usize, f64) {
-	let segment_len = bezpath.segments().count();
-	assert!(segment_len >= 1);
+	let segment_count = bezpath.segments().count();
+	assert!(segment_count >= 1);
 
 	match t {
 		BezPathTValue::GlobalEuclidean(t) => {
 			let lengths = segments_length
-				.map(|sl| sl.to_vec())
-				.unwrap_or(bezpath.segments().map(|bezier| bezier.perimeter(PERIMETER_ACCURACY)).collect());
+				.map(|segments_length| segments_length.to_vec())
+				.unwrap_or(bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect());
 
 			let total_length = lengths.iter().sum();
 
@@ -99,10 +99,10 @@ fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, seg
 			assert!((0.0..=1.).contains(&global_t));
 
 			if global_t == 1. {
-				return (segment_len - 1, 1.);
+				return (segment_count - 1, 1.);
 			}
 
-			let scaled_t = global_t * segment_len as f64;
+			let scaled_t = global_t * segment_count as f64;
 			let segment_index = scaled_t.floor() as usize;
 			let t = scaled_t - segment_index as f64;
 
