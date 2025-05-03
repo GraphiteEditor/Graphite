@@ -1141,7 +1141,6 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
 	// Limit the smallest spacing to something sensible to avoid freezing the application.
 	let spacing = spacing.max(0.01);
-	log::info!("sample_points using kurbo");
 
 	let vector_data_transform = vector_data.transform();
 
@@ -1160,7 +1159,6 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 
 		// Adjust the usable length by subtracting start and stop offsets.
 		let mut used_length = total_length - start_offset - stop_offset;
-		log::info!("used_length {:?}", used_length);
 
 		if used_length <= 0. {
 			continue;
@@ -1179,7 +1177,6 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			used_length -= used_length % spacing;
 			c
 		};
-		info!("count {}", count);
 
 		// Skip if there are no points to generate.
 		if count < 1. {
@@ -1199,7 +1196,6 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			}
 		}
 
-		info!("bezpath {:?}", sample_bezpath);
 		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
 	}
 	// Transfer the style from the input vector data to the result.
