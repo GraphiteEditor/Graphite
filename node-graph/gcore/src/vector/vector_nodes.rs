@@ -1143,19 +1143,26 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	let spacing = spacing.max(0.01);
 
 	let vector_data_transform = vector_data.transform();
-
-	// Create an iterator over the bezier segments with enumeration and peeking capability.
 	let bezpaths = vector_data.one_instance_ref().instance.stroke_bezpath_iter();
 
 	// Initialize the result VectorData with the same transformation as the input.
 	let mut result = VectorDataTable::default();
 	*result.transform_mut() = vector_data_transform;
 
-	for bezpath in bezpaths {
-		let mut sample_bezpath = BezPath::new();
+	// To keep the index of the first segment of the next bezpath to get lengths of segments.
+	let mut next_segment_index = 0;
 
+	for mut bezpath in bezpaths {
+		let mut sample_bezpath = BezPath::new();
+		// Apply the tranformation to the current bezpath to calculate points after transformation.
+		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+		let segment_count = bezpath.segments().count();
+		// For the current bezpath the get its segments length by calculating the start index and end index.
+		let lengths = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
+		// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segments length.
+		next_segment_index += segment_count;
 		// Calculate the total length of the collected segments.
-		let total_length: f64 = bezpath.segments().map(|s| s.perimeter(0.001)).sum();
+		let total_length: f64 = lengths.iter().sum();
 
 		// Adjust the usable length by subtracting start and stop offsets.
 		let mut used_length = total_length - start_offset - stop_offset;
@@ -1184,11 +1191,13 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 		}
 		// Generate points along the path based on calculated intervals.
 		let max_c = count as usize;
+
 		for c in 0..=max_c {
 			let fraction = c as f64 / count;
-			let total_distance = fraction * used_length + start_offset;
-			let t = total_distance / total_length;
-			let point = position_on_bezpath(&bezpath, t, true, Some(&subpath_segment_lengths));
+			let current_length = fraction * used_length + start_offset;
+			let t = current_length / total_length;
+			let point = position_on_bezpath(&bezpath, t, true, Some(&lengths));
+
 			if sample_bezpath.elements().len() == 0 {
 				sample_bezpath.move_to(point)
 			} else {
@@ -1196,6 +1205,7 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			}
 		}
 
+		sample_bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()).inverse());
 		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
 	}
 	// Transfer the style from the input vector data to the result.
@@ -1343,7 +1353,7 @@ async fn poisson_disk_points(
 async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> Vec<f64> {
 	let vector_data_transform = vector_data.transform();
 	let vector_data = vector_data.one_instance_ref().instance;
-
+	info!("subpath_segment_length");
 	vector_data
 		.stroke_bezpath_iter()
 		.flat_map(|mut bezpath| {
