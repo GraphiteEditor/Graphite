@@ -5,13 +5,13 @@ const PERIMETER_ACCURACY: f64 = 1e-3;
 
 use kurbo::{BezPath, ParamCurve, ParamCurveDeriv, PathSeg, Point, Shape};
 
-pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian);
+pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
+	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
 	bezpath.get_seg(segment_index + 1).unwrap().eval(t)
 }
 
-pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
-	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian);
+pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
+	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
 	match segment {
 		PathSeg::Line(line) => line.deriv().eval(t),
@@ -20,13 +20,13 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Point {
 	}
 }
 
-pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool) -> (usize, f64) {
+pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> (usize, f64) {
 	if euclidian {
-		let (segment_index, t) = bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t));
+		let (segment_index, t) = bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t), segments_length);
 		let segment = bezpath.get_seg(segment_index + 1).unwrap();
 		return (segment_index, eval_pathseg_euclidean(segment, t, POSITION_ACCURACY));
 	}
-	bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t))
+	bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t), segments_length)
 }
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
@@ -81,14 +81,18 @@ enum BezPathTValue {
 
 /// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
 /// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
-fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue) -> (usize, f64) {
+fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, segments_length: Option<&[f64]>) -> (usize, f64) {
 	let segment_len = bezpath.segments().count();
 	assert!(segment_len >= 1);
 
 	match t {
 		BezPathTValue::GlobalEuclidean(t) => {
-			let lengths = bezpath.segments().map(|bezier| bezier.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>();
-			let total_length: f64 = lengths.iter().sum();
+			let lengths = segments_length
+				.map(|sl| sl.to_vec())
+				.unwrap_or(bezpath.segments().map(|bezier| bezier.perimeter(PERIMETER_ACCURACY)).collect());
+
+			let total_length = lengths.iter().sum();
+
 			global_euclidean_to_local_euclidean(bezpath, t, lengths.as_slice(), total_length)
 		}
 		BezPathTValue::GlobalParametric(global_t) => {
