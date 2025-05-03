@@ -654,6 +654,10 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
+	pub fn outline_free_floating_anchor(&mut self, position: DVec2) {
+		self.circle(position, 4.0, Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
+	}
+
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {

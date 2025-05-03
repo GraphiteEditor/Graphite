@@ -527,11 +527,20 @@ impl Fsm for SelectToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+						overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport);
 
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
+						}
+
+						let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+						for &position in vector_data.point_domain.positions() {
+							// Check if the point in the layer is not part of a segment
+							if vector_data.segment_domain.ids().is_empty() {
+								overlay_context.outline_free_floating_anchor(layer_to_viewport.transform_point2(position));
+							}
 						}
 					}
 				}
@@ -573,7 +582,17 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() {
-							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+							overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport);
+
+							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+								for &position in vector_data.point_domain.positions() {
+									// Check if the point in the layer is not part of a segment
+									if vector_data.segment_domain.ids().is_empty() {
+										overlay_context.outline_free_floating_anchor(layer_to_viewport.transform_point2(position));
+									}
+								}
+							}
 						}
 
 						// Measure with Alt held down
