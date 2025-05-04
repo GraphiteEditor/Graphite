@@ -654,8 +654,17 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn outline_free_floating_anchor(&mut self, position: DVec2) {
-		self.circle(position, 4.0, Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
+	pub fn outline_free_floating_anchor(&mut self, vector_data: VectorData, transform: DAffine2) {
+		const SINGLE_ANCHOR_SELECTION_RADIUS: f64 = 4.;
+
+		for &point_id in vector_data.point_domain.ids() {
+			// Check if the point in the layer is not part of a segment
+			if vector_data.connected_count(point_id) == 0 {
+				if let Some(position) = vector_data.point_domain.position_from_id(point_id) {
+					self.circle(transform.transform_point2(position), SINGLE_ANCHOR_SELECTION_RADIUS, Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
+				}
+			}
+		}
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
