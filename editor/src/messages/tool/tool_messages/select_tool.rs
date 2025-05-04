@@ -536,7 +536,7 @@ impl Fsm for SelectToolFsmState {
 						}
 
 						if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-							overlay_context.outline_free_floating_anchor(vector_data, layer_to_viewport);
+							overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
 						}
 					}
 				}
@@ -582,7 +582,7 @@ impl Fsm for SelectToolFsmState {
 							overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport);
 
 							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-								overlay_context.outline_free_floating_anchor(vector_data, layer_to_viewport);
+								overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
 							}
 						}
 
@@ -794,7 +794,12 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
-							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+							overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport);
+
+							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+								overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
+							}
 						}
 					}
 

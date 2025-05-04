@@ -9,7 +9,7 @@ use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 use base64::Engine;
-use bezier_rs::Subpath;
+use bezier_rs::{ManipulatorGroup, Subpath};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use num_traits::Zero;
@@ -652,10 +652,22 @@ impl GraphicElementRendered for VectorDataTable {
 					subpath
 				};
 
+				// For free-floating anchors, we need to add a click target for each
+				let single_anchors = instance.point_domain.ids().iter().filter(|&&point_id| instance.connected_count(point_id) == 0);
+				let single_anchors_targets = single_anchors
+					.map(|&point_id| {
+						let anchor = instance.point_domain.position_from_id(point_id).unwrap_or_default();
+						ManipulatorGroup::new_anchor_with_id(anchor, point_id)
+					})
+					.map(|group| Subpath::new(vec![group], false))
+					.map(|subpath| ClickTarget::new(subpath, 0.))
+					.collect::<Vec<ClickTarget>>();
+
 				let click_targets = instance
 					.stroke_bezier_paths()
 					.map(fill)
 					.map(|subpath| ClickTarget::new(subpath, stroke_width))
+					.chain(single_anchors_targets.into_iter())
 					.collect::<Vec<ClickTarget>>();
 
 				metadata.click_targets.insert(element_id, click_targets);

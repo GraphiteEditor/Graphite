@@ -654,7 +654,7 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn outline_free_floating_anchor(&mut self, vector_data: VectorData, transform: DAffine2) {
+	pub fn outline_free_floating_anchors(&mut self, vector_data: VectorData, transform: DAffine2) {
 		const SINGLE_ANCHOR_SELECTION_RADIUS: f64 = 4.;
 
 		for &point_id in vector_data.point_domain.ids() {
