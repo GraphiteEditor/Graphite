@@ -71,7 +71,7 @@ fn global_euclidean_to_local_euclidean(bezpath: &kurbo::BezPath, global_t: f64, 
 		}
 		accumulator += length_ratio;
 	}
-	(bezpath.segments().count() - 2, 1.)
+	(bezpath.segments().count() - 1, 1.)
 }
 
 enum BezPathTValue {
