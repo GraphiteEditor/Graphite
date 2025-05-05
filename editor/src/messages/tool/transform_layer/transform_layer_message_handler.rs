@@ -332,7 +332,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 				if !overlay_context.visibility_settings.transform_measurement() {
 					return;
 				}
-			if let Some(proportional_data) = &self.proportional_editing_data {
+				if let Some(proportional_data) = &self.proportional_editing_data {
 					let viewport_center = document.metadata().document_to_viewport.transform_point2(proportional_data.center);
 					let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * proportional_data.radius as f64).x;
 
