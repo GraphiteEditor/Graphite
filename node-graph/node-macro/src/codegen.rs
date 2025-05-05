@@ -2,7 +2,7 @@ use crate::parsing::*;
 use convert_case::{Case, Casing};
 use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -134,14 +134,22 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let number_min_values: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular { number_min: Some(number_min), .. } => quote!(Some(#number_min)),
+			ParsedField::Regular { number_soft_min, number_hard_min, .. } => match (number_soft_min, number_hard_min) {
+				(Some(soft_min), _) => quote!(Some(#soft_min)),
+				(None, Some(hard_min)) => quote!(Some(#hard_min)),
+				(None, None) => quote!(None),
+			},
 			_ => quote!(None),
 		})
 		.collect();
 	let number_max_values: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
-			ParsedField::Regular { number_max: Some(number_max), .. } => quote!(Some(#number_max)),
+			ParsedField::Regular { number_soft_max, number_hard_max, .. } => match (number_soft_max, number_hard_max) {
+				(Some(soft_max), _) => quote!(Some(#soft_max)),
+				(None, Some(hard_max)) => quote!(Some(#hard_max)),
+				(None, None) => quote!(None),
+			},
 			_ => quote!(None),
 		})
 		.collect();
@@ -175,6 +183,33 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		}
 	});
 
+	let min_max_args = fields.iter().map(|field| match field {
+		ParsedField::Regular {
+			pat_ident,
+			number_hard_min,
+			number_hard_max,
+			..
+		} => {
+			let name = &pat_ident.ident;
+			let mut tokens = quote!();
+			if let Some(min) = number_hard_min {
+				tokens.extend(quote_spanned! {min.span()=>
+					let #name = #graphene_core::misc::Clampable::clamp_hard_min(#name, #min);
+				});
+			}
+
+			if let Some(max) = number_hard_max {
+				tokens.extend(quote_spanned! {max.span()=>
+					let #name = #graphene_core::misc::Clampable::clamp_hard_max(#name, #max);
+				});
+			}
+			tokens
+		}
+		ParsedField::Node { .. } => {
+			quote!()
+		}
+	});
+
 	let all_implementation_types = fields.iter().flat_map(|field| match field {
 		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
 		ParsedField::Node { implementations, .. } => implementations
@@ -186,13 +221,27 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let input_type = &parsed.input.ty;
 	let mut clauses = Vec::new();
+	let mut clampable_clauses = Vec::new();
+
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
 		clauses.push(match (field, *is_async) {
-			(ParsedField::Regular { ty, .. }, _) => {
+			(
+				ParsedField::Regular {
+					ty, number_hard_min, number_hard_max, ..
+				},
+				_,
+			) => {
 				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
 				let id = future_idents.len();
 				let fut_ident = format_ident!("F{}", id);
 				future_idents.push(fut_ident.clone());
+
+				// Add Clampable bound if this field uses hard_min or hard_max
+				if number_hard_min.is_some() || number_hard_max.is_some() {
+					// The bound applies to the Output type of the future, which is #ty
+					clampable_clauses.push(quote!(#ty: #graphene_core::misc::Clampable));
+				}
+
 				quote!(
 					#fut_ident: core::future::Future<Output = #ty> + #graphene_core::WasmNotSend + 'n,
 					for<'all> #all_lifetime_ty: #graphene_core::WasmNotSend,
@@ -220,6 +269,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let mut struct_where_clause = where_clause.clone();
 	let extra_where: Punctuated<WherePredicate, Comma> = parse_quote!(
 		#(#clauses,)*
+		#(#clampable_clauses,)*
 		#output_type: 'n,
 	);
 	struct_where_clause.predicates.extend(extra_where);
@@ -236,7 +286,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		#[inline]
 		fn eval(&'n self, __input: #input_type) -> Self::Output {
 			Box::pin(async move {
+				use #graphene_core::misc::Clampable;
+
 				#(#eval_args)*
+				#(#min_max_args)*
 				self::#fn_name(__input #(, #field_names)*) #await_keyword
 			})
 		}
