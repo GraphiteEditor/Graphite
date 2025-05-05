@@ -828,6 +828,34 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 					}
 
+					// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
+					if reference == "Mirror" && inputs_count == 4 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						let Some(&TaggedValue::DVec2(old_offset)) = old_inputs[1].as_value() else { return };
+						let old_offset = if old_offset.x.abs() > old_offset.y.abs() { old_offset.x } else { old_offset.y };
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(
+							&InputConnector::node(*node_id, 1),
+							NodeInput::value(TaggedValue::ReferencePoint(graphene_std::transform::ReferencePoint::Center), false),
+							network_path,
+						);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(old_offset), false), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[2].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[3].clone(), network_path);
+					}
+
 					// Upgrade artboard name being passed as hidden value input to "To Artboard"
 					if reference == "Artboard" && upgrade_from_before_returning_nested_click_targets {
 						let label = document.network_interface.display_name(node_id, network_path);
@@ -876,6 +904,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+					}
+
+					if reference == "Morph" && inputs_count == 4 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+						// We have removed the last input, so we don't add index 3
 					}
 				}
 

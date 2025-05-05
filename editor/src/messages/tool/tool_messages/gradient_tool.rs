@@ -90,11 +90,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("linear")
+			RadioEntryData::new("Linear")
 				.label("Linear")
 				.tooltip("Linear gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
-			RadioEntryData::new("radial")
+			RadioEntryData::new("Radial")
 				.label("Radial")
 				.tooltip("Radial gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
@@ -611,7 +611,7 @@ mod test_gradient {
 
 		let (gradient, transform) = get_gradient(&mut editor).await;
 
-		// Gradient goes from secondary colour to primary colour
+		// Gradient goes from secondary color to primary color
 		let stops = gradient.stops.iter().map(|stop| (stop.0, stop.1.to_rgba8_srgb())).collect::<Vec<_>>();
 		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));

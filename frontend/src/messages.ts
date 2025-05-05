@@ -1354,10 +1354,10 @@ export class TextLabel extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
+export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
-export class PivotInput extends WidgetProps {
-	position!: PivotPosition;
+export class ReferencePointInput extends WidgetProps {
+	value!: ReferencePoint;
 
 	disabled!: boolean;
 }
@@ -1377,7 +1377,7 @@ const widgetSubTypes = [
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
-	{ value: PivotInput, name: "PivotInput" },
+	{ value: ReferencePointInput, name: "ReferencePointInput" },
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },

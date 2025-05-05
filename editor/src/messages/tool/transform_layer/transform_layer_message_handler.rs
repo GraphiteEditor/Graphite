@@ -329,12 +329,16 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		match message {
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
-				if let Some(proportional_data) = &self.proportional_editing_data {
+				if !overlay_context.visibility_settings.transform_measurement() {
+					return;
+				}
+			if let Some(proportional_data) = &self.proportional_editing_data {
 					let viewport_center = document.metadata().document_to_viewport.transform_point2(proportional_data.center);
 					let radius_viewport = document.metadata().document_to_viewport.transform_vector2(DVec2::X * proportional_data.radius as f64).x;
 
 					overlay_context.circle(viewport_center, radius_viewport, Some(COLOR_OVERLAY_TRANSPARENT), Some(COLOR_OVERLAY_BLUE));
 				}
+
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -368,7 +372,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 								let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
-								overlay_context.line(quad[0], end, None, None);
+								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
 
 								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
 								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
@@ -376,7 +380,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
 								let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
-								overlay_context.line(quad[0], end, None, None);
+								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
@@ -384,9 +388,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
 							}
+
 							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
-								overlay_context.dashed_line(quad[1], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
-								overlay_context.dashed_line(quad[3], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
+								overlay_context.line(quad[1], quad[2], None, None);
+								overlay_context.line(quad[3], quad[2], None, None);
 							}
 						}
 						TransformOperation::Scaling(scale) => {
@@ -400,7 +405,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let end_point = pivot + local_edge * scale.max(1.);
 
 							if scale > 0. {
-								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(4.), Some(4.), Some(0.5));
+								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
 							}
 							overlay_context.line(boundary_point, end_point, None, None);
 
@@ -988,7 +993,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
 
-		let translation = DVec2::new(50.0, 50.0);
+		let translation = DVec2::new(50., 50.);
 		editor.move_mouse(translation.x, translation.y, ModifierKeys::empty(), MouseKeys::NONE).await;
 
 		editor
@@ -1003,7 +1008,7 @@ mod test_transform_layer {
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		let translation_diff = (final_transform.translation - original_transform.translation).length();
-		assert!(translation_diff > 10.0, "Transform should have changed after applying transformation. Diff: {}", translation_diff);
+		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {}", translation_diff);
 	}
 
 	#[tokio::test]
@@ -1017,7 +1022,7 @@ mod test_transform_layer {
 		let original_transform = get_layer_transform(&mut editor, layer).await.expect("Should be able to get the layer transform");
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1037,7 +1042,7 @@ mod test_transform_layer {
 
 		// Verify transform is either restored to original or reset to identity
 		assert!(
-			(final_translation - original_translation).length() < 5.0 || final_translation.length() < 0.001,
+			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
 			"Transform neither restored to original nor reset to identity. Original: {:?}, Final: {:?}",
 			original_translation,
 			final_translation
@@ -1057,7 +1062,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
-		editor.move_mouse(150.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
@@ -1095,7 +1100,7 @@ mod test_transform_layer {
 		assert!(!after_cancel.translation.y.is_nan(), "Transform is NaN after cancel");
 
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
 	}
 
 	#[tokio::test]
@@ -1111,7 +1116,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
 
-		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150., 150., ModifierKeys::empty(), MouseKeys::NONE).await;
 
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
@@ -1161,7 +1166,7 @@ mod test_transform_layer {
 
 		// Also check translation component is similar
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
 	}
 
 	#[tokio::test]
@@ -1175,7 +1180,7 @@ mod test_transform_layer {
 		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(150.0, 130.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150., 130., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1184,7 +1189,7 @@ mod test_transform_layer {
 			.await;
 
 		let after_grab_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		let expected_translation = DVec2::new(50.0, 30.0);
+		let expected_translation = DVec2::new(50., 30.);
 		let actual_translation = after_grab_transform.translation - original_transform.translation;
 		assert!(
 			(actual_translation - expected_translation).length() < 1e-5,
@@ -1195,7 +1200,7 @@ mod test_transform_layer {
 
 		// 2. Chain to rotation - from current position to create ~45 degree rotation
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
-		editor.move_mouse(190.0, 90.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(190., 90., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1213,7 +1218,7 @@ mod test_transform_layer {
 
 		// 3. Chain to scaling - scale(area) up by 2x
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
-		editor.move_mouse(250.0, 200.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(250., 200., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1225,7 +1230,7 @@ mod test_transform_layer {
 		let before_scale_det = after_rotate_transform.matrix2.determinant();
 		let after_scale_det = after_scale_transform.matrix2.determinant();
 		assert!(
-			after_scale_det >= 2.0 * before_scale_det,
+			after_scale_det >= 2. * before_scale_det,
 			"Scale should increase the determinant of the matrix (before: {}, after: {})",
 			before_scale_det,
 			after_scale_det
@@ -1248,7 +1253,7 @@ mod test_transform_layer {
 
 		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
-		let pan_amount = DVec2::new(200.0, 150.0);
+		let pan_amount = DVec2::new(200., 150.);
 		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
 
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
@@ -1260,8 +1265,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.0).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
-		assert!((scale_y - 2.0).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
 	}
 
 	#[tokio::test]
@@ -1286,8 +1291,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.0).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
-		assert!((scale_y - 2.0).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
 	}
 
 	#[tokio::test]
@@ -1302,7 +1307,11 @@ mod test_transform_layer {
 
 		// Rotate the document view (45 degrees)
 		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
-		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45.0_f64.to_radians() }).await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: (45. as f64).to_radians(),
+			})
+			.await;
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
@@ -1316,8 +1325,8 @@ mod test_transform_layer {
 		let angle_change = (final_angle - original_angle).to_degrees();
 
 		// Normalize angle between 0 and 360
-		let angle_change = ((angle_change % 360.0) + 360.0) % 360.0;
-		assert!((angle_change - 90.0).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+		let angle_change = ((angle_change % 360.) + 360.) % 360.;
+		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
 	}
 
 	#[tokio::test]
@@ -1331,14 +1340,14 @@ mod test_transform_layer {
 		let point_id = PointId::generate();
 		let modification_type = VectorModificationType::InsertPoint {
 			id: point_id,
-			position: DVec2::new(100.0, 100.0),
+			position: DVec2::new(100., 100.),
 		};
 		editor.handle_message(GraphOperationMessage::Vector { layer, modification_type }).await;
 		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
 
 		// Testing grab operation - just checking that it doesn't crash.
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150., 150., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1374,8 +1383,8 @@ mod test_transform_layer {
 		let scale_y = near_zero_transform.matrix2.y_axis.length();
 		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
 		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
-		assert!(scale_x > 0.0, "Scale factor X should not be exactly zero");
-		assert!(scale_y > 0.0, "Scale factor Y should not be exactly zero");
+		assert!(scale_x > 0., "Scale factor X should not be exactly zero");
+		assert!(scale_y > 0., "Scale factor Y should not be exactly zero");
 
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
@@ -1386,8 +1395,8 @@ mod test_transform_layer {
 
 		let new_scale_x = final_transform.matrix2.x_axis.length();
 		let new_scale_y = final_transform.matrix2.y_axis.length();
-		assert!(new_scale_x > 0.0, "After rescaling, scale factor X should be non-zero");
-		assert!(new_scale_y > 0.0, "After rescaling, scale factor Y should be non-zero");
+		assert!(new_scale_x > 0., "After rescaling, scale factor X should be non-zero");
+		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be non-zero");
 	}
 
 	#[tokio::test]
@@ -1423,7 +1432,7 @@ mod test_transform_layer {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layers[0].to_node()] }).await;
 		let original_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1443,7 +1452,7 @@ mod test_transform_layer {
 		let original_transform_1 = get_layer_transform(&mut editor, layers[0]).await.unwrap();
 		let original_transform_2 = get_layer_transform(&mut editor, layers[1]).await.unwrap();
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
-		editor.move_mouse(200.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(200., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -1487,7 +1496,7 @@ mod test_transform_layer {
 			.await;
 		let original_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(30.0, 30.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(30., 30., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
