@@ -62,7 +62,7 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 		let mut next_length = length_up_to_next_sample_point - length_up_to_previous_segment;
 		let mut next_segment_length = segments_length[next_segment_index];
 
-		// Keep moving to the next segment while the length up to the next sample point is less or equals to the length up to the segment.
+		// Keep moving to the next segment while the length up to the next sample point is greater than the length up to the current segment.
 		while next_length > next_segment_length {
 			if next_segment_index == segments_length.len() - 1 {
 				break;
