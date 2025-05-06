@@ -51,20 +51,21 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	if sample_count < 1. {
 		return None;
 	}
+
 	// Generate points along the path based on calculated intervals.
-	let mut length_upto_previous_segment = 0.;
+	let mut length_up_to_previous_segment = 0.;
 	let mut next_segment_index = 0;
 
 	for count in 0..=sample_count as usize {
 		let fraction = count as f64 / sample_count;
-		let length_upto_next_sample_point = fraction * used_length + start_offset;
-		let mut next_length = length_upto_next_sample_point - length_upto_previous_segment;
+		let length_up_to_next_sample_point = fraction * used_length + start_offset;
+		let mut next_length = length_up_to_next_sample_point - length_up_to_previous_segment;
 		let mut next_segment_length = segments_length[next_segment_index];
 
-		// Keep moving to the next segment while the next sample point length is less or equals to the length upto that segment.
+		// Keep moving to the next segment while the next sample point length is less or equals to the length up to that segment.
 		while next_length > next_segment_length && (next_length - next_segment_length) > POSITION_ACCURACY {
-			length_upto_previous_segment += next_segment_length;
-			next_length = length_upto_next_sample_point - length_upto_previous_segment;
+			length_up_to_previous_segment += next_segment_length;
+			next_length = length_up_to_next_sample_point - length_up_to_previous_segment;
 			next_segment_index += 1;
 			next_segment_length = segments_length[next_segment_index];
 		}
@@ -93,7 +94,7 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segment
 }
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
-/// It uses a binary search to find the value `t` such that the ratio `length_upto_t / total_length` approximates the input `distance`.
+/// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
 pub fn eval_pathseg_euclidean(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
