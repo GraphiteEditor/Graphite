@@ -53,12 +53,25 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	}
 	// Generate points along the path based on calculated intervals.
 	let max_c = count as usize;
+	let mut length_upto_previous_segment = 0.;
+	let mut next_segment_index = 0;
 
 	for c in 0..=max_c {
 		let fraction = c as f64 / count;
-		let current_length = fraction * used_length + start_offset;
-		let t = current_length / total_length;
-		let point = position_on_bezpath(&bezpath, t, true, Some(segments_length));
+		let c_next_length = fraction * used_length + start_offset;
+		let mut next_length = c_next_length - length_upto_previous_segment;
+		let mut next_segment_length = segments_length[next_segment_index];
+
+		while next_length > next_segment_length && (next_length - next_segment_length) > 1e-7 {
+			next_segment_index += 1;
+			length_upto_previous_segment += next_segment_length;
+			next_length = c_next_length - length_upto_previous_segment;
+			next_segment_length = segments_length[next_segment_index];
+		}
+
+		let t = next_length / next_segment_length;
+
+		let point = bezpath.get_seg(next_segment_index + 1).unwrap().eval(t);
 
 		if sample_bezpath.elements().is_empty() {
 			sample_bezpath.move_to(point)
