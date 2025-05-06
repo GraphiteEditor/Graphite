@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{position_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -11,11 +11,11 @@ use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue, TValue};
+use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::Affine;
+use kurbo::{Affine, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1147,144 +1147,43 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	let spacing = spacing.max(0.01);
 
 	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
 
-	// Create an iterator over the bezier segments with enumeration and peeking capability.
-	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
+	// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
+	// So we can index into `subpath_segment_lengths` to get the length of the segments.
+	// NOTE: `subpath_segment_lengths` has precalulated lengths with transformation applied.
+	let bezpaths = vector_data.one_instance_ref().instance.stroke_bezpath_iter();
 
 	// Initialize the result VectorData with the same transformation as the input.
 	let mut result = VectorDataTable::default();
 	*result.transform_mut() = vector_data_transform;
 
-	// Iterate over each segment in the bezier iterator.
-	while let Some((index, (segment_id, _, start_point_index, mut last_end))) = bezier.next() {
-		// Record the start point index of the subpath.
-		let subpath_start_point_index = start_point_index;
+	// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
+	let mut next_segment_index = 0;
 
-		// Collect connected segments that form a continuous path.
-		let mut lengths = vec![(segment_id, subpath_segment_lengths.get(index).copied().unwrap_or_default())];
+	for mut bezpath in bezpaths {
+		// Apply the tranformation to the current bezpath to calculate points after transformation.
+		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		// Continue collecting segments as long as they are connected end-to-start.
-		while let Some(&seg) = bezier.peek() {
-			let (_, (_, _, ref start, _)) = seg;
-			if *start == last_end {
-				// Consume the next element since it continues the path.
-				let (index, (next_segment_id, _, _, end)) = bezier.next().unwrap();
-				last_end = end;
-				lengths.push((next_segment_id, subpath_segment_lengths.get(index).copied().unwrap_or_default()));
-			} else {
-				// The next segment does not continue the path.
-				break;
-			}
-		}
+		let segment_count = bezpath.segments().count();
 
-		// Determine if the subpath is closed.
-		let subpath_is_closed = last_end == subpath_start_point_index;
+		// For the current bezpath we get its segment's length by calculating the start index and end index.
+		let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
 
-		// Calculate the total length of the collected segments.
-		let total_length: f64 = lengths.iter().map(|(_, len)| *len).sum();
+		// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
+		next_segment_index += segment_count;
 
-		// Adjust the usable length by subtracting start and stop offsets.
-		let mut used_length = total_length - start_offset - stop_offset;
-		if used_length <= 0. {
+		let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
 			continue;
-		}
-
-		// Determine the number of points to generate along the path.
-		let count = if adaptive_spacing {
-			// Calculate point count to evenly distribute points while covering the entire path.
-			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-			(used_length / spacing).round()
-		} else {
-			// Calculate point count based on exact spacing, which may not cover the entire path.
-
-			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-			let c = (used_length / spacing + f64::EPSILON).floor();
-			used_length -= used_length % spacing;
-			c
 		};
 
-		// Skip if there are no points to generate.
-		if count < 1. {
-			continue;
-		}
+		// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
+		sample_bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()).inverse());
 
-		// Initialize a vector to store indices of generated points.
-		let mut point_indices = Vec::new();
-
-		// Generate points along the path based on calculated intervals.
-		let max_c = if subpath_is_closed { count as usize - 1 } else { count as usize };
-		for c in 0..=max_c {
-			let fraction = c as f64 / count;
-			let total_distance = fraction * used_length + start_offset;
-
-			// Find the segment corresponding to the current total_distance.
-			let (mut current_segment_id, mut length) = lengths[0];
-			let mut total_length_before = 0.;
-			for &(next_segment_id, next_length) in lengths.iter().skip(1) {
-				if total_length_before + length > total_distance {
-					break;
-				}
-
-				total_length_before += length;
-				current_segment_id = next_segment_id;
-				length = next_length;
-			}
-
-			// Retrieve the segment and apply transformation.
-			let Some(segment) = vector_data.segment_from_id(current_segment_id) else { continue };
-			let segment = segment.apply_transformation(|point| vector_data_transform.transform_point2(point));
-
-			// Calculate the position on the segment.
-			let parametric_t = segment.euclidean_to_parametric_with_total_length((total_distance - total_length_before) / length, 0.001, length);
-			let point = segment.evaluate(TValue::Parametric(parametric_t));
-
-			// Generate a new PointId and add the point to result.point_domain.
-			let point_id = PointId::generate();
-			result.one_instance_mut().instance.point_domain.push(point_id, vector_data_transform.inverse().transform_point2(point));
-
-			// Store the index of the point.
-			let point_index = result.one_instance_mut().instance.point_domain.ids().len() - 1;
-			point_indices.push(point_index);
-		}
-
-		// After generating points, create segments between consecutive points.
-		for window in point_indices.windows(2) {
-			if let [start_index, end_index] = *window {
-				// Generate a new SegmentId.
-				let segment_id = SegmentId::generate();
-
-				// Use BezierHandles::Linear for linear segments.
-				let handles = bezier_rs::BezierHandles::Linear;
-
-				// Generate a new StrokeId.
-				let stroke_id = StrokeId::generate();
-
-				// Add the segment to result.segment_domain.
-				result.one_instance_mut().instance.segment_domain.push(segment_id, start_index, end_index, handles, stroke_id);
-			}
-		}
-
-		// If the subpath is closed, add a closing segment connecting the last point to the first point.
-		if subpath_is_closed {
-			if let (Some(&first_index), Some(&last_index)) = (point_indices.first(), point_indices.last()) {
-				// Generate a new SegmentId.
-				let segment_id = SegmentId::generate();
-
-				// Use BezierHandles::Linear for linear segments.
-				let handles = bezier_rs::BezierHandles::Linear;
-
-				// Generate a new StrokeId.
-				let stroke_id = StrokeId::generate();
-
-				// Add the closing segment to result.segment_domain.
-				result.one_instance_mut().instance.segment_domain.push(segment_id, last_index, first_index, handles, stroke_id);
-			}
-		}
+		// Append the bezpath (subpath) that connects generated points by lines.
+		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
 	}
-
 	// Transfer the style from the input vector data to the result.
-	result.one_instance_mut().instance.style = vector_data.style.clone();
+	result.one_instance_mut().instance.style = vector_data.one_instance_ref().instance.style.clone();
 	result.one_instance_mut().instance.style.set_stroke_transform(vector_data_transform);
 
 	// Return the resulting vector data with newly generated points and segments.
@@ -1320,7 +1219,7 @@ async fn position_on_path(
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
 		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		point_to_dvec2(position_on_bezpath(bezpath, t, euclidian))
+		point_to_dvec2(position_on_bezpath(bezpath, t, euclidian, None))
 	})
 }
 
@@ -1353,10 +1252,10 @@ async fn tangent_on_path(
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
 		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
-		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian));
+		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian, None));
 		if tangent == DVec2::ZERO {
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
-			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian));
+			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian, None));
 		}
 		if tangent == DVec2::ZERO {
 			return 0.;
@@ -1430,8 +1329,11 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 	let vector_data = vector_data.one_instance_ref().instance;
 
 	vector_data
-		.segment_bezier_iter()
-		.map(|(_id, bezier, _, _)| bezier.apply_transformation(|point| vector_data_transform.transform_point2(point)).length(None))
+		.stroke_bezpath_iter()
+		.flat_map(|mut bezpath| {
+			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+			bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>()
+		})
 		.collect()
 }
 
