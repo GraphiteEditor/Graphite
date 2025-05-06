@@ -8,7 +8,6 @@ use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContaine
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::panic::UnwindSafe;
 use std::sync::Arc;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
