@@ -1,10 +1,10 @@
 use crate::vector::{VectorData, VectorDataTable};
 use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_core::Ctx;
 use graphene_core::text::TypesettingConfig;
-pub use graphene_core::text::{Font, FontCache, bounding_box, load_face, to_path};
+pub use graphene_core::text::{Font, FontCache, bounding_box, load_face, to_group, to_path};
+use graphene_core::{Ctx, GraphicGroupTable};
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category("Text"))] // Changed category for clarity
 fn text<'i: 'n>(
 	_: impl Ctx,
 	editor: &'i WasmEditorApi,
@@ -15,7 +15,9 @@ fn text<'i: 'n>(
 	#[default(1.)] character_spacing: f64,
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
-) -> VectorDataTable {
+	#[default(false)] output_instances: bool, // Added parameter
+) -> GraphicGroupTable {
+	// Changed return type
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
 
 	let typesetting = TypesettingConfig {
@@ -26,7 +28,12 @@ fn text<'i: 'n>(
 		max_height,
 	};
 
-	let result = VectorData::from_subpaths(to_path(&text, buzz_face, typesetting), false);
-
-	VectorDataTable::new(result)
+	if output_instances {
+		to_group(&text, buzz_face, typesetting)
+	} else {
+		let vector_data = VectorData::from_subpaths(to_path(&text, buzz_face, typesetting), false);
+		let vector_table = VectorDataTable::new(vector_data);
+		// Convert VectorDataTable into GraphicGroupTable
+		vector_table.into()
+	}
 }

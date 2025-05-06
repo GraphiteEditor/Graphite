@@ -1,6 +1,8 @@
-use crate::vector::PointId;
+use crate::instances::Instance;
+use crate::vector::{PointId, VectorData, VectorDataTable};
+use crate::{GraphicElement, GraphicGroupTable};
 use bezier_rs::{ManipulatorGroup, Subpath};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 
@@ -246,4 +248,152 @@ fn split_words_including_spaces() {
 	assert_eq!(split_words.next(), Some("world     "));
 	assert_eq!(split_words.next(), Some("."));
 	assert_eq!(split_words.next(), None);
+}
+
+// Builder specifically for generating glyph paths relative to (0,0)
+struct GlyphBuilder {
+	current_subpath: Subpath<PointId>,
+	other_subpaths: Vec<Subpath<PointId>>,
+	ascender: f64,
+	scale: f64,
+	id: PointId,
+}
+
+impl GlyphBuilder {
+	// Calculates point relative to glyph origin, scaled and adjusted for ascender
+	fn point(&self, x: f32, y: f32) -> DVec2 {
+		DVec2::new(x as f64, self.ascender - y as f64) * self.scale
+	}
+
+	// Extracts the generated subpaths and resets the builder state
+	fn take_subpaths(&mut self) -> Vec<Subpath<PointId>> {
+		let mut subpaths = std::mem::take(&mut self.other_subpaths);
+		if !self.current_subpath.is_empty() {
+			subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		}
+		subpaths
+	}
+}
+
+impl OutlineBuilder for GlyphBuilder {
+	fn move_to(&mut self, x: f32, y: f32) {
+		if !self.current_subpath.is_empty() {
+			self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		}
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+	}
+
+	fn line_to(&mut self, x: f32, y: f32) {
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
+	}
+
+	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
+		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
+		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, None, None, self.id.next_id()));
+	}
+
+	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {
+		let [handle1, handle2, anchor] = [self.point(x1, y1), self.point(x2, y2), self.point(x3, y3)];
+		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle1);
+		self.current_subpath
+			.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, Some(handle2), None, self.id.next_id()));
+	}
+
+	fn close(&mut self) {
+		self.current_subpath.set_closed(true);
+		self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+	}
+}
+
+/// Converts a string into a graphic group, where each element is a single character glyph as VectorData.
+pub fn to_group(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: TypesettingConfig) -> GraphicGroupTable {
+	let Some(buzz_face) = buzz_face else { return GraphicGroupTable::empty() };
+	let space_glyph = buzz_face.glyph_index(' ');
+
+	let (scale, line_height, mut buffer) = font_properties(&buzz_face, typesetting.font_size, typesetting.line_height_ratio);
+	let ascender = (buzz_face.ascender() as f64 / buzz_face.height() as f64) * typesetting.font_size / scale;
+
+	let mut result_group = GraphicGroupTable::empty(); // Changed from Instances::empty()
+	let mut text_cursor = DVec2::ZERO;
+	let mut point_id_gen = PointId::ZERO; // Use a single generator across all glyphs
+
+	for line in str.split('\n') {
+		for (index, word) in SplitWordsIncludingSpaces::new(line).enumerate() {
+			push_str(&mut buffer, word);
+			let glyph_buffer = rustybuzz::shape(&buzz_face, &[], buffer);
+
+			// Don't wrap the first word
+			if index != 0 && wrap_word(typesetting.max_width, &glyph_buffer, scale, typesetting.character_spacing, text_cursor.x, space_glyph) {
+				text_cursor = DVec2::new(0., text_cursor.y + line_height);
+			}
+
+			for (glyph_position, glyph_info) in glyph_buffer.glyph_positions().iter().zip(glyph_buffer.glyph_infos()) {
+				let glyph_id = GlyphId(glyph_info.glyph_id as u16);
+
+				// Calculate the intended render position for this glyph's origin before advancing the cursor
+				let current_glyph_offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * scale;
+				let glyph_render_pos = text_cursor + current_glyph_offset;
+
+				// Check for line wrap based on advance width BEFORE rendering the current glyph
+				if let Some(max_width) = typesetting.max_width {
+					if space_glyph != Some(glyph_id) && text_cursor.x + (glyph_position.x_advance as f64 * scale * typesetting.character_spacing) >= max_width {
+						// Move cursor to the next line for the *next* glyph
+						text_cursor = DVec2::new(0., text_cursor.y + line_height);
+						// Note: The current glyph still renders based on the glyph_render_pos calculated before the wrap check.
+					}
+				}
+
+				// Clip when the height is exceeded - stop adding instances
+				if typesetting.max_height.is_some_and(|max_height| text_cursor.y > max_height - line_height) {
+					return result_group; // Changed from result_instances
+				}
+
+				// Build the glyph geometry relative to its origin (0,0)
+				let mut glyph_builder = GlyphBuilder {
+					current_subpath: Subpath::new(Vec::new(), false),
+					other_subpaths: Vec::new(),
+					ascender,
+					scale,
+					id: point_id_gen, // Pass the current generator state
+				};
+
+				buzz_face.outline_glyph(glyph_id, &mut glyph_builder);
+				point_id_gen = glyph_builder.id; // Update the generator state for the next glyph
+
+				let glyph_subpaths = glyph_builder.take_subpaths();
+
+				// Create an instance only if the glyph has geometry (e.g., not for empty spaces if they have no outline)
+				if !glyph_subpaths.is_empty() {
+					// Create VectorData for this single glyph
+					let glyph_vector_data = VectorData::from_subpaths(glyph_subpaths, true);
+					// Wrap VectorData in VectorDataTable
+					let glyph_vector_table = VectorDataTable::new(glyph_vector_data);
+					// TODO: Consider inheriting style (fill/stroke) if needed in the future.
+
+					// Create the transform to position this glyph instance
+					let glyph_transform = DAffine2::from_translation(glyph_render_pos);
+
+					// Add the instance to the results group
+					result_group.push(Instance {
+						// Changed from result_instances.push
+						instance: GraphicElement::VectorData(glyph_vector_table), // Changed instance type
+						transform: glyph_transform,
+						alpha_blending: Default::default(), // Use default blending for now
+						source_node_id: None,               // Glyphs don't have a specific source node ID
+					});
+				}
+
+				// Advance the main text cursor based on the glyph's advance width for the next glyph
+				text_cursor += DVec2::new(glyph_position.x_advance as f64 * typesetting.character_spacing, glyph_position.y_advance as f64) * scale;
+			}
+
+			buffer = glyph_buffer.clear();
+		}
+
+		// Move cursor down for the next line
+		text_cursor = DVec2::new(0., text_cursor.y + line_height);
+	}
+
+	result_group // Changed from result_instances
 }

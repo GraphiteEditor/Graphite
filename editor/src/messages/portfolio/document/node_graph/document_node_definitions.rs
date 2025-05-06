@@ -2262,6 +2262,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
 				},
@@ -2315,6 +2316,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						PropertiesRow::with_override("Instances", "TODO", WidgetOverride::Custom("instances".to_string())),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

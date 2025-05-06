@@ -806,6 +806,98 @@ async fn select_subpath_by_index(_ctx: impl Ctx + ExtractAll + CloneVarArgs, vec
 	result_table
 }
 
+#[node_macro::node(name("Contains Shape"), category("Vector"), path(graphene_core::vector))]
+async fn contains_shape(
+	_: impl Ctx,
+	/// The vector data representing the shape to check for containment.
+	shape_to_check: VectorDataTable,
+	/// The vector data representing the shape to check against.
+	#[expose]
+	filter_shape: VectorDataTable,
+	/// If true, requires all points of the shape to be contained. If false, requires at least one point to be contained.
+	#[default(true)]
+	require_full_containment: bool,
+) -> bool {
+	let shape_transform = shape_to_check.transform();
+	let shape_instance = shape_to_check.one_instance_ref().instance;
+
+	let filter_transform = filter_shape.transform();
+	let filter_instance = filter_shape.one_instance_ref().instance;
+
+	// Pre-transform filter subpaths into world space for efficient checking
+	let filter_subpaths_world: Vec<_> = filter_instance
+		.stroke_bezier_paths()
+		.map(|mut subpath| {
+			subpath.apply_transform(filter_transform);
+			subpath
+		})
+		.collect();
+
+	// If the filter shape has no geometry, containment is impossible (unless the shape to check is also empty)
+	if filter_subpaths_world.is_empty() {
+		return shape_instance.point_domain.positions().is_empty();
+	}
+
+	let points_to_check = shape_instance.point_domain.positions();
+
+	// Handle empty shape_to_check
+	if points_to_check.is_empty() {
+		return require_full_containment; // Empty shape is fully contained, but not partially contained.
+	}
+
+	let mut points_contained_count = 0;
+
+	// Iterate through each point in the input shape_to_check
+	for point_pos in points_to_check {
+		// Transform the point into world space
+		let point_world = shape_transform.transform_point2(*point_pos);
+
+		// Check if the point is contained within any of the filter subpaths
+		let is_contained = filter_subpaths_world.iter().any(|subpath| subpath.contains_point(point_world));
+
+		if require_full_containment {
+			// If full containment is required, return false immediately if any point is outside
+			if !is_contained {
+				return false;
+			}
+			points_contained_count += 1; // Only needed to confirm loop ran if all points were contained
+		} else {
+			// If partial containment is sufficient, return true immediately if any point is inside
+			if is_contained {
+				return true;
+			}
+		}
+	}
+
+	// If full containment was required and we looped through all points without returning false, it means all points were contained.
+	// If partial containment was required and we looped through all points without returning true, it means no points were contained.
+	require_full_containment && points_contained_count > 0
+}
+
+#[node_macro::node(name("Group Count"), category("Vector"), path(graphene_core::vector))]
+async fn group_count(_: impl Ctx, group: GraphicGroupTable, #[default(false)] recurse: bool) -> u64 {
+	// Helper function to handle recursion
+	fn count_groups_recursive(group: &GraphicGroupTable) -> u64 {
+		let mut count = group.len() as u64;
+
+		for instance in group.instance_ref_iter() {
+			if let GraphicElement::GraphicGroup(subgroup) = &instance.instance {
+				count += count_groups_recursive(subgroup);
+			}
+		}
+
+		count
+	}
+
+	// Non-recursive count just returns the number of items
+	if !recurse {
+		return group.len() as u64;
+	}
+
+	// Use the helper function for recursive counting
+	count_groups_recursive(&group)
+}
+
 #[node_macro::node(name("Select Points Within Shape"), category("Vector"), path(graphene_core::vector))]
 async fn select_points_within_shape(
 	_: impl Ctx,
