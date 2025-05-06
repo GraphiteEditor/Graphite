@@ -4,10 +4,10 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvi
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::proportional_editing::*;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, TransformType, Typing};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::tool_messages::path_tool::ProportionalEditingData;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
