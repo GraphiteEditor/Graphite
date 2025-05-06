@@ -62,7 +62,7 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 		let mut next_length = length_up_to_next_sample_point - length_up_to_previous_segment;
 		let mut next_segment_length = segments_length[next_segment_index];
 
-		// Keep moving to the next segment while the next sample point length is less or equals to the length up to that segment.
+		// Keep moving to the next segment while the length up to the next sample point is less or equals to the length up to the segment.
 		while next_length > next_segment_length {
 			if next_segment_index == segments_length.len() - 1 {
 				break;
@@ -100,12 +100,12 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segment
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
-pub fn eval_pathseg_euclidean(path: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
+pub fn eval_pathseg_euclidean(path_segment: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
 	let mut high_t = 1.;
 
-	let total_length = path.perimeter(accuracy);
+	let total_length = path_segment.perimeter(accuracy);
 
 	if !total_length.is_finite() || total_length <= f64::EPSILON {
 		return 0.;
@@ -114,7 +114,7 @@ pub fn eval_pathseg_euclidean(path: kurbo::PathSeg, distance: f64, accuracy: f64
 	let distance = distance.clamp(0., 1.);
 
 	while high_t - low_t > accuracy {
-		let current_length = path.subsegment(0.0..mid_t).perimeter(accuracy);
+		let current_length = path_segment.subsegment(0.0..mid_t).perimeter(accuracy);
 		let current_distance = current_length / total_length;
 
 		if current_distance > distance {
