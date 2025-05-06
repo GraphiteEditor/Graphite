@@ -34,7 +34,7 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	}
 
 	// Determine the number of points to generate along the path.
-	let count = if adaptive_spacing {
+	let sample_count = if adaptive_spacing {
 		// Calculate point count to evenly distribute points while covering the entire path.
 		// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
 		(used_length / spacing).round()
@@ -48,28 +48,28 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	};
 
 	// Skip if there are no points to generate.
-	if count < 1. {
+	if sample_count < 1. {
 		return None;
 	}
 	// Generate points along the path based on calculated intervals.
-	let max_c = count as usize;
 	let mut length_upto_previous_segment = 0.;
 	let mut next_segment_index = 0;
 
-	for c in 0..=max_c {
-		let fraction = c as f64 / count;
-		let c_next_length = fraction * used_length + start_offset;
-		let mut next_length = c_next_length - length_upto_previous_segment;
+	for count in 0..=sample_count as usize {
+		let fraction = count as f64 / sample_count;
+		let length_upto_next_sample_point = fraction * used_length + start_offset;
+		let mut next_length = length_upto_next_sample_point - length_upto_previous_segment;
 		let mut next_segment_length = segments_length[next_segment_index];
 
-		while next_length > next_segment_length && (next_length - next_segment_length) > 1e-7 {
-			next_segment_index += 1;
+		// Keep moving to the next segment while the next sample point length is less or equals to the length upto that segment.
+		while next_length > next_segment_length && (next_length - next_segment_length) > POSITION_ACCURACY {
 			length_upto_previous_segment += next_segment_length;
-			next_length = c_next_length - length_upto_previous_segment;
+			next_length = length_upto_next_sample_point - length_upto_previous_segment;
+			next_segment_index += 1;
 			next_segment_length = segments_length[next_segment_index];
 		}
 
-		let t = next_length / next_segment_length;
+		let t = (next_length / next_segment_length).clamp(0., 1.);
 
 		let point = bezpath.get_seg(next_segment_index + 1).unwrap().eval(t);
 
