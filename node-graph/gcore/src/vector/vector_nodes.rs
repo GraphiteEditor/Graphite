@@ -1147,27 +1147,33 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	let spacing = spacing.max(0.01);
 
 	let vector_data_transform = vector_data.transform();
-	// Using [stroke_bezpath_iter] so that the [subpath_segment_lengths] is aligned to the segments of each bezpaths.
-	// So we can index into [subpath_segment_lengths] to get the length of the segments.
-	// NOTE: [subpath_segment_lengths] has precalulated lengths with transformation applied.
+
+	// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
+	// So we can index into `subpath_segment_lengths` to get the length of the segments.
+	// NOTE: `subpath_segment_lengths` has precalulated lengths with transformation applied.
 	let bezpaths = vector_data.one_instance_ref().instance.stroke_bezpath_iter();
 
 	// Initialize the result VectorData with the same transformation as the input.
 	let mut result = VectorDataTable::default();
 	*result.transform_mut() = vector_data_transform;
 
-	// To keep the index of the first segment of the next bezpath to get lengths of segments.
+	// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
 	let mut next_segment_index = 0;
 
 	for mut bezpath in bezpaths {
 		let mut sample_bezpath = BezPath::new();
+
 		// Apply the tranformation to the current bezpath to calculate points after transformation.
 		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+
 		let segment_count = bezpath.segments().count();
-		// For the current bezpath the get its segments length by calculating the start index and end index.
+
+		// For the current bezpath we get its segment's length by calculating the start index and end index.
 		let lengths = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
-		// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segments length.
+
+		// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
 		next_segment_index += segment_count;
+
 		// Calculate the total length of the collected segments.
 		let total_length: f64 = lengths.iter().sum();
 
@@ -1203,9 +1209,9 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			let fraction = c as f64 / count;
 			let current_length = fraction * used_length + start_offset;
 			let t = current_length / total_length;
-			let point = position_on_bezpath(&bezpath, t, true, Some(&lengths));
+			let point = position_on_bezpath(&bezpath, t, true, Some(lengths));
 
-			if sample_bezpath.elements().len() == 0 {
+			if sample_bezpath.elements().is_empty() {
 				sample_bezpath.move_to(point)
 			} else {
 				sample_bezpath.line_to(point)
@@ -1214,6 +1220,7 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 
 		// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
 		sample_bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()).inverse());
+
 		// Append the bezpath (subpath) that connects generated points by lines.
 		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
 	}
