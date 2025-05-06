@@ -63,7 +63,10 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 		let mut next_segment_length = segments_length[next_segment_index];
 
 		// Keep moving to the next segment while the next sample point length is less or equals to the length up to that segment.
-		while next_length > next_segment_length && (next_length - next_segment_length) > POSITION_ACCURACY {
+		while next_length > next_segment_length {
+			if next_segment_index == segments_length.len() - 1 {
+				break;
+			}
 			length_up_to_previous_segment += next_segment_length;
 			next_length = length_up_to_next_sample_point - length_up_to_previous_segment;
 			next_segment_index += 1;
@@ -72,7 +75,9 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 
 		let t = (next_length / next_segment_length).clamp(0., 1.);
 
-		let point = bezpath.get_seg(next_segment_index + 1).unwrap().eval(t);
+		let segment = bezpath.get_seg(next_segment_index + 1).unwrap();
+		let t = eval_pathseg_euclidean(segment, t, POSITION_ACCURACY);
+		let point = segment.eval(t);
 
 		if sample_bezpath.elements().is_empty() {
 			sample_bezpath.move_to(point)
