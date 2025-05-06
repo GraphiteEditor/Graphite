@@ -20,6 +20,56 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_l
 	}
 }
 
+pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, segments_length: &[f64]) -> Option<BezPath> {
+	let mut sample_bezpath = BezPath::new();
+
+	// Calculate the total length of the collected segments.
+	let total_length: f64 = segments_length.iter().sum();
+
+	// Adjust the usable length by subtracting start and stop offsets.
+	let mut used_length = total_length - start_offset - stop_offset;
+
+	if used_length <= 0. {
+		return None;
+	}
+
+	// Determine the number of points to generate along the path.
+	let count = if adaptive_spacing {
+		// Calculate point count to evenly distribute points while covering the entire path.
+		// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
+		(used_length / spacing).round()
+	} else {
+		// Calculate point count based on exact spacing, which may not cover the entire path.
+
+		// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+		let count = (used_length / spacing + f64::EPSILON).floor();
+		used_length -= used_length % spacing;
+		count
+	};
+
+	// Skip if there are no points to generate.
+	if count < 1. {
+		return None;
+	}
+	// Generate points along the path based on calculated intervals.
+	let max_c = count as usize;
+
+	for c in 0..=max_c {
+		let fraction = c as f64 / count;
+		let current_length = fraction * used_length + start_offset;
+		let t = current_length / total_length;
+		let point = position_on_bezpath(&bezpath, t, true, Some(segments_length));
+
+		if sample_bezpath.elements().is_empty() {
+			sample_bezpath.move_to(point)
+		} else {
+			sample_bezpath.line_to(point)
+		}
+	}
+
+	Some(sample_bezpath)
+}
+
 pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> (usize, f64) {
 	if euclidian {
 		let (segment_index, t) = bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t), segments_length);

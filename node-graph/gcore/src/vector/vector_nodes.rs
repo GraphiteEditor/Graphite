@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{PERIMETER_ACCURACY, position_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -15,7 +15,7 @@ use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1161,62 +1161,20 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	let mut next_segment_index = 0;
 
 	for mut bezpath in bezpaths {
-		let mut sample_bezpath = BezPath::new();
-
 		// Apply the tranformation to the current bezpath to calculate points after transformation.
 		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
 
 		let segment_count = bezpath.segments().count();
 
 		// For the current bezpath we get its segment's length by calculating the start index and end index.
-		let lengths = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
+		let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
 
 		// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
 		next_segment_index += segment_count;
 
-		// Calculate the total length of the collected segments.
-		let total_length: f64 = lengths.iter().sum();
-
-		// Adjust the usable length by subtracting start and stop offsets.
-		let mut used_length = total_length - start_offset - stop_offset;
-
-		if used_length <= 0. {
+		let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
 			continue;
-		}
-
-		// Determine the number of points to generate along the path.
-		let count = if adaptive_spacing {
-			// Calculate point count to evenly distribute points while covering the entire path.
-			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-			(used_length / spacing).round()
-		} else {
-			// Calculate point count based on exact spacing, which may not cover the entire path.
-
-			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-			let count = (used_length / spacing + f64::EPSILON).floor();
-			used_length -= used_length % spacing;
-			count
 		};
-
-		// Skip if there are no points to generate.
-		if count < 1. {
-			continue;
-		}
-		// Generate points along the path based on calculated intervals.
-		let max_c = count as usize;
-
-		for c in 0..=max_c {
-			let fraction = c as f64 / count;
-			let current_length = fraction * used_length + start_offset;
-			let t = current_length / total_length;
-			let point = position_on_bezpath(&bezpath, t, true, Some(lengths));
-
-			if sample_bezpath.elements().is_empty() {
-				sample_bezpath.move_to(point)
-			} else {
-				sample_bezpath.line_to(point)
-			}
-		}
 
 		// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
 		sample_bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()).inverse());
