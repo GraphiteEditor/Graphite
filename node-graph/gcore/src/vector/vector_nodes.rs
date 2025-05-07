@@ -1364,22 +1364,26 @@ async fn poisson_disk_points(
 		return VectorDataTable::new(result);
 	}
 	let path_with_bounding_boxes: Vec<_> = vector_data
-		.stroke_bezier_paths()
-		.filter_map(|mut subpath| {
+		.stroke_bezpath_iter()
+		.map(|mut subpath| {
 			// TODO: apply transform to points instead of modifying the paths
-			subpath.apply_transform(vector_data_transform);
-			subpath.loose_bounding_box().map(|bb| (subpath, bb))
+			subpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+			let bb = subpath.bounding_box();
+			(subpath, bb)
 		})
 		.collect();
 
+	use crate::vector::algorithms::bezpath_algorithms::poisson_disk_points;
+
 	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
-		if subpath.manipulator_groups().len() < 3 {
+		let segment_count = subpath.segments().count();
+		if segment_count < 2 {
 			continue;
 		}
 
 		let mut previous_point_index: Option<usize> = None;
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
+		for point in poisson_disk_points(subpath, separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
 			let point_id = PointId::generate();
 			result.point_domain.push(point_id, point);
 
