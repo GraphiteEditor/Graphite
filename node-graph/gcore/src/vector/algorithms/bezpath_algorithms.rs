@@ -199,6 +199,9 @@ fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, pre
 /// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
 /// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
 pub fn poisson_disk_points(bezpath: &BezPath, separation_disk_diameter: f64, rng: impl FnMut() -> f64, subpaths: &[(BezPath, Rect)], subpath_index: usize) -> Vec<DVec2> {
+	if bezpath.elements().is_empty() {
+		return Vec::new();
+	}
 	let bbox = bezpath.bounding_box();
 	let (offset_x, offset_y) = (bbox.x0, bbox.y0);
 	let (width, height) = (bbox.x1 - bbox.x0, bbox.y1 - bbox.y0);
@@ -212,9 +215,9 @@ pub fn poisson_disk_points(bezpath: &BezPath, separation_disk_diameter: f64, rng
 	let point_in_shape_checker = |point: DVec2| {
 		// Check against all paths the point is contained in to compute the correct winding number
 		let mut number = 0;
-		for (i, (shape, bb)) in subpaths.iter().enumerate() {
+		for (i, (shape, bbox)) in subpaths.iter().enumerate() {
 			let point = point + DVec2::new(bbox.x0, bbox.y0);
-			if bb.x0 > point.x || bb.y0 > point.y || bb.x1 < point.x || bb.y1 < point.y {
+			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
 				continue;
 			}
 			let winding = shape.winding(dvec2_to_point(point));
@@ -227,9 +230,9 @@ pub fn poisson_disk_points(bezpath: &BezPath, separation_disk_diameter: f64, rng
 		number != 0
 	};
 
-	let square_edges_intersect_shape_checker = |corner1: DVec2, size: f64| {
-		let corner2 = corner1 + DVec2::splat(size);
-		bezpath_rectangle_intersections_exist(bezpath, corner1, corner2)
+	let square_edges_intersect_shape_checker = |position: DVec2, size: f64| {
+		let rect = Rect::new(position.x, position.y, position.x + size, position.y + size);
+		bezpath_rectangle_intersections_exist(bezpath, rect)
 	};
 
 	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
@@ -240,22 +243,33 @@ pub fn poisson_disk_points(bezpath: &BezPath, separation_disk_diameter: f64, rng
 	points
 }
 
-fn bezpath_rectangle_intersections_exist(bezpath: &BezPath, corner1: DVec2, corner2: DVec2) -> bool {
-	info!("rect intersection => bezpath => {:?}, corner ({:?})", bezpath, (corner1, corner2));
-	let a = corner1;
-	let b = DVec2::new(corner2.x, corner1.y);
-	let c = corner2;
-	let d = DVec2::new(corner1.x, corner2.y);
+fn bezpath_rectangle_intersections_exist(bezpath: &BezPath, rect: Rect) -> bool {
+	if !bezpath.bounding_box().overlaps(rect) {
+		return false;
+	}
 
-	let top_line = Line::new((a.x, a.y), (b.x, b.y));
-	let right_line = Line::new((b.x, b.y), (c.x, c.y));
-	let bottom_line = Line::new((c.x, c.y), (d.x, d.y));
-	let left_line = Line::new((d.x, d.y), (a.x, a.y));
+	// p1           p2
+	//  -------------
+	//  |           |
+	//  |           |
+	//  |           |
+	//  -------------
+	// p4           p3
+	let p1 = Point::new(rect.x0, rect.y0);
+	let p2 = Point::new(rect.x1, rect.y0);
+	let p3 = Point::new(rect.x1, rect.y1);
+	let p4 = Point::new(rect.x0, rect.y1);
+
+	let top_line = Line::new((p1.x, p1.y), (p2.x, p2.y));
+	let right_line = Line::new((p2.x, p2.y), (p3.x, p3.y));
+	let bottom_line = Line::new((p3.x, p3.y), (p4.x, p4.y));
+	let left_line = Line::new((p4.x, p4.y), (p1.x, p1.y));
+
+	let lines = [top_line, right_line, bottom_line, left_line];
 
 	for segment in bezpath.segments() {
-		for line in [top_line, right_line, bottom_line, left_line] {
+		for line in lines {
 			if !segment.intersect_line(line).is_empty() {
-				info!("insected.");
 				return true;
 			}
 		}

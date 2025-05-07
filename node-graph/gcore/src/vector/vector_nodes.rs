@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -9,13 +9,14 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
+use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, Shape};
+use kurbo::{Affine, BezPath, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1368,12 +1369,10 @@ async fn poisson_disk_points(
 		.map(|mut subpath| {
 			// TODO: apply transform to points instead of modifying the paths
 			subpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			let bb = subpath.bounding_box();
-			(subpath, bb)
+			let bbox = subpath.bounding_box();
+			(subpath, bbox)
 		})
 		.collect();
-
-	use crate::vector::algorithms::bezpath_algorithms::poisson_disk_points;
 
 	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
 		let segment_count = subpath.segments().count();
@@ -1381,23 +1380,16 @@ async fn poisson_disk_points(
 			continue;
 		}
 
-		let mut previous_point_index: Option<usize> = None;
+		let mut poisson_disk_bezpath = BezPath::new();
 
-		for point in poisson_disk_points(subpath, separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
-			let point_id = PointId::generate();
-			result.point_domain.push(point_id, point);
-
-			// Get the index of the newly added point.
-			let point_index = result.point_domain.ids().len() - 1;
-
-			// If there is a previous point, connect it with the current point by adding a segment.
-			if let Some(prev_point_index) = previous_point_index {
-				let segment_id = SegmentId::generate();
-				result.segment_domain.push(segment_id, prev_point_index, point_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+		for point in bezpath_algorithms::poisson_disk_points(subpath, separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
+			if poisson_disk_bezpath.elements().is_empty() {
+				poisson_disk_bezpath.move_to(dvec2_to_point(point));
+			} else {
+				poisson_disk_bezpath.line_to(dvec2_to_point(point));
 			}
-
-			previous_point_index = Some(point_index);
 		}
+		result.append_bezpath(poisson_disk_bezpath);
 	}
 
 	// Transfer the style from the input vector data to the result.
