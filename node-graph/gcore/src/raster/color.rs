@@ -1102,7 +1102,11 @@ impl Color {
 
 	/// Check if two colors are similar within a threshold in LAB space
 	pub fn is_similar_lab(&self, other: &Color, threshold: f64) -> bool {
-		(self.alpha - other.alpha).abs() <= 0.01 && self.lab_distance_squared(other) <= threshold.powi(2)
+		let lab1 = self.to_lab();
+		let lab2 = other.to_lab();
+		let distance = self.lab_distance(other).min(100.);
+		let alpha_diff = (self.a() - other.a()).abs();
+		distance <= threshold && alpha_diff < f32::EPSILON
 	}
 }
 

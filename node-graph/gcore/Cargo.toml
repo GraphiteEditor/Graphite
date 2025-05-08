@@ -78,6 +78,7 @@ wasm-bindgen = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
 web-sys = { workspace = true, optional = true, features = [
 	"HtmlCanvasElement",
+	"console",
 ] }
 image = { workspace = true, optional = true, default-features = false, features = [
 	"png",

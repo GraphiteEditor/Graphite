@@ -705,8 +705,8 @@ fn flood_fill<F: Into<Fill> + 'n + Send + Clone>(
 	// TODO: What is the range? I'd expect 0-255, but we should also rescale that to 0-1. But this crashes at larger values approaching 100. And tolerance should be per-position not global to the node.
 	/// The threshold for color similarity in LAB space.
 	#[default(1.)]
-	#[range((0., 50.))]
-	tolerance: f64,
+	#[range((0., 100.))]
+	similarity_threshold: f64,
 ) -> ImageFrameTable<Color> {
 	let width = image.width();
 	let height = image.height();
@@ -744,8 +744,12 @@ fn flood_fill<F: Into<Fill> + 'n + Send + Clone>(
 			continue;
 		}
 
-		// Flood fill algorithm using a stack
+		// Create a copy of the original image data for comparison
+		let original_data = image.one_instance().instance.data.clone();
+
+		// Flood fill algorithm using a stack and visited set
 		let mut stack = Vec::new();
+		let mut visited = std::collections::HashSet::new();
 		stack.push((pixel_x, pixel_y));
 
 		while let Some((x, y)) = stack.pop() {
@@ -754,10 +758,18 @@ fn flood_fill<F: Into<Fill> + 'n + Send + Clone>(
 				continue;
 			}
 
+			// Skip if already visited
+			if !visited.insert((x, y)) {
+				continue;
+			}
+
 			// Get current pixel
 			if let Some(pixel) = image.get_pixel_mut(x as u32, y as u32) {
+				// Get the original color at this position
+				let original_color = original_data[y as usize * width as usize + x as usize];
+
 				// If pixel matches target color, fill it and add neighbors to stack
-				if pixel.is_similar_lab(&target_color, tolerance) {
+				if original_color.is_similar_lab(&target_color, similarity_threshold) {
 					*pixel = color;
 					stack.push((x + 1, y)); // Right
 					stack.push((x - 1, y)); // Left
