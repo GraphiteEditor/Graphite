@@ -150,19 +150,25 @@ enum BezPathTValue {
 
 /// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
 /// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
-fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, segments_length: Option<&[f64]>) -> (usize, f64) {
+fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
 	let segment_count = bezpath.segments().count();
 	assert!(segment_count >= 1);
 
 	match t {
 		BezPathTValue::GlobalEuclidean(t) => {
-			let lengths = segments_length
-				.map(|segments_length| segments_length.to_vec())
-				.unwrap_or(bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect());
+			let mut computed_segments_length = Vec::new();
 
-			let total_length = lengths.iter().sum();
+			let segments_length = if let Some(segments_length) = precomputed_segments_length {
+				segments_length
+			} else {
+				let mut computed_lengths = bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>();
+				computed_segments_length.append(&mut computed_lengths);
+				&computed_segments_length
+			};
 
-			global_euclidean_to_local_euclidean(bezpath, t, lengths.as_slice(), total_length)
+			let total_length = segments_length.iter().sum();
+
+			global_euclidean_to_local_euclidean(bezpath, t, segments_length, total_length)
 		}
 		BezPathTValue::GlobalParametric(global_t) => {
 			assert!((0.0..=1.).contains(&global_t));
