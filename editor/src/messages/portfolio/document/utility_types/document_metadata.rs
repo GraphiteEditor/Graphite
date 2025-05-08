@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_core::renderer::{ClickTarget, Quad, ClickTargetGroup};
+use graphene_core::renderer::{ClickTarget, ClickTargetGroup, Quad};
 use graphene_core::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData};
 use std::collections::{HashMap, HashSet};
