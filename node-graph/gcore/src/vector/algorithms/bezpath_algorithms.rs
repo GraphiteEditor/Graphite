@@ -156,14 +156,14 @@ fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, pre
 
 	match t {
 		BezPathTValue::GlobalEuclidean(t) => {
-			let mut computed_segments_length: Option<Vec<f64>> = None;
+			let computed_segments_length;
 
 			let segments_length = if let Some(segments_length) = precomputed_segments_length {
 				segments_length
 			} else {
 				let computed_lengths = bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>();
-				*computed_segments_length.as_mut().unwrap() = computed_lengths;
-				computed_segments_length.as_ref().unwrap()
+				computed_segments_length = computed_lengths;
+				computed_segments_length.as_slice()
 			};
 
 			let total_length = segments_length.iter().sum();
