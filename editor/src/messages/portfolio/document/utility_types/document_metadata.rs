@@ -3,8 +3,7 @@ use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_core::renderer::ClickTarget;
-use graphene_core::renderer::Quad;
+use graphene_core::renderer::{ClickTarget, Quad, ClickTargetGroup};
 use graphene_core::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData};
 use std::collections::{HashMap, HashSet};
@@ -134,7 +133,7 @@ impl DocumentMetadata {
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.click_targets(layer)?
 			.iter()
-			.filter_map(|click_target| click_target.subpath().bounding_box_with_transform(transform))
+			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -177,7 +176,16 @@ impl DocumentMetadata {
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().map(ClickTarget::subpath)
+		click_targets
+			.iter()
+			.filter(|target| match target.target_group() {
+				ClickTargetGroup::Subpath(_) => true,
+				_ => false,
+			})
+			.map(|target| match target.target_group() {
+				ClickTargetGroup::Subpath(subpath) => subpath,
+				_ => unreachable!(),
+			})
 	}
 
 	pub fn is_clip(&self, node: NodeId) -> bool {

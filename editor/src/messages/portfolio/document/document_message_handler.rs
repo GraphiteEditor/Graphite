@@ -32,7 +32,7 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::renderer::{ClickTarget, ClickTargetGroup, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
@@ -1603,10 +1603,17 @@ impl DocumentMessageHandler {
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
-			targets.iter().all(|target| {
-				let mut subpath = target.subpath().clone();
-				subpath.apply_transform(layer_transform);
-				subpath.is_inside_subpath(&viewport_polygon, None, None)
+			targets.iter().all(|target| match target.target_group() {
+				ClickTargetGroup::Subpath(subpath) => {
+					let mut subpath = subpath.clone();
+					subpath.apply_transform(layer_transform);
+					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				}
+				ClickTargetGroup::PointGroup(point) => {
+					let mut point = point.clone();
+					point.apply_transform(layer_transform);
+					viewport_polygon.contains_point(point.anchor)
+				}
 			})
 		})
 	}
@@ -1635,10 +1642,17 @@ impl DocumentMessageHandler {
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
 	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+		// debug!("click_xray: {:?}", self.click_xray(ipp).collect::<Vec<_>>());
 		self.click_xray(ipp)
-			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.filter(move |&layer| {
+				if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
+					// debug!("Hover: we have been flagged 'not artboard'...");
+				}
+				!self.network_interface.is_artboard(&layer.to_node(), &[])
+			})
 			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
 			.scan(true, |last_had_children, layer| {
+				// debug!("Hover: we are being scanned after filtered out of click_xray...");
 				if *last_had_children {
 					*last_had_children = layer.has_children(self.network_interface.document_metadata());
 					Some(layer)
@@ -2733,7 +2747,18 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
 	};
 	click_targets
-		.flat_map(|target| target.subpath().iter())
+		.filter(|target| match target.target_group() {
+			ClickTargetGroup::Subpath(_) => true,
+			_ => false,
+		})
+		.flat_map(|target| {
+			let subpath = if let ClickTargetGroup::Subpath(subpath) = target.target_group() {
+				subpath
+			} else {
+				panic!("Expected a subpath target group");
+			};
+			subpath.iter()
+		})
 		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
 		.collect()
 }
@@ -2801,7 +2826,12 @@ impl<'a> ClickXRayIter<'a> {
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				let intersects = click_targets.is_some_and(|targets| {
+					targets.iter().any(|target| {
+						// debug!("Hover: we are about to test point intersection with no stroke...");
+						target.intersect_point(*point, transform)
+					})
+				});
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,

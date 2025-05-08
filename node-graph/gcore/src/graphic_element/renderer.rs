@@ -20,22 +20,47 @@ use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ClickTargetGroup {
+	Subpath(bezier_rs::Subpath<PointId>),
+	PointGroup(ManipulatorGroup<PointId>),
+}
+
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClickTarget {
-	subpath: bezier_rs::Subpath<PointId>,
+	target_group: ClickTargetGroup,
 	stroke_width: f64,
 	bounding_box: Option<[DVec2; 2]>,
 }
 
 impl ClickTarget {
-	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
+	pub fn new_with_subpath(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
 		let bounding_box = subpath.loose_bounding_box();
-		Self { subpath, stroke_width, bounding_box }
+		Self {
+			target_group: ClickTargetGroup::Subpath(subpath),
+			stroke_width,
+			bounding_box,
+		}
 	}
 
-	pub fn subpath(&self) -> &bezier_rs::Subpath<PointId> {
-		&self.subpath
+	pub fn new_with_point_group(point: ManipulatorGroup<PointId>) -> Self {
+		let stroke_width = 20.;
+		let bounding_box = Some([point.anchor - DVec2::splat(stroke_width / 2.), point.anchor + DVec2::splat(stroke_width / 2.)]);
+
+		Self {
+			target_group: ClickTargetGroup::PointGroup(point),
+			stroke_width,
+			bounding_box,
+		}
+	}
+
+	pub fn target_group(&self) -> &ClickTargetGroup {
+		&self.target_group
+	}
+
+	pub fn target_group_mut(&mut self) -> &mut ClickTargetGroup {
+		&mut self.target_group
 	}
 
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -47,12 +72,26 @@ impl ClickTarget {
 	}
 
 	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
-		self.subpath.apply_transform(affine_transform);
+		match self.target_group {
+			ClickTargetGroup::Subpath(ref mut subpath) => {
+				subpath.apply_transform(affine_transform);
+			}
+			ClickTargetGroup::PointGroup(ref mut point_group) => {
+				point_group.apply_transform(affine_transform);
+			}
+		}
 		self.update_bbox();
 	}
 
 	fn update_bbox(&mut self) {
-		self.bounding_box = self.subpath.bounding_box();
+		match self.target_group {
+			ClickTargetGroup::Subpath(ref subpath) => {
+				self.bounding_box = subpath.loose_bounding_box();
+			}
+			ClickTargetGroup::PointGroup(ref point_group) => {
+				self.bounding_box = Some([point_group.anchor - DVec2::splat(self.stroke_width / 2.), point_group.anchor + DVec2::splat(self.stroke_width / 2.)]);
+			}
+		}
 	}
 
 	/// Does the click target intersect the path
@@ -66,19 +105,27 @@ impl ClickTarget {
 		let inverse = layer_transform.inverse();
 		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
 
-		// Check if outlines intersect
-		let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
-		if self.subpath.iter().any(outline_intersects) {
-			return true;
-		}
-		// Check if selection is entirely within the shape
-		if self.subpath.closed() && bezier_iter().next().is_some_and(|bezier| self.subpath.contains_point(bezier.start)) {
-			return true;
-		}
+		match self.target_group() {
+			ClickTargetGroup::Subpath(subpath) => {
+				// Check if outlines intersect
+				let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
+				if subpath.iter().any(outline_intersects) {
+					return true;
+				}
+				// Check if selection is entirely within the shape
+				if subpath.closed() && bezier_iter().next().is_some_and(|bezier| subpath.contains_point(bezier.start)) {
+					return true;
+				}
 
-		// Check if shape is entirely within selection
-		let any_point_from_subpath = self.subpath.manipulator_groups().first().map(|group| group.anchor);
-		any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
+				// Check if shape is entirely within selection
+				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
+				return any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0);
+			}
+			ClickTargetGroup::PointGroup(point_group) => {
+				let point = point_group.anchor;
+				bezier_iter().map(|bezier| bezier.winding(point)).sum::<i32>() != 0
+			}
+		}
 	}
 
 	/// Does the click target intersect the point (accounting for stroke size)
@@ -107,7 +154,10 @@ impl ClickTarget {
 			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
 		{
 			// Check if the point is within the shape
-			self.subpath.closed() && self.subpath.contains_point(point)
+			match self.target_group() {
+				ClickTargetGroup::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
+				ClickTargetGroup::PointGroup(point_group) => point_group.anchor == point,
+			}
 		} else {
 			false
 		}
@@ -657,16 +707,16 @@ impl GraphicElementRendered for VectorDataTable {
 				let single_anchors_targets = single_anchors
 					.map(|&point_id| {
 						let anchor = instance.point_domain.position_from_id(point_id).unwrap_or_default();
-						ManipulatorGroup::new_anchor_with_id(anchor, point_id)
+						let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
+
+						ClickTarget::new_with_point_group(group)
 					})
-					.map(|group| Subpath::new(vec![group], false))
-					.map(|subpath| ClickTarget::new(subpath, 0.))
 					.collect::<Vec<ClickTarget>>();
 
 				let click_targets = instance
 					.stroke_bezier_paths()
 					.map(fill)
-					.map(|subpath| ClickTarget::new(subpath, stroke_width))
+					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
 					.chain(single_anchors_targets.into_iter())
 					.collect::<Vec<ClickTarget>>();
 
@@ -682,6 +732,20 @@ impl GraphicElementRendered for VectorDataTable {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for instance in self.instance_ref_iter() {
+			// // For free-floating anchors, we need to add a click target for each
+			// let single_anchors = instance.instance.point_domain.ids().iter().filter(|&&point_id| instance.instance.connected_count(point_id) == 0);
+			// let single_anchors_targets = single_anchors
+			// 	.map(|&point_id| {
+			// 		let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
+			// 		let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
+			// 		let subpath = Subpath::new(vec![group], false);
+
+			// 		let click_target = ClickTarget::new_free_floating_anchor(subpath);
+			// 		// click_target.apply_transform(*instance.transform);
+			// 		click_target
+			// 	})
+			// 	.collect::<Vec<ClickTarget>>();
+
 			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = instance.instance.style.fill() != &Fill::None;
 			let fill = |mut subpath: bezier_rs::Subpath<_>| {
@@ -691,10 +755,11 @@ impl GraphicElementRendered for VectorDataTable {
 				subpath
 			};
 			click_targets.extend(instance.instance.stroke_bezier_paths().map(fill).map(|subpath| {
-				let mut click_target = ClickTarget::new(subpath, stroke_width);
+				let mut click_target = ClickTarget::new_with_subpath(subpath, stroke_width);
 				click_target.apply_transform(*instance.transform);
 				click_target
 			}));
+			// click_targets.extend(single_anchors_targets);
 		}
 	}
 
@@ -796,7 +861,7 @@ impl GraphicElementRendered for Artboard {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
 			if self.clip {
@@ -809,7 +874,7 @@ impl GraphicElementRendered for Artboard {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-		click_targets.push(ClickTarget::new(subpath_rectangle, 0.));
+		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -922,14 +987,14 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		metadata.local_transforms.insert(element_id, instance_transform);
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new(subpath, 0.));
+		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }
 
@@ -998,14 +1063,14 @@ impl GraphicElementRendered for RasterFrame {
 		let Some(element_id) = element_id else { return };
 
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		metadata.local_transforms.insert(element_id, self.transform());
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-		click_targets.push(ClickTarget::new(subpath, 0.));
+		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }
 

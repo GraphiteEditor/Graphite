@@ -575,12 +575,16 @@ impl Fsm for SelectToolFsmState {
 				if !matches!(self, Self::Drawing { .. }) && !input.keyboard.get(Key::MouseMiddle as usize) {
 					// Get the layer the user is hovering over
 					let click = document.click(input);
-					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
+					let not_selected_click = click.filter(|&hovered_layer| {
+						// debug!("Hover: we are being checked for selection status...");
+						!document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata())
+					});
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() {
 							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport);
 
+							// debug!("Hover: We are in!");
 							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 								overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
 							}

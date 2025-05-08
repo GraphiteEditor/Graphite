@@ -5,6 +5,7 @@ mod modification;
 use super::misc::point_to_dvec2;
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
+use crate::renderer::ClickTargetGroup;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
@@ -114,11 +115,6 @@ impl VectorData {
 		}
 	}
 
-	/// Construct some new vector data from a single subpath with an identity transform and black fill.
-	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
-		Self::from_subpaths([subpath], false)
-	}
-
 	/// Push a subpath to the vector data
 	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &bezier_rs::Subpath<PointId> = subpath.borrow();
@@ -134,6 +130,7 @@ impl VectorData {
 		let mut segment_id = self.segment_domain.next_id();
 		let mut last_point = None;
 		let mut first_point = None;
+		// Constructs a bezier segment from the two manipulators on the subpath.
 		for pair in subpath.manipulator_groups().windows(2) {
 			let start = last_point.unwrap_or_else(|| {
 				let id = if preserve_id && !self.point_domain.ids().contains(&pair[0].id) {
@@ -175,6 +172,17 @@ impl VectorData {
 				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg, fill_id);
 			}
 		}
+	}
+
+	pub fn append_point_group(&mut self, point_group: &ManipulatorGroup<PointId>, preserve_id: bool) {
+		let mut point_id = self.point_domain.next_id();
+		// Use the current point id if it is not already in the domain else generate a new one
+		let id = if preserve_id && !self.point_domain.ids().contains(&point_group.id) {
+			point_group.id
+		} else {
+			point_id.next_id()
+		};
+		self.point_domain.push(id, point_group.anchor);
 	}
 
 	/// Appends a Kurbo BezPath to the vector data.
@@ -241,6 +249,11 @@ impl VectorData {
 		}
 	}
 
+	/// Construct some new vector data from a single subpath with an identity transform and black fill.
+	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
+		Self::from_subpaths([subpath], false)
+	}
+
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
 		let mut vector_data = Self::empty();
@@ -249,6 +262,18 @@ impl VectorData {
 			vector_data.append_subpath(subpath, preserve_id);
 		}
 
+		vector_data
+	}
+
+	pub fn from_target_groups(target_groups: impl IntoIterator<Item = impl Borrow<ClickTargetGroup>>, preserve_id: bool) -> Self {
+		let mut vector_data = Self::empty();
+		for target_group in target_groups.into_iter() {
+			let target_group = target_group.borrow();
+			match target_group {
+				ClickTargetGroup::Subpath(subpath) => vector_data.append_subpath(subpath, preserve_id),
+				ClickTargetGroup::PointGroup(point_group) => vector_data.append_point_group(point_group, preserve_id),
+			}
+		}
 		vector_data
 	}
 
