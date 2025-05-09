@@ -29,17 +29,17 @@ pub struct SnappedPoint {
 	pub outline_layers: [Option<LayerNodeIdentifier>; 2],
 	pub distance: f64,
 	pub tolerance: f64,
-	pub distribution_boxes_x: VecDeque<Rect>,
-	pub distribution_equal_distance_x: Option<f64>,
-	pub distribution_boxes_y: VecDeque<Rect>,
-	pub distribution_equal_distance_y: Option<f64>,
+	pub distribution_boxes_horizontal: VecDeque<Rect>,
+	pub distribution_equal_distance_horizontal: Option<f64>,
+	pub distribution_boxes_vertical: VecDeque<Rect>,
+	pub distribution_equal_distance_vertical: Option<f64>,
 	pub distance_to_align_target: f64, // If aligning so that the top is aligned but the X pos is 200 from the target, this is 200.
-	pub alignment_target_x: Option<DVec2>,
-	pub alignment_target_y: Option<DVec2>,
+	pub alignment_target_horizontal: Option<DVec2>,
+	pub alignment_target_vertical: Option<DVec2>,
 }
 impl SnappedPoint {
 	pub fn align(&self) -> bool {
-		self.alignment_target_x.is_some() || self.alignment_target_y.is_some()
+		self.alignment_target_horizontal.is_some() || self.alignment_target_vertical.is_some()
 	}
 	pub fn infinite_snap(snapped_point_document: DVec2) -> Self {
 		Self {
@@ -63,10 +63,10 @@ impl SnappedPoint {
 			snapped_point_document: point.document_point + translation,
 			source: point.source,
 			target: SnapTarget::DistributeEvenly(target),
-			distribution_boxes_x,
-			distribution_equal_distance_x: is_x.then_some(distances.equal),
-			distribution_boxes_y,
-			distribution_equal_distance_y: (!is_x).then_some(distances.equal),
+			distribution_boxes_horizontal: distribution_boxes_x,
+			distribution_equal_distance_horizontal: is_x.then_some(distances.equal),
+			distribution_boxes_vertical: distribution_boxes_y,
+			distribution_equal_distance_vertical: (!is_x).then_some(distances.equal),
 			distance: (distances.first - distances.equal).abs(),
 			constrained: true,
 			source_bounds: Some(bounds.translate(translation).into()),

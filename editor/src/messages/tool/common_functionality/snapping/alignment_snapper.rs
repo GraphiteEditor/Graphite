@@ -90,7 +90,7 @@ impl AlignmentSnapper {
 									distance_to_align_target,
 									fully_constrained: false,
 									at_intersection: true,
-									alignment_target_x: Some(endpoint),
+									alignment_target_horizontal: Some(endpoint),
 									..Default::default()
 								};
 								snap_results.points.push(snap_point);
@@ -129,7 +129,7 @@ impl AlignmentSnapper {
 						distance: distance_to_snapped,
 						tolerance,
 						distance_to_align_target,
-						alignment_target_x: Some(target_position),
+						alignment_target_horizontal: Some(target_position),
 						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
@@ -148,7 +148,7 @@ impl AlignmentSnapper {
 						distance: distance_to_snapped,
 						tolerance,
 						distance_to_align_target,
-						alignment_target_y: Some(target_position),
+						alignment_target_vertical: Some(target_position),
 						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
@@ -174,8 +174,8 @@ impl AlignmentSnapper {
 					target_bounds: snap_x.target_bounds,
 					distance,
 					tolerance,
-					alignment_target_x: snap_x.alignment_target_x,
-					alignment_target_y: snap_y.alignment_target_y,
+					alignment_target_horizontal: snap_x.alignment_target_horizontal,
+					alignment_target_vertical: snap_y.alignment_target_vertical,
 					constrained: true,
 					at_intersection: true,
 					..Default::default()
