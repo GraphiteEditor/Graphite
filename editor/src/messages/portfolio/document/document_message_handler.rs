@@ -1642,17 +1642,10 @@ impl DocumentMessageHandler {
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
 	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
-		// debug!("click_xray: {:?}", self.click_xray(ipp).collect::<Vec<_>>());
 		self.click_xray(ipp)
-			.filter(move |&layer| {
-				if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
-					// debug!("Hover: we have been flagged 'not artboard'...");
-				}
-				!self.network_interface.is_artboard(&layer.to_node(), &[])
-			})
+			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
 			.scan(true, |last_had_children, layer| {
-				// debug!("Hover: we are being scanned after filtered out of click_xray...");
 				if *last_had_children {
 					*last_had_children = layer.has_children(self.network_interface.document_metadata());
 					Some(layer)
@@ -2826,12 +2819,7 @@ impl<'a> ClickXRayIter<'a> {
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.is_some_and(|targets| {
-					targets.iter().any(|target| {
-						// debug!("Hover: we are about to test point intersection with no stroke...");
-						target.intersect_point(*point, transform)
-					})
-				});
+				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,

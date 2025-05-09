@@ -133,7 +133,10 @@ impl DocumentMetadata {
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.click_targets(layer)?
 			.iter()
-			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
+			.filter_map(|click_target| match click_target.target_group() {
+				ClickTargetGroup::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
+				ClickTargetGroup::PointGroup(_) => click_target.bounding_box_with_transform(transform),
+			})
 			.reduce(Quad::combine_bounds)
 	}
 
