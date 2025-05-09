@@ -1,7 +1,9 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::proportional_editing::ProportionalEditingData;
 use crate::messages::portfolio::document::utility_types::transformation::TransformType;
 use crate::messages::prelude::*;
+
 use glam::DVec2;
 
 #[impl_message(Message, ToolMessage, TransformLayer)]
@@ -11,21 +13,43 @@ pub enum TransformLayerMessage {
 	Overlays(OverlayContext),
 
 	// Messages
-	ApplyTransformOperation { final_transform: bool },
+	ApplyTransformOperation {
+		final_transform: bool,
+	},
 	BeginGrab,
 	BeginRotate,
 	BeginScale,
-	BeginGRS { transform_type: TransformType },
-	BeginGrabPen { last_point: DVec2, handle: DVec2 },
-	BeginRotatePen { last_point: DVec2, handle: DVec2 },
-	BeginScalePen { last_point: DVec2, handle: DVec2 },
+	BeginGRS {
+		transform_type: TransformType,
+		proportional_editing_data: Option<ProportionalEditingData>,
+	},
+	BeginGrabPen {
+		last_point: DVec2,
+		handle: DVec2,
+	},
+	BeginRotatePen {
+		last_point: DVec2,
+		handle: DVec2,
+	},
+	BeginScalePen {
+		last_point: DVec2,
+		handle: DVec2,
+	},
 	CancelTransformOperation,
 	ConstrainX,
 	ConstrainY,
-	PointerMove { slow_key: Key, increments_key: Key },
+	PointerMove {
+		slow_key: Key,
+		increments_key: Key,
+	},
 	SelectionChanged,
 	TypeBackspace,
 	TypeDecimalPoint,
-	TypeDigit { digit: u8 },
+	TypeDigit {
+		digit: u8,
+	},
 	TypeNegate,
+	UpdateProportionalEditingData {
+		data: ProportionalEditingData,
+	},
 }

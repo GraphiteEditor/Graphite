@@ -122,6 +122,7 @@ pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
 pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
+pub const COLOR_OVERLAY_TRANSPARENT: &str = "transparent";
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
