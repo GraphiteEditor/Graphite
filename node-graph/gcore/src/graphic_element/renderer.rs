@@ -45,7 +45,7 @@ impl ClickTarget {
 	}
 
 	pub fn new_with_point_group(point: ManipulatorGroup<PointId>) -> Self {
-		let stroke_width = 20.;
+		let stroke_width = 10.;
 		let bounding_box = Some([point.anchor - DVec2::splat(stroke_width / 2.), point.anchor + DVec2::splat(stroke_width / 2.)]);
 
 		Self {
@@ -57,10 +57,6 @@ impl ClickTarget {
 
 	pub fn target_group(&self) -> &ClickTargetGroup {
 		&self.target_group
-	}
-
-	pub fn target_group_mut(&mut self) -> &mut ClickTargetGroup {
-		&mut self.target_group
 	}
 
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -86,7 +82,7 @@ impl ClickTarget {
 	fn update_bbox(&mut self) {
 		match self.target_group {
 			ClickTargetGroup::Subpath(ref subpath) => {
-				self.bounding_box = subpath.loose_bounding_box();
+				self.bounding_box = subpath.bounding_box();
 			}
 			ClickTargetGroup::PointGroup(ref point_group) => {
 				self.bounding_box = Some([point_group.anchor - DVec2::splat(self.stroke_width / 2.), point_group.anchor + DVec2::splat(self.stroke_width / 2.)]);
@@ -732,19 +728,17 @@ impl GraphicElementRendered for VectorDataTable {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for instance in self.instance_ref_iter() {
-			// // For free-floating anchors, we need to add a click target for each
-			// let single_anchors = instance.instance.point_domain.ids().iter().filter(|&&point_id| instance.instance.connected_count(point_id) == 0);
-			// let single_anchors_targets = single_anchors
-			// 	.map(|&point_id| {
-			// 		let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
-			// 		let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
-			// 		let subpath = Subpath::new(vec![group], false);
-
-			// 		let click_target = ClickTarget::new_free_floating_anchor(subpath);
-			// 		// click_target.apply_transform(*instance.transform);
-			// 		click_target
-			// 	})
-			// 	.collect::<Vec<ClickTarget>>();
+			// For free-floating anchors, we need to add a click target for each
+			let single_anchors = instance.instance.point_domain.ids().iter().filter(|&&point_id| instance.instance.connected_count(point_id) == 0);
+			let single_anchors_targets = single_anchors
+				.map(|&point_id| {
+					let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
+					let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
+					let mut click_target = ClickTarget::new_with_point_group(group);
+					click_target.apply_transform(*instance.transform);
+					click_target
+				})
+				.collect::<Vec<ClickTarget>>();
 
 			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = instance.instance.style.fill() != &Fill::None;
@@ -759,7 +753,7 @@ impl GraphicElementRendered for VectorDataTable {
 				click_target.apply_transform(*instance.transform);
 				click_target
 			}));
-			// click_targets.extend(single_anchors_targets);
+			click_targets.extend(single_anchors_targets);
 		}
 	}
 
