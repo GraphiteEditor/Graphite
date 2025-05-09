@@ -660,16 +660,18 @@ impl Fsm for SelectToolFsmState {
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 
-				if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
-					let edges = bounds.check_selected_edges(input.mouse.position);
-					let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
-					let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-					if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
-						bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
-					}
-					if !is_skewing && dragging_bounds {
-						if let Some(edges) = edges {
-							tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
+				if overlay_context.visibility_settings.transform_cage() && bounds.is_some() {
+					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
+						let edges = bounds.check_selected_edges(input.mouse.position);
+						let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
+						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
+						if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
+							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
+						}
+						if !is_skewing && dragging_bounds {
+							if let Some(edges) = edges {
+								tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
+							}
 						}
 					}
 				}
