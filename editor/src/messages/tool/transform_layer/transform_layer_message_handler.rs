@@ -20,7 +20,7 @@ const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayer
 const SLOW_KEY: Key = Key::Shift;
 const INCREMENTS_KEY: Key = Key::Control;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
 	pub transform_operation: TransformOperation,
 
@@ -134,6 +134,17 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 }
 
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
+
+pub fn custom_data() -> Vec<(String, usize)> {
+	vec![
+		(String::from("&'a DocumentMessageHandler"), 136),
+		(String::from("&'a InputPreprocessorMessageHandler"), 136),
+		(String::from("&'a ToolData"), 136),
+		(String::from("&'a mut ShapeState"), 136),
+	]
+}
+
+#[message_handler_data(CustomData)]
 impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
