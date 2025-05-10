@@ -5185,7 +5185,7 @@ impl NodeNetworkInterface {
 		}
 		shifted_nodes.insert(*node_id);
 
-		let nodes_to_shift: Vec<(NodeId, LayerOwner)> = self.check_collision_with_stack_dependents(node_id, shift_sign, network_path);
+		let nodes_to_shift = self.check_collision_with_stack_dependents(node_id, shift_sign, network_path);
 
 		for node_to_shift in nodes_to_shift {
 			self.shift_node_or_parent(&node_to_shift.0, shift_sign, shifted_nodes, network_path);
