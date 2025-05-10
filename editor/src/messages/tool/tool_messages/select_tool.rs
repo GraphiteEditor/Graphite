@@ -527,11 +527,11 @@ impl Fsm for SelectToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), None);
 
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
 							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
-							overlay_context.dashed_quad(transformed_quad, None, Some(7.), Some(5.), None);
+							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}
 				}
@@ -573,13 +573,13 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() {
-							let mut draw_layer = |layer: LayerNodeIdentifier| {
+							let mut draw_layer = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
-										overlay_context.quad(Quad::from_box(bounds), None)
+										overlay_context.quad(Quad::from_box(bounds), color, None);
 									}
 								} else {
-									overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+									overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), color);
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -587,7 +587,24 @@ impl Fsm for SelectToolFsmState {
 								NestedSelectionBehavior::Shallowest => layer_selected_shallowest(layer, document),
 							}
 							.unwrap_or(layer);
-							draw_layer(layer);
+							draw_layer(layer, None);
+							if matches!(tool_data.nested_selection_behavior, NestedSelectionBehavior::Shallowest) {
+								let mut selected = document.network_interface.selected_nodes();
+								selected.0.extend(vec![layer.to_node()]);
+								if let Some(new_selected) = click.unwrap().ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
+									ancestor
+										.parent(document.metadata())
+										.is_some_and(|parent| selected.selected_layers_contains(parent, document.metadata()))
+								}) {
+									let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+										.unwrap()
+										.with_alpha(0.5)
+										.to_rgba_hex_srgb();
+									fill_color.insert(0, '#');
+									let fill_color = Some(fill_color.as_str());
+									draw_layer(new_selected, fill_color);
+								}
+							}
 						}
 
 						// Measure with Alt held down
@@ -800,7 +817,7 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
-							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), None);
 						}
 					}
 
@@ -815,10 +832,10 @@ impl Fsm for SelectToolFsmState {
 					let polygon = &tool_data.lasso_polygon;
 
 					match (selection_shape, current_selection_mode) {
-						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
-						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
-						(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
-						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, fill_color),
+						(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+						(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+						(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
+						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
 				}
 				self
