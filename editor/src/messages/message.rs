@@ -51,6 +51,11 @@ mod test {
 	use super::*;
 
 	#[test]
+	fn print_tool_message_handler() {
+		ToolMessageHandler::print_field_types();
+	}
+
+	#[test]
 	fn generate_message_tree() {
 		let res = Message::build_message_tree();
 		println!("{}", res.name());
@@ -97,7 +102,7 @@ mod test {
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
-				println!("{}{}{}", child_prefix, branch, field);
+				println!("{}{}{}", child_prefix, branch, field.0);
 			}
 		}
 
@@ -108,7 +113,7 @@ mod test {
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
-				println!("{}{}{}", format!("{}    ", prefix), branch, field);
+				println!("{}{}{}", format!("{}    ", prefix), branch, field.0);
 			}
 		}
 	}

@@ -46,10 +46,10 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									quote! {
 										#input_item
 										impl #message_type {
-											pub fn message_handler_data_str() -> Vec<String> {
+											pub fn message_handler_data_str() -> Vec<(String, usize)> {
 												custom_data()
 											}
-											pub fn message_handler_str() -> Vec<String> {
+											pub fn message_handler_str() -> Vec<(String, usize)> {
 												#input_type::field_types()
 											}
 										}
@@ -58,10 +58,10 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									quote! {
 										#input_item
 										impl #message_type {
-											pub fn message_handler_data_str() -> Vec<String> {
+											pub fn message_handler_data_str() -> Vec<(String, usize)> {
 												#type_name::field_types()
 											}
-											pub fn message_handler_str() -> Vec<String> {
+											pub fn message_handler_str() -> Vec<(String, usize)> {
 												#input_type::field_types()
 											}
 										}
@@ -71,7 +71,7 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 							syn::Type::Tuple(_) => quote! {
 								#input_item
 								impl #message_type {
-										pub fn message_handler_str() -> Vec<String> {
+										pub fn message_handler_str() -> Vec<(String, usize)> {
 											#input_type::field_types()
 										}
 									}

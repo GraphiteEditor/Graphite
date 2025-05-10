@@ -9,7 +9,7 @@ pub enum MessageLoggingVerbosity {
 #[derive(Debug)]
 pub struct MessageData {
 	name: String,
-	fields: Vec<String>,
+	fields: Vec<(String, usize)>,
 }
 
 impl MessageData {
@@ -17,7 +17,7 @@ impl MessageData {
 		&self.name
 	}
 
-	pub fn fields(&self) -> &Vec<String> {
+	pub fn fields(&self) -> &Vec<(String, usize)> {
 		&self.fields
 	}
 }
@@ -48,11 +48,11 @@ impl DebugMessageTree {
 		}
 	}
 
-	pub fn add_message_handler_data_field(&mut self, name: String, fields: Vec<String>) {
+	pub fn add_message_handler_data_field(&mut self, name: String, fields: Vec<(String, usize)>) {
 		self.message_handler_data = Some(MessageData { name, fields });
 	}
 
-	pub fn add_message_handler_field(&mut self, name: String, fields: Vec<String>) {
+	pub fn add_message_handler_field(&mut self, name: String, fields: Vec<(String, usize)>) {
 		self.message_handler = Some(MessageData { name, fields });
 	}
 

@@ -135,6 +135,15 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
 
+pub fn custom_data() -> Vec<(String, usize)> {
+	vec![
+		(String::from("&'a DocumentMessageHandler"), 136),
+		(String::from("&'a InputPreprocessorMessageHandler"), 136),
+		(String::from("&'a ToolData"), 136),
+		(String::from("&'a mut ShapeState"), 136),
+	]
+}
+
 #[message_handler_data(CustomData)]
 impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
@@ -716,15 +725,6 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 		common
 	}
-}
-
-pub fn custom_data() -> Vec<String> {
-	vec![
-		String::from("&'a DocumentMessageHandler"),
-		String::from("&'a InputPreprocessorMessageHandler"),
-		String::from("&'a ToolData"),
-		String::from("&'a mut ShapeState"),
-	]
 }
 
 #[cfg(test)]

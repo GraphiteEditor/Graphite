@@ -16,29 +16,33 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 		_ => return Err(syn::Error::new(Span::call_site(), "ExtractField only works on structs")),
 	};
 
+	let mut field_line = Vec::new();
 	// Extract field names and types as strings at compile time
 	let field_info = fields
 		.iter()
 		.map(|field| {
-			let name = field.ident.as_ref().unwrap().to_string();
+			let ident = field.ident.as_ref().unwrap();
+			let name = ident.to_string();
 			let ty = field.ty.to_token_stream().to_string();
+			let line = ident.span().start().line;
+			field_line.push(line);
 			(name, ty)
 		})
 		.collect::<Vec<_>>();
 
-	let field_str = field_info.into_iter().map(|(name, ty)| format!("{}: {}", name, ty));
+	let field_str = field_info.into_iter().map(|(name, ty)| (format!("{}: {}", name, ty)));
 
 	let res = quote! {
 		impl #impl_generics #struct_name #ty_generics #where_clause {
-			pub fn field_types() -> Vec<String> {
+			pub fn field_types() -> Vec<(String, usize)> {
 				vec![
-					#(String::from(#field_str)),*
+					#((String::from(#field_str), #field_line)),*
 				]
 			}
 
 			pub fn print_field_types() {
-				for field in Self::field_types() {
-					println!("{}", field);
+				for (field, line) in Self::field_types() {
+					println!("{} at line {}", field, line);
 				}
 			}
 		}

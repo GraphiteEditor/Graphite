@@ -49,11 +49,11 @@ pub trait Hint {
 pub trait HierarchicalTree {
 	fn build_message_tree() -> DebugMessageTree;
 
-	fn message_handler_data_str() -> Vec<String> {
+	fn message_handler_data_str() -> Vec<(String, usize)> {
 		Vec::new()
 	}
 
-	fn message_handler_str() -> Vec<String> {
+	fn message_handler_str() -> Vec<(String, usize)> {
 		Vec::new()
 	}
 }
