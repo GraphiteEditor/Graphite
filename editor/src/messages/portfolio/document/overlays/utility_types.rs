@@ -140,8 +140,8 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
-	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
-		self.dashed_polygon(&quad.0, color_fill, None, None, None);
+	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.dashed_polygon(&quad.0, stroke_color, color_fill, None, None, None);
 	}
 
 	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -168,15 +168,15 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.dashed_polygon(&quad.0, color_fill, dash_width, dash_gap_width, dash_offset);
+	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.dashed_polygon(&quad.0, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
 	}
 
-	pub fn polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>) {
-		self.dashed_polygon(polygon, color_fill, None, None, None);
+	pub fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.dashed_polygon(polygon, stroke_color, color_fill, None, None, None);
 	}
 
-	pub fn dashed_polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	pub fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		if polygon.len() < 2 {
 			return;
 		}
@@ -214,7 +214,8 @@ impl OverlayContext {
 			self.render_context.fill();
 		}
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		let stroke_color = stroke_color.unwrap_or(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(stroke_color);
 		self.render_context.stroke();
 
 		// Reset the dash pattern back to solid
@@ -647,10 +648,11 @@ impl OverlayContext {
 	}
 
 	/// Used by the Select tool to outline a path selected or hovered.
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
 		self.push_path(subpaths, transform);
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(color);
 		self.render_context.stroke();
 	}
 

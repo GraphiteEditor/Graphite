@@ -473,7 +473,7 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad, Some(&("#".to_string() + &fill_color)));
+						overlay_context.quad(transformed_quad, None, Some(&("#".to_string() + &fill_color)));
 					}
 				}
 
@@ -488,11 +488,12 @@ impl Fsm for TextToolFsmState {
 					for layer in document.intersect_quad_no_artboards(quad, input) {
 						overlay_context.quad(
 							Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])),
+							None,
 							Some(&("#".to_string() + &fill_color)),
 						);
 					}
 
-					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
+					overlay_context.quad(quad, None, Some(&("#".to_string() + &fill_color)));
 				}
 
 				// TODO: implement bounding box for multiple layers
