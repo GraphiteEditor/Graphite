@@ -83,7 +83,14 @@ impl SelectedLayerState {
 		self.selected_points.clear();
 	}
 	pub fn selected_points_count(&self) -> usize {
-		self.selected_points.len()
+		let count = self.selected_points.iter().fold(0, |acc, point| {
+			if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
+				acc
+			} else {
+				acc + 1
+			}
+		});
+		count
 	}
 }
 
