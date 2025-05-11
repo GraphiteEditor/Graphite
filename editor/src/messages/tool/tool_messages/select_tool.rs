@@ -573,7 +573,7 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() {
-							let mut draw_layer = |layer: LayerNodeIdentifier, color: Option<&str>| {
+							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
 										overlay_context.quad(Quad::from_box(bounds), color, None);
@@ -587,10 +587,10 @@ impl Fsm for SelectToolFsmState {
 								NestedSelectionBehavior::Shallowest => layer_selected_shallowest(layer, document),
 							}
 							.unwrap_or(layer);
-							draw_layer(layer, None);
+							hover_overlay_draw(layer, None);
 							if matches!(tool_data.nested_selection_behavior, NestedSelectionBehavior::Shallowest) {
 								let mut selected = document.network_interface.selected_nodes();
-								selected.0.extend(vec![layer.to_node()]);
+								selected.add_selected_nodes(vec![layer.to_node()]);
 								if let Some(new_selected) = click.unwrap().ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 									ancestor
 										.parent(document.metadata())
@@ -602,7 +602,7 @@ impl Fsm for SelectToolFsmState {
 										.to_rgba_hex_srgb();
 									fill_color.insert(0, '#');
 									let fill_color = Some(fill_color.as_str());
-									draw_layer(new_selected, fill_color);
+									hover_overlay_draw(new_selected, fill_color);
 								}
 							}
 						}
