@@ -586,9 +586,9 @@ impl Fsm for SelectToolFsmState {
 									}
 								} else {
 									overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport, color);
-					                if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+									if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 										overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
-					                }
+									}
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -613,6 +613,7 @@ impl Fsm for SelectToolFsmState {
 									let fill_color = Some(fill_color.as_str());
 									hover_overlay_draw(new_selected, fill_color);
 								}
+							}
 						}
 
 						// Measure with Alt held down
