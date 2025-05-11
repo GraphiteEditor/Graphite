@@ -55,19 +55,24 @@ impl SelectedLayerState {
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
-	pub fn select_point(&mut self, point: ManipulatorPointId) {
+	pub fn is_point_ignored(&mut self, point: ManipulatorPointId) -> bool {
 		if point.as_handle().is_some() && self.ignore_handles {
-			self.ignored_handle_points.insert(point);
+			return true;
 		} else if point.as_anchor().is_some() && self.ignore_anchors {
-			self.ignored_anchor_points.insert(point);
+			return true;
+		} else {
+			return false;
+		}
+	}
+	pub fn select_point(&mut self, point: ManipulatorPointId) {
+		if self.is_point_ignored(point) {
+			return;
 		}
 		self.selected_points.insert(point);
 	}
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
-		if point.as_handle().is_some() && self.ignore_handles {
-			self.ignored_handle_points.remove(&point);
-		} else if point.as_anchor().is_some() && self.ignore_anchors {
-			self.ignored_anchor_points.remove(&point);
+		if self.is_point_ignored(point) {
+			return;
 		}
 		self.selected_points.remove(&point);
 	}
@@ -92,9 +97,10 @@ impl SelectedLayerState {
 		}
 	}
 	pub fn clear_points(&mut self) {
+		if self.ignore_handles || self.ignore_anchors {
+			return;
+		}
 		self.selected_points.clear();
-		self.ignored_handle_points.clear();
-		self.ignored_anchor_points.clear();
 	}
 	pub fn selected_points_count(&self) -> usize {
 		self.selected_points.len()
@@ -519,8 +525,9 @@ impl ShapeState {
 		} else {
 			// Select all connected points
 			while let Some(point) = selected_stack.pop() {
-				if !state.is_selected(ManipulatorPointId::Anchor(point)) {
-					state.select_point(ManipulatorPointId::Anchor(point));
+				let anchor_point = ManipulatorPointId::Anchor(point);
+				if !state.is_selected(anchor_point) && !state.is_point_ignored(anchor_point) {
+					state.select_point(anchor_point);
 					selected_stack.extend(vector_data.connected_points(point));
 				}
 			}
