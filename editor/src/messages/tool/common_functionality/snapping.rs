@@ -449,10 +449,10 @@ impl SnapManager {
 		if let Some(ind) = &self.indicator {
 			for layer in &ind.outline_layers {
 				let &Some(layer) = layer else { continue };
-				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer));
+				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer), None);
 			}
 			if let Some(quad) = ind.target_bounds {
-				overlay_context.quad(to_viewport * quad, None);
+				overlay_context.quad(to_viewport * quad, None, None);
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
