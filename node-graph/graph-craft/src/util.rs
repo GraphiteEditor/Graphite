@@ -4,7 +4,8 @@ use crate::proto::ProtoNetwork;
 
 pub fn load_network(document_string: &str) -> NodeNetwork {
 	let document: serde_json::Value = serde_json::from_str(document_string).expect("Failed to parse document");
-	serde_json::from_value::<NodeNetwork>(document["network_interface"]["network"].clone()).expect("Failed to parse document")
+	let document = (document["network_interface"]["network"].clone()).to_string();
+	serde_json::from_str::<NodeNetwork>(&document).expect("Failed to parse document")
 }
 
 pub fn compile(network: NodeNetwork) -> ProtoNetwork {
