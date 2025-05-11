@@ -760,7 +760,15 @@ async fn gradient_map<T: Adjust<Color>>(
 //
 // Algorithm based on:
 // https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
-// The results of this implementation are very close to correct, but not quite perfect
+// The results of this implementation are very close to correct, but not quite perfect.
+//
+// A bit of additional analysis can be found at here:
+// https://www.photo-mark.com/notes/analyzing-photoshop-vibrance-and-saturation/
+//
+// This algorithm is currently lacking a "Saturation" parameter which is needed for interoperability.
+// It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
+// When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
+// (Except for some noise probably due to rounding error.)
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
