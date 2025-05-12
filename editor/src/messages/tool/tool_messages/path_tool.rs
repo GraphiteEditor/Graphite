@@ -960,6 +960,19 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				let display_anchors = overlay_context.visibility_settings.anchors();
+				let display_handles = overlay_context.visibility_settings.handles();
+				if !display_handles {
+					shape_editor.ignore_selected_handles();
+				} else {
+					shape_editor.mark_selected_handles();
+				}
+				if !display_anchors {
+					shape_editor.ignore_selected_anchors();
+				} else {
+					shape_editor.mark_selected_anchors();
+				}
+
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -1051,10 +1064,10 @@ impl Fsm for PathToolFsmState {
 						let polygon = &tool_data.lasso_polygon;
 
 						match (selection_shape, selection_mode) {
-							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
-							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, fill_color),
+							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
+							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 						}
 					}
 					Self::Dragging(_) => {

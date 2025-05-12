@@ -42,6 +42,8 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
+	ignore_handles: bool,
+	ignore_anchors: bool,
 }
 
 impl SelectedLayerState {
@@ -52,12 +54,32 @@ impl SelectedLayerState {
 		self.selected_points.contains(&point)
 	}
 	pub fn select_point(&mut self, point: ManipulatorPointId) {
+		if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
+			return;
+		}
 		self.selected_points.insert(point);
 	}
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
+		if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
+			return;
+		}
 		self.selected_points.remove(&point);
 	}
+	pub fn set_handles_status(&mut self, ignore: bool) {
+		self.ignore_handles = ignore;
+	}
+	pub fn set_anchors_status(&mut self, ignore: bool) {
+		self.ignore_anchors = ignore;
+	}
+	pub fn clear_points_force(&mut self) {
+		self.selected_points.clear();
+		self.ignore_handles = false;
+		self.ignore_anchors = false;
+	}
 	pub fn clear_points(&mut self) {
+		if self.ignore_handles || self.ignore_anchors {
+			return;
+		}
 		self.selected_points.clear();
 	}
 	pub fn selected_points_count(&self) -> usize {
@@ -524,6 +546,52 @@ impl ShapeState {
 		}
 	}
 
+	pub fn mark_selected_anchors(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_anchors_status(false);
+		}
+	}
+
+	pub fn mark_selected_handles(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_handles_status(false);
+		}
+	}
+
+	pub fn ignore_selected_anchors(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_anchors_status(true);
+		}
+	}
+
+	pub fn ignore_selected_handles(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.set_handles_status(true);
+		}
+	}
+
+	/// Deselects all the anchors across every selected layer.
+	pub fn deselect_all_anchors(&mut self) {
+		for (_, state) in self.selected_shape_state.iter_mut() {
+			let selected_anchor_points: Vec<ManipulatorPointId> = state.selected_points.iter().filter(|selected_point| selected_point.as_anchor().is_some()).cloned().collect();
+
+			for point in selected_anchor_points {
+				state.deselect_point(point);
+			}
+		}
+	}
+
+	/// Deselects all the handles across every selected layer.
+	pub fn deselect_all_handles(&mut self) {
+		for (_, state) in self.selected_shape_state.iter_mut() {
+			let selected_handle_points: Vec<ManipulatorPointId> = state.selected_points.iter().filter(|selected_point| selected_point.as_handle().is_some()).cloned().collect();
+
+			for point in selected_handle_points {
+				state.deselect_point(point);
+			}
+		}
+	}
+
 	/// Set the shapes we consider for selection, we will choose draggable manipulators from these shapes.
 	pub fn set_selected_layers(&mut self, target_layers: Vec<LayerNodeIdentifier>) {
 		self.selected_shape_state.retain(|layer_path, _| target_layers.contains(layer_path));
@@ -632,7 +700,7 @@ impl ShapeState {
 		Some(())
 	}
 
-	/// Iterates over the selected manipulator groups exluding endpoints, returning whether their handles have mixed, colinear, or free angles.
+	/// Iterates over the selected manipulator groups excluding endpoints, returning whether their handles have mixed, colinear, or free angles.
 	/// If there are no points selected this function returns mixed.
 	pub fn selected_manipulator_angles(&self, network_interface: &NodeNetworkInterface) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
@@ -1495,7 +1563,7 @@ impl ShapeState {
 	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			if selection_change == SelectionChange::Clear {
-				state.clear_points()
+				state.clear_points_force()
 			}
 
 			let vector_data = network_interface.compute_modified_vector(layer);

@@ -570,7 +570,7 @@ impl BoundingBoxManager {
 		let quad = self.transform * Quad::from_box(self.bounds);
 
 		// Draw the bounding box rectangle
-		overlay_context.quad(quad, None);
+		overlay_context.quad(quad, None, None);
 	}
 
 	/// Update the position of the bounding box and transform handles
@@ -587,7 +587,7 @@ impl BoundingBoxManager {
 
 		let mut draw_handle = |point: DVec2, angle: f64| {
 			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
-			overlay_context.quad(quad, Some(COLOR_OVERLAY_WHITE));
+			overlay_context.quad(quad, None, Some(COLOR_OVERLAY_WHITE));
 		};
 
 		let horizontal_angle = (quad.top_left() - quad.bottom_left()).to_angle();

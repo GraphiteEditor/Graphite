@@ -21,6 +21,107 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OverlaysType {
+	ArtboardName,
+	CompassRose,
+	QuickMeasurement,
+	TransformMeasurement,
+	TransformCage,
+	HoverOutline,
+	SelectionOutline,
+	Pivot,
+	Path,
+	Anchors,
+	Handles,
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct OverlaysVisibilitySettings {
+	pub all: bool,
+	pub artboard_name: bool,
+	pub compass_rose: bool,
+	pub quick_measurement: bool,
+	pub transform_measurement: bool,
+	pub transform_cage: bool,
+	pub hover_outline: bool,
+	pub selection_outline: bool,
+	pub pivot: bool,
+	pub path: bool,
+	pub anchors: bool,
+	pub handles: bool,
+}
+
+impl Default for OverlaysVisibilitySettings {
+	fn default() -> Self {
+		Self {
+			all: true,
+			artboard_name: true,
+			compass_rose: true,
+			quick_measurement: true,
+			transform_measurement: true,
+			transform_cage: true,
+			hover_outline: true,
+			selection_outline: true,
+			pivot: true,
+			path: true,
+			anchors: true,
+			handles: true,
+		}
+	}
+}
+
+impl OverlaysVisibilitySettings {
+	pub fn all(&self) -> bool {
+		self.all
+	}
+
+	pub fn artboard_name(&self) -> bool {
+		self.all && self.artboard_name
+	}
+
+	pub fn compass_rose(&self) -> bool {
+		self.all && self.compass_rose
+	}
+
+	pub fn quick_measurement(&self) -> bool {
+		self.all && self.quick_measurement
+	}
+
+	pub fn transform_measurement(&self) -> bool {
+		self.all && self.transform_measurement
+	}
+
+	pub fn transform_cage(&self) -> bool {
+		self.all && self.transform_cage
+	}
+
+	pub fn hover_outline(&self) -> bool {
+		self.all && self.hover_outline
+	}
+
+	pub fn selection_outline(&self) -> bool {
+		self.all && self.selection_outline
+	}
+
+	pub fn pivot(&self) -> bool {
+		self.all && self.pivot
+	}
+
+	pub fn path(&self) -> bool {
+		self.all && self.path
+	}
+
+	pub fn anchors(&self) -> bool {
+		self.all && self.anchors
+	}
+
+	pub fn handles(&self) -> bool {
+		self.all && self.anchors && self.handles
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
@@ -31,6 +132,7 @@ pub struct OverlayContext {
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
+	pub visibility_settings: OverlaysVisibilitySettings,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
@@ -38,8 +140,8 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
-	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
-		self.dashed_polygon(&quad.0, color_fill, None, None, None);
+	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.dashed_polygon(&quad.0, stroke_color, color_fill, None, None, None);
 	}
 
 	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -66,15 +168,15 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.dashed_polygon(&quad.0, color_fill, dash_width, dash_gap_width, dash_offset);
+	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.dashed_polygon(&quad.0, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
 	}
 
-	pub fn polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>) {
-		self.dashed_polygon(polygon, color_fill, None, None, None);
+	pub fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.dashed_polygon(polygon, stroke_color, color_fill, None, None, None);
 	}
 
-	pub fn dashed_polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	pub fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		if polygon.len() < 2 {
 			return;
 		}
@@ -112,7 +214,8 @@ impl OverlayContext {
 			self.render_context.fill();
 		}
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		let stroke_color = stroke_color.unwrap_or(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(stroke_color);
 		self.render_context.stroke();
 
 		// Reset the dash pattern back to solid
@@ -545,10 +648,11 @@ impl OverlayContext {
 	}
 
 	/// Used by the Select tool to outline a path selected or hovered.
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
 		self.push_path(subpaths, transform);
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(color);
 		self.render_context.stroke();
 	}
 
