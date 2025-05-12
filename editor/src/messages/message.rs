@@ -58,7 +58,7 @@ mod test {
 	#[test]
 	fn generate_message_tree() {
 		let res = Message::build_message_tree();
-		println!("{}", res.name());
+		println!("{} {}", res.name(), res.path());
 		if let Some(variants) = res.variants() {
 			for (i, variant) in variants.iter().enumerate() {
 				let is_last = i == variants.len() - 1;
@@ -79,7 +79,7 @@ mod test {
 			}
 		};
 
-		println!("{}{}{}", prefix, branch, tree.name());
+		println!("{}{}{} {}", prefix, branch, tree.name(), tree.path());
 
 		// Print children if any
 		if let Some(variants) = tree.variants() {

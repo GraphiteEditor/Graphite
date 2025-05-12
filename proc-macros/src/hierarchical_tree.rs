@@ -52,14 +52,17 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 				let mut message_tree = DebugMessageTree::new(stringify!(#input_type));
 				#(#build_message_tree)*
 				let message_handler_str = #input_type::message_handler_str();
-				if message_handler_str.len() > 0 {
-					message_tree.add_message_handler_field(format!("{}Handler", stringify!(#input_type)), message_handler_str);
+				if message_handler_str.fields().len() > 0 {
+					message_tree.add_message_handler_field(message_handler_str);
 				}
 
 				let message_handler_data_str = #input_type::message_handler_data_str();
-				if message_handler_data_str.len() > 0 {
-					message_tree.add_message_handler_data_field(format!("{}Data", stringify!(#input_type)), message_handler_data_str);
+				if message_handler_data_str.fields().len() > 0 {
+					message_tree.add_message_handler_data_field(message_handler_data_str);
 				}
+
+				message_tree.add_path(#input_type::path());
+
 				message_tree
 			}
 		}

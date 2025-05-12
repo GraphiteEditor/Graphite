@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct ArtboardTool {
 	fsm_state: ArtboardToolFsmState,
 	data: ArtboardToolData,
@@ -48,6 +48,7 @@ impl ToolMetadata for ArtboardTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ArtboardTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);

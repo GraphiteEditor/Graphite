@@ -12,7 +12,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct LineTool {
 	fsm_state: LineToolFsmState,
 	tool_data: LineToolData,
@@ -95,6 +95,7 @@ impl LayoutHolder for LineTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Line(LineToolMessage::UpdateOptions(action)) = message else {

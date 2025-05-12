@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::tool::common_functionality::resize::Resize;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct ImaginateTool {
 	fsm_state: ImaginateToolFsmState,
 	tool_data: ImaginateToolData,
@@ -25,6 +25,7 @@ impl LayoutHolder for ImaginateTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ImaginateTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, true);

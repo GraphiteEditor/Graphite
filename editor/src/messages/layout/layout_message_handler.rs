@@ -338,8 +338,8 @@ impl LayoutMessageHandler {
 	}
 }
 
-pub fn custom_data() -> Vec<(String, usize)> {
-	vec![(String::from("Fn(&MessageDiscriminant) -> Vec<KeysGroup>"), 346)]
+pub fn custom_data() -> MessageData {
+	MessageData::new(String::from("Function"), vec![(String::from("Fn(&MessageDiscriminant) -> Vec<KeysGroup>"), 346)])
 }
 
 #[message_handler_data(CustomData)]

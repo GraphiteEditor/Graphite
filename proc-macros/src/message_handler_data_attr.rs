@@ -2,6 +2,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{ItemImpl, Type, parse2, spanned::Spanned};
 
+use crate::helpers::call_site_ident;
+
 pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream) -> syn::Result<TokenStream> {
 	// Parse the input as an impl block
 	let impl_block = parse2::<ItemImpl>(input_item.clone())?;
@@ -46,11 +48,15 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									quote! {
 										#input_item
 										impl #message_type {
-											pub fn message_handler_data_str() -> Vec<(String, usize)> {
+											pub fn message_handler_data_str() -> MessageData {
 												custom_data()
 											}
-											pub fn message_handler_str() -> Vec<(String, usize)> {
-												#input_type::field_types()
+											pub fn message_handler_str() -> MessageData {
+												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+
+											}
+											pub fn path() -> &'static str {
+												file!()
 											}
 										}
 									}
@@ -58,11 +64,17 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									quote! {
 										#input_item
 										impl #message_type {
-											pub fn message_handler_data_str() -> Vec<(String, usize)> {
-												#type_name::field_types()
+											pub fn message_handler_data_str() -> MessageData
+											 {
+												MessageData::new(format!("{}",stringify!(#type_name)), #type_name::field_types())
+
 											}
-											pub fn message_handler_str() -> Vec<(String, usize)> {
-												#input_type::field_types()
+											pub fn message_handler_str() -> MessageData {
+												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+
+											}
+											pub fn path() -> &'static str {
+												file!()
 											}
 										}
 									}
@@ -71,17 +83,48 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 							syn::Type::Tuple(_) => quote! {
 								#input_item
 								impl #message_type {
-										pub fn message_handler_str() -> Vec<(String, usize)> {
-											#input_type::field_types()
+										pub fn message_handler_str() -> MessageData {
+											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
 										}
+										pub fn path() -> &'static str {
+												file!()
+											}
 									}
 							},
+							syn::Type::Reference(type_reference) => {
+								let message_type = call_site_ident(format!("{input_type}Message"));
+								let type_ident = match &*type_reference.elem {
+									syn::Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
+									_ => return Err(syn::Error::new(type_reference.elem.span(), "Expected type path")),
+								};
+								quote! {
+									#input_item
+									impl #message_type {
+										pub fn message_handler_data_str() -> MessageData {
+											MessageData::new(format!("{}",stringify!(#type_reference)),#type_ident::field_types())
+										}
+
+										pub fn message_handler_str() -> MessageData {
+											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+
+										}
+										pub fn path() -> &'static str {
+											file!()
+										}
+									}
+								}
+							}
 							_ => return Err(syn::Error::new(t.span(), "Unsupported type format")),
 						}
 					}
 
 					_ => quote! {
 						#input_item
+						impl #message_type {
+								pub fn path() -> &'static str {
+										file!()
+									}
+						}
 					},
 				};
 				return Ok(impl_item);
