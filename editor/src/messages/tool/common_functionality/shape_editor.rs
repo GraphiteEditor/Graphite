@@ -81,6 +81,7 @@ impl SelectedLayerState {
 
 		if ignore {
 			self.ignored_handle_points.extend(self.selected_points.iter().copied().filter(|point| point.as_handle().is_some()));
+			self.selected_points.retain(|point| !self.ignored_handle_points.contains(point));
 		} else {
 			self.selected_points.extend(self.ignored_handle_points.iter().copied());
 			self.ignored_handle_points.clear();
@@ -91,15 +92,13 @@ impl SelectedLayerState {
 
 		if ignore {
 			self.ignored_anchor_points.extend(self.selected_points.iter().copied().filter(|point| point.as_anchor().is_some()));
+			self.selected_points.retain(|point| !self.ignored_anchor_points.contains(point));
 		} else {
 			self.selected_points.extend(self.ignored_anchor_points.iter().copied());
 			self.ignored_anchor_points.clear();
 		}
 	}
 	pub fn clear_points(&mut self) {
-		if self.ignore_handles || self.ignore_anchors {
-			return;
-		}
 		self.selected_points.clear();
 	}
 	pub fn selected_points_count(&self) -> usize {

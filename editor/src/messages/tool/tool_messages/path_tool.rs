@@ -962,11 +962,13 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				let display_anchors = overlay_context.visibility_settings.anchors();
 				let display_handles = overlay_context.visibility_settings.handles();
+
 				if !display_handles {
 					shape_editor.ignore_selected_handles();
 				} else {
 					shape_editor.mark_selected_handles();
 				}
+
 				if !display_anchors {
 					shape_editor.ignore_selected_anchors();
 				} else {
@@ -974,7 +976,6 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// TODO: find the segment ids of which the selected points are a part of
-
 				match tool_options.path_overlay_mode {
 					PathOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
