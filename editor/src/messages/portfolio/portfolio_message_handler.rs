@@ -356,6 +356,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			// 	self.persistent_data.imaginate.set_host_name(&preferences.imaginate_server_hostname);
 			// }
 			PortfolioMessage::Import => {
+				//this is where itheppend
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
 				responses.add(FrontendMessage::TriggerImport);
 			}
@@ -1079,6 +1080,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(Message::StartBuffer);
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
+			}
+			PortfolioMessage::PreviewImage => {
+				debug!("PortfolioMessage Preview Image")
 			}
 			PortfolioMessage::PrevDocument => {
 				if let Some(active_document_id) = self.active_document_id {

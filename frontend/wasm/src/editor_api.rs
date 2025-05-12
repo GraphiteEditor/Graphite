@@ -659,6 +659,12 @@ impl EditorHandle {
 		};
 		self.dispatch(message);
 	}
+	#[wasm_bindgen(js_name=previewImage)]
+	pub fn preview_image(&self) {
+		let message = PortfolioMessage::PreviewImage {};
+		debug!("editor api,preview image,dispatch message to PortfolioMessage PreviewMessage");
+		self.dispatch(message);
+	}
 
 	/// Toggle visibility of a layer or node given its node ID
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
