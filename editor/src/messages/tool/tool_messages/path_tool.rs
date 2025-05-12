@@ -1250,10 +1250,10 @@ impl Fsm for PathToolFsmState {
 						let polygon = &tool_data.lasso_polygon;
 
 						match (selection_shape, selection_mode) {
-							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Box, _) => overlay_context.quad(quad, fill_color),
-							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, fill_color),
+							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
+							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 						}
 					}
 					Self::Dragging(_) => {
