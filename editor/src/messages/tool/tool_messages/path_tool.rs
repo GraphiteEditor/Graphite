@@ -721,13 +721,14 @@ impl PathToolData {
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
 				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id) {
 					self.angle = angle;
+					self.angle_locked = true;
+					self.current_selected_handle_id = Some(handle_id);
 					return angle;
 				}
 			}
 		}
 
 		// When the angle is locked we use the old angle
-
 		if self.current_selected_handle_id == Some(handle_id) && lock_angle {
 			self.angle_locked = true;
 			return self.angle;
@@ -767,6 +768,7 @@ impl PathToolData {
 					origin: anchor_position,
 					direction: handle_direction.normalize_or_zero(),
 				};
+
 				self.snap_manager.constrained_snap(&snap_data, &snap_point, snap_constraint, Default::default())
 			}
 			false => self.snap_manager.free_snap(&snap_data, &snap_point, Default::default()),
