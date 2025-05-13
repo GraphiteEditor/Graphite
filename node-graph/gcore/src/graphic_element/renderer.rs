@@ -299,6 +299,7 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let mut uuid_state = None;
 		for instance in self.instance_ref_iter() {
 			render.parent_tag(
 				"g",
@@ -314,6 +315,22 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 					if instance.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+
+					if instance.alpha_blending.clip {
+						let uuid = uuid_state.unwrap_or(generate_uuid());
+						uuid_state = Some(uuid);
+						let id = format!("clip-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push("clip-path", selector);
+					} else if let Some(uuid) = uuid_state.take() {
+						let id = format!("clip-{}", uuid);
+
+						let mut svg = SvgRender::new();
+						instance.instance.render_svg(&mut svg, render_params);
+
+						write!(&mut attributes.0.svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap();
 					}
 				},
 				|render| {
