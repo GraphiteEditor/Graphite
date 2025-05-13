@@ -14,7 +14,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct PolygonTool {
 	fsm_state: PolygonToolFsmState,
 	tool_data: PolygonToolData,
@@ -153,6 +153,8 @@ impl LayoutHolder for PolygonTool {
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
 }
+
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PolygonTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Polygon(PolygonToolMessage::UpdateOptions(action)) = message else {

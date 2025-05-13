@@ -26,6 +26,7 @@ use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::vec;
 
+#[derive(ExtractField)]
 pub struct PortfolioMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
@@ -36,7 +37,7 @@ pub struct PortfolioMessageData<'a> {
 	pub animation: &'a AnimationMessageHandler,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
@@ -53,6 +54,7 @@ pub struct PortfolioMessageHandler {
 	pub reset_node_definitions_on_open: bool,
 }
 
+#[message_handler_data]
 impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
 		let PortfolioMessageData {
