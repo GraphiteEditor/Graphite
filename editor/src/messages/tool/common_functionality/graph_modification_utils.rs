@@ -278,16 +278,16 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(color.to_linear_srgb())
 }
 
-/// Get the current blend mode of a layer from the closest Blend Mode node
+/// Get the current blend mode of a layer from the closest Blending node
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blend Mode")?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest Opacity node.
+/// Get the current opacity of a layer from the closest Blending node.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
 /// - Multiplied with additional opacity nodes earlier in the chain
 /// - Set by an Opacity node with an exposed input value driven by another node
@@ -296,8 +296,8 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 ///
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Opacity")?;
-	let TaggedValue::F64(opacity) = inputs.get(1)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)

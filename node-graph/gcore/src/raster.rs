@@ -320,8 +320,34 @@ impl SetBlendMode for ImageFrameTable<Color> {
 	}
 }
 
+trait SetClip {
+	fn set_clip(&mut self, clip: bool);
+}
+
+impl SetClip for VectorDataTable {
+	fn set_clip(&mut self, clip: bool) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.clip = clip;
+		}
+	}
+}
+impl SetClip for GraphicGroupTable {
+	fn set_clip(&mut self, clip: bool) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.clip = clip;
+		}
+	}
+}
+impl SetClip for ImageFrameTable<Color> {
+	fn set_clip(&mut self, clip: bool) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.clip = clip;
+		}
+	}
+}
+
 #[node_macro::node(category("Style"))]
-fn blend_mode<T: SetBlendMode>(
+fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	_: impl Ctx,
 	#[implementations(
 		GraphicGroupTable,
@@ -330,14 +356,18 @@ fn blend_mode<T: SetBlendMode>(
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
+	#[default(100.)] opacity: Percentage,
+	#[default(100.)] fill: Percentage,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.set_blend_mode(blend_mode);
+	value.multiply_alpha(opacity / 100.);
+	value.multiply_fill(fill / 100.);
 	value
 }
 
 #[node_macro::node(category("Style"))]
-fn opacity<T: MultiplyAlpha>(
+fn clipping<T: SetClip>(
 	_: impl Ctx,
 	#[implementations(
 		GraphicGroupTable,
@@ -345,9 +375,9 @@ fn opacity<T: MultiplyAlpha>(
 		ImageFrameTable<Color>,
 	)]
 	mut value: T,
-	#[default(100.)] factor: Percentage,
+	clip: bool,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
-	value.multiply_alpha(factor / 100.);
+	value.set_clip(clip);
 	value
 }

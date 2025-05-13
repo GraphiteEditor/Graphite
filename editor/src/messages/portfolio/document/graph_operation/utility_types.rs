@@ -58,13 +58,13 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Non layer nodes directly upstream of a layer are treated as part of that layer. See insert_index == 2 in the diagram
 	///       -----> Post node
 	///      |      if insert_index == 0, return (Post node, Some(Layer1))
-	/// -> Layer1   
+	/// -> Layer1
 	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
-	/// -> Layer2   
+	/// -> Layer2
 	///      ↑
 	/// -> NonLayerNode
 	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
-	/// -> Layer3  
+	/// -> Layer3
 	///             if insert_index == 3, return (Layer3, None)
 	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
@@ -333,18 +333,16 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Fill(fill), false), false);
 	}
 
-	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(opacity_node_id) = self.existing_node_id("Opacity", true) else { return };
-		let input_connector = InputConnector::node(opacity_node_id, 1);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
+	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 1);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
-	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_mode_node_id) = self.existing_node_id("Blend Mode", true) else {
-			return;
-		};
-		let input_connector = InputConnector::node(blend_mode_node_id, 1);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
+	pub fn opacity_set(&mut self, opacity: f64) {
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 2);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
 	pub fn stroke_set(&mut self, stroke: Stroke) {
