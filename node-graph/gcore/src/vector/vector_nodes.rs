@@ -1375,8 +1375,7 @@ async fn poisson_disk_points(
 		.collect();
 
 	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
-		let segment_count = subpath.segments().count();
-		if segment_count < 2 {
+		if subpath.segments().count() < 2 {
 			continue;
 		}
 

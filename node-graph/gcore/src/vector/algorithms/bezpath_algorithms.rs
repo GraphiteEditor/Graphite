@@ -248,16 +248,13 @@ fn bezpath_rectangle_intersections_exist(bezpath: &BezPath, rect: Rect) -> bool 
 		return false;
 	}
 
-	// p1           p2
-	//  -------------
-	//  |           |
-	//  |           |
-	//  |           |
-	//  -------------
-	// p4           p3
+	// Top left
 	let p1 = Point::new(rect.x0, rect.y0);
+	// Top right
 	let p2 = Point::new(rect.x1, rect.y0);
+	// Bottom right
 	let p3 = Point::new(rect.x1, rect.y1);
+	// Bottom left
 	let p4 = Point::new(rect.x0, rect.y1);
 
 	let top_line = Line::new((p1.x, p1.y), (p2.x, p2.y));
@@ -265,14 +262,13 @@ fn bezpath_rectangle_intersections_exist(bezpath: &BezPath, rect: Rect) -> bool 
 	let bottom_line = Line::new((p3.x, p3.y), (p4.x, p4.y));
 	let left_line = Line::new((p4.x, p4.y), (p1.x, p1.y));
 
-	let lines = [top_line, right_line, bottom_line, left_line];
-
 	for segment in bezpath.segments() {
-		for line in lines {
+		for line in [top_line, right_line, bottom_line, left_line] {
 			if !segment.intersect_line(line).is_empty() {
 				return true;
 			}
 		}
 	}
+
 	false
 }
