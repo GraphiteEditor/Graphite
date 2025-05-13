@@ -404,8 +404,7 @@ pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
 	(
 		"Distribute Evenly",
 		(|snapping_state| &mut snapping_state.bounding_box.distribute_evenly) as GetSnapState,
-		// TODO: Fix the bug/limitation that requires 'Center Points' and 'Corner Points' to be enabled
-		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers\n(due to a bug, 'Center Points' and 'Corner Points' must be enabled)",
+		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers",
 	),
 ];
 pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
