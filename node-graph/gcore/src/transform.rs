@@ -3,7 +3,7 @@ use crate::instances::Instances;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
-use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
+use crate::{Artboard, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
 use core::f64;
 use glam::{DAffine2, DMat2, DVec2};
 
@@ -135,11 +135,6 @@ impl From<()> for Footprint {
 	fn from(_: ()) -> Self {
 		Footprint::default()
 	}
-}
-
-#[node_macro::node(category("Debug"))]
-fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroupTable)] data: T) -> T {
-	data
 }
 
 impl core::hash::Hash for Footprint {
