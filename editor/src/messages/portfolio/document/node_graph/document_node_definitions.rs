@@ -1,3 +1,4 @@
+use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo};
 use super::utility_types::FrontendNodeType;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -472,7 +473,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
@@ -484,12 +485,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 						]
@@ -520,14 +515,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Decode Image".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -844,41 +831,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						PropertiesRow::with_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
 					],
 					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Noise Pattern".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("Generates different noise patterns."),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
+		// TODO: This needs to work with resolution-aware data.
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Mask",
@@ -905,7 +864,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
+		// TODO: This needs to work with resolution-aware data.
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Insert Channel",
@@ -933,7 +892,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
+		// TODO: This needs to work with resolution-aware data.
 		DocumentNodeDefinition {
 			identifier: "Combine Channels",
 			category: "Raster",
@@ -1237,58 +1196,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![("Image", "TODO").into()],
 					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Image",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 1)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-							manual_composition: Some(concrete!(Context)),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Empty", "TODO").into(), ("Image", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [DocumentNodeMetadata {
-								persistent_metadata: DocumentNodePersistentMetadata {
-									display_name: "Cull".to_string(),
-									node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-									..Default::default()
-								},
-								..Default::default()
-							}]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
 					..Default::default()
 				},
 			},
@@ -3212,7 +3119,9 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
-			let noise_type_row = node_properties::noise_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true));
+			let noise_type_row = enum_choice::<NoiseType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.property_row();
 			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
 		}),
 	);
@@ -3221,7 +3130,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let domain_warp_type = node_properties::domain_warp_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
+			let domain_warp_type = enum_choice::<DomainWarpType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active)
+				.property_row();
 			Ok(vec![domain_warp_type])
 		}),
 	);
@@ -3242,7 +3154,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, _, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_type_row = node_properties::fractal_type_widget(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true), !coherent_noise_active);
+			let fractal_type_row = enum_choice::<FractalType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active)
+				.property_row();
 			Ok(vec![fractal_type_row])
 		}),
 	);
@@ -3333,10 +3248,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_distance_function_row = node_properties::cellular_distance_function_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				!coherent_noise_active || !cellular_noise_active,
-			);
+			let cellular_distance_function_row = enum_choice::<CellularDistanceFunction>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active || !cellular_noise_active)
+				.property_row();
 			Ok(vec![cellular_distance_function_row])
 		}),
 	);
@@ -3345,10 +3260,10 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			let (_, coherent_noise_active, cellular_noise_active, _, _, _) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let cellular_return_type = node_properties::cellular_return_type_widget(
-				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
-				!coherent_noise_active || !cellular_noise_active,
-			);
+			let cellular_return_type = enum_choice::<CellularReturnType>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.disabled(!coherent_noise_active || !cellular_noise_active)
+				.property_row();
 			Ok(vec![cellular_return_type])
 		}),
 	);

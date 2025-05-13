@@ -114,14 +114,22 @@ fn multiply<U: Mul<T>, T>(
 }
 
 /// The division operation (÷) calculates the quotient of two numbers.
+///
+/// Produces 0 if the denominator is 0.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn divide<U: Div<T>, T>(
+fn divide<U: Div<T> + Default + PartialEq, T: Default + PartialEq>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(1.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, f64, DVec2)]
 	denominator: T,
-) -> <U as Div<T>>::Output {
+) -> <U as Div<T>>::Output
+where
+	<U as Div<T>>::Output: Default,
+{
+	if denominator == T::default() {
+		return <U as Div<T>>::Output::default();
+	}
 	numerator / denominator
 }
 
@@ -525,21 +533,15 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 	}
 }
 
+/// The X or Y component of a vector2.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum XY {
 	#[default]
 	X,
 	Y,
-}
-impl core::fmt::Display for XY {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			XY::X => write!(f, "X"),
-			XY::Y => write!(f, "Y"),
-		}
-	}
 }
 
 // TODO: Rename to "Passthrough"

@@ -10,6 +10,7 @@ fn draw_dashed_line(line_start: DVec2, line_end: DVec2, transform: DAffine2, ove
 
 	overlay_context.dashed_line(min_viewport, max_viewport, None, None, Some(2.), Some(2.), Some(0.5));
 }
+
 /// Draws a solid line with a length annotation between two points transformed by the given affine transformations.
 fn draw_line_with_length(line_start: DVec2, line_end: DVec2, transform: DAffine2, document_to_viewport: DAffine2, overlay_context: &mut OverlayContext, label_alignment: LabelAlignment) {
 	let transform_to_document = document_to_viewport.inverse() * transform;
