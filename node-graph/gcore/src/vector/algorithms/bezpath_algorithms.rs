@@ -1,9 +1,13 @@
+use super::poisson_disk::poisson_disk_sample;
+use crate::vector::PointId;
+use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2};
+use kurbo::{BezPath, ParamCurve, ParamCurveDeriv, PathSeg, Point, Shape};
+
 /// Accuracy to find the position on [kurbo::Bezpath].
 const POSITION_ACCURACY: f64 = 1e-5;
 /// Accuracy to find the length of the [kurbo::PathSeg].
 pub const PERIMETER_ACCURACY: f64 = 1e-5;
-
-use kurbo::{BezPath, ParamCurve, ParamCurveDeriv, PathSeg, Point, Shape};
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
@@ -183,4 +187,56 @@ fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, pre
 			(segment_index, t)
 		}
 	}
+}
+
+/// Randomly places points across the filled surface of this subpath (which is assumed to be closed).
+/// The `separation_disk_diameter` determines the minimum distance between all points from one another.
+/// Conceptually, this works by "throwing a dart" at the subpath's bounding box and keeping the dart only if:
+/// - It's inside the shape
+/// - It's not closer than `separation_disk_diameter` to any other point from a previous accepted dart throw
+///
+/// This repeats until accepted darts fill all possible areas between one another.
+///
+/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
+/// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
+pub fn poisson_disk_points(this: &Subpath<PointId>, separation_disk_diameter: f64, rng: impl FnMut() -> f64, subpaths: &[(Subpath<PointId>, [DVec2; 2])], subpath_index: usize) -> Vec<DVec2> {
+	let Some(bounding_box) = this.bounding_box() else { return Vec::new() };
+	let (offset_x, offset_y) = bounding_box[0].into();
+	let (width, height) = (bounding_box[1] - bounding_box[0]).into();
+
+	// TODO: Optimize the following code and make it more robust
+
+	let mut shape = this.clone();
+	shape.set_closed(true);
+	shape.apply_transform(DAffine2::from_translation((-offset_x, -offset_y).into()));
+
+	let point_in_shape_checker = |point: DVec2| {
+		// Check against all paths the point is contained in to compute the correct winding number
+		let mut number = 0;
+		for (i, (shape, bb)) in subpaths.iter().enumerate() {
+			let point = point + bounding_box[0];
+			if bb[0].x > point.x || bb[0].y > point.y || bb[1].x < point.x || bb[1].y < point.y {
+				continue;
+			}
+			let winding = shape.winding_order(point);
+
+			if i == subpath_index && winding == 0 {
+				return false;
+			}
+			number += winding;
+		}
+		number != 0
+	};
+
+	let square_edges_intersect_shape_checker = |corner1: DVec2, size: f64| {
+		let corner2 = corner1 + DVec2::splat(size);
+		this.rectangle_intersections_exist(corner1, corner2)
+	};
+
+	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
+	for point in &mut points {
+		point.x += offset_x;
+		point.y += offset_y;
+	}
+	points
 }
