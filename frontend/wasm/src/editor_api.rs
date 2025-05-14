@@ -660,8 +660,8 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 	#[wasm_bindgen(js_name=previewImage)]
-	pub fn preview_image(&self) {
-		let message = PortfolioMessage::PreviewImage {};
+	pub fn preview_image(&self, name: Option<String>, svg: String) {
+		let message = PortfolioMessage::PreviewImage { name, svg };
 		debug!("editor api,preview image,dispatch message to PortfolioMessage PreviewMessage");
 		self.dispatch(message);
 	}

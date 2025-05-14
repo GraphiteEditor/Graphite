@@ -102,7 +102,10 @@ pub enum PortfolioMessage {
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
-	PreviewImage,
+	PreviewImage {
+		name: Option<String>,
+		svg: String,
+	},
 	PrevDocument,
 	SetActivePanel {
 		panel: PanelType,

@@ -1081,8 +1081,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					responses.add(FrontendMessage::TriggerDelayedZoomCanvasToFitAll);
 				}
 			}
-			PortfolioMessage::PreviewImage => {
+			PortfolioMessage::PreviewImage { name, svg } => {
 				debug!("PortfolioMessage Preview Image")
+				//TODO: draw a preview image following cursor
+
+				//TODO: get a preview
 			}
 			PortfolioMessage::PrevDocument => {
 				if let Some(active_document_id) = self.active_document_id {
