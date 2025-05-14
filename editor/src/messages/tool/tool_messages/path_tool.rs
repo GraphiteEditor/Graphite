@@ -363,7 +363,6 @@ struct PathToolData {
 	saved_points_before_handle_drag: Vec<ManipulatorPointId>,
 	handle_drag_toggle: bool,
 	dragging_state: DraggingState,
-	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
@@ -722,15 +721,19 @@ impl PathToolData {
 				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id) {
 					self.angle = angle;
 					self.angle_locked = true;
-					self.current_selected_handle_id = Some(handle_id);
 					return angle;
 				}
 			}
 		}
 
-		// When the angle is locked we use the old angle
-		if self.current_selected_handle_id == Some(handle_id) && lock_angle {
+		if lock_angle && !self.angle_locked {
 			self.angle_locked = true;
+			self.angle = -relative_vector.angle_to(DVec2::X);
+			return -relative_vector.angle_to(DVec2::X);
+		}
+
+		// When the angle is locked we use the old angle
+		if self.angle_locked {
 			return self.angle;
 		}
 
@@ -741,8 +744,6 @@ impl PathToolData {
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 
-		// Cache the angle and handle id for lock angle
-		self.current_selected_handle_id = Some(handle_id);
 		self.angle = handle_angle;
 
 		handle_angle

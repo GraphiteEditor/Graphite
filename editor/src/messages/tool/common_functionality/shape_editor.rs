@@ -728,7 +728,7 @@ impl ShapeState {
 			return;
 		};
 		let handles = vector_data.all_connected(point_id).take(2).collect::<Vec<_>>();
-
+		let non_zero_handles = handles.iter().filter(|handle| handle.length(vector_data) > 1e-6).count();
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
 		let points = handles.iter().map(|handle| vector_data.other_point(handle.segment, point_id));
 		let anchor_positions = points
@@ -762,20 +762,35 @@ impl ShapeState {
 			handle_direction *= -1.;
 		}
 
-		// Push both in and out handles into the correct position
-		for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
-			// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
-			let Some(length) = other_anchor.map(|position| (position - anchor_position).length() / 3.) else {
-				continue;
+		if non_zero_handles != 0 {
+			let [a, b] = handles.as_slice() else { return };
+			let (non_zero_handle, zero_handle) = if a.length(vector_data) > 1e-6 { (a, b) } else { (b, a) };
+			let Some(direction) = non_zero_handle
+				.to_manipulator_point()
+				.get_position(&vector_data)
+				.and_then(|position| (position - anchor_position).try_normalize())
+			else {
+				return;
 			};
-			let new_position = handle_direction * length * sign;
-			let modification_type = handle.set_relative_position(new_position);
+			let new_position = non_zero_handle.length(vector_data) * direction * -1.;
+			let modification_type = zero_handle.set_relative_position(new_position);
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-
-			// Create the opposite handle if it doesn't exist (if it is not a cubic segment)
-			if handle.opposite().to_manipulator_point().get_position(vector_data).is_none() {
-				let modification_type = handle.opposite().set_relative_position(DVec2::ZERO);
+		} else {
+			// Push both in and out handles into the correct position
+			for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
+				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
+				let Some(length) = other_anchor.map(|position| (position - anchor_position).length() / 3.) else {
+					continue;
+				};
+				let new_position = handle_direction * length * sign;
+				let modification_type = handle.set_relative_position(new_position);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				// Create the opposite handle if it doesn't exist (if it is not a cubic segment)
+				if handle.opposite().to_manipulator_point().get_position(vector_data).is_none() {
+					let modification_type = handle.opposite().set_relative_position(DVec2::ZERO);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 			}
 		}
 	}
