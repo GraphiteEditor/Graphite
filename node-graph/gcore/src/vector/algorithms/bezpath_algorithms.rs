@@ -232,7 +232,7 @@ pub fn poisson_disk_points(bezpath: &BezPath, separation_disk_diameter: f64, rng
 
 	let square_edges_intersect_shape_checker = |position: DVec2, size: f64| {
 		let rect = Rect::new(position.x, position.y, position.x + size, position.y + size);
-		bezpath_rectangle_intersections_exist(bezpath, rect)
+		bezpath_rectangle_intersections_exist(&shape, rect)
 	};
 
 	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
