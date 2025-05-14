@@ -708,6 +708,7 @@ impl PathToolData {
 		handle_id: ManipulatorPointId,
 		lock_angle: bool,
 		snap_angle: bool,
+		tangent_to_neighboring_tangents: bool,
 	) -> f64 {
 		let current_angle = -handle_vector.angle_to(DVec2::X);
 
@@ -718,7 +719,7 @@ impl PathToolData {
 			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer))
 		{
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
-				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id) {
+				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id, tangent_to_neighboring_tangents) {
 					self.angle = angle;
 					self.angle_locked = true;
 					return angle;
@@ -873,7 +874,17 @@ impl PathToolData {
 		let snapped_delta = if let Some((handle_pos, anchor_pos, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
 			let cursor_pos = handle_pos + raw_delta;
 
-			let handle_angle = self.calculate_handle_angle(shape_editor, document, responses, handle_pos - anchor_pos, cursor_pos - anchor_pos, handle_id, lock_angle, snap_angle);
+			let handle_angle = self.calculate_handle_angle(
+				shape_editor,
+				document,
+				responses,
+				handle_pos - anchor_pos,
+				cursor_pos - anchor_pos,
+				handle_id,
+				lock_angle,
+				snap_angle,
+				equidistant,
+			);
 
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
 			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
@@ -1801,6 +1812,7 @@ fn calculate_lock_angle(
 	document: &DocumentMessageHandler,
 	vector_data: &VectorData,
 	handle_id: ManipulatorPointId,
+	tangent_to_neighboring_tangents: bool,
 ) -> Option<f64> {
 	let anchor = handle_id.get_anchor(vector_data)?;
 	let anchor_position = vector_data.point_domain.position_from_id(anchor);
@@ -1834,7 +1846,14 @@ fn calculate_lock_angle(
 			let angle_2 = calculate_segment_angle(anchor, segment, vector_data, false);
 
 			match (angle_1, angle_2) {
-				(Some(angle_1), Some(angle_2)) => Some((angle_1 + angle_2) / 2.0),
+				(Some(angle_1), Some(angle_2)) => {
+					let angle = Some((angle_1 + angle_2) / 2.0);
+					if tangent_to_neighboring_tangents {
+						angle.map(|angle| angle + std::f64::consts::FRAC_PI_2)
+					} else {
+						angle
+					}
+				}
 				(Some(angle_1), None) => Some(angle_1),
 				(None, Some(angle_2)) => Some(angle_2),
 				(None, None) => None,
