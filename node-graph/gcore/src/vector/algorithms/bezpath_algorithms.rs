@@ -210,7 +210,7 @@ pub fn poisson_disk_points(mut bezpath: BezPath, separation_disk_diameter: f64, 
 	bezpath.close_path();
 	bezpath.apply_affine(Affine::translate((-offset_x, -offset_y)));
 
-	// Get bounding box after offsetting the bezpath to the origin.
+	// Get the bounding box of the bezpath after offsetting it to the origin (x: 0, y: 0).
 	let bbox = bezpath.bounding_box();
 	let (width, height) = (bbox.x1 - bbox.x0, bbox.y1 - bbox.y0);
 

@@ -1364,6 +1364,7 @@ async fn poisson_disk_points(
 	if separation_disk_diameter <= 0.01 {
 		return VectorDataTable::new(result);
 	}
+
 	let bezpaths: Vec<_> = vector_data
 		.stroke_bezpath_iter()
 		.map(|mut bezpath| {
