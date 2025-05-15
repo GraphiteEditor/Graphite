@@ -55,7 +55,7 @@ impl SelectedLayerState {
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
-	pub fn is_point_ignored(&mut self, point: ManipulatorPointId) -> bool {
+	pub fn is_point_ignored(&self, point: ManipulatorPointId) -> bool {
 		if point.as_handle().is_some() && self.ignore_handles {
 			return true;
 		} else if point.as_anchor().is_some() && self.ignore_anchors {
@@ -76,10 +76,13 @@ impl SelectedLayerState {
 		}
 		self.selected_points.remove(&point);
 	}
-	pub fn set_handles_status(&mut self, ignore: bool) {
-		self.ignore_handles = ignore;
+	pub fn set_handles_status(&mut self, status: bool) {
+		if self.ignore_handles == !status {
+			return;
+		}
+		self.ignore_handles = !status;
 
-		if ignore {
+		if !status {
 			self.ignored_handle_points.extend(self.selected_points.iter().copied().filter(|point| point.as_handle().is_some()));
 			self.selected_points.retain(|point| !self.ignored_handle_points.contains(point));
 		} else {
@@ -87,10 +90,13 @@ impl SelectedLayerState {
 			self.ignored_handle_points.clear();
 		}
 	}
-	pub fn set_anchors_status(&mut self, ignore: bool) {
-		self.ignore_anchors = ignore;
+	pub fn set_anchors_status(&mut self, status: bool) {
+		if self.ignore_anchors == !status {
+			return;
+		}
+		self.ignore_anchors = !status;
 
-		if ignore {
+		if !status {
 			self.ignored_anchor_points.extend(self.selected_points.iter().copied().filter(|point| point.as_anchor().is_some()));
 			self.selected_points.retain(|point| !self.ignored_anchor_points.contains(point));
 		} else {
@@ -566,27 +572,15 @@ impl ShapeState {
 		}
 	}
 
-	pub fn mark_selected_anchors(&mut self) {
+	pub fn update_selected_anchors_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
-			state.set_anchors_status(false);
+			state.set_anchors_status(status);
 		}
 	}
 
-	pub fn mark_selected_handles(&mut self) {
+	pub fn update_selected_handles_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
-			state.set_handles_status(false);
-		}
-	}
-
-	pub fn ignore_selected_anchors(&mut self) {
-		for state in self.selected_shape_state.values_mut() {
-			state.set_anchors_status(true);
-		}
-	}
-
-	pub fn ignore_selected_handles(&mut self) {
-		for state in self.selected_shape_state.values_mut() {
-			state.set_handles_status(true);
+			state.set_handles_status(status);
 		}
 	}
 
