@@ -13,7 +13,6 @@ pub use num_traits;
 
 #[cfg(feature = "reflections")]
 pub use ctor;
-
 pub mod animation;
 pub mod consts;
 pub mod context;
@@ -57,6 +56,9 @@ use core::any::TypeId;
 use core::pin::Pin;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use memo::MemoHash;
+// TODO: Perhaps build a wrapper util for Rng
+pub use rand::{Rng, SeedableRng};
+pub use rand_chacha::ChaCha20Rng;
 pub use raster::Color;
 pub use types::Cow;
 
