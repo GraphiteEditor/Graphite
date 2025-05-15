@@ -135,7 +135,7 @@ impl DocumentMetadata {
 			.iter()
 			.filter_map(|click_target| match click_target.target_group() {
 				ClickTargetGroup::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
-				ClickTargetGroup::PointGroup(_) => click_target.bounding_box_with_transform(transform),
+				ClickTargetGroup::ManipulatorGroup(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)
 	}
@@ -179,16 +179,10 @@ impl DocumentMetadata {
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets
-			.iter()
-			.filter(|target| match target.target_group() {
-				ClickTargetGroup::Subpath(_) => true,
-				_ => false,
-			})
-			.map(|target| match target.target_group() {
-				ClickTargetGroup::Subpath(subpath) => subpath,
-				_ => unreachable!(),
-			})
+		click_targets.iter().filter_map(|target| match target.target_group() {
+			ClickTargetGroup::Subpath(subpath) => Some(subpath),
+			_ => None,
+		})
 	}
 
 	pub fn is_clip(&self, node: NodeId) -> bool {

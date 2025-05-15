@@ -23,7 +23,7 @@ use vello::*;
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ClickTargetGroup {
 	Subpath(bezier_rs::Subpath<PointId>),
-	PointGroup(ManipulatorGroup<PointId>),
+	ManipulatorGroup(ManipulatorGroup<PointId>),
 }
 
 /// Represents a clickable target for the layer
@@ -44,12 +44,12 @@ impl ClickTarget {
 		}
 	}
 
-	pub fn new_with_point_group(point: ManipulatorGroup<PointId>) -> Self {
+	pub fn new_with_manipulator_group(point: ManipulatorGroup<PointId>) -> Self {
 		let stroke_width = 10.;
 		let bounding_box = Some([point.anchor - DVec2::splat(stroke_width / 2.), point.anchor + DVec2::splat(stroke_width / 2.)]);
 
 		Self {
-			target_group: ClickTargetGroup::PointGroup(point),
+			target_group: ClickTargetGroup::ManipulatorGroup(point),
 			stroke_width,
 			bounding_box,
 		}
@@ -72,7 +72,7 @@ impl ClickTarget {
 			ClickTargetGroup::Subpath(ref mut subpath) => {
 				subpath.apply_transform(affine_transform);
 			}
-			ClickTargetGroup::PointGroup(ref mut point_group) => {
+			ClickTargetGroup::ManipulatorGroup(ref mut point_group) => {
 				point_group.apply_transform(affine_transform);
 			}
 		}
@@ -84,8 +84,8 @@ impl ClickTarget {
 			ClickTargetGroup::Subpath(ref subpath) => {
 				self.bounding_box = subpath.bounding_box();
 			}
-			ClickTargetGroup::PointGroup(ref point_group) => {
-				self.bounding_box = Some([point_group.anchor - DVec2::splat(self.stroke_width / 2.), point_group.anchor + DVec2::splat(self.stroke_width / 2.)]);
+			ClickTargetGroup::ManipulatorGroup(ref point) => {
+				self.bounding_box = Some([point.anchor - DVec2::splat(self.stroke_width / 2.), point.anchor + DVec2::splat(self.stroke_width / 2.)]);
 			}
 		}
 	}
@@ -117,8 +117,8 @@ impl ClickTarget {
 				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
 				return any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0);
 			}
-			ClickTargetGroup::PointGroup(point_group) => {
-				let point = point_group.anchor;
+			ClickTargetGroup::ManipulatorGroup(point) => {
+				let point = point.anchor;
 				bezier_iter().map(|bezier| bezier.winding(point)).sum::<i32>() != 0
 			}
 		}
@@ -152,7 +152,7 @@ impl ClickTarget {
 			// Check if the point is within the shape
 			match self.target_group() {
 				ClickTargetGroup::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
-				ClickTargetGroup::PointGroup(point_group) => point_group.anchor == point,
+				ClickTargetGroup::ManipulatorGroup(point_group) => point_group.anchor == point,
 			}
 		} else {
 			false
@@ -699,15 +699,16 @@ impl GraphicElementRendered for VectorDataTable {
 				};
 
 				// For free-floating anchors, we need to add a click target for each
-				let single_anchors = instance.point_domain.ids().iter().filter(|&&point_id| instance.connected_count(point_id) == 0);
-				let single_anchors_targets = single_anchors
-					.map(|&point_id| {
+				let single_anchors_targets = instance.point_domain.ids().iter().filter_map(|&point_id| {
+					if instance.connected_count(point_id) == 0 {
 						let anchor = instance.point_domain.position_from_id(point_id).unwrap_or_default();
 						let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
 
-						ClickTarget::new_with_point_group(group)
-					})
-					.collect::<Vec<ClickTarget>>();
+						Some(ClickTarget::new_with_manipulator_group(group))
+					} else {
+						None
+					}
+				});
 
 				let click_targets = instance
 					.stroke_bezier_paths()
@@ -728,18 +729,6 @@ impl GraphicElementRendered for VectorDataTable {
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		for instance in self.instance_ref_iter() {
-			// For free-floating anchors, we need to add a click target for each
-			let single_anchors = instance.instance.point_domain.ids().iter().filter(|&&point_id| instance.instance.connected_count(point_id) == 0);
-			let single_anchors_targets = single_anchors
-				.map(|&point_id| {
-					let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
-					let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
-					let mut click_target = ClickTarget::new_with_point_group(group);
-					click_target.apply_transform(*instance.transform);
-					click_target
-				})
-				.collect::<Vec<ClickTarget>>();
-
 			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = instance.instance.style.fill() != &Fill::None;
 			let fill = |mut subpath: bezier_rs::Subpath<_>| {
@@ -753,6 +742,20 @@ impl GraphicElementRendered for VectorDataTable {
 				click_target.apply_transform(*instance.transform);
 				click_target
 			}));
+
+			// For free-floating anchors, we need to add a click target for each
+			let single_anchors_targets = instance.instance.point_domain.ids().iter().filter_map(|&point_id| {
+				if instance.instance.connected_count(point_id) == 0 {
+					let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
+					let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
+
+					let mut click_target = ClickTarget::new_with_manipulator_group(group);
+					click_target.apply_transform(*instance.transform);
+					Some(click_target)
+				} else {
+					None
+				}
+			});
 			click_targets.extend(single_anchors_targets);
 		}
 	}

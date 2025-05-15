@@ -1609,7 +1609,7 @@ impl DocumentMessageHandler {
 					subpath.apply_transform(layer_transform);
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
-				ClickTargetGroup::PointGroup(point) => {
+				ClickTargetGroup::ManipulatorGroup(point) => {
 					let mut point = point.clone();
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains_point(point.anchor)
@@ -2740,18 +2740,14 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
 	};
 	click_targets
-		.filter(|target| match target.target_group() {
-			ClickTargetGroup::Subpath(_) => true,
-			_ => false,
-		})
-		.flat_map(|target| {
-			let subpath = if let ClickTargetGroup::Subpath(subpath) = target.target_group() {
-				subpath
+		.filter_map(|target| {
+			if let ClickTargetGroup::Subpath(subpath) = target.target_group() {
+				Some(subpath.iter())
 			} else {
-				panic!("Expected a subpath target group");
-			};
-			subpath.iter()
+				None
+			}
 		})
+		.flatten()
 		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
 		.collect()
 }
