@@ -72,8 +72,8 @@ impl ClickTarget {
 			ClickTargetGroup::Subpath(ref mut subpath) => {
 				subpath.apply_transform(affine_transform);
 			}
-			ClickTargetGroup::ManipulatorGroup(ref mut point_group) => {
-				point_group.apply_transform(affine_transform);
+			ClickTargetGroup::ManipulatorGroup(ref mut point) => {
+				point.apply_transform(affine_transform);
 			}
 		}
 		self.update_bbox();
