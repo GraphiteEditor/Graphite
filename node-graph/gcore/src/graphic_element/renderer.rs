@@ -324,10 +324,13 @@ impl GraphicElementRendered for GraphicGroupTable {
 					}
 
 					let next_clips = iter.peek().map_or(false, |next_instance| {
-						next_instance
-							.instance
-							.as_vector_data()
-							.is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+						let instance = next_instance.instance;
+						instance.as_vector_data().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+							|| instance.as_group().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+							|| instance.as_raster().is_some_and(|data| match data {
+								RasterFrame::ImageFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+								RasterFrame::TextureFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+							})
 					});
 
 					if next_clips && uuid_state.is_none() {
