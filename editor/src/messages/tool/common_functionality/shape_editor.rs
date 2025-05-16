@@ -42,9 +42,8 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
-	ignore_handles: bool,
+	/// Points that are selected but ignored (when their overlays are disabled) are stored here.
 	ignored_handle_points: HashSet<ManipulatorPointId>,
-	ignore_anchors: bool,
 	ignored_anchor_points: HashSet<ManipulatorPointId>,
 }
 
@@ -55,33 +54,14 @@ impl SelectedLayerState {
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
-	pub fn is_point_ignored(&self, point: ManipulatorPointId) -> bool {
-		if point.as_handle().is_some() && self.ignore_handles {
-			return true;
-		} else if point.as_anchor().is_some() && self.ignore_anchors {
-			return true;
-		} else {
-			return false;
-		}
-	}
+
 	pub fn select_point(&mut self, point: ManipulatorPointId) {
-		if self.is_point_ignored(point) {
-			return;
-		}
 		self.selected_points.insert(point);
 	}
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
-		if self.is_point_ignored(point) {
-			return;
-		}
 		self.selected_points.remove(&point);
 	}
-	pub fn set_handles_status(&mut self, status: bool) {
-		if self.ignore_handles == !status {
-			return;
-		}
-		self.ignore_handles = !status;
-
+	pub fn ignore_handles(&mut self, status: bool) {
 		if !status {
 			self.ignored_handle_points.extend(self.selected_points.iter().copied().filter(|point| point.as_handle().is_some()));
 			self.selected_points.retain(|point| !self.ignored_handle_points.contains(point));
@@ -90,12 +70,7 @@ impl SelectedLayerState {
 			self.ignored_handle_points.clear();
 		}
 	}
-	pub fn set_anchors_status(&mut self, status: bool) {
-		if self.ignore_anchors == !status {
-			return;
-		}
-		self.ignore_anchors = !status;
-
+	pub fn ignore_anchors(&mut self, status: bool) {
 		if !status {
 			self.ignored_anchor_points.extend(self.selected_points.iter().copied().filter(|point| point.as_anchor().is_some()));
 			self.selected_points.retain(|point| !self.ignored_anchor_points.contains(point));
@@ -118,6 +93,8 @@ pub type SelectedShapeState = HashMap<LayerNodeIdentifier, SelectedLayerState>;
 pub struct ShapeState {
 	// The layers we can select and edit manipulators (anchors and handles) from
 	pub selected_shape_state: SelectedShapeState,
+	ignore_handles: bool,
+	ignore_anchors: bool,
 }
 
 #[derive(Debug)]
@@ -278,6 +255,16 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	pub fn is_point_ignored(&self, point: &ManipulatorPointId) -> bool {
+		if point.as_handle().is_some() && self.ignore_handles {
+			return true;
+		} else if point.as_anchor().is_some() && self.ignore_anchors {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
@@ -531,7 +518,7 @@ impl ShapeState {
 			// Select all connected points
 			while let Some(point) = selected_stack.pop() {
 				let anchor_point = ManipulatorPointId::Anchor(point);
-				if !state.is_selected(anchor_point) && !state.is_point_ignored(anchor_point) {
+				if !state.is_selected(anchor_point) {
 					state.select_point(anchor_point);
 					selected_stack.extend(vector_data.connected_points(point));
 				}
@@ -574,13 +561,15 @@ impl ShapeState {
 
 	pub fn update_selected_anchors_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
-			state.set_anchors_status(status);
+			self.ignore_anchors = !status;
+			state.ignore_anchors(status);
 		}
 	}
 
 	pub fn update_selected_handles_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
-			state.set_handles_status(status);
+			self.ignore_handles = !status;
+			state.ignore_handles(status);
 		}
 	}
 
@@ -687,6 +676,10 @@ impl ShapeState {
 		layer: LayerNodeIdentifier,
 		responses: &mut VecDeque<Message>,
 	) -> Option<()> {
+		if self.is_point_ignored(point) {
+			return None;
+		}
+
 		let vector_data = network_interface.compute_modified_vector(layer)?;
 		let transform = network_interface.document_metadata().transform_to_document(layer).inverse();
 		let position = transform.transform_point2(new_position);

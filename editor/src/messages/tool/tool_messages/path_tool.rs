@@ -958,8 +958,6 @@ impl Fsm for PathToolFsmState {
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
-
-				responses.add(PathToolMessage::SelectedPointUpdated);
 				self
 			}
 			(_, PathToolMessage::UpdateSelectedPointsStatus { overlay_context }) => {
@@ -1096,8 +1094,8 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
-				responses.add(PathToolMessage::UpdateSelectedPointsStatus { overlay_context });
 				responses.add(PathToolMessage::SelectedPointUpdated);
+				responses.add(PathToolMessage::UpdateSelectedPointsStatus { overlay_context });
 				self
 			}
 
