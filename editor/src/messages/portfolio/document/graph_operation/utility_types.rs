@@ -339,6 +339,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
+	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
+		let clip = !clip_mode.map_or(false, |x| x);
+		let Some(clip_node_id) = self.existing_node_id("Clipping", true) else { return };
+		let input_connector = InputConnector::node(clip_node_id, 1);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
+	}
+
 	pub fn opacity_set(&mut self, opacity: f64) {
 		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
 		let input_connector = InputConnector::node(blend_node_id, 2);

@@ -303,6 +303,14 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	Some(*opacity)
 }
 
+pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Clipping")?;
+	let TaggedValue::Bool(clip) = inputs.get(1)?.as_value()? else {
+		return None;
+	};
+	Some(*clip)
+}
+
 pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Fill")
 }

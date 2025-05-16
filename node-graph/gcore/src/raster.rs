@@ -347,7 +347,7 @@ impl SetClip for ImageFrameTable<Color> {
 }
 
 #[node_macro::node(category("Style"))]
-fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
+fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill>(
 	_: impl Ctx,
 	#[implementations(
 		GraphicGroupTable,

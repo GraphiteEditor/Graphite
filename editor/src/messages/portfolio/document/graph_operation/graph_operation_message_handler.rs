@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
@@ -49,6 +50,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
+				}
+			}
+			GraphOperationMessage::ClipModeToggle { layer } => {
+				let clip_mode = get_clip_mode(layer, network_interface);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {

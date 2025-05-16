@@ -190,7 +190,13 @@
 		// Select the layer only if the accel and/or shift keys are pressed
 		if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
+		if (alt) clipLayer(listing);
+
 		e.stopPropagation();
+	}
+
+	function clipLayer(listing: LayerListingInfo) {
+		editor.handle.clipLayer(listing.entry.id);
 	}
 
 	function selectLayer(listing: LayerListingInfo, accel: boolean, shift: boolean) {

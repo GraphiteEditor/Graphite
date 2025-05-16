@@ -1052,6 +1052,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
+			DocumentMessage::ClipLayer { id } => {
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+
+				responses.add(GraphOperationMessage::ClipModeToggle { layer });
+			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 

@@ -29,6 +29,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		blend_mode: BlendMode,
 	},
+	ClipModeToggle {
+		layer: LayerNodeIdentifier,
+	},
 	StrokeSet {
 		layer: LayerNodeIdentifier,
 		stroke: Stroke,

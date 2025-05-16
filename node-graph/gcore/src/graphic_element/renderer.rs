@@ -299,8 +299,9 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let mut iter = self.instance_ref_iter().peekable();
 		let mut uuid_state = None;
-		for instance in self.instance_ref_iter() {
+		while let Some(instance) = iter.next() {
 			render.parent_tag(
 				"g",
 				|attributes| {
@@ -317,20 +318,31 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
 					}
 
-					if instance.alpha_blending.clip {
-						let uuid = uuid_state.unwrap_or(generate_uuid());
+					let next_clips = iter.peek().map_or(false, |next_instance| {
+						next_instance
+							.instance
+							.as_vector_data()
+							.is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+					});
+
+					if next_clips && uuid_state.is_none() {
+						let uuid = generate_uuid();
+						let id = format!("mask-{}", uuid);
 						uuid_state = Some(uuid);
-						let id = format!("clip-{}", uuid);
-						let selector = format!("url(#{id})");
-
-						attributes.push("clip-path", selector);
-					} else if let Some(uuid) = uuid_state.take() {
-						let id = format!("clip-{}", uuid);
-
 						let mut svg = SvgRender::new();
 						instance.instance.render_svg(&mut svg, render_params);
 
-						write!(&mut attributes.0.svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap();
+						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+						write!(&mut attributes.0.svg_defs, r##"<mask id="{id}">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+					} else if let Some(uuid) = uuid_state {
+						if !next_clips {
+							uuid_state = None;
+						}
+
+						let id = format!("mask-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push("mask", selector);
 					}
 				},
 				|render| {
