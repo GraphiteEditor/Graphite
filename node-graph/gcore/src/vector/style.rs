@@ -628,7 +628,7 @@ impl Stroke {
 	}
 
 	/// Provide the SVG attributes for the stroke.
-	pub fn render(&self) -> String {
+	pub fn render(&self, render_params: &RenderParams) -> String {
 		// Don't render a stroke at all if it would be invisible
 		let Some(color) = self.color else { return String::new() };
 		if self.weight <= 0. || color.a() == 0. {
@@ -644,7 +644,8 @@ impl Stroke {
 		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+		let hex = if !render_params.for_mask { color.to_rgb_hex_srgb_from_gamma() } else { "ffffff".to_string() };
+		let mut attributes = format!(r##" stroke="#{}""##, hex);
 		if color.a() < 1. {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
@@ -902,12 +903,12 @@ impl PathStyle {
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
-				let stroke_attribute = outline_stroke.render();
+				let stroke_attribute = outline_stroke.render(render_params);
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
 				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render()).unwrap_or_default();
+				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render(render_params)).unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 		}

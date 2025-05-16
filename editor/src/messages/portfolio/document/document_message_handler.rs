@@ -1055,6 +1055,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::ClipLayer { id } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 
+				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::ClipModeToggle { layer });
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
