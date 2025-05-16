@@ -2,7 +2,7 @@
 
 use crate::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-use crate::renderer::format_transform_matrix;
+use crate::renderer::{RenderParams, format_transform_matrix};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::fmt::Write;
@@ -200,7 +200,7 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], _render_params: &RenderParams) -> u64 {
 		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
 
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
@@ -357,7 +357,7 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs through mutating the first argument.
-	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
@@ -368,7 +368,7 @@ impl Fill {
 				result
 			}
 			Self::Gradient(gradient) => {
-				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
@@ -626,7 +626,7 @@ impl Stroke {
 	}
 
 	/// Provide the SVG attributes for the stroke.
-	pub fn render(&self) -> String {
+	pub fn render(&self, _render_params: &RenderParams) -> String {
 		// Don't render a stroke at all if it would be invisible
 		let Some(color) = self.color else { return String::new() };
 		if self.weight <= 0. || color.a() == 0. {
@@ -892,19 +892,20 @@ impl PathStyle {
 	}
 
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> String {
+		let view_mode = render_params.view_mode;
 		match view_mode {
 			ViewMode::Outline => {
-				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
-				let stroke_attribute = outline_stroke.render();
+				let stroke_attribute = outline_stroke.render(render_params);
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
-				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
-				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render()).unwrap_or_default();
+				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render(render_params)).unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 		}

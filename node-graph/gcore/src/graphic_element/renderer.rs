@@ -226,16 +226,19 @@ pub struct RenderParams {
 	pub hide_artboards: bool,
 	/// Are we exporting? Causes the text above an artboard to be hidden.
 	pub for_export: bool,
+	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
+	pub for_mask: bool,
 }
 
 impl RenderParams {
-	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool) -> Self {
+	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool, for_mask: bool) -> Self {
 		Self {
 			view_mode,
 			culling_bounds,
 			thumbnail,
 			hide_artboards,
 			for_export,
+			for_mask,
 		}
 	}
 }
@@ -299,7 +302,9 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for instance in self.instance_ref_iter() {
+		let mut iter = self.instance_ref_iter().peekable();
+		let mut uuid_state = None;
+		while let Some(instance) = iter.next() {
 			render.parent_tag(
 				"g",
 				|attributes| {
@@ -308,12 +313,45 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("transform", matrix);
 					}
 
-					if instance.alpha_blending.opacity < 1. {
-						attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
 					}
 
 					if instance.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+
+					let next_clips = iter.peek().map_or(false, |next_instance| {
+						let instance = next_instance.instance;
+						instance.as_vector_data().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+							|| instance.as_group().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+							|| instance.as_raster().is_some_and(|data| match data {
+								RasterFrame::ImageFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+								RasterFrame::TextureFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+							})
+					});
+
+					if next_clips && uuid_state.is_none() {
+						let uuid = generate_uuid();
+						let id = format!("mask-{}", uuid);
+						uuid_state = Some(uuid);
+						let mut svg = SvgRender::new();
+						let render_params = RenderParams { for_mask: true, ..*render_params };
+						instance.instance.render_svg(&mut svg, &render_params);
+
+						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+						write!(&mut attributes.0.svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+					} else if let Some(uuid) = uuid_state {
+						if !next_clips {
+							uuid_state = None;
+						}
+
+						let id = format!("mask-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push("mask", selector);
 					}
 				},
 				|render| {
@@ -452,11 +490,13 @@ impl GraphicElementRendered for VectorDataTable {
 				let fill_and_stroke = instance
 					.instance
 					.style
-					.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
+					.render(defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds, render_params);
 				attributes.push_val(fill_and_stroke);
 
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
@@ -843,7 +883,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 }
 
 impl GraphicElementRendered for ImageFrameTable<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
 
@@ -869,8 +909,10 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
 				}
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
 					attributes.push("style", instance.alpha_blending.blend_mode.render());
@@ -1136,6 +1178,7 @@ impl GraphicElementRendered for Vec<Color> {
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+				debug!("{}", color.to_rgb_hex_srgb_from_gamma());
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}

@@ -15,8 +15,10 @@ pub mod renderer;
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AlphaBlending {
-	pub opacity: f32,
 	pub blend_mode: BlendMode,
+	pub opacity: f32,
+	pub fill: f32,
+	pub clip: bool,
 }
 impl Default for AlphaBlending {
 	fn default() -> Self {
@@ -26,14 +28,18 @@ impl Default for AlphaBlending {
 impl core::hash::Hash for AlphaBlending {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
+		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
+		self.clip.hash(state);
 	}
 }
 impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
 			opacity: 1.,
+			fill: 1.,
 			blend_mode: BlendMode::Normal,
+			clip: false,
 		}
 	}
 }
