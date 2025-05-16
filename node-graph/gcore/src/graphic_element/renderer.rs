@@ -342,7 +342,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 						instance.instance.render_svg(&mut svg, &render_params);
 
 						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-						write!(&mut attributes.0.svg_defs, r##"<mask id="{id}">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+						write!(&mut attributes.0.svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
 					} else if let Some(uuid) = uuid_state {
 						if !next_clips {
 							uuid_state = None;

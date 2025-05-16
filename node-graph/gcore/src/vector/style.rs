@@ -200,7 +200,7 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> u64 {
+	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], _render_params: &RenderParams) -> u64 {
 		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
 
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
@@ -212,8 +212,7 @@ impl Gradient {
 			if *position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
-			let hex = if !render_params.for_mask { color.to_rgb_hex_srgb_from_gamma() } else { "ffffff".to_string() };
-			let _ = write!(stop, r##" stop-color="#{}""##, hex);
+			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 			}
@@ -362,8 +361,7 @@ impl Fill {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
-				let hex = if !render_params.for_mask { color.to_rgb_hex_srgb_from_gamma() } else { "ffffff".to_string() };
-				let mut result = format!(r##" fill="#{}""##, hex);
+				let mut result = format!(r##" fill="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 				if color.a() < 1. {
 					let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 				}
@@ -628,7 +626,7 @@ impl Stroke {
 	}
 
 	/// Provide the SVG attributes for the stroke.
-	pub fn render(&self, render_params: &RenderParams) -> String {
+	pub fn render(&self, _render_params: &RenderParams) -> String {
 		// Don't render a stroke at all if it would be invisible
 		let Some(color) = self.color else { return String::new() };
 		if self.weight <= 0. || color.a() == 0. {
@@ -644,8 +642,7 @@ impl Stroke {
 		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
 
 		// Render the needed stroke attributes
-		let hex = if !render_params.for_mask { color.to_rgb_hex_srgb_from_gamma() } else { "ffffff".to_string() };
-		let mut attributes = format!(r##" stroke="#{}""##, hex);
+		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 		if color.a() < 1. {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
