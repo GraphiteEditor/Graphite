@@ -341,8 +341,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
 		let clip = !clip_mode.map_or(false, |x| x);
-		let Some(clip_node_id) = self.existing_node_id("Clipping", true) else { return };
-		let input_connector = InputConnector::node(clip_node_id, 1);
+		let Some(clip_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(clip_node_id, 4);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
 	}
 

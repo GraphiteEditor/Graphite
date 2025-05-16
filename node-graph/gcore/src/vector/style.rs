@@ -2,7 +2,7 @@
 
 use crate::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-use crate::renderer::format_transform_matrix;
+use crate::renderer::{RenderParams, format_transform_matrix};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::fmt::Write;
@@ -200,7 +200,7 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> u64 {
 		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
 
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
@@ -212,7 +212,8 @@ impl Gradient {
 			if *position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
-			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+			let hex = if !render_params.for_mask { color.to_rgb_hex_srgb_from_gamma() } else { "ffffff".to_string() };
+			let _ = write!(stop, r##" stop-color="#{}""##, hex);
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 			}
@@ -357,18 +358,19 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs through mutating the first argument.
-	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
-				let mut result = format!(r##" fill="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+				let hex = if !render_params.for_mask { color.to_rgb_hex_srgb_from_gamma() } else { "ffffff".to_string() };
+				let mut result = format!(r##" fill="#{}""##, hex);
 				if color.a() < 1. {
 					let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 				}
 				result
 			}
 			Self::Gradient(gradient) => {
-				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
@@ -892,10 +894,11 @@ impl PathStyle {
 	}
 
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> String {
+		let view_mode = render_params.view_mode;
 		match view_mode {
 			ViewMode::Outline => {
-				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
@@ -903,7 +906,7 @@ impl PathStyle {
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
-				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render()).unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}

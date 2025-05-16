@@ -226,16 +226,19 @@ pub struct RenderParams {
 	pub hide_artboards: bool,
 	/// Are we exporting? Causes the text above an artboard to be hidden.
 	pub for_export: bool,
+	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
+	pub for_mask: bool,
 }
 
 impl RenderParams {
-	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool) -> Self {
+	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool, for_mask: bool) -> Self {
 		Self {
 			view_mode,
 			culling_bounds,
 			thumbnail,
 			hide_artboards,
 			for_export,
+			for_mask,
 		}
 	}
 }
@@ -310,8 +313,10 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("transform", matrix);
 					}
 
-					if instance.alpha_blending.opacity < 1. {
-						attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
 					}
 
 					if instance.alpha_blending.blend_mode != BlendMode::default() {
@@ -330,7 +335,8 @@ impl GraphicElementRendered for GraphicGroupTable {
 						let id = format!("mask-{}", uuid);
 						uuid_state = Some(uuid);
 						let mut svg = SvgRender::new();
-						instance.instance.render_svg(&mut svg, render_params);
+						let render_params = RenderParams { for_mask: true, ..*render_params };
+						instance.instance.render_svg(&mut svg, &render_params);
 
 						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
 						write!(&mut attributes.0.svg_defs, r##"<mask id="{id}">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
@@ -481,11 +487,13 @@ impl GraphicElementRendered for VectorDataTable {
 				let fill_and_stroke = instance
 					.instance
 					.style
-					.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
+					.render(defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds, render_params);
 				attributes.push_val(fill_and_stroke);
 
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
@@ -872,7 +880,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 }
 
 impl GraphicElementRendered for ImageFrameTable<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
 
@@ -898,8 +906,10 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
 				}
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
 					attributes.push("style", instance.alpha_blending.blend_mode.render());
@@ -1165,6 +1175,7 @@ impl GraphicElementRendered for Vec<Color> {
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
+				debug!("{}", color.to_rgb_hex_srgb_from_gamma());
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}

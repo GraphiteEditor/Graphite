@@ -121,7 +121,7 @@ pub enum DocumentMessage {
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},
-	ClipLayer{
+	ClipLayer {
 		id: NodeId,
 	},
 	SelectLayer {

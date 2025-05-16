@@ -304,8 +304,8 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 }
 
 pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Clipping")?;
-	let TaggedValue::Bool(clip) = inputs.get(1)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {
 		return None;
 	};
 	Some(*clip)

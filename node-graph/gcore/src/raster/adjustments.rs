@@ -1229,7 +1229,6 @@ where
 	}
 }
 
-
 pub(super) trait MultiplyFill {
 	fn multiply_fill(&mut self, factor: f64);
 }
