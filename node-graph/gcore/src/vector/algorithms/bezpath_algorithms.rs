@@ -1,7 +1,7 @@
 use super::poisson_disk::poisson_disk_sample;
 use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
-use kurbo::{Affine, BezPath, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
+use kurbo::{BezPath, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
 
 /// Accuracy to find the position on [kurbo::Bezpath].
 const POSITION_ACCURACY: f64 = 1e-5;
@@ -202,34 +202,27 @@ pub fn poisson_disk_points(mut current_bezpath: BezPath, separation_disk_diamete
 	if current_bezpath.elements().is_empty() {
 		return Vec::new();
 	}
-	let bbox = current_bezpath.bounding_box();
-	let (offset_x, offset_y) = (bbox.x0, bbox.y0);
 
 	// TODO: Optimize the following code and make it more robust
-
 	current_bezpath.close_path();
-	current_bezpath.apply_affine(Affine::translate((-offset_x, -offset_y)));
 
 	// Get the bounding box of the bezpath after offsetting it to the origin (x: 0, y: 0).
 	let current_bezpath_bbox = current_bezpath.bounding_box();
-	let (width, height) = (current_bezpath_bbox.x1 - current_bezpath_bbox.x0, current_bezpath_bbox.y1 - current_bezpath_bbox.y0);
+	let (width, height) = (current_bezpath_bbox.width(), current_bezpath_bbox.height());
+	let (offset_x, offset_y) = (current_bezpath_bbox.x0, current_bezpath_bbox.y0);
 
 	let point_in_shape_checker = |point: DVec2| {
+		// Check against all paths the point is contained in to compute the correct winding number
+		let point = point + DVec2::new(offset_x, offset_y);
+
 		if !current_bezpath_bbox.contains(dvec2_to_point(point)) || !current_bezpath.contains(dvec2_to_point(point)) {
 			return false;
 		}
 
-		// Check against all paths the point is contained in to compute the correct winding number
-		let point = point + DVec2::new(offset_x, offset_y);
 		let mut number = 0;
 
 		for i in 0..bezpaths.len() {
-			let (bezpath, bbox) = &bezpaths[i];
-
-			if !bbox.contains(dvec2_to_point(point)) {
-				continue;
-			}
-
+			let (bezpath, _) = &bezpaths[i];
 			let winding = bezpath.winding(dvec2_to_point(point));
 			number += winding
 		}
