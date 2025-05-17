@@ -473,7 +473,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::scope("editor-api"), NodeInput::network(concrete!(String), 1)],
@@ -485,12 +485,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-								manual_composition: Some(concrete!(Context)),
 								..Default::default()
 							},
 						]
@@ -521,14 +515,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Decode Image".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -845,41 +831,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						PropertiesRow::with_override("Cellular Jitter", "TODO", WidgetOverride::Custom("noise_properties_cellular_jitter".to_string())),
 					],
 					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Noise Pattern".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cull".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("Generates different noise patterns."),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
+		// TODO: This needs to work with resolution-aware data.
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Mask",
@@ -906,7 +864,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
+		// TODO: This needs to work with resolution-aware data.
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Insert Channel",
@@ -934,7 +892,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
+		// TODO: This needs to work with resolution-aware data.
 		DocumentNodeDefinition {
 			identifier: "Combine Channels",
 			category: "Raster",
@@ -1238,58 +1196,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_properties: vec![("Image", "TODO").into()],
 					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Image",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 1)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode")),
-							manual_composition: Some(concrete!(Context)),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Empty", "TODO").into(), ("Image", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [DocumentNodeMetadata {
-								persistent_metadata: DocumentNodePersistentMetadata {
-									display_name: "Cull".to_string(),
-									node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-									..Default::default()
-								},
-								..Default::default()
-							}]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
 					..Default::default()
 				},
 			},
