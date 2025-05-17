@@ -784,7 +784,7 @@ impl ShapeState {
 			else {
 				return;
 			};
-			let new_position = non_zero_handle.length(vector_data) * direction * -1.;
+			let new_position = -direction * non_zero_handle.length(vector_data);
 			let modification_type = zero_handle.set_relative_position(new_position);
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		} else {
