@@ -42,6 +42,9 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
+	/// Keeps track of the current state; helps avoid unnecessary computation when called by ShapeState
+	ignore_handles: bool,
+	ignore_anchors: bool,
 	/// Points that are selected but ignored (when their overlays are disabled) are stored here.
 	ignored_handle_points: HashSet<ManipulatorPointId>,
 	ignored_anchor_points: HashSet<ManipulatorPointId>,
@@ -62,7 +65,12 @@ impl SelectedLayerState {
 		self.selected_points.remove(&point);
 	}
 	pub fn ignore_handles(&mut self, status: bool) {
-		if !status {
+		if self.ignore_handles == !status {
+			return;
+		}
+
+		self.ignore_handles = !status;
+		if self.ignore_handles {
 			self.ignored_handle_points.extend(self.selected_points.iter().copied().filter(|point| point.as_handle().is_some()));
 			self.selected_points.retain(|point| !self.ignored_handle_points.contains(point));
 		} else {
@@ -71,7 +79,12 @@ impl SelectedLayerState {
 		}
 	}
 	pub fn ignore_anchors(&mut self, status: bool) {
-		if !status {
+		if self.ignore_anchors == !status {
+			return;
+		}
+
+		self.ignore_anchors = !status;
+		if self.ignore_anchors {
 			self.ignored_anchor_points.extend(self.selected_points.iter().copied().filter(|point| point.as_anchor().is_some()));
 			self.selected_points.retain(|point| !self.ignored_anchor_points.contains(point));
 		} else {
@@ -898,6 +911,10 @@ impl ShapeState {
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
+				if self.is_point_ignored(&point) {
+					continue;
+				}
+
 				let handle = match point {
 					ManipulatorPointId::Anchor(point) => {
 						self.move_anchor(point, &vector_data, delta, layer, Some(state), responses);
