@@ -656,6 +656,17 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
+	pub fn outline_free_floating_anchors(&mut self, vector_data: VectorData, transform: DAffine2) {
+		for &point_id in vector_data.point_domain.ids() {
+			// Check if the point in the layer is not part of a segment
+			if vector_data.connected_count(point_id) == 0 {
+				if let Some(position) = vector_data.point_domain.position_from_id(point_id) {
+					self.manipulator_anchor(transform.transform_point2(position), false, None);
+				}
+			}
+		}
+	}
+
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
