@@ -552,19 +552,36 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
-				let format_error = |(index, (_found, expected)): &(usize, (Type, Type))| format!("• Input {}: {expected}, found: {_found}", index + 1);
-				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n").replace("Option<Arc<OwnedContextImpl>>", "Context");
+				let format_error = |(index, (found, expected)): &(usize, (Type, Type))| {
+					let index = index + 1;
+					format!(
+						"\
+						• Input {index}:\n\
+						…found:       {found}\n\
+						…expected: {expected}\
+						"
+					)
+				};
+				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
 				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
 				errors.sort();
-				let inputs = inputs.replace("Option<Arc<OwnedContextImpl>>", "Context");
+				let errors = errors.join("\n");
+				let incompatibility = if errors.chars().filter(|&c| c == '•').count() == 1 {
+					"This input type is incompatible:"
+				} else {
+					"These input types are incompatible:"
+				};
+
 				write!(
 					f,
-					"This node isn't compatible with the combination of types for the data it is given:\n\
-					{inputs}\n\
+					"\
+					{incompatibility}\n\
+					{errors}\n\
 					\n\
-					Each invalid input should be replaced by data with one of these supported types:\n\
-					{}",
-					errors.join("\n")
+					The node is currently receiving all of the following input types:\n\
+					{inputs}\n\
+					This is not a supported arrangement of types for the node.\
+					"
 				)
 			}
 			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
