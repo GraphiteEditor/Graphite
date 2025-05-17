@@ -37,7 +37,7 @@ impl FreePoint {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ClickTargetGroup {
+pub enum ClickTargetType {
 	Subpath(bezier_rs::Subpath<PointId>),
 	FreePoint(FreePoint),
 }
@@ -45,7 +45,7 @@ pub enum ClickTargetGroup {
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClickTarget {
-	target_group: ClickTargetGroup,
+	target_type: ClickTargetType,
 	stroke_width: f64,
 	bounding_box: Option<[DVec2; 2]>,
 }
@@ -54,7 +54,7 @@ impl ClickTarget {
 	pub fn new_with_subpath(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
 		let bounding_box = subpath.loose_bounding_box();
 		Self {
-			target_group: ClickTargetGroup::Subpath(subpath),
+			target_type: ClickTargetType::Subpath(subpath),
 			stroke_width,
 			bounding_box,
 		}
@@ -65,14 +65,14 @@ impl ClickTarget {
 		let bounding_box = Some([point.position - DVec2::splat(stroke_width / 2.), point.position + DVec2::splat(stroke_width / 2.)]);
 
 		Self {
-			target_group: ClickTargetGroup::FreePoint(point),
+			target_type: ClickTargetType::FreePoint(point),
 			stroke_width,
 			bounding_box,
 		}
 	}
 
-	pub fn target_group(&self) -> &ClickTargetGroup {
-		&self.target_group
+	pub fn target_type(&self) -> &ClickTargetType {
+		&self.target_type
 	}
 
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
@@ -84,11 +84,11 @@ impl ClickTarget {
 	}
 
 	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
-		match self.target_group {
-			ClickTargetGroup::Subpath(ref mut subpath) => {
+		match self.target_type {
+			ClickTargetType::Subpath(ref mut subpath) => {
 				subpath.apply_transform(affine_transform);
 			}
-			ClickTargetGroup::FreePoint(ref mut point) => {
+			ClickTargetType::FreePoint(ref mut point) => {
 				point.apply_transform(affine_transform);
 			}
 		}
@@ -96,11 +96,11 @@ impl ClickTarget {
 	}
 
 	fn update_bbox(&mut self) {
-		match self.target_group {
-			ClickTargetGroup::Subpath(ref subpath) => {
+		match self.target_type {
+			ClickTargetType::Subpath(ref subpath) => {
 				self.bounding_box = subpath.bounding_box();
 			}
-			ClickTargetGroup::FreePoint(ref point) => {
+			ClickTargetType::FreePoint(ref point) => {
 				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
 			}
 		}
@@ -117,8 +117,8 @@ impl ClickTarget {
 		let inverse = layer_transform.inverse();
 		let mut bezier_iter = || bezier_iter().map(|bezier| bezier.apply_transformation(|point| inverse.transform_point2(point)));
 
-		match self.target_group() {
-			ClickTargetGroup::Subpath(subpath) => {
+		match self.target_type() {
+			ClickTargetType::Subpath(subpath) => {
 				// Check if outlines intersect
 				let outline_intersects = |path_segment: bezier_rs::Bezier| bezier_iter().any(|line| !path_segment.intersections(&line, None, None).is_empty());
 				if subpath.iter().any(outline_intersects) {
@@ -133,7 +133,7 @@ impl ClickTarget {
 				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
 				return any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0);
 			}
-			ClickTargetGroup::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,
+			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,
 		}
 	}
 
@@ -163,9 +163,9 @@ impl ClickTarget {
 			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
 		{
 			// Check if the point is within the shape
-			match self.target_group() {
-				ClickTargetGroup::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
-				ClickTargetGroup::FreePoint(free_point) => free_point.position == point,
+			match self.target_type() {
+				ClickTargetType::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
+				ClickTargetType::FreePoint(free_point) => free_point.position == point,
 			}
 		} else {
 			false

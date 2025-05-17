@@ -5,7 +5,7 @@ mod modification;
 use super::misc::point_to_dvec2;
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
-use crate::renderer::{ClickTargetGroup, FreePoint};
+use crate::renderer::{ClickTargetType, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
@@ -265,13 +265,13 @@ impl VectorData {
 		vector_data
 	}
 
-	pub fn from_target_groups(target_groups: impl IntoIterator<Item = impl Borrow<ClickTargetGroup>>, preserve_id: bool) -> Self {
+	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self {
 		let mut vector_data = Self::empty();
-		for target_group in target_groups.into_iter() {
-			let target_group = target_group.borrow();
-			match target_group {
-				ClickTargetGroup::Subpath(subpath) => vector_data.append_subpath(subpath, preserve_id),
-				ClickTargetGroup::FreePoint(point) => vector_data.append_free_point(point, preserve_id),
+		for target_type in target_types.into_iter() {
+			let target_type = target_type.borrow();
+			match target_type {
+				ClickTargetType::Subpath(subpath) => vector_data.append_subpath(subpath, preserve_id),
+				ClickTargetType::FreePoint(point) => vector_data.append_free_point(point, preserve_id),
 			}
 		}
 		vector_data

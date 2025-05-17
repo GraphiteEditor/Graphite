@@ -12,7 +12,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
-use graphene_std::renderer::{ClickTarget, ClickTargetGroup, Quad};
+use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -2804,25 +2804,25 @@ impl NodeNetworkInterface {
 			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
 				let mut node_path = String::new();
 
-				if let ClickTargetGroup::Subpath(subpath) = node_click_targets.node_click_target.target_group() {
+				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
 					let _ = subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
 				}
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
-					if let ClickTargetGroup::Subpath(subpath) = port.target_group() {
+					if let ClickTargetType::Subpath(subpath) = port.target_type() {
 						let mut port_path = String::new();
 						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 						port_click_targets.push(port_path);
 					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
-					if let ClickTargetGroup::Subpath(subpath) = layer_metadata.visibility_click_target.target_group() {
+					if let ClickTargetType::Subpath(subpath) = layer_metadata.visibility_click_target.target_type() {
 						let mut port_path = String::new();
 						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 						icon_click_targets.push(port_path);
 					}
 
-					if let ClickTargetGroup::Subpath(subpath) = layer_metadata.grip_click_target.target_group() {
+					if let ClickTargetType::Subpath(subpath) = layer_metadata.grip_click_target.target_type() {
 						let mut port_path = String::new();
 						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
 						icon_click_targets.push(port_path);
@@ -2881,7 +2881,7 @@ impl NodeNetworkInterface {
 				.chain(modify_import_export_click_targets.remove_imports_exports.click_targets())
 				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
 			{
-				if let ClickTargetGroup::Subpath(subpath) = click_target.target_group() {
+				if let ClickTargetType::Subpath(subpath) = click_target.target_type() {
 					let mut remove_string = String::new();
 					let _ = subpath.subpath_to_svg(&mut remove_string, DAffine2::IDENTITY);
 					modify_import_export.push(remove_string);
@@ -3185,8 +3185,8 @@ impl NodeNetworkInterface {
 		self.document_metadata
 			.click_targets
 			.get(&layer)
-			.map(|click| click.iter().map(ClickTarget::target_group))
-			.map(|target_groups| VectorData::from_target_groups(target_groups, true))
+			.map(|click| click.iter().map(ClickTarget::target_type))
+			.map(|target_types| VectorData::from_target_types(target_types, true))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.

@@ -32,7 +32,7 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::{ClickTarget, ClickTargetGroup, Quad};
+use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
@@ -1603,13 +1603,13 @@ impl DocumentMessageHandler {
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
-			targets.iter().all(|target| match target.target_group() {
-				ClickTargetGroup::Subpath(subpath) => {
+			targets.iter().all(|target| match target.target_type() {
+				ClickTargetType::Subpath(subpath) => {
 					let mut subpath = subpath.clone();
 					subpath.apply_transform(layer_transform);
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
-				ClickTargetGroup::FreePoint(point) => {
+				ClickTargetType::FreePoint(point) => {
 					let mut point = point.clone();
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains_point(point.position)
@@ -2741,7 +2741,7 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 	};
 	click_targets
 		.filter_map(|target| {
-			if let ClickTargetGroup::Subpath(subpath) = target.target_group() {
+			if let ClickTargetType::Subpath(subpath) = target.target_type() {
 				Some(subpath.iter())
 			} else {
 				None
