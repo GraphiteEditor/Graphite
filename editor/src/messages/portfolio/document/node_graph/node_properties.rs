@@ -164,6 +164,7 @@ pub(crate) fn property_from_type(
 				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
 				Some("Resolution") => vector2_widget(default_info, "W", "H", " px", Some(64.)),
+				Some("PixelSize") => vector2_widget(default_info, "X", "Y", " px", None),
 
 				// For all other types, use TypeId-based matching
 				_ => {
