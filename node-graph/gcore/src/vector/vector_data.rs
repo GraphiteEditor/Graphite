@@ -5,7 +5,7 @@ mod modification;
 use super::misc::point_to_dvec2;
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
-use crate::renderer::ClickTargetGroup;
+use crate::renderer::{ClickTargetGroup, FreePoint};
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::{BezierHandles, ManipulatorGroup};
@@ -174,7 +174,7 @@ impl VectorData {
 		}
 	}
 
-	pub fn append_manipulator_group(&mut self, point: &ManipulatorGroup<PointId>, preserve_id: bool) {
+	pub fn append_free_point(&mut self, point: &FreePoint, preserve_id: bool) {
 		let mut point_id = self.point_domain.next_id();
 		// Use the current point id if it is not already in the domain else generate a new one
 		let id = if preserve_id && !self.point_domain.ids().contains(&point.id) {
@@ -182,7 +182,7 @@ impl VectorData {
 		} else {
 			point_id.next_id()
 		};
-		self.point_domain.push(id, point.anchor);
+		self.point_domain.push(id, point.position);
 	}
 
 	/// Appends a Kurbo BezPath to the vector data.
@@ -271,7 +271,7 @@ impl VectorData {
 			let target_group = target_group.borrow();
 			match target_group {
 				ClickTargetGroup::Subpath(subpath) => vector_data.append_subpath(subpath, preserve_id),
-				ClickTargetGroup::ManipulatorGroup(point) => vector_data.append_manipulator_group(point, preserve_id),
+				ClickTargetGroup::FreePoint(point) => vector_data.append_free_point(point, preserve_id),
 			}
 		}
 		vector_data

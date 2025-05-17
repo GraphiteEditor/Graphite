@@ -1609,10 +1609,10 @@ impl DocumentMessageHandler {
 					subpath.apply_transform(layer_transform);
 					subpath.is_inside_subpath(&viewport_polygon, None, None)
 				}
-				ClickTargetGroup::ManipulatorGroup(point) => {
+				ClickTargetGroup::FreePoint(point) => {
 					let mut point = point.clone();
 					point.apply_transform(layer_transform);
-					viewport_polygon.contains_point(point.anchor)
+					viewport_polygon.contains_point(point.position)
 				}
 			})
 		})

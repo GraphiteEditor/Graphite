@@ -9,7 +9,7 @@ use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 use base64::Engine;
-use bezier_rs::{ManipulatorGroup, Subpath};
+use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use num_traits::Zero;
@@ -20,10 +20,26 @@ use std::fmt::Write;
 #[cfg(feature = "vello")]
 use vello::*;
 
+#[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FreePoint {
+	pub id: PointId,
+	pub position: DVec2,
+}
+
+impl FreePoint {
+	pub fn new(id: PointId, position: DVec2) -> Self {
+		Self { id, position }
+	}
+
+	pub fn apply_transform(&mut self, transform: DAffine2) {
+		self.position = transform.transform_point2(self.position);
+	}
+}
+
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ClickTargetGroup {
 	Subpath(bezier_rs::Subpath<PointId>),
-	ManipulatorGroup(ManipulatorGroup<PointId>),
+	FreePoint(FreePoint),
 }
 
 /// Represents a clickable target for the layer
@@ -44,12 +60,12 @@ impl ClickTarget {
 		}
 	}
 
-	pub fn new_with_manipulator_group(point: ManipulatorGroup<PointId>) -> Self {
+	pub fn new_with_free_point(point: FreePoint) -> Self {
 		let stroke_width = 10.;
-		let bounding_box = Some([point.anchor - DVec2::splat(stroke_width / 2.), point.anchor + DVec2::splat(stroke_width / 2.)]);
+		let bounding_box = Some([point.position - DVec2::splat(stroke_width / 2.), point.position + DVec2::splat(stroke_width / 2.)]);
 
 		Self {
-			target_group: ClickTargetGroup::ManipulatorGroup(point),
+			target_group: ClickTargetGroup::FreePoint(point),
 			stroke_width,
 			bounding_box,
 		}
@@ -72,7 +88,7 @@ impl ClickTarget {
 			ClickTargetGroup::Subpath(ref mut subpath) => {
 				subpath.apply_transform(affine_transform);
 			}
-			ClickTargetGroup::ManipulatorGroup(ref mut point) => {
+			ClickTargetGroup::FreePoint(ref mut point) => {
 				point.apply_transform(affine_transform);
 			}
 		}
@@ -84,8 +100,8 @@ impl ClickTarget {
 			ClickTargetGroup::Subpath(ref subpath) => {
 				self.bounding_box = subpath.bounding_box();
 			}
-			ClickTargetGroup::ManipulatorGroup(ref point) => {
-				self.bounding_box = Some([point.anchor - DVec2::splat(self.stroke_width / 2.), point.anchor + DVec2::splat(self.stroke_width / 2.)]);
+			ClickTargetGroup::FreePoint(ref point) => {
+				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
 			}
 		}
 	}
@@ -117,10 +133,7 @@ impl ClickTarget {
 				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
 				return any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0);
 			}
-			ClickTargetGroup::ManipulatorGroup(point) => {
-				let point = point.anchor;
-				bezier_iter().map(|bezier| bezier.winding(point)).sum::<i32>() != 0
-			}
+			ClickTargetGroup::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,
 		}
 	}
 
@@ -152,7 +165,7 @@ impl ClickTarget {
 			// Check if the point is within the shape
 			match self.target_group() {
 				ClickTargetGroup::Subpath(subpath) => subpath.closed() && subpath.contains_point(point),
-				ClickTargetGroup::ManipulatorGroup(point_group) => point_group.anchor == point,
+				ClickTargetGroup::FreePoint(free_point) => free_point.position == point,
 			}
 		} else {
 			false
@@ -702,9 +715,9 @@ impl GraphicElementRendered for VectorDataTable {
 				let single_anchors_targets = instance.point_domain.ids().iter().filter_map(|&point_id| {
 					if instance.connected_count(point_id) == 0 {
 						let anchor = instance.point_domain.position_from_id(point_id).unwrap_or_default();
-						let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
+						let point = FreePoint::new(point_id, anchor);
 
-						Some(ClickTarget::new_with_manipulator_group(group))
+						Some(ClickTarget::new_with_free_point(point))
 					} else {
 						None
 					}
@@ -747,9 +760,9 @@ impl GraphicElementRendered for VectorDataTable {
 			let single_anchors_targets = instance.instance.point_domain.ids().iter().filter_map(|&point_id| {
 				if instance.instance.connected_count(point_id) == 0 {
 					let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
-					let group = ManipulatorGroup::new_anchor_with_id(anchor, point_id);
+					let point = FreePoint::new(point_id, anchor);
 
-					let mut click_target = ClickTarget::new_with_manipulator_group(group);
+					let mut click_target = ClickTarget::new_with_free_point(point);
 					click_target.apply_transform(*instance.transform);
 					Some(click_target)
 				} else {

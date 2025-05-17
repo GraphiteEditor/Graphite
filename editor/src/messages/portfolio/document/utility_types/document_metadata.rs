@@ -135,7 +135,7 @@ impl DocumentMetadata {
 			.iter()
 			.filter_map(|click_target| match click_target.target_group() {
 				ClickTargetGroup::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
-				ClickTargetGroup::ManipulatorGroup(_) => click_target.bounding_box_with_transform(transform),
+				ClickTargetGroup::FreePoint(_) => click_target.bounding_box_with_transform(transform),
 			})
 			.reduce(Quad::combine_bounds)
 	}
