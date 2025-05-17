@@ -1,7 +1,7 @@
 use super::poisson_disk::poisson_disk_sample;
 use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
-use kurbo::{Affine, BezPath, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
+use kurbo::{BezPath, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
 
 /// Accuracy to find the position on [kurbo::Bezpath].
 const POSITION_ACCURACY: f64 = 1e-5;
@@ -198,41 +198,40 @@ fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, pre
 ///
 /// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
 /// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
-pub fn poisson_disk_points(bezpath: &BezPath, separation_disk_diameter: f64, rng: impl FnMut() -> f64, subpaths: &[(BezPath, Rect)], subpath_index: usize) -> Vec<DVec2> {
-	if bezpath.elements().is_empty() {
+pub fn poisson_disk_points(mut current_bezpath: BezPath, separation_disk_diameter: f64, rng: impl FnMut() -> f64, bezpaths: &[(BezPath, Rect)]) -> Vec<DVec2> {
+	if current_bezpath.elements().is_empty() {
 		return Vec::new();
 	}
-	let bbox = bezpath.bounding_box();
-	let (offset_x, offset_y) = (bbox.x0, bbox.y0);
-	let (width, height) = (bbox.x1 - bbox.x0, bbox.y1 - bbox.y0);
 
 	// TODO: Optimize the following code and make it more robust
+	current_bezpath.close_path();
 
-	let mut shape = bezpath.clone();
-	shape.close_path();
-	shape.apply_affine(Affine::translate((-offset_x, -offset_y)));
+	// Get the bounding box of the bezpath after offsetting it to the origin (x: 0, y: 0).
+	let current_bezpath_bbox = current_bezpath.bounding_box();
+	let (width, height) = (current_bezpath_bbox.width(), current_bezpath_bbox.height());
+	let (offset_x, offset_y) = (current_bezpath_bbox.x0, current_bezpath_bbox.y0);
 
 	let point_in_shape_checker = |point: DVec2| {
 		// Check against all paths the point is contained in to compute the correct winding number
-		let mut number = 0;
-		for (i, (shape, bbox)) in subpaths.iter().enumerate() {
-			let point = point + DVec2::new(bbox.x0, bbox.y0);
-			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
-				continue;
-			}
-			let winding = shape.winding(dvec2_to_point(point));
+		let point = point + DVec2::new(offset_x, offset_y);
 
-			if i == subpath_index && winding == 0 {
-				return false;
-			}
-			number += winding;
+		if !current_bezpath_bbox.contains(dvec2_to_point(point)) || !current_bezpath.contains(dvec2_to_point(point)) {
+			return false;
+		}
+
+		let mut number = 0;
+
+		for i in 0..bezpaths.len() {
+			let (bezpath, _) = &bezpaths[i];
+			let winding = bezpath.winding(dvec2_to_point(point));
+			number += winding
 		}
 		number != 0
 	};
 
 	let square_edges_intersect_shape_checker = |position: DVec2, size: f64| {
 		let rect = Rect::new(position.x, position.y, position.x + size, position.y + size);
-		bezpath_rectangle_intersections_exist(bezpath, rect)
+		bezpath_rectangle_intersections_exist(&current_bezpath, rect)
 	};
 
 	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);

@@ -1364,24 +1364,26 @@ async fn poisson_disk_points(
 	if separation_disk_diameter <= 0.01 {
 		return VectorDataTable::new(result);
 	}
-	let path_with_bounding_boxes: Vec<_> = vector_data
+
+	let bezpaths: Vec<_> = vector_data
 		.stroke_bezpath_iter()
-		.map(|mut subpath| {
+		.map(|mut bezpath| {
 			// TODO: apply transform to points instead of modifying the paths
-			subpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			let bbox = subpath.bounding_box();
-			(subpath, bbox)
+			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+			let bbox = bezpath.bounding_box();
+			(bezpath, bbox)
 		})
 		.collect();
 
-	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
-		if subpath.segments().count() < 2 {
+	for i in 0..bezpaths.len() {
+		let bezpath = bezpaths[i].0.clone();
+		if bezpath.segments().count() < 2 {
 			continue;
 		}
 
 		let mut poisson_disk_bezpath = BezPath::new();
 
-		for point in bezpath_algorithms::poisson_disk_points(subpath, separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
+		for point in bezpath_algorithms::poisson_disk_points(bezpath, separation_disk_diameter, || rng.random::<f64>(), &bezpaths) {
 			if poisson_disk_bezpath.elements().is_empty() {
 				poisson_disk_bezpath.move_to(dvec2_to_point(point));
 			} else {
