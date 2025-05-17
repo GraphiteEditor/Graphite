@@ -1,5 +1,7 @@
 use super::graph_modification_utils::{self, merge_layers};
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
+use super::utility_functions::calculate_segment_angle;
+use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -729,22 +731,32 @@ impl ShapeState {
 		};
 		let handles = vector_data.all_connected(point_id).take(2).collect::<Vec<_>>();
 		let non_zero_handles = handles.iter().filter(|handle| handle.length(vector_data) > 1e-6).count();
+		let handle_segments = handles.iter().map(|handles| handles.segment).collect::<Vec<_>>();
+
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
 		let points = handles.iter().map(|handle| vector_data.other_point(handle.segment, point_id));
 		let anchor_positions = points
 			.map(|point| point.and_then(|point| ManipulatorPointId::Anchor(point).get_position(vector_data)))
 			.collect::<Vec<_>>();
 
-		// Use the position relative to the anchor
-		let mut directions = anchor_positions
-			.iter()
-			.map(|position| position.map(|position| (position - anchor_position)).and_then(DVec2::try_normalize));
+		let mut segment_angle = 0.;
+		let mut segment_count = 0.;
 
-		// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-		let mut handle_direction = match (directions.next().flatten(), directions.next().flatten()) {
-			(Some(previous), Some(next)) => (previous - next).try_normalize().unwrap_or(next.perp()),
-			(Some(val), None) | (None, Some(val)) => val,
-			(None, None) => return,
+		for segment in &handle_segments {
+			let Some(angle) = calculate_segment_angle(point_id, *segment, vector_data, false) else {
+				continue;
+			};
+			segment_angle += angle;
+			segment_count += 1.;
+		}
+
+		// For a non-endpoint anchor, handles are perpendicular to the average tangent of adjacent segments.(Refer:https://github.com/GraphiteEditor/Graphite/pull/2620#issuecomment-2881501494)
+		let mut handle_direction = if segment_count > 1. {
+			segment_angle = segment_angle / segment_count;
+			segment_angle += std::f64::consts::FRAC_PI_2;
+			DVec2::new(segment_angle.cos(), segment_angle.sin())
+		} else {
+			DVec2::new(segment_angle.cos(), segment_angle.sin())
 		};
 
 		// Set the manipulator to have colinear handles
@@ -778,11 +790,17 @@ impl ShapeState {
 		} else {
 			// Push both in and out handles into the correct position
 			for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
-				// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
-				let Some(length) = other_anchor.map(|position| (position - anchor_position).length() / 3.) else {
+				let Some(anchor_vector) = other_anchor.map(|position| (position - anchor_position)) else {
 					continue;
 				};
-				let new_position = handle_direction * length * sign;
+
+				let Some(unit_vector) = anchor_vector.try_normalize() else {
+					continue;
+				};
+
+				let projection = anchor_vector.length() * HANDLE_LENGTH_FACTOR * handle_direction.dot(unit_vector).abs();
+
+				let new_position = handle_direction * projection * sign;
 				let modification_type = handle.set_relative_position(new_position);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
