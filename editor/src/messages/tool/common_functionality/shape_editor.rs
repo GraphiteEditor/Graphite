@@ -44,7 +44,7 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
-	/// Keeps track of the current state; helps avoid unnecessary computation when called by ShapeState
+	/// Keeps track of the current state; helps avoid unnecessary computation when called by [`ShapeState`].
 	ignore_handles: bool,
 	ignore_anchors: bool,
 	/// Points that are selected but ignored (when their overlays are disabled) are stored here.
@@ -56,6 +56,7 @@ impl SelectedLayerState {
 	pub fn selected(&self) -> impl Iterator<Item = ManipulatorPointId> + '_ {
 		self.selected_points.iter().copied()
 	}
+
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
@@ -63,15 +64,18 @@ impl SelectedLayerState {
 	pub fn select_point(&mut self, point: ManipulatorPointId) {
 		self.selected_points.insert(point);
 	}
+
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
 		self.selected_points.remove(&point);
 	}
+
 	pub fn ignore_handles(&mut self, status: bool) {
 		if self.ignore_handles == !status {
 			return;
 		}
 
 		self.ignore_handles = !status;
+
 		if self.ignore_handles {
 			self.ignored_handle_points.extend(self.selected_points.iter().copied().filter(|point| point.as_handle().is_some()));
 			self.selected_points.retain(|point| !self.ignored_handle_points.contains(point));
@@ -80,12 +84,14 @@ impl SelectedLayerState {
 			self.ignored_handle_points.clear();
 		}
 	}
+
 	pub fn ignore_anchors(&mut self, status: bool) {
 		if self.ignore_anchors == !status {
 			return;
 		}
 
 		self.ignore_anchors = !status;
+
 		if self.ignore_anchors {
 			self.ignored_anchor_points.extend(self.selected_points.iter().copied().filter(|point| point.as_anchor().is_some()));
 			self.selected_points.retain(|point| !self.ignored_anchor_points.contains(point));
@@ -94,9 +100,11 @@ impl SelectedLayerState {
 			self.ignored_anchor_points.clear();
 		}
 	}
+
 	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
+
 	pub fn selected_points_count(&self) -> usize {
 		self.selected_points.len()
 	}
@@ -106,7 +114,7 @@ pub type SelectedShapeState = HashMap<LayerNodeIdentifier, SelectedLayerState>;
 
 #[derive(Debug, Default)]
 pub struct ShapeState {
-	// The layers we can select and edit manipulators (anchors and handles) from
+	/// The layers we can select and edit manipulators (anchors and handles) from.
 	pub selected_shape_state: SelectedShapeState,
 	ignore_handles: bool,
 	ignore_anchors: bool,
@@ -271,13 +279,7 @@ impl ClosestSegment {
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
 	pub fn is_point_ignored(&self, point: &ManipulatorPointId) -> bool {
-		if point.as_handle().is_some() && self.ignore_handles {
-			return true;
-		} else if point.as_anchor().is_some() && self.ignore_anchors {
-			return true;
-		} else {
-			return false;
-		}
+		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
