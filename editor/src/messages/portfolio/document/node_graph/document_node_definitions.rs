@@ -1891,40 +1891,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			// Aims for interoperable compatibility with:
-			// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27brit%27%20%3D%20Brightness/Contrast
-			// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Padding-,Brightness%20and%20Contrast,-Key%20is%20%27brit
-			identifier: "Brightness/Contrast",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BrightnessContrastNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						("Image", "TODO").into(),
-						PropertiesRow::with_override("Brightness", "TODO", WidgetOverride::Custom("brightness".to_string())),
-						PropertiesRow::with_override("Brightness", "TODO", WidgetOverride::Custom("contrast".to_string())),
-						("Use Classic", "TODO").into(),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		// Aims for interoperable compatibility with:
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
+		//
+		// Some further analysis available at:
+		// https://geraldbakker.nl/psnumbers/curves.html
 		// TODO: Fix this, it's currently broken
 		// DocumentNodeDefinition {
 		// 	identifier: "Curves",
@@ -2817,6 +2789,7 @@ pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sy
 /// Defines the logic for inputs to display a custom properties panel widget.
 fn static_node_properties() -> NodeProperties {
 	let mut map: NodeProperties = HashMap::new();
+	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));

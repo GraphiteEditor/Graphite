@@ -968,6 +968,56 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	})
 }
 
+pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in brightness_contrast_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	// Use Classic
+	let use_classic_index = 3;
+	let use_classic = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, use_classic_index, true, context), CheckboxInput::default());
+	let use_classic_value = match document_node.inputs[use_classic_index].as_value() {
+		Some(TaggedValue::Bool(use_classic_choice)) => *use_classic_choice,
+		_ => false,
+	};
+
+	// Brightness
+	let brightness_index = 1;
+	let brightness = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, brightness_index, true, context),
+		NumberInput::default()
+			.unit("%")
+			.mode_range()
+			.display_decimal_places(2)
+			.range_min(Some(if use_classic_value { -100. } else { -150. }))
+			.range_max(Some(if use_classic_value { 100. } else { 150. })),
+	);
+
+	// Contrast
+	let contrast_index = 2;
+	let contrast = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, contrast_index, true, context),
+		NumberInput::default()
+			.unit("%")
+			.mode_range()
+			.display_decimal_places(2)
+			.range_min(Some(if use_classic_value { -100. } else { -50. }))
+			.range_max(Some(100.)),
+	);
+
+	let layout = vec![
+		LayoutGroup::Row { widgets: brightness },
+		LayoutGroup::Row { widgets: contrast },
+		LayoutGroup::Row { widgets: use_classic },
+	];
+
+	layout
+}
+
 pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,

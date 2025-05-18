@@ -12,7 +12,6 @@ use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::marker::PhantomData;
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -88,23 +87,6 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
 
 	result
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct MapImageNode<P, MapFn> {
-	map_fn: MapFn,
-	_p: PhantomData<P>,
-}
-
-#[node_macro::old_node_fn(MapImageNode<_P>)]
-fn map_image<MapFn, _P, Img: BitmapMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
-where
-	MapFn: for<'any_input> Node<'any_input, _P, Output = _P> + 'input,
-{
-	let mut image = image;
-
-	image.map_pixels(|c| map_fn.eval(c));
-	image
 }
 
 #[node_macro::node(category("Raster"))]

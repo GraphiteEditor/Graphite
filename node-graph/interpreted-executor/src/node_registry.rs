@@ -6,15 +6,14 @@ use graphene_core::fn_type;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;
-use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
-use graphene_core::{Node, NodeIO, NodeIOTypes};
+use graphene_core::{NodeIO, NodeIOTypes};
 use graphene_core::{fn_type_fut, future};
 use graphene_std::Context;
 use graphene_std::GraphicElement;
-use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
+use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, IntoTypeErasedNode};
 use graphene_std::application_io::ImageTexture;
 use graphene_std::wasm_application_io::*;
 use node_registry_macros::{async_node, into_node};
@@ -91,37 +90,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => WgpuSurface]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => Option<WgpuSurface>]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
-		// Filters
-		// TODO: Move these filters to the new node macro and put them in `graphene_core::raster::adjustments`, then add them to the document upgrade script which moves many of the adjustment nodes from `graphene_core::raster` to `graphene_core::raster::adjustments`
-		(
-			ProtoNodeIdentifier::new("graphene_core::raster::BrightnessContrastNode"),
-			|args| {
-				Box::pin(async move {
-					use graphene_core::raster::brightness_contrast::*;
-
-					let brightness: DowncastBothNode<(), f64> = DowncastBothNode::new(args[0].clone());
-					let brightness = ClonedNode::new(brightness.eval(()).await);
-					let contrast: DowncastBothNode<(), f64> = DowncastBothNode::new(args[1].clone());
-					let contrast = ClonedNode::new(contrast.eval(()).await);
-					let use_legacy: DowncastBothNode<(), bool> = DowncastBothNode::new(args[2].clone());
-
-					if use_legacy.eval(()).await {
-						let generate_brightness_contrast_legacy_mapper_node = GenerateBrightnessContrastLegacyMapperNode::new(brightness, contrast);
-						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_legacy_mapper_node.eval(())));
-						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-						let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
-						any.into_type_erased()
-					} else {
-						let generate_brightness_contrast_mapper_node = GenerateBrightnessContrastMapperNode::new(brightness, contrast);
-						let map_image_frame_node = graphene_std::raster::MapImageNode::new(ValueNode::new(generate_brightness_contrast_mapper_node.eval(())));
-						let map_image_frame_node = FutureWrapperNode::new(map_image_frame_node);
-						let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(map_image_frame_node);
-						any.into_type_erased()
-					}
-				})
-			},
-			NodeIOTypes::new(concrete!(ImageFrameTable<Color>), concrete!(ImageFrameTable<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
-		),
 		(
 			ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode"),
 			|args| {
@@ -146,7 +114,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
-		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode"),
 			|args| {
