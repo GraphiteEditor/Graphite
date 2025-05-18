@@ -585,16 +585,28 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
 // Into
-pub struct IntoNode<O> {
-	_o: PhantomData<O>,
+pub struct IntoNode<O>(PhantomData<O>);
+impl<_O> IntoNode<_O> {
+	#[cfg(feature = "alloc")]
+	pub const fn new() -> Self {
+		Self(core::marker::PhantomData)
+	}
 }
-#[cfg(feature = "alloc")]
-#[node_macro::old_node_fn(IntoNode<_O>)]
-async fn into<I, _O>(input: I) -> _O
+impl<_O> Default for IntoNode<_O> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+impl<'input, I: 'input, _O: 'input> Node<'input, I> for IntoNode<_O>
 where
 	I: Into<_O> + Sync + Send,
 {
-	input.into()
+	type Output = ::dyn_any::DynFuture<'input, _O>;
+
+	#[inline]
+	fn eval(&'input self, input: I) -> Self::Output {
+		Box::pin(async move { input.into() })
+	}
 }
 
 #[cfg(test)]
