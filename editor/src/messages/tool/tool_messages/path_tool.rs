@@ -67,6 +67,7 @@ pub enum PathToolMessage {
 		extend_selection: Key,
 		lasso_select: Key,
 		handle_drag_from_anchor: Key,
+		drag_restore_handle: Key,
 	},
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -365,7 +366,6 @@ struct PathToolData {
 	saved_points_before_handle_drag: Vec<ManipulatorPointId>,
 	handle_drag_toggle: bool,
 	dragging_state: DraggingState,
-	current_selected_handle_id: Option<ManipulatorPointId>,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
@@ -441,6 +441,7 @@ impl PathToolData {
 		extend_selection: bool,
 		lasso_select: bool,
 		handle_drag_from_anchor: bool,
+		drag_zero_handle: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -500,6 +501,24 @@ impl PathToolData {
 							shape_editor.select_points_by_manipulator_id(&vec![manipulator_point_id]);
 							responses.add(PathToolMessage::SelectedPointUpdated);
 						}
+					}
+				}
+
+				if let Some((Some(point), Some(vector_data))) = shape_editor
+					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+					.and_then(|(layer, point)| Some((point.as_anchor(), document.network_interface.compute_modified_vector(layer))))
+				{
+					let handles = vector_data
+						.all_connected(point)
+						.filter(|handle| handle.length(&vector_data) < 1e-6)
+						.map(|handle| handle.to_manipulator_point())
+						.collect::<Vec<_>>();
+					let endpoint = vector_data.extendable_points(false).any(|anchor| point == anchor);
+
+					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
+						shape_editor.deselect_all_points();
+						shape_editor.select_points_by_manipulator_id(&handles);
+						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 					}
 				}
 
@@ -692,6 +711,7 @@ impl PathToolData {
 		handle_id: ManipulatorPointId,
 		lock_angle: bool,
 		snap_angle: bool,
+		tangent_to_neighboring_tangents: bool,
 	) -> f64 {
 		let current_angle = -handle_vector.angle_to(DVec2::X);
 
@@ -702,17 +722,22 @@ impl PathToolData {
 			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer))
 		{
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
-				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id) {
+				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id, tangent_to_neighboring_tangents) {
 					self.angle = angle;
+					self.angle_locked = true;
 					return angle;
 				}
 			}
 		}
 
-		// When the angle is locked we use the old angle
-
-		if self.current_selected_handle_id == Some(handle_id) && lock_angle {
+		if lock_angle && !self.angle_locked {
 			self.angle_locked = true;
+			self.angle = -relative_vector.angle_to(DVec2::X);
+			return -relative_vector.angle_to(DVec2::X);
+		}
+
+		// When the angle is locked we use the old angle
+		if self.angle_locked {
 			return self.angle;
 		}
 
@@ -723,8 +748,6 @@ impl PathToolData {
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 
-		// Cache the angle and handle id for lock angle
-		self.current_selected_handle_id = Some(handle_id);
 		self.angle = handle_angle;
 
 		handle_angle
@@ -750,6 +773,7 @@ impl PathToolData {
 					origin: anchor_position,
 					direction: handle_direction.normalize_or_zero(),
 				};
+
 				self.snap_manager.constrained_snap(&snap_data, &snap_point, snap_constraint, Default::default())
 			}
 			false => self.snap_manager.free_snap(&snap_data, &snap_point, Default::default()),
@@ -853,7 +877,17 @@ impl PathToolData {
 		let snapped_delta = if let Some((handle_pos, anchor_pos, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
 			let cursor_pos = handle_pos + raw_delta;
 
-			let handle_angle = self.calculate_handle_angle(shape_editor, document, responses, handle_pos - anchor_pos, cursor_pos - anchor_pos, handle_id, lock_angle, snap_angle);
+			let handle_angle = self.calculate_handle_angle(
+				shape_editor,
+				document,
+				responses,
+				handle_pos - anchor_pos,
+				cursor_pos - anchor_pos,
+				handle_id,
+				lock_angle,
+				snap_angle,
+				equidistant,
+			);
 
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
 			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
@@ -1106,17 +1140,18 @@ impl Fsm for PathToolFsmState {
 					extend_selection,
 					lasso_select,
 					handle_drag_from_anchor,
-					..
+					drag_restore_handle,
 				},
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let lasso_select = input.keyboard.get(lasso_select as usize);
 				let handle_drag_from_anchor = input.keyboard.get(handle_drag_from_anchor as usize);
+				let drag_zero_handle = input.keyboard.get(drag_restore_handle as usize);
 
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, lasso_select, handle_drag_from_anchor)
+				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, lasso_select, handle_drag_from_anchor, drag_zero_handle)
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
@@ -1372,6 +1407,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.saved_points_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
+				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
@@ -1440,6 +1476,7 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.alt_dragging_from_anchor = false;
 				tool_data.alt_clicked_on_anchor = false;
+				tool_data.angle_locked = false;
 
 				if tool_data.select_anchor_toggled {
 					shape_editor.deselect_all_points();
@@ -1772,6 +1809,7 @@ fn calculate_lock_angle(
 	document: &DocumentMessageHandler,
 	vector_data: &VectorData,
 	handle_id: ManipulatorPointId,
+	tangent_to_neighboring_tangents: bool,
 ) -> Option<f64> {
 	let anchor = handle_id.get_anchor(vector_data)?;
 	let anchor_position = vector_data.point_domain.position_from_id(anchor);
@@ -1805,7 +1843,14 @@ fn calculate_lock_angle(
 			let angle_2 = calculate_segment_angle(anchor, segment, vector_data, false);
 
 			match (angle_1, angle_2) {
-				(Some(angle_1), Some(angle_2)) => Some((angle_1 + angle_2) / 2.0),
+				(Some(angle_1), Some(angle_2)) => {
+					let angle = Some((angle_1 + angle_2) / 2.);
+					if tangent_to_neighboring_tangents {
+						angle.map(|angle| angle + std::f64::consts::FRAC_PI_2)
+					} else {
+						angle
+					}
+				}
 				(Some(angle_1), None) => Some(angle_1),
 				(None, Some(angle_2)) => Some(angle_2),
 				(None, None) => None,

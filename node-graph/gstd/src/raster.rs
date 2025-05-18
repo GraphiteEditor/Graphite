@@ -4,7 +4,7 @@ use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{
-	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample,
+	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Sample,
 };
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
@@ -12,7 +12,6 @@ use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::marker::PhantomData;
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -90,95 +89,28 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 	result
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MapImageNode<P, MapFn> {
-	map_fn: MapFn,
-	_p: PhantomData<P>,
-}
-
-#[node_macro::old_node_fn(MapImageNode<_P>)]
-fn map_image<MapFn, _P, Img: BitmapMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
-where
-	MapFn: for<'any_input> Node<'any_input, _P, Output = _P> + 'input,
-{
-	let mut image = image;
-
-	image.map_pixels(|c| map_fn.eval(c));
-	image
-}
-
-#[node_macro::node]
-fn insert_channel<
-	// _P is the color of the input image.
-	_P: RGBMut,
-	_S: Pixel + Luminance,
-	// Input image
-	Input: BitmapMut<Pixel = _P>,
-	Insertion: Bitmap<Pixel = _S>,
->(
+#[node_macro::node(category("Raster"))]
+fn combine_channels<_I, Red, Green, Blue, Alpha>(
 	_: impl Ctx,
-	#[implementations(ImageFrameTable<Color>)] mut image: Input,
-	#[implementations(ImageFrameTable<Color>)] insertion: Insertion,
-	target_channel: RedGreenBlue,
-) -> Input
-where
-	_P::ColorChannel: Linear,
-{
-	if insertion.width() == 0 {
-		return image;
-	}
-
-	if insertion.width() != image.width() || insertion.height() != image.height() {
-		log::warn!("Stencil and image have different sizes. This is not supported.");
-		return image;
-	}
-
-	for y in 0..image.height() {
-		for x in 0..image.width() {
-			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			let insertion_pixel = insertion.get_pixel(x, y).unwrap();
-			match target_channel {
-				RedGreenBlue::Red => image_pixel.set_red(insertion_pixel.l().cast_linear_channel()),
-				RedGreenBlue::Green => image_pixel.set_green(insertion_pixel.l().cast_linear_channel()),
-				RedGreenBlue::Blue => image_pixel.set_blue(insertion_pixel.l().cast_linear_channel()),
-			}
-		}
-	}
-
-	image
-}
-
-#[node_macro::node]
-fn combine_channels<
-	// _P is the color of the input image.
-	_P: RGBMut + AlphaMut,
-	_S: Pixel + Luminance,
-	// Input image
-	Input: BitmapMut<Pixel = _P>,
-	Red: Bitmap<Pixel = _S>,
-	Green: Bitmap<Pixel = _S>,
-	Blue: Bitmap<Pixel = _S>,
-	Alpha: Bitmap<Pixel = _S>,
->(
-	_: impl Ctx,
-	#[implementations(ImageFrameTable<Color>)] mut image: Input,
+	_primary: (),
 	#[implementations(ImageFrameTable<Color>)] red: Red,
 	#[implementations(ImageFrameTable<Color>)] green: Green,
 	#[implementations(ImageFrameTable<Color>)] blue: Blue,
 	#[implementations(ImageFrameTable<Color>)] alpha: Alpha,
-) -> Input
+) -> ImageFrameTable<Color>
 where
-	_P::ColorChannel: Linear,
+	_I: Pixel + Luminance,
+	Red: Bitmap<Pixel = _I>,
+	Green: Bitmap<Pixel = _I>,
+	Blue: Bitmap<Pixel = _I>,
+	Alpha: Bitmap<Pixel = _I>,
 {
 	let dimensions = [red.dim(), green.dim(), blue.dim(), alpha.dim()];
-	if dimensions.iter().all(|&(x, _)| x == 0) {
-		return image;
+	if dimensions.iter().any(|&(x, y)| x == 0 || y == 0) || dimensions.iter().any(|&(x, y)| dimensions.iter().any(|&(other_x, other_y)| x != other_x || y != other_y)) {
+		return ImageFrameTable::one_empty_image();
 	}
 
-	if dimensions.iter().any(|&(x, y)| x != image.width() || y != image.height()) {
-		log::warn!("Stencil and image have different sizes. This is not supported.");
-		return image;
-	}
+	let mut image = Image::new(red.width(), red.height(), Color::TRANSPARENT);
 
 	for y in 0..image.height() {
 		for x in 0..image.width() {
@@ -198,26 +130,30 @@ where
 		}
 	}
 
-	image
+	ImageFrameTable::new(image)
 }
 
-#[node_macro::node()]
-fn mask_image<
-	// _P is the color of the input image. It must have an alpha channel because that is going to
-	// be modified by the mask
+#[node_macro::node(category("Raster"))]
+fn mask<_P, _S, Input, Stencil>(
+	_: impl Ctx,
+	/// The image to be masked.
+	#[implementations(ImageFrameTable<Color>)]
+	mut image: Input,
+	/// The stencil to be used for masking.
+	#[implementations(ImageFrameTable<Color>)]
+	#[expose]
+	stencil: Stencil,
+) -> Input
+where
+	// _P is the color of the input image. It must have an alpha channel because that is going to be modified by the mask.
 	_P: Alpha,
-	// _S is the color of the stencil. It must have a luminance channel because that is used to
-	// mask the input image
+	// _S is the color of the stencil. It must have a luminance channel because that is used to mask the input image.
 	_S: Luminance,
 	// Input image
 	Input: Transform + BitmapMut<Pixel = _P>,
 	// Stencil
 	Stencil: Transform + Sample<Pixel = _S>,
->(
-	_: impl Ctx,
-	#[implementations(ImageFrameTable<Color>)] mut image: Input,
-	#[implementations(ImageFrameTable<Color>)] stencil: Stencil,
-) -> Input {
+{
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 	let mask_size = stencil.transform().decompose_scale();
 
@@ -313,13 +249,8 @@ where
 	background
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ExtendImageToBoundsNode<Bounds> {
-	bounds: Bounds,
-}
-
-#[node_macro::old_node_fn(ExtendImageToBoundsNode)]
-fn extend_image_to_bounds(image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
+#[node_macro::node(category(""))]
+fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
 	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
