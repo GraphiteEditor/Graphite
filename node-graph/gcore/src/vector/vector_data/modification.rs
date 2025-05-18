@@ -614,14 +614,17 @@ impl<'a> AppendBezpath<'a> {
 					this.first_point_index = Some(next_point_index);
 					this.last_point_index = Some(next_point_index);
 				}
-				kurbo::PathEl::ClosePath => match (this.first_point_index, this.last_point_index, this.first_segment_id) {
-					(Some(first_point_index), Some(last_point_index), Some(first_segment_id)) => {
+				kurbo::PathEl::ClosePath => match (this.first_point_index, this.last_point_index) {
+					(Some(first_point_index), Some(last_point_index)) => {
 						let next_segment_id = this.segment_id.next_id();
 						this.vector_data
 							.segment_domain
 							.push(next_segment_id, last_point_index, first_point_index, this.next_handle.unwrap_or(BezierHandles::Linear), stroke_id);
 
 						let next_region_id = this.vector_data.region_domain.next_id();
+						// In case there is only one anchor point.
+						let first_segment_id = this.first_segment_id.unwrap_or(next_segment_id);
+
 						this.vector_data.region_domain.push(next_region_id, first_segment_id..=next_segment_id, fill_id);
 					}
 					_ => {
