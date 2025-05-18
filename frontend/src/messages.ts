@@ -46,6 +46,8 @@ const ContextTupleToVec2 = Transform((data) => {
 	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
 	if (contextMenuData.ToggleLayer !== undefined) {
 		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
+	} else if (contextMenuData.CreateNode !== undefined) {
+		contextMenuData = { type: "CreateNode", compatibleType: contextMenuData.CreateNode.compatibleType };
 	}
 	return { contextMenuCoordinates, contextMenuData };
 });
@@ -108,12 +110,9 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-const InputTypeDescriptions = Transform(({ obj }) => new Map(obj.inputTypeDescriptions));
 const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
 
 export class SendUIMetadata extends JsMessage {
-	@InputTypeDescriptions
-	readonly inputTypeDescriptions!: Map<string, string>;
 	@NodeDescriptions
 	readonly nodeDescriptions!: Map<string, string>;
 	@Type(() => FrontendNode)
@@ -185,8 +184,7 @@ export type FrontendClickTargets = {
 
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-
-	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
+	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Group" | "Artboard";
@@ -219,6 +217,8 @@ export class FrontendGraphInput {
 
 	readonly name!: string;
 
+	readonly description!: string;
+
 	readonly resolvedType!: string | undefined;
 
 	readonly validTypes!: string[];
@@ -249,6 +249,8 @@ export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
+
+	readonly description!: string;
 
 	readonly resolvedType!: string | undefined;
 
@@ -337,6 +339,8 @@ export class FrontendNodeType {
 	readonly name!: string;
 
 	readonly category!: string;
+
+	readonly inputTypes!: string[];
 }
 
 export class NodeGraphTransform {
@@ -1346,10 +1350,10 @@ export class TextLabel extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export type PivotPosition = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
+export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
-export class PivotInput extends WidgetProps {
-	position!: PivotPosition;
+export class ReferencePointInput extends WidgetProps {
+	value!: ReferencePoint;
 
 	disabled!: boolean;
 }
@@ -1369,7 +1373,7 @@ const widgetSubTypes = [
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
-	{ value: PivotInput, name: "PivotInput" },
+	{ value: ReferencePointInput, name: "ReferencePointInput" },
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },
@@ -1505,7 +1509,7 @@ export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTa
 	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
 }
 
-export type WidgetSection = { name: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
@@ -1547,6 +1551,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.section) {
 		const result: WidgetSection = {
 			name: layoutGroup.section.name,
+			description: layoutGroup.section.description,
 			visible: layoutGroup.section.visible,
 			pinned: layoutGroup.section.pinned,
 			id: layoutGroup.section.id,

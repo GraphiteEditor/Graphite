@@ -209,6 +209,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		match message {
 			// Overlays
 			TransformLayerMessage::Overlays(mut overlay_context) => {
+				if !overlay_context.visibility_settings.transform_measurement() {
+					return;
+				}
+
 				for layer in document.metadata().all_layers() {
 					if !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
@@ -242,7 +246,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							if matches!(axis_constraint, Axis::Both | Axis::X) && translation.x != 0. {
 								let end = if self.local { (quad[1] - quad[0]).rotate(e1) + quad[0] } else { quad[1] };
-								overlay_context.line(quad[0], end, None, None);
+								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
 
 								let x_transform = DAffine2::from_translation((quad[0] + end) / 2.);
 								overlay_context.text(&format_rounded(translation.x, 3), COLOR_OVERLAY_BLUE, None, x_transform, 4., [Pivot::Middle, Pivot::End]);
@@ -250,7 +254,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 							if matches!(axis_constraint, Axis::Both | Axis::Y) && translation.y != 0. {
 								let end = if self.local { (quad[3] - quad[0]).rotate(e1) + quad[0] } else { quad[3] };
-								overlay_context.line(quad[0], end, None, None);
+								overlay_context.dashed_line(quad[0], end, None, None, Some(2.), Some(2.), Some(0.5));
 								let x_parameter = viewport_translate.x.clamp(-1., 1.);
 								let y_transform = DAffine2::from_translation((quad[0] + end) / 2. + x_parameter * DVec2::X * 0.);
 								let pivot_selection = if x_parameter >= -1e-3 { Pivot::Start } else { Pivot::End };
@@ -258,9 +262,10 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 									overlay_context.text(&format_rounded(translation.y, 2), COLOR_OVERLAY_BLUE, None, y_transform, 3., [pivot_selection, Pivot::Middle]);
 								}
 							}
+
 							if matches!(axis_constraint, Axis::Both) && translation.x != 0. && translation.y != 0. {
-								overlay_context.dashed_line(quad[1], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
-								overlay_context.dashed_line(quad[3], quad[2], None, None, Some(2.), Some(2.), Some(0.5));
+								overlay_context.line(quad[1], quad[2], None, None);
+								overlay_context.line(quad[3], quad[2], None, None);
 							}
 						}
 						TransformOperation::Scaling(scale) => {
@@ -274,7 +279,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let end_point = pivot + local_edge * scale.max(1.);
 
 							if scale > 0. {
-								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(4.), Some(4.), Some(0.5));
+								overlay_context.dashed_line(pivot, boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
 							}
 							overlay_context.line(boundary_point, end_point, None, None);
 
@@ -298,7 +303,15 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let radius = start_mouse.distance(pivot);
 							let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
 							let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
-							let text = format!("{}°", format_rounded(angle.to_degrees(), 2));
+							let angle_in_degrees = angle.to_degrees();
+							let display_angle = if angle_in_degrees.is_sign_positive() {
+								angle_in_degrees - (angle_in_degrees / 360.).floor() * 360.
+							} else if angle_in_degrees.is_sign_negative() {
+								angle_in_degrees - ((angle_in_degrees / 360.).floor() + 1.) * 360.
+							} else {
+								angle_in_degrees
+							};
+							let text = format!("{}°", format_rounded(display_angle, 2));
 							let text_texture_width = overlay_context.get_width(&text) / 2.;
 							let text_texture_height = 12.;
 							let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
@@ -395,9 +408,12 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 							let handle1_length = handle1.length(&vector_data);
 							let handle2_length = handle2.length(&vector_data);
 
-							if (handle1_length == 0. && handle2_length == 0.) || (handle1_length == f64::MAX && handle2_length == f64::MAX) {
-								selected.original_transforms.clear();
-								return;
+							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+								// G should work for this point but not R and S
+								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+									selected.original_transforms.clear();
+									return;
+								}
 							}
 						}
 					} else {
@@ -702,12 +718,13 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 #[cfg(test)]
 mod test_transform_layer {
-	use crate::messages::portfolio::document::graph_operation::transform_utils;
-	use crate::test_utils::test_prelude::*;
-	// Use ModifyInputsContext to locate the transform node
-	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+	use crate::messages::portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext};
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::prelude::Message;
+	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
+	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
+	use graphene_core::vector::PointId;
 	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
@@ -733,7 +750,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
 
-		let translation = DVec2::new(50.0, 50.0);
+		let translation = DVec2::new(50., 50.);
 		editor.move_mouse(translation.x, translation.y, ModifierKeys::empty(), MouseKeys::NONE).await;
 
 		editor
@@ -748,7 +765,7 @@ mod test_transform_layer {
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		let translation_diff = (final_transform.translation - original_transform.translation).length();
-		assert!(translation_diff > 10.0, "Transform should have changed after applying transformation. Diff: {}", translation_diff);
+		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {}", translation_diff);
 	}
 
 	#[tokio::test]
@@ -762,7 +779,7 @@ mod test_transform_layer {
 		let original_transform = get_layer_transform(&mut editor, layer).await.expect("Should be able to get the layer transform");
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
 				slow_key: Key::Shift,
@@ -782,7 +799,7 @@ mod test_transform_layer {
 
 		// Verify transform is either restored to original OR reset to identity
 		assert!(
-			(final_translation - original_translation).length() < 5.0 || final_translation.length() < 0.001,
+			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
 			"Transform neither restored to original nor reset to identity. Original: {:?}, Final: {:?}",
 			original_translation,
 			final_translation
@@ -802,7 +819,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
-		editor.move_mouse(150.0, 50.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
 
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
@@ -840,7 +857,7 @@ mod test_transform_layer {
 		assert!(!after_cancel.translation.y.is_nan(), "Transform is NaN after cancel");
 
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
 	}
 
 	#[tokio::test]
@@ -856,7 +873,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
 
-		editor.move_mouse(150.0, 150.0, ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.move_mouse(150., 150., ModifierKeys::empty(), MouseKeys::NONE).await;
 
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
@@ -906,6 +923,345 @@ mod test_transform_layer {
 
 		// Also check translation component is similar
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1.0, "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+	}
+
+	#[tokio::test]
+	async fn test_grab_rotate_scale_chained() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(150., 130., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_grab_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let expected_translation = DVec2::new(50., 30.);
+		let actual_translation = after_grab_transform.translation - original_transform.translation;
+		assert!(
+			(actual_translation - expected_translation).length() < 1e-5,
+			"Expected translation of {:?}, got {:?}",
+			expected_translation,
+			actual_translation
+		);
+
+		// 2. Chain to rotation - from current position to create ~45 degree rotation
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		editor.move_mouse(190., 90., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		let after_rotate_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Checking for off-diagonal elements close to 0.707, which corresponds to cos(45°) and sin(45°)
+		assert!(
+			!after_rotate_transform.matrix2.abs_diff_eq(after_grab_transform.matrix2, 1e-5) &&
+			(after_rotate_transform.matrix2.x_axis.y.abs() - 0.707).abs() < 0.1 &&  // Check for off-diagonal elements close to 0.707
+			(after_rotate_transform.matrix2.y_axis.x.abs() - 0.707).abs() < 0.1, // that would indicate ~45° rotation
+			"Rotation should change matrix components with approximately 45° rotation"
+		);
+
+		// 3. Chain to scaling - scale(area) up by 2x
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.move_mouse(250., 200., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		let after_scale_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let before_scale_det = after_rotate_transform.matrix2.determinant();
+		let after_scale_det = after_scale_transform.matrix2.determinant();
+		assert!(
+			after_scale_det >= 2. * before_scale_det,
+			"Scale should increase the determinant of the matrix (before: {}, after: {})",
+			before_scale_det,
+			after_scale_det
+		);
+
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
+	}
+
+	#[tokio::test]
+	async fn test_scale_with_panned_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let pan_amount = DVec2::new(200., 150.);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan_amount }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
+		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
+
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+	}
+
+	#[tokio::test]
+	async fn test_scale_with_zoomed_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
+		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
+
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2.0, got: {}", scale_x);
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2.0, got: {}", scale_y);
+	}
+
+	#[tokio::test]
+	async fn test_rotate_with_rotated_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let original_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		// Rotate the document view (45 degrees)
+		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				angle_radians: (45. as f64).to_radians(),
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+
+		let original_angle = original_transform.to_scale_angle_translation().1;
+		let final_angle = final_transform.to_scale_angle_translation().1;
+		let angle_change = (final_angle - original_angle).to_degrees();
+
+		// Normalize angle between 0 and 360
+		let angle_change = ((angle_change % 360.) + 360.) % 360.;
+		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+	}
+
+	#[tokio::test]
+	async fn test_grs_single_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		let point_id = PointId::generate();
+		let modification_type = VectorModificationType::InsertPoint {
+			id: point_id,
+			position: DVec2::new(100., 100.),
+		};
+		editor.handle_message(GraphOperationMessage::Vector { layer, modification_type }).await;
+		editor.handle_message(ToolMessage::ActivateTool { tool_type: ToolType::Select }).await;
+
+		// Testing grab operation - just checking that it doesn't crash.
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(150., 150., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await;
+		assert!(final_transform.is_some(), "Transform node should exist after grab operation");
+	}
+	#[tokio::test]
+	async fn test_scale_to_zero_then_rescale() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		// First scale to near-zero
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDecimalPoint).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 0 }).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 1 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let near_zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		// Verify scale is near zero.
+		let scale_x = near_zero_transform.matrix2.x_axis.length();
+		let scale_y = near_zero_transform.matrix2.y_axis.length();
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x > 0., "Scale factor X should not be exactly zero");
+		assert!(scale_y > 0., "Scale factor Y should not be exactly zero");
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(final_transform.is_finite(), "Transform should be finite after rescaling");
+
+		let new_scale_x = final_transform.matrix2.x_axis.length();
+		let new_scale_y = final_transform.matrix2.y_axis.length();
+		assert!(new_scale_x > 0., "After rescaling, scale factor X should be non-zero");
+		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be non-zero");
+	}
+
+	#[tokio::test]
+	async fn test_transform_with_different_selections() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.draw_rect(150., 0., 250., 100.).await;
+		editor.draw_rect(0., 150., 100., 250.).await;
+		editor.draw_rect(150., 150., 250., 250.).await;
+		let document = editor.active_document();
+		let layers: Vec<LayerNodeIdentifier> = document.metadata().all_layers().collect();
+
+		assert!(layers.len() == 4);
+
+		// Creating a group with two rectangles
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![layers[2].to_node(), layers[3].to_node()],
+			})
+			.await;
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		// Get the group layer (should be the newest layer)
+		let document = editor.active_document();
+		let group_layer = document.metadata().all_layers().next().unwrap();
+
+		// Test 1: Transform single layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layers[0].to_node()] }).await;
+		let original_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Transform should change for single layer");
+
+		// Test 2: Transform multiple layers
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![layers[0].to_node(), layers[1].to_node()],
+			})
+			.await;
+		let original_transform_1 = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		let original_transform_2 = get_layer_transform(&mut editor, layers[1]).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		editor.move_mouse(200., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_transform_1 = get_layer_transform(&mut editor, layers[0]).await.unwrap();
+		let final_transform_2 = get_layer_transform(&mut editor, layers[1]).await.unwrap();
+		assert!(!final_transform_1.abs_diff_eq(original_transform_1, 1e-5), "Transform should change for first layer in multi-selection");
+		assert!(
+			!final_transform_2.abs_diff_eq(original_transform_2, 1e-5),
+			"Transform should change for second layer in multi-selection"
+		);
+
+		// Test 3: Transform group
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![group_layer.to_node()] }).await;
+		let original_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
+		assert!(!final_group_transform.abs_diff_eq(original_group_transform, 1e-5), "Transform should change for group");
+
+		// Test 4: Transform layers inside transformed group
+		let child_layer_id = {
+			let document = editor.active_document_mut();
+			let group_children = document.network_interface.downstream_layers(&group_layer.to_node(), &[]);
+			if !group_children.is_empty() {
+				Some(LayerNodeIdentifier::new(group_children[0], &document.network_interface, &[]))
+			} else {
+				None
+			}
+		};
+		assert!(child_layer_id.is_some(), "Group should have child layers");
+		let child_layer_id = child_layer_id.unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![child_layer_id.to_node()],
+			})
+			.await;
+		let original_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(30., 30., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
+		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
 	}
 }

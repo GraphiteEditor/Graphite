@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_RED, DRAG_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -456,7 +456,7 @@ impl Fsm for TextToolFsmState {
 			font_cache,
 			..
 		} = transition_data;
-		let fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+		let fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
 			.to_rgba_hex_srgb();
@@ -473,7 +473,7 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad, Some(&("#".to_string() + &fill_color)));
+						overlay_context.quad(transformed_quad, None, Some(&("#".to_string() + &fill_color)));
 					}
 				}
 
@@ -488,11 +488,12 @@ impl Fsm for TextToolFsmState {
 					for layer in document.intersect_quad_no_artboards(quad, input) {
 						overlay_context.quad(
 							Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])),
+							None,
 							Some(&("#".to_string() + &fill_color)),
 						);
 					}
 
-					overlay_context.quad(quad, Some(&("#".to_string() + &fill_color)));
+					overlay_context.quad(quad, None, Some(&("#".to_string() + &fill_color)));
 				}
 
 				// TODO: implement bounding box for multiple layers
@@ -506,23 +507,25 @@ impl Fsm for TextToolFsmState {
 					return self;
 				}
 
-				if let Some(bounds) = bounds {
-					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
-					bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
-					bounding_box_manager.transform = layer_transform;
+				if overlay_context.visibility_settings.transform_cage() {
+					if let Some(bounds) = bounds {
+						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+						bounding_box_manager.bounds = [bounds.0[0], bounds.0[2]];
+						bounding_box_manager.transform = layer_transform;
 
-					bounding_box_manager.render_quad(&mut overlay_context);
-					// Draw red overlay if text is clipped
-					let transformed_quad = layer_transform * bounds;
-					if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
-						let buzz_face = font_cache.get(font).map(|data| load_face(data));
-						if lines_clipping(text.as_str(), buzz_face, typesetting) {
-							overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+						bounding_box_manager.render_quad(&mut overlay_context);
+						// Draw red overlay if text is clipped
+						let transformed_quad = layer_transform * bounds;
+						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
+							let buzz_face = font_cache.get(font).map(|data| load_face(data));
+							if lines_clipping(text.as_str(), buzz_face, typesetting) {
+								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
+							}
 						}
-					}
 
-					bounding_box_manager.render_overlays(&mut overlay_context, false);
-					tool_data.pivot.update_pivot(document, &mut overlay_context, None);
+						bounding_box_manager.render_overlays(&mut overlay_context, false);
+						tool_data.pivot.update_pivot(document, &mut overlay_context, None);
+					}
 				} else {
 					tool_data.bounding_box_manager.take();
 				}
@@ -702,7 +705,7 @@ impl Fsm for TextToolFsmState {
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 
-						// AutoPanning
+						// Auto-panning
 						let messages = [
 							TextToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
 							TextToolMessage::PointerMove { center, lock_ratio }.into(),
@@ -725,7 +728,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::ResizingBounds | TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;

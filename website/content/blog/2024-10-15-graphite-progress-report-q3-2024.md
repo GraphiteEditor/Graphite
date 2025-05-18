@@ -17,7 +17,7 @@ This has been the most productive quarter yet in the project's three-year histor
 
 <!-- more -->
 
-This is the third in our series of quarterly progress reports. If you missed the [first](../graphite-progress-report-q1-2024) or [second](../graphite-progress-report-q2-2024) ones, be sure to check them out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars of GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
+This is the third in our series of quarterly progress reports. If you missed the [first](../graphite-progress-report-q1-2024) or [second](../graphite-progress-report-q2-2024) ones, be sure to check them out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars on GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
 
 The new *Changing Seasons* artwork shown here showcases some of the recently introduced nodes in this update. And it animates! Give it a try yourself by opening the artwork and dragging the percentage slider to morph from oak to maple leaves as the colors change.
 
@@ -385,6 +385,6 @@ We're excited to be participating in [Nodevember](https://nodevember.io/) next m
 
 ### Community art contest
 
-Congratulations to [VDawg](https://www.instagram.com/vdawg.jpg/), the winner of the community art contest, whose work is featured below. The next contest is open now! Submit before the end of the year to be featured in the Q4 progress report by posting your creations in the `#🎨art-showcase` channel in [our Discord](https://discord.graphite.rs).
+Congratulations to [VDawg](https://www.instagram.com/vdawg.jpg/), the winner of the community art contest, whose work is featured below.
 
 <img src="https://static.graphite.rs/content/blog/2024-10-15-graphite-progress-report-q3-2024/art-contest-winner.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Winning artwork depicts a dark landscape with an ethereal diamond forming a constellation with the stars above" />

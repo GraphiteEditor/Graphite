@@ -5,9 +5,10 @@ use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::renderer::format_transform_matrix;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use std::fmt::{self, Display, Write};
+use std::fmt::Write;
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum GradientType {
 	#[default]
 	Linear,
@@ -462,7 +463,8 @@ impl From<Fill> for FillChoice {
 
 /// Enum describing the type of [Fill].
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum FillType {
 	#[default]
 	Solid,
@@ -471,7 +473,8 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum LineCap {
 	#[default]
 	Butt,
@@ -479,18 +482,19 @@ pub enum LineCap {
 	Square,
 }
 
-impl Display for LineCap {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl LineCap {
+	fn svg_name(&self) -> &'static str {
 		match self {
-			LineCap::Butt => write!(f, "butt"),
-			LineCap::Round => write!(f, "round"),
-			LineCap::Square => write!(f, "square"),
+			LineCap::Butt => "butt",
+			LineCap::Round => "round",
+			LineCap::Square => "square",
 		}
 	}
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum LineJoin {
 	#[default]
 	Miter,
@@ -498,12 +502,12 @@ pub enum LineJoin {
 	Round,
 }
 
-impl Display for LineJoin {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl LineJoin {
+	fn svg_name(&self) -> &'static str {
 		match self {
-			LineJoin::Bevel => write!(f, "bevel"),
-			LineJoin::Miter => write!(f, "miter"),
-			LineJoin::Round => write!(f, "round"),
+			LineJoin::Bevel => "bevel",
+			LineJoin::Miter => "miter",
+			LineJoin::Round => "round",
 		}
 	}
 }
@@ -526,6 +530,8 @@ pub struct Stroke {
 	pub line_join_miter_limit: f64,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
+	#[serde(default)]
+	pub non_scaling: bool,
 }
 
 impl core::hash::Hash for Stroke {
@@ -538,6 +544,7 @@ impl core::hash::Hash for Stroke {
 		self.line_cap.hash(state);
 		self.line_join.hash(state);
 		self.line_join_miter_limit.to_bits().hash(state);
+		self.non_scaling.hash(state);
 	}
 }
 
@@ -563,6 +570,7 @@ impl Stroke {
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 		}
 	}
 
@@ -579,6 +587,7 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
+			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 		}
 	}
 
@@ -647,15 +656,18 @@ impl Stroke {
 			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
 		}
 		if let Some(line_cap) = line_cap {
-			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap);
+			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap.svg_name());
 		}
 		if let Some(line_join) = line_join {
-			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join);
+			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join.svg_name());
 		}
 		if let Some(line_join_miter_limit) = line_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);
 		}
-
+		// Add vector-effect attribute to make strokes non-scaling
+		if self.non_scaling {
+			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
+		}
 		attributes
 	}
 
@@ -702,6 +714,11 @@ impl Stroke {
 		self.line_join_miter_limit = limit;
 		self
 	}
+
+	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
+		self.non_scaling = non_scaling;
+		self
+	}
 }
 
 // Having an alpha of 1 to start with leads to a better experience with the properties panel
@@ -716,6 +733,7 @@ impl Default for Stroke {
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 		}
 	}
 }
@@ -878,7 +896,10 @@ impl PathStyle {
 		match view_mode {
 			ViewMode::Outline => {
 				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
-				let stroke_attribute = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render();
+				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
+				// Outline strokes should be non-scaling by default
+				outline_stroke.non_scaling = true;
+				let stroke_attribute = outline_stroke.render();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {

@@ -12,6 +12,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
+use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
@@ -84,7 +85,7 @@ pub struct DocumentMessageHandler {
 	pub view_mode: ViewMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	pub overlays_visible: bool,
+	pub overlays_visibility_settings: OverlaysVisibilitySettings,
 	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 	pub rulers_visible: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
@@ -145,7 +146,7 @@ impl Default for DocumentMessageHandler {
 			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			overlays_visible: true,
+			overlays_visibility_settings: OverlaysVisibilitySettings::default(),
 			rulers_visible: true,
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
@@ -193,17 +194,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					},
 					document_ptz: &mut self.document_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
+					preferences,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
 			}
 			DocumentMessage::Overlays(message) => {
-				let overlays_visible = self.overlays_visible;
+				let visibility_settings = self.overlays_visibility_settings;
+
+				// Send the overlays message to the overlays message handler
 				self.overlays_message_handler.process_message(
 					message,
 					responses,
 					OverlaysMessageData {
-						overlays_visible,
+						visibility_settings,
 						ipp,
 						device_pixel_ratio,
 					},
@@ -346,13 +350,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+				if !overlay_context.visibility_settings.artboard_name() {
+					return;
+				}
+
 				for layer in self.metadata().all_layers() {
 					if !self.network_interface.is_artboard(&layer.to_node(), &[]) {
 						continue;
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
 
-					let name = self.network_interface.frontend_display_name(&layer.to_node(), &[]);
+					let name = self.network_interface.display_name(&layer.to_node(), &[]);
 
 					let transform = self.metadata().document_to_viewport
 						* DAffine2::from_translation(bounds[0].min(bounds[1]))
@@ -419,7 +427,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.node_graph_handler
 					.context_menu
 					.as_ref()
-					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode))
+					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
 				{
 					// Close the context menu
 					self.node_graph_handler.context_menu = None;
@@ -507,6 +515,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 				}
@@ -577,37 +586,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
 				}
 			}
-			DocumentMessage::ImaginateGenerate { imaginate_node } => {
-				let random_value = generate_uuid();
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 17,
-					value: graph_craft::document::value::TaggedValue::U64(random_value),
-				});
+			// DocumentMessage::ImaginateGenerate { imaginate_node } => {
+			// 	let random_value = generate_uuid();
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 17,
+			// 		value: graph_craft::document::value::TaggedValue::U64(random_value),
+			// 	});
 
-				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
-			}
-			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
-				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
-				// outside of this range can get rounded in f64
-				let random_bits = generate_uuid();
-				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
+			// 	responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
+			// }
+			// DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
+			// 	// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
+			// 	// outside of this range can get rounded in f64
+			// 	let random_bits = generate_uuid();
+			// 	let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
 
-				responses.add(DocumentMessage::AddTransaction);
-				// Set a random seed input
-				responses.add(NodeGraphMessage::SetInputValue {
-					node_id: *imaginate_node.last().unwrap(),
-					// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
-					input_index: 3,
-					value: graph_craft::document::value::TaggedValue::F64(random_value),
-				});
+			// 	responses.add(DocumentMessage::AddTransaction);
+			// 	// Set a random seed input
+			// 	responses.add(NodeGraphMessage::SetInputValue {
+			// 		node_id: *imaginate_node.last().unwrap(),
+			// 		// Needs to match the index of the seed parameter in `pub const IMAGINATE_NODE: DocumentNodeDefinition` in `document_node_type.rs`
+			// 		input_index: 3,
+			// 		value: graph_craft::document::value::TaggedValue::F64(random_value),
+			// 	});
 
-				// Generate the image
-				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
-				}
-			}
+			// 	// Generate the image
+			// 	if then_generate {
+			// 		responses.add(DocumentMessage::ImaginateGenerate { imaginate_node });
+			// 	}
+			// }
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
 					log::error!("Moving selected layers is only supported for the Document Network");
@@ -682,15 +691,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						insert_index: calculated_insert_index,
 					});
 
-					let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
-					let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
-					let transform = undo_transform * layer_local_transform;
-					responses.add(GraphOperationMessage::TransformSet {
-						layer: layer_to_move,
-						transform,
-						transform_in: TransformIn::Local,
-						skip_rerender: false,
-					});
+					if layer_to_move.parent(self.metadata()) != Some(parent) {
+						let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
+						let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+						let transform = undo_transform * layer_local_transform;
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: layer_to_move,
+							transform,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1012,6 +1023,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
+				if !self.overlays_visibility_settings.selection_outline() {
+					return;
+				}
+
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata.all_layers().filter(|&layer| !self.network_interface.is_artboard(&layer.to_node(), &[])).filter(|&layer| {
 					self.network_interface.selected_nodes().layer_visible(layer, &self.network_interface) && !self.network_interface.selected_nodes().layer_locked(layer, &self.network_interface)
@@ -1131,8 +1146,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
-			DocumentMessage::SetOverlaysVisibility { visible } => {
-				self.overlays_visible = visible;
+			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
+				let visibility_settings = &mut self.overlays_visibility_settings;
+				let overlays_type = match overlays_type {
+					Some(overlays_type) => overlays_type,
+					None => {
+						visibility_settings.all = visible;
+						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(OverlaysMessage::Draw);
+						return;
+					}
+				};
+				match overlays_type {
+					OverlaysType::ArtboardName => visibility_settings.artboard_name = visible,
+					OverlaysType::CompassRose => visibility_settings.compass_rose = visible,
+					OverlaysType::QuickMeasurement => visibility_settings.quick_measurement = visible,
+					OverlaysType::TransformMeasurement => visibility_settings.transform_measurement = visible,
+					OverlaysType::TransformCage => visibility_settings.transform_cage = visible,
+					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
+					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
+					OverlaysType::Pivot => visibility_settings.pivot = visible,
+					OverlaysType::Path => visibility_settings.path = visible,
+					OverlaysType::Anchors => {
+						visibility_settings.anchors = visible;
+						responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					}
+					OverlaysType::Handles => visibility_settings.handles = visible,
+				}
+
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -1152,6 +1193,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
+			}
+			DocumentMessage::AddTransaction => {
+				// Reverse order since they are added to the front
+				responses.add_front(DocumentMessage::CommitTransaction);
+				responses.add_front(DocumentMessage::StartTransaction);
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
@@ -1196,11 +1242,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
 			}
-			DocumentMessage::AddTransaction => {
-				// Reverse order since they are added to the front
-				responses.add_front(DocumentMessage::CommitTransaction);
-				responses.add_front(DocumentMessage::StartTransaction);
-			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 				let metadata = self.metadata();
@@ -1209,14 +1250,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if is_collapsed {
 					if recursive {
-						let children: HashSet<_> = layer.children(metadata).collect();
+						let children: HashSet<_> = layer.descendants(metadata).collect();
 						self.collapsed.0.retain(|collapsed_layer| !children.contains(collapsed_layer) && collapsed_layer != &layer);
 					} else {
 						self.collapsed.0.retain(|collapsed_layer| collapsed_layer != &layer);
 					}
 				} else {
 					if recursive {
-						let children_to_add: Vec<_> = layer.children(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
+						let children_to_add: Vec<_> = layer.descendants(metadata).filter(|child| !self.collapsed.0.contains(child)).collect();
 						self.collapsed.0.extend(children_to_add);
 					}
 					self.collapsed.0.push(layer);
@@ -1234,7 +1275,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ToggleOverlaysVisibility => {
-				self.overlays_visible = !self.overlays_visible;
+				self.overlays_visibility_settings.all = !self.overlays_visibility_settings.all();
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -1675,7 +1716,7 @@ impl DocumentMessageHandler {
 					pub view_mode: ViewMode,
 					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-					pub overlays_visible: bool,
+					pub overlays_visibility_settings: OverlaysVisibilitySettings,
 					/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 					pub rulers_visible: bool,
 					/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
@@ -1691,7 +1732,7 @@ impl DocumentMessageHandler {
 					document_ptz: old_message_handler.document_ptz,
 					document_mode: old_message_handler.document_mode,
 					view_mode: old_message_handler.view_mode,
-					overlays_visible: old_message_handler.overlays_visible,
+					overlays_visibility_settings: old_message_handler.overlays_visibility_settings,
 					rulers_visible: old_message_handler.rulers_visible,
 					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
 					snapping_state: old_message_handler.snapping_state,
@@ -2049,11 +2090,17 @@ impl DocumentMessageHandler {
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			CheckboxInput::new(self.overlays_visible)
+			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
 				.tooltip("Overlays")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.on_update(|optional_input: &CheckboxInput| {
+					DocumentMessage::SetOverlaysVisibility {
+						visible: optional_input.checked,
+						overlays_type: None,
+					}
+					.into()
+				})
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
@@ -2061,7 +2108,168 @@ impl DocumentMessageHandler {
 						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
 					},
 					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Granular settings in this menu are coming soon").widget_holder()],
+						widgets: vec![TextLabel::new("General").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::ArtboardName),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Artboard Name".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::TransformMeasurement),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("G/R/S Measurement".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Select Tool").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::QuickMeasurement),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Quick Measurement".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::TransformCage),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Cage".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::CompassRose),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Dial".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.pivot)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Pivot),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Transform Pivot".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::HoverOutline),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Hover Outline".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::SelectionOutline),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Selection Outline".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Pen & Path Tools").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.path)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Path),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Path".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.anchors)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Anchors),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Anchors".to_string()).widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(self.overlays_visibility_settings.handles)
+								.disabled(!self.overlays_visibility_settings.anchors)
+								.on_update(|optional_input: &CheckboxInput| {
+									DocumentMessage::SetOverlaysVisibility {
+										visible: optional_input.checked,
+										overlays_type: Some(OverlaysType::Handles),
+									}
+									.into()
+								})
+								.widget_holder(),
+							TextLabel::new("Handles".to_string()).disabled(!self.overlays_visibility_settings.anchors).widget_holder(),
+						],
 					},
 				])
 				.widget_holder(),
@@ -2208,6 +2416,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
@@ -2276,75 +2485,74 @@ impl DocumentMessageHandler {
 			.selected_layers(self.metadata())
 			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
 
-		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				DropdownInput::new(blend_mode_menu_entries)
-					.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
-					.disabled(disabled)
-					.draw_icon(false)
-					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(opacity)
-					.label("Opacity")
-					.unit("%")
-					.display_decimal_places(2)
-					.disabled(disabled)
-					.min(0.)
-					.max(100.)
-					.range_min(Some(0.))
-					.range_max(Some(100.))
-					.mode_range()
-					.on_update(|number_input: &NumberInput| {
-						if let Some(value) = number_input.value {
-							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
-						} else {
-							Message::NoOp
-						}
-					})
-					.on_commit(|_| DocumentMessage::AddTransaction.into())
-					.widget_holder(),
-				//
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				//
-				IconButton::new("NewLayer", 24)
-					.tooltip("New Layer")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-					.widget_holder(),
-				IconButton::new("Folder", 24)
-					.tooltip("Group Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-					.on_update(|_| {
-						let group_folder_type = GroupFolderType::Layer;
-						DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-					})
-					.disabled(!has_selection)
-					.widget_holder(),
-				IconButton::new("Trash", 24)
-					.tooltip("Delete Selected")
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
-					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-				//
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				//
-				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
-					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
-					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
-					.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
-					.disabled(!has_selection)
-					.widget_holder(),
-			],
-		}]);
+		let widgets = vec![
+			DropdownInput::new(blend_mode_menu_entries)
+				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
+				.disabled(disabled)
+				.draw_icon(false)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(opacity)
+				.label("Opacity")
+				.unit("%")
+				.display_decimal_places(2)
+				.disabled(disabled)
+				.min(0.)
+				.max(100.)
+				.range_min(Some(0.))
+				.range_max(Some(100.))
+				.mode_range()
+				.on_update(|number_input: &NumberInput| {
+					if let Some(value) = number_input.value {
+						DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
+					} else {
+						Message::NoOp
+					}
+				})
+				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.widget_holder(),
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("Trash", 24)
+				.tooltip("Delete Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			//
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			//
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+				.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+		];
+		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(layers_panel_control_bar),
@@ -2477,6 +2685,10 @@ impl DocumentMessageHandler {
 		// If moving down, insert below this layer. If moving up, insert above this layer.
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 };
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
+	}
+
+	pub fn graph_view_overlay_open(&self) -> bool {
+		self.graph_view_overlay_open
 	}
 }
 
@@ -2699,5 +2911,272 @@ impl Iterator for ClickXRayIter<'_> {
 		}
 		assert!(self.parent_targets.is_empty(), "The parent targets should always be empty (since we have left all layers)");
 		None
+	}
+}
+
+#[cfg(test)]
+mod document_message_handler_tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn test_layer_selection_with_shift_and_ctrl() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+
+		// Case 1: Basic selection (no modifier)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[0].to_node(),
+				ctrl: false,
+				shift: false,
+			})
+			.await;
+		// Fresh document reference for verification
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+
+		// Case 2: Ctrl + click to add another layer
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[2].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 3: Shift + click to select a range
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: false,
+				shift: true,
+			})
+			.await;
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		// We expect 2 layers to be selected (layers 1 and 2) - not 3
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 2);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+
+		// Case 4: Ctrl + click to toggle selection (deselect)
+		editor
+			.handle_message(DocumentMessage::SelectLayer {
+				id: layers[1].to_node(),
+				ctrl: true,
+				shift: false,
+			})
+			.await;
+
+		// Final fresh document reference
+		let document = editor.active_document();
+		let selected_nodes = document.network_interface.selected_nodes();
+		assert_eq!(selected_nodes.selected_nodes_ref().len(), 1);
+		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
+		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
+		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+	}
+
+	#[tokio::test]
+	async fn test_layer_rearrangement() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// Create three rectangle layers
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+
+		// Helper function to identify layers by bounds
+		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
+			let document = editor.active_document();
+			for layer in document.metadata().all_layers() {
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
+					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
+						return Some(layer);
+					}
+				}
+			}
+			None
+		}
+
+		async fn get_layer_index(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<usize> {
+			let document = editor.active_document();
+			let parent = layer.parent(document.metadata())?;
+			parent.children(document.metadata()).position(|child| child == layer)
+		}
+
+		let layer_middle = get_layer_by_bounds(&mut editor, 50., 50.).await.unwrap();
+		let layer_top = get_layer_by_bounds(&mut editor, 100., 100.).await.unwrap();
+
+		let initial_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		let initial_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+
+		// Test 1: Lower the top layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_top.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersLower).await;
+		let new_index_top = get_layer_index(&mut editor, layer_top).await.unwrap();
+		assert!(new_index_top > initial_index_top, "Top layer should have moved down");
+
+		// Test 2: Raise the middle layer
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer_middle.to_node()] }).await;
+		editor.handle_message(DocumentMessage::SelectedLayersRaise).await;
+		let new_index_middle = get_layer_index(&mut editor, layer_middle).await.unwrap();
+		assert!(new_index_middle < initial_index_middle, "Middle layer should have moved up");
+	}
+
+	#[tokio::test]
+	async fn test_move_folder_into_itself_doesnt_crash() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Creating a parent folder
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let parent_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Creating a child folder inside the parent folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let child_folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Attempt to move parent folder into child folder
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![parent_folder.to_node()] }).await;
+		editor
+			.handle_message(DocumentMessage::MoveSelectedLayersTo {
+				parent: child_folder,
+				insert_index: 0,
+			})
+			.await;
+
+		// The operation completed without crashing
+		// Verifying application still functions by performing another operation
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		assert!(true, "Application didn't crash after folder move operation");
+	}
+	#[tokio::test]
+	async fn test_moving_folder_with_children() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Creating two folders at root level
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+		let folder1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let folder2 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// First move rectangle into folder1
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+		// Verifying rectagle is now in folder1
+		let rect_parent = rect_layer.parent(editor.active_document().metadata()).unwrap();
+		assert_eq!(rect_parent, folder1, "Rectangle should be inside folder1");
+
+		// Moving folder1 into folder2
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+		// Verifing hirarchy: folder2 > folder1 > rectangle
+		let document = editor.active_document();
+		let folder1_parent = folder1.parent(document.metadata()).unwrap();
+		assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
+
+		// Verifing rectangle moved with its parent
+		let rect_parent = rect_layer.parent(document.metadata()).unwrap();
+		assert_eq!(rect_parent, folder1, "Rectangle should still be inside folder1");
+
+		let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
+		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
+	}
+
+	#[tokio::test]
+	async fn test_moving_layers_retains_transforms() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+
+		let folder2 = editor.active_document().metadata().all_layers().next().unwrap();
+		let folder1 = editor.active_document().metadata().all_layers().nth(1).unwrap();
+
+		// Applying transform to folder1 (translation)
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Applying different transform to folder2 (translation)
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder2.to_node()] }).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(200., 100., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Creating rectangle in folder1
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Moving the rectangle to folder1 to ensure it's inside
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect_layer.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder1, insert_index: 0 }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 25., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		// Rectangle's viewport position before moving
+		let document = editor.active_document();
+		let rect_bbox_before = document.metadata().bounding_box_viewport(rect_layer).unwrap();
+
+		// Moving rectangle from folder1 --> folder2
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
+
+		// Rectangle's viewport position after moving
+		let document = editor.active_document();
+		let rect_bbox_after = document.metadata().bounding_box_viewport(rect_layer).unwrap();
+
+		// Verifing the rectangle maintains approximately the same position in viewport space
+		let before_center = (rect_bbox_before[0] + rect_bbox_before[1]) / 2.;
+		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.;
+		let distance = before_center.distance(after_center);
+
+		assert!(distance < 1., "Rectangle should maintain its viewport position after moving between transformed groups");
 	}
 }

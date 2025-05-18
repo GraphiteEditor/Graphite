@@ -532,7 +532,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 }
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
 	InputNodeNotFound(NodeId),
@@ -571,7 +571,7 @@ impl core::fmt::Debug for GraphErrorType {
 		}
 	}
 }
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphError {
 	pub node_path: Vec<NodeId>,
 	pub identifier: Cow<'static, str>,
@@ -938,12 +938,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(8409339180888025381),
-				NodeId(210279231591542793),
-				NodeId(11043024792989571946),
-				NodeId(16261870568621497283),
-				NodeId(6520148642810552409),
-				NodeId(8779776256867305756)
+				NodeId(16997244687192517417),
+				NodeId(12226224850522777131),
+				NodeId(9162113827627229771),
+				NodeId(12793582657066318419),
+				NodeId(16945623684036608820),
+				NodeId(2640415155091892458)
 			]
 		);
 	}
