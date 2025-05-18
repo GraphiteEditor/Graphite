@@ -44,46 +44,67 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
+	/// Keeps track of the current state; helps avoid unnecessary computation when called by [`ShapeState`].
 	ignore_handles: bool,
 	ignore_anchors: bool,
+	/// Points that are selected but ignored (when their overlays are disabled) are stored here.
+	ignored_handle_points: HashSet<ManipulatorPointId>,
+	ignored_anchor_points: HashSet<ManipulatorPointId>,
 }
 
 impl SelectedLayerState {
 	pub fn selected(&self) -> impl Iterator<Item = ManipulatorPointId> + '_ {
 		self.selected_points.iter().copied()
 	}
+
 	pub fn is_selected(&self, point: ManipulatorPointId) -> bool {
 		self.selected_points.contains(&point)
 	}
+
 	pub fn select_point(&mut self, point: ManipulatorPointId) {
-		if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
-			return;
-		}
 		self.selected_points.insert(point);
 	}
+
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
-		if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
-			return;
-		}
 		self.selected_points.remove(&point);
 	}
-	pub fn set_handles_status(&mut self, ignore: bool) {
-		self.ignore_handles = ignore;
-	}
-	pub fn set_anchors_status(&mut self, ignore: bool) {
-		self.ignore_anchors = ignore;
-	}
-	pub fn clear_points_force(&mut self) {
-		self.selected_points.clear();
-		self.ignore_handles = false;
-		self.ignore_anchors = false;
-	}
-	pub fn clear_points(&mut self) {
-		if self.ignore_handles || self.ignore_anchors {
+
+	pub fn ignore_handles(&mut self, status: bool) {
+		if self.ignore_handles == !status {
 			return;
 		}
+
+		self.ignore_handles = !status;
+
+		if self.ignore_handles {
+			self.ignored_handle_points.extend(self.selected_points.iter().copied().filter(|point| point.as_handle().is_some()));
+			self.selected_points.retain(|point| !self.ignored_handle_points.contains(point));
+		} else {
+			self.selected_points.extend(self.ignored_handle_points.iter().copied());
+			self.ignored_handle_points.clear();
+		}
+	}
+
+	pub fn ignore_anchors(&mut self, status: bool) {
+		if self.ignore_anchors == !status {
+			return;
+		}
+
+		self.ignore_anchors = !status;
+
+		if self.ignore_anchors {
+			self.ignored_anchor_points.extend(self.selected_points.iter().copied().filter(|point| point.as_anchor().is_some()));
+			self.selected_points.retain(|point| !self.ignored_anchor_points.contains(point));
+		} else {
+			self.selected_points.extend(self.ignored_anchor_points.iter().copied());
+			self.ignored_anchor_points.clear();
+		}
+	}
+
+	pub fn clear_points(&mut self) {
 		self.selected_points.clear();
 	}
+
 	pub fn selected_points_count(&self) -> usize {
 		let count = self.selected_points.iter().fold(0, |acc, point| {
 			if (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors) {
@@ -100,8 +121,10 @@ pub type SelectedShapeState = HashMap<LayerNodeIdentifier, SelectedLayerState>;
 
 #[derive(Debug, Default)]
 pub struct ShapeState {
-	// The layers we can select and edit manipulators (anchors and handles) from
+	/// The layers we can select and edit manipulators (anchors and handles) from.
 	pub selected_shape_state: SelectedShapeState,
+	ignore_handles: bool,
+	ignore_anchors: bool,
 }
 
 #[derive(Debug)]
@@ -262,6 +285,10 @@ impl ClosestSegment {
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	pub fn is_point_ignored(&self, point: &ManipulatorPointId) -> bool {
+		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
+	}
+
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
@@ -514,8 +541,9 @@ impl ShapeState {
 		} else {
 			// Select all connected points
 			while let Some(point) = selected_stack.pop() {
-				if !state.is_selected(ManipulatorPointId::Anchor(point)) {
-					state.select_point(ManipulatorPointId::Anchor(point));
+				let anchor_point = ManipulatorPointId::Anchor(point);
+				if !state.is_selected(anchor_point) {
+					state.select_point(anchor_point);
 					selected_stack.extend(vector_data.connected_points(point));
 				}
 			}
@@ -555,27 +583,17 @@ impl ShapeState {
 		}
 	}
 
-	pub fn mark_selected_anchors(&mut self) {
+	pub fn update_selected_anchors_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
-			state.set_anchors_status(false);
+			self.ignore_anchors = !status;
+			state.ignore_anchors(status);
 		}
 	}
 
-	pub fn mark_selected_handles(&mut self) {
+	pub fn update_selected_handles_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
-			state.set_handles_status(false);
-		}
-	}
-
-	pub fn ignore_selected_anchors(&mut self) {
-		for state in self.selected_shape_state.values_mut() {
-			state.set_anchors_status(true);
-		}
-	}
-
-	pub fn ignore_selected_handles(&mut self) {
-		for state in self.selected_shape_state.values_mut() {
-			state.set_handles_status(true);
+			self.ignore_handles = !status;
+			state.ignore_handles(status);
 		}
 	}
 
@@ -682,6 +700,10 @@ impl ShapeState {
 		layer: LayerNodeIdentifier,
 		responses: &mut VecDeque<Message>,
 	) -> Option<()> {
+		if self.is_point_ignored(point) {
+			return None;
+		}
+
 		let vector_data = network_interface.compute_modified_vector(layer)?;
 		let transform = network_interface.document_metadata().transform_to_document(layer).inverse();
 		let position = transform.transform_point2(new_position);
@@ -931,6 +953,10 @@ impl ShapeState {
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
+				if self.is_point_ignored(&point) {
+					continue;
+				}
+
 				let handle = match point {
 					ManipulatorPointId::Anchor(point) => {
 						self.move_anchor(point, &vector_data, delta, layer, Some(state), responses);
@@ -1603,7 +1629,7 @@ impl ShapeState {
 	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			if selection_change == SelectionChange::Clear {
-				state.clear_points_force()
+				state.clear_points()
 			}
 
 			let vector_data = network_interface.compute_modified_vector(layer);

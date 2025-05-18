@@ -100,6 +100,9 @@ pub enum PathToolMessage {
 	},
 	SwapSelectedHandles,
 	UpdateOptions(PathOptionsUpdate),
+	UpdateSelectedPointsStatus {
+		overlay_context: OverlayContext,
+	},
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -989,24 +992,18 @@ impl Fsm for PathToolFsmState {
 				shape_editor.set_selected_layers(target_layers);
 
 				responses.add(OverlaysMessage::Draw);
+				self
+			}
+			(_, PathToolMessage::UpdateSelectedPointsStatus { overlay_context }) => {
+				let display_anchors = overlay_context.visibility_settings.anchors();
+				let display_handles = overlay_context.visibility_settings.handles();
 
-				responses.add(PathToolMessage::SelectedPointUpdated);
+				shape_editor.update_selected_anchors_status(display_anchors);
+				shape_editor.update_selected_handles_status(display_handles);
+
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
-				let display_anchors = overlay_context.visibility_settings.anchors();
-				let display_handles = overlay_context.visibility_settings.handles();
-				if !display_handles {
-					shape_editor.ignore_selected_handles();
-				} else {
-					shape_editor.mark_selected_handles();
-				}
-				if !display_anchors {
-					shape_editor.ignore_selected_anchors();
-				} else {
-					shape_editor.mark_selected_anchors();
-				}
-
 				// TODO: find the segment ids of which the selected points are a part of
 
 				match tool_options.path_overlay_mode {
@@ -1133,6 +1130,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
+				responses.add(PathToolMessage::UpdateSelectedPointsStatus { overlay_context });
 				self
 			}
 
