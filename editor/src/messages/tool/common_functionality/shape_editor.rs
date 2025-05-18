@@ -1,5 +1,7 @@
 use super::graph_modification_utils::{self, merge_layers};
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
+use super::utility_functions::calculate_segment_angle;
+use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -735,6 +737,8 @@ impl ShapeState {
 			return;
 		};
 		let handles = vector_data.all_connected(point_id).take(2).collect::<Vec<_>>();
+		let non_zero_handles = handles.iter().filter(|handle| handle.length(vector_data) > 1e-6).count();
+		let handle_segments = handles.iter().map(|handles| handles.segment).collect::<Vec<_>>();
 
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
 		let points = handles.iter().map(|handle| vector_data.other_point(handle.segment, point_id));
@@ -742,16 +746,24 @@ impl ShapeState {
 			.map(|point| point.and_then(|point| ManipulatorPointId::Anchor(point).get_position(vector_data)))
 			.collect::<Vec<_>>();
 
-		// Use the position relative to the anchor
-		let mut directions = anchor_positions
-			.iter()
-			.map(|position| position.map(|position| (position - anchor_position)).and_then(DVec2::try_normalize));
+		let mut segment_angle = 0.;
+		let mut segment_count = 0.;
 
-		// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-		let mut handle_direction = match (directions.next().flatten(), directions.next().flatten()) {
-			(Some(previous), Some(next)) => (previous - next).try_normalize().unwrap_or(next.perp()),
-			(Some(val), None) | (None, Some(val)) => val,
-			(None, None) => return,
+		for segment in &handle_segments {
+			let Some(angle) = calculate_segment_angle(point_id, *segment, vector_data, false) else {
+				continue;
+			};
+			segment_angle += angle;
+			segment_count += 1.;
+		}
+
+		// For a non-endpoint anchor, handles are perpendicular to the average tangent of adjacent segments.(Refer:https://github.com/GraphiteEditor/Graphite/pull/2620#issuecomment-2881501494)
+		let mut handle_direction = if segment_count > 1. {
+			segment_angle = segment_angle / segment_count;
+			segment_angle += std::f64::consts::FRAC_PI_2;
+			DVec2::new(segment_angle.cos(), segment_angle.sin())
+		} else {
+			DVec2::new(segment_angle.cos(), segment_angle.sin())
 		};
 
 		// Set the manipulator to have colinear handles
@@ -769,20 +781,41 @@ impl ShapeState {
 			handle_direction *= -1.;
 		}
 
-		// Push both in and out handles into the correct position
-		for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
-			// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
-			let Some(length) = other_anchor.map(|position| (position - anchor_position).length() / 3.) else {
-				continue;
+		if non_zero_handles != 0 {
+			let [a, b] = handles.as_slice() else { return };
+			let (non_zero_handle, zero_handle) = if a.length(vector_data) > 1e-6 { (a, b) } else { (b, a) };
+			let Some(direction) = non_zero_handle
+				.to_manipulator_point()
+				.get_position(&vector_data)
+				.and_then(|position| (position - anchor_position).try_normalize())
+			else {
+				return;
 			};
-			let new_position = handle_direction * length * sign;
-			let modification_type = handle.set_relative_position(new_position);
+			let new_position = -direction * non_zero_handle.length(vector_data);
+			let modification_type = zero_handle.set_relative_position(new_position);
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		} else {
+			// Push both in and out handles into the correct position
+			for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
+				let Some(anchor_vector) = other_anchor.map(|position| (position - anchor_position)) else {
+					continue;
+				};
 
-			// Create the opposite handle if it doesn't exist (if it is not a cubic segment)
-			if handle.opposite().to_manipulator_point().get_position(vector_data).is_none() {
-				let modification_type = handle.opposite().set_relative_position(DVec2::ZERO);
+				let Some(unit_vector) = anchor_vector.try_normalize() else {
+					continue;
+				};
+
+				let projection = anchor_vector.length() * HANDLE_LENGTH_FACTOR * handle_direction.dot(unit_vector).abs();
+
+				let new_position = handle_direction * projection * sign;
+				let modification_type = handle.set_relative_position(new_position);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				// Create the opposite handle if it doesn't exist (if it is not a cubic segment)
+				if handle.opposite().to_manipulator_point().get_position(vector_data).is_none() {
+					let modification_type = handle.opposite().set_relative_position(DVec2::ZERO);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 			}
 		}
 	}
@@ -1510,13 +1543,13 @@ impl ShapeState {
 
 			let (id, anchor) = result?;
 			let handles = vector_data.all_connected(id);
-			let mut positions = handles
+			let positions = handles
 				.filter_map(|handle| handle.to_manipulator_point().get_position(&vector_data))
-				.filter(|&handle| !anchor.abs_diff_eq(handle, 1e-5));
+				.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))
+				.count();
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
-			let already_sharp = positions.next().is_none();
-			if already_sharp {
+			if positions != 0 {
 				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
 			} else {
 				for handle in vector_data.all_connected(id) {

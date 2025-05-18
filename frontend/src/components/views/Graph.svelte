@@ -581,11 +581,12 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return value.resolvedType ? `Resolved Data:\n${value.resolvedType}` : `Unresolved Data ${value.dataType}`;
+		return value.resolvedType ? `Data Type:\n${value.resolvedType}` : `Data Type (Unresolved):\n${value.dataType}`;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
-		return `Valid Types:\n${value.validTypes.join(",\n ")}`;
+		const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
+		return `Valid Types:\n${validTypes}`;
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
