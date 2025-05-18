@@ -2,8 +2,8 @@
 
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
-use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::broadcast::BroadcastMessage;
+use crate::messages::broadcast::broadcast_event::BroadcastEvent;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -12,10 +12,8 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
-
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
@@ -118,7 +116,7 @@ impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![WorkingColorsInput::new(self.primary_color, self.secondary_color).widget_holder()],
+				widgets: vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_holder()],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
@@ -242,9 +240,9 @@ impl LayoutHolder for ToolData {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
-						.disabled( false)
-						.active( self.active_tool_type == tool_type)
-						.tooltip( tooltip.clone())
+						.disabled(false)
+						.active(self.active_tool_type == tool_type)
+						.tooltip(tooltip.clone())
 						.tooltip_shortcut(tooltip_shortcut)
 						.on_update(move |_| {
 							if !tooltip.contains("Coming Soon") {
@@ -383,7 +381,8 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip("Coming Soon: Patch Tool")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Detail, "RasterDetailTool").tooltip("Coming Soon: Detail Tool (D)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Relight, "RasterRelightTool").tooltip("Coming Soon: Relight Tool (O)")),
-			// ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()), // TODO: Fix and reenable
+			// TODO: Fix and reenable Imaginate tool
+			// ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterImaginateTool").tooltip("Coming Soon: Imaginate Tool")),
 		],
 	]
@@ -417,7 +416,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		// ToolMessage::Patch(_) => ToolType::Patch,
 		// ToolMessage::Detail(_) => ToolType::Detail,
 		// ToolMessage::Relight(_) => ToolType::Relight,
-		ToolMessage::Imaginate(_) => ToolType::Imaginate,
+		// ToolMessage::Imaginate(_) => ToolType::Imaginate,
 		_ => panic!("Conversion from ToolMessage to ToolType impossible because the given ToolMessage does not have a matching ToolType. Got: {tool_message:?}"),
 	}
 }
@@ -450,7 +449,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		// ToolType::Patch => ToolMessageDiscriminant::ActivateToolPatch,
 		// ToolType::Detail => ToolMessageDiscriminant::ActivateToolDetail,
 		// ToolType::Relight => ToolMessageDiscriminant::ActivateToolRelight,
-		ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
+		// ToolType::Imaginate => ToolMessageDiscriminant::ActivateToolImaginate,
 		_ => panic!("Conversion from ToolType to ToolMessage impossible because the given ToolType does not have a matching ToolMessage. Got: {tool_type:?}"),
 	}
 }

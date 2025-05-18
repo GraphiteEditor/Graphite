@@ -1,6 +1,7 @@
 use crate::transform::Footprint;
-
-use core::{any::Any, borrow::Borrow, panic::Location};
+use core::any::Any;
+use core::borrow::Borrow;
+use core::panic::Location;
 use std::sync::Arc;
 
 pub trait Ctx: Clone + Send {}
@@ -12,13 +13,17 @@ pub trait ExtractFootprint {
 	fn footprint(&self) -> &Footprint {
 		self.try_footprint().unwrap_or_else(|| {
 			log::error!("Context did not have a footprint, called from: {}", Location::caller());
-			&const { Footprint::empty() }
+			&Footprint::DEFAULT
 		})
 	}
 }
 
 pub trait ExtractTime {
 	fn try_time(&self) -> Option<f64>;
+}
+
+pub trait ExtractAnimationTime {
+	fn try_animation_time(&self) -> Option<f64>;
 }
 
 pub trait ExtractIndex {
@@ -37,9 +42,9 @@ pub trait CloneVarArgs: ExtractVarArgs {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
 
-pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs {}
+pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs {}
 
-impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractVarArgs> ExtractAll for T {}
+impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VarArgsResult {
@@ -71,13 +76,18 @@ impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
 	fn footprint(&self) -> &Footprint {
 		self.try_footprint().unwrap_or_else(|| {
 			log::warn!("trying to extract footprint from context None {} ", Location::caller());
-			&const { Footprint::empty() }
+			&Footprint::DEFAULT
 		})
 	}
 }
 impl<T: ExtractTime + Sync> ExtractTime for Option<T> {
 	fn try_time(&self) -> Option<f64> {
 		self.as_ref().and_then(|x| x.try_time())
+	}
+}
+impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.as_ref().and_then(|x| x.try_animation_time())
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
@@ -87,12 +97,12 @@ impl<T: ExtractIndex> ExtractIndex for Option<T> {
 }
 impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult> {
-		let Some(ref inner) = self else { return Err(VarArgsResult::NoVarArgs) };
+		let Some(inner) = self else { return Err(VarArgsResult::NoVarArgs) };
 		inner.vararg(index)
 	}
 
 	fn varargs_len(&self) -> Result<usize, VarArgsResult> {
-		let Some(ref inner) = self else { return Err(VarArgsResult::NoVarArgs) };
+		let Some(inner) = self else { return Err(VarArgsResult::NoVarArgs) };
 		inner.varargs_len()
 	}
 }
@@ -104,6 +114,11 @@ impl<T: ExtractFootprint + Sync> ExtractFootprint for Arc<T> {
 impl<T: ExtractTime + Sync> ExtractTime for Arc<T> {
 	fn try_time(&self) -> Option<f64> {
 		(**self).try_time()
+	}
+}
+impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
+	fn try_animation_time(&self) -> Option<f64> {
+		(**self).try_animation_time()
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
@@ -178,7 +193,12 @@ impl ExtractFootprint for OwnedContextImpl {
 }
 impl ExtractTime for OwnedContextImpl {
 	fn try_time(&self) -> Option<f64> {
-		self.time
+		self.real_time
+	}
+}
+impl ExtractAnimationTime for OwnedContextImpl {
+	fn try_animation_time(&self) -> Option<f64> {
+		self.animation_time
 	}
 }
 impl ExtractIndex for OwnedContextImpl {
@@ -225,7 +245,21 @@ pub struct OwnedContextImpl {
 	parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,
-	time: Option<f64>,
+	real_time: Option<f64>,
+	animation_time: Option<f64>,
+}
+
+impl core::fmt::Debug for OwnedContextImpl {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.debug_struct("OwnedContextImpl")
+			.field("footprint", &self.footprint)
+			.field("varargs", &self.varargs)
+			.field("parent", &self.parent.as_ref().map(|_| "<Parent>"))
+			.field("index", &self.index)
+			.field("real_time", &self.real_time)
+			.field("animation_time", &self.animation_time)
+			.finish()
+	}
 }
 
 impl Default for OwnedContextImpl {
@@ -238,10 +272,11 @@ impl Default for OwnedContextImpl {
 impl core::hash::Hash for OwnedContextImpl {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.footprint.hash(state);
-		self.index.hash(state);
-		self.time.map(|x| x.to_bits()).hash(state);
-		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
 		self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
+		self.index.hash(state);
+		self.real_time.map(|x| x.to_bits()).hash(state);
+		self.animation_time.map(|x| x.to_bits()).hash(state);
 	}
 }
 
@@ -251,13 +286,18 @@ impl OwnedContextImpl {
 		let footprint = value.try_footprint().copied();
 		let index = value.try_index();
 		let time = value.try_time();
-		let parent = value.arc_clone();
+		let frame_time = value.try_animation_time();
+		let parent = match value.varargs_len() {
+			Ok(x) if x > 0 => value.arc_clone(),
+			_ => None,
+		};
 		OwnedContextImpl {
 			footprint,
 			varargs: None,
 			parent,
 			index,
-			time,
+			real_time: time,
+			animation_time: frame_time,
 		}
 	}
 	pub const fn empty() -> Self {
@@ -266,7 +306,8 @@ impl OwnedContextImpl {
 			varargs: None,
 			parent: None,
 			index: None,
-			time: None,
+			real_time: None,
+			animation_time: None,
 		}
 	}
 }
@@ -279,8 +320,29 @@ impl OwnedContextImpl {
 		self.footprint = Some(footprint);
 		self
 	}
+	pub fn with_real_time(mut self, time: f64) -> Self {
+		self.real_time = Some(time);
+		self
+	}
+	pub fn with_animation_time(mut self, animation_time: f64) -> Self {
+		self.animation_time = Some(animation_time);
+		self
+	}
+	pub fn with_vararg(mut self, value: Box<dyn Any + Send + Sync>) -> Self {
+		assert!(self.varargs.is_none_or(|value| value.is_empty()));
+		self.varargs = Some(Arc::new([value]));
+		self
+	}
+	pub fn with_index(mut self, index: usize) -> Self {
+		self.index = Some(index);
+		self
+	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
 		Some(Arc::new(self))
+	}
+	pub fn erase_parent(mut self) -> Self {
+		self.parent = None;
+		self
 	}
 }
 

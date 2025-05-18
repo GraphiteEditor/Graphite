@@ -137,6 +137,7 @@ import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-log
 import HandleVisibilityAll from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-all.svg";
 import HandleVisibilityFrontier from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-frontier.svg";
 import HandleVisibilitySelected from "@graphite-frontend/assets/icon-16px-solid/handle-visibility-selected.svg";
+import Heart from "@graphite-frontend/assets/icon-16px-solid/heart.svg";
 import HistoryRedo from "@graphite-frontend/assets/icon-16px-solid/history-redo.svg";
 import HistoryUndo from "@graphite-frontend/assets/icon-16px-solid/history-undo.svg";
 import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
@@ -163,6 +164,10 @@ import PadlockUnlocked from "@graphite-frontend/assets/icon-16px-solid/padlock-u
 import Paste from "@graphite-frontend/assets/icon-16px-solid/paste.svg";
 import PinActive from "@graphite-frontend/assets/icon-16px-solid/pin-active.svg";
 import PinInactive from "@graphite-frontend/assets/icon-16px-solid/pin-inactive.svg";
+import PlaybackPause from "@graphite-frontend/assets/icon-16px-solid/playback-pause.svg";
+import PlaybackPlay from "@graphite-frontend/assets/icon-16px-solid/playback-play.svg";
+import PlaybackToEnd from "@graphite-frontend/assets/icon-16px-solid/playback-to-end.svg";
+import PlaybackToStart from "@graphite-frontend/assets/icon-16px-solid/playback-to-start.svg";
 import Random from "@graphite-frontend/assets/icon-16px-solid/random.svg";
 import Reload from "@graphite-frontend/assets/icon-16px-solid/reload.svg";
 import Reset from "@graphite-frontend/assets/icon-16px-solid/reset.svg";
@@ -253,6 +258,7 @@ const SOLID_16PX = {
 	HandleVisibilityAll: { svg: HandleVisibilityAll, size: 16 },
 	HandleVisibilityFrontier: { svg: HandleVisibilityFrontier, size: 16 },
 	HandleVisibilitySelected: { svg: HandleVisibilitySelected, size: 16 },
+	Heart: { svg: Heart, size: 16 },
 	HistoryRedo: { svg: HistoryRedo, size: 16 },
 	HistoryUndo: { svg: HistoryUndo, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },
@@ -279,6 +285,10 @@ const SOLID_16PX = {
 	Paste: { svg: Paste, size: 16 },
 	PinActive: { svg: PinActive, size: 16 },
 	PinInactive: { svg: PinInactive, size: 16 },
+	PlaybackPause: { svg: PlaybackPause, size: 16 },
+	PlaybackPlay: { svg: PlaybackPlay, size: 16 },
+	PlaybackToEnd: { svg: PlaybackToEnd, size: 16 },
+	PlaybackToStart: { svg: PlaybackToStart, size: 16 },
 	Random: { svg: Random, size: 16 },
 	Reload: { svg: Reload, size: 16 },
 	Reset: { svg: Reset, size: 16 },

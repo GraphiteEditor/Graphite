@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
-
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
@@ -8,12 +9,15 @@ pub struct FillTool {
 }
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,
+	WorkingColorChanged,
+	Overlays(OverlayContext),
 
 	// Tool-specific messages
+	PointerMove,
 	PointerUp,
 	FillPrimaryColor,
 	FillSecondaryColor,
@@ -46,8 +50,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 			FillToolFsmState::Ready => actions!(FillToolMessageDiscriminant;
 				FillPrimaryColor,
 				FillSecondaryColor,
+				PointerMove,
 			),
 			FillToolFsmState::Filling => actions!(FillToolMessageDiscriminant;
+				PointerMove,
 				PointerUp,
 				Abort,
 			),
@@ -59,6 +65,8 @@ impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
+			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
+			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
 	}
@@ -83,13 +91,34 @@ impl Fsm for FillToolFsmState {
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
+			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+				// Choose the working color to preview
+				let use_secondary = input.keyboard.get(Key::Shift as usize);
+				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
+
+				// Get the layer the user is hovering over
+				if let Some(layer) = document.click(input) {
+					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
+				}
+
+				self
+			}
+			(_, FillToolMessage::PointerMove | FillToolMessage::WorkingColorChanged) => {
+				// Generate the hover outline
+				responses.add(OverlaysMessage::Draw);
+				self
+			}
 			(FillToolFsmState::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input) else {
 					return self;
 				};
+				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
+				if NodeGraphLayer::is_raster_layer(layer_identifier, &mut document.network_interface) {
+					return self;
+				}
 				let fill = match color_event {
-					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
-					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
+					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color.to_gamma_srgb()),
+					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
 					_ => return self,
 				};
 
@@ -147,8 +176,6 @@ mod test_fill {
 	}
 
 	#[tokio::test]
-	// TODO: fix https://github.com/GraphiteEditor/Graphite/issues/2270
-	#[should_panic]
 	async fn ignore_raster() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -166,7 +193,7 @@ mod test_fill {
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0], Fill::Solid(Color::GREEN));
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
 	}
 
 	#[tokio::test]
@@ -174,11 +201,10 @@ mod test_fill {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let color = Color::YELLOW;
-		editor.handle_message(ToolMessage::SelectSecondaryColor { color }).await;
+		editor.select_secondary_color(Color::YELLOW).await;
 		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::SHIFT).await;
 		let fills = get_fills(&mut editor).await;
 		assert_eq!(fills.len(), 1);
-		assert_eq!(fills[0], Fill::Solid(color));
+		assert_eq!(fills[0].as_solid().unwrap().to_rgba8_srgb(), Color::YELLOW.to_rgba8_srgb());
 	}
 }

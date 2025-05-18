@@ -1,15 +1,14 @@
 //! Contains stylistic options for SVG elements.
 
+use crate::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use crate::renderer::format_transform_matrix;
-use crate::Color;
-
 use dyn_any::DynAny;
-
 use glam::{DAffine2, DVec2};
-use std::fmt::{self, Display, Write};
+use std::fmt::Write;
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum GradientType {
 	#[default]
 	Linear,
@@ -17,9 +16,10 @@ pub enum GradientType {
 }
 
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
+// TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
-pub struct GradientStops(pub Vec<(f64, Color)>);
+pub struct GradientStops(Vec<(f64, Color)>);
 
 impl std::hash::Hash for GradientStops {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
@@ -37,8 +37,54 @@ impl Default for GradientStops {
 	}
 }
 
+impl IntoIterator for GradientStops {
+	type Item = (f64, Color);
+	type IntoIter = std::vec::IntoIter<(f64, Color)>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.into_iter()
+	}
+}
+
+impl<'a> IntoIterator for &'a GradientStops {
+	type Item = &'a (f64, Color);
+	type IntoIter = std::slice::Iter<'a, (f64, Color)>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.iter()
+	}
+}
+
+impl std::ops::Index<usize> for GradientStops {
+	type Output = (f64, Color);
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.0[index]
+	}
+}
+
+impl std::ops::Deref for GradientStops {
+	type Target = Vec<(f64, Color)>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl std::ops::DerefMut for GradientStops {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
+}
+
 impl GradientStops {
-	pub fn evalute(&self, t: f64) -> Color {
+	pub fn new(stops: Vec<(f64, Color)>) -> Self {
+		let mut stops = Self(stops);
+		stops.sort();
+		stops
+	}
+
+	pub fn evaluate(&self, t: f64) -> Color {
 		if self.0.is_empty() {
 			return Color::BLACK;
 		}
@@ -62,8 +108,16 @@ impl GradientStops {
 		Color::BLACK
 	}
 
+	pub fn sort(&mut self) {
+		self.0.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+	}
+
 	pub fn reversed(&self) -> Self {
 		Self(self.0.iter().rev().map(|(position, color)| (1. - position, *color)).collect())
+	}
+
+	pub fn map_colors<F: Fn(&Color) -> Color>(&self, f: F) -> Self {
+		Self(self.0.iter().map(|(position, color)| (*position, f(color))).collect())
 	}
 }
 
@@ -112,7 +166,7 @@ impl Gradient {
 		Gradient {
 			start,
 			end,
-			stops: GradientStops(vec![(0., start_color), (1., end_color)]),
+			stops: GradientStops::new(vec![(0., start_color.to_gamma_srgb()), (1., end_color.to_gamma_srgb())]),
 			transform,
 			gradient_type,
 		}
@@ -133,7 +187,7 @@ impl Gradient {
 				(position, color)
 			})
 			.collect::<Vec<_>>();
-		let stops = GradientStops(stops);
+		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
 
 		Self {
@@ -147,6 +201,8 @@ impl Gradient {
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
+
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		let transformed_bound_transform = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 
@@ -156,7 +212,7 @@ impl Gradient {
 			if *position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
-			let _ = write!(stop, r##" stop-color="#{}""##, color.rgb_hex());
+			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 			}
@@ -242,7 +298,7 @@ impl Gradient {
 ///
 /// Can be None, a solid [Color], or a linear/radial [Gradient].
 ///
-/// In the future we'll probably also add a pattern fill.
+/// In the future we'll probably also add a pattern fill. This will probably be named "Paint" in the future.
 #[repr(C)]
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
 pub enum Fill {
@@ -305,7 +361,7 @@ impl Fill {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
-				let mut result = format!(r##" fill="#{}""##, color.rgb_hex());
+				let mut result = format!(r##" fill="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 				if color.a() < 1. {
 					let _ = write!(result, r#" fill-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 				}
@@ -322,6 +378,14 @@ impl Fill {
 	pub fn as_gradient(&self) -> Option<&Gradient> {
 		match self {
 			Self::Gradient(gradient) => Some(gradient),
+			_ => None,
+		}
+	}
+
+	/// Extract a solid color from the fill
+	pub fn as_solid(&self) -> Option<Color> {
+		match self {
+			Self::Solid(color) => Some(*color),
 			_ => None,
 		}
 	}
@@ -355,18 +419,13 @@ impl From<Gradient> for Fill {
 pub enum FillChoice {
 	#[default]
 	None,
+	/// WARNING: Color is gamma, not linear!
 	Solid(Color),
+	/// WARNING: Color stops are gamma, not linear!
 	Gradient(GradientStops),
 }
 
 impl FillChoice {
-	pub fn from_optional_color(color: Option<Color>) -> Self {
-		match color {
-			Some(color) => Self::Solid(color),
-			None => Self::None,
-		}
-	}
-
 	pub fn as_solid(&self) -> Option<Color> {
 		let Self::Solid(color) = self else { return None };
 		Some(*color)
@@ -404,7 +463,8 @@ impl From<Fill> for FillChoice {
 
 /// Enum describing the type of [Fill].
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum FillType {
 	#[default]
 	Solid,
@@ -413,7 +473,8 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum LineCap {
 	#[default]
 	Butt,
@@ -421,18 +482,19 @@ pub enum LineCap {
 	Square,
 }
 
-impl Display for LineCap {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl LineCap {
+	fn svg_name(&self) -> &'static str {
 		match self {
-			LineCap::Butt => write!(f, "butt"),
-			LineCap::Round => write!(f, "round"),
-			LineCap::Square => write!(f, "square"),
+			LineCap::Butt => "butt",
+			LineCap::Round => "round",
+			LineCap::Square => "square",
 		}
 	}
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum LineJoin {
 	#[default]
 	Miter,
@@ -440,12 +502,12 @@ pub enum LineJoin {
 	Round,
 }
 
-impl Display for LineJoin {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl LineJoin {
+	fn svg_name(&self) -> &'static str {
 		match self {
-			LineJoin::Bevel => write!(f, "bevel"),
-			LineJoin::Miter => write!(f, "miter"),
-			LineJoin::Round => write!(f, "round"),
+			LineJoin::Bevel => "bevel",
+			LineJoin::Miter => "miter",
+			LineJoin::Round => "round",
 		}
 	}
 }
@@ -468,6 +530,8 @@ pub struct Stroke {
 	pub line_join_miter_limit: f64,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
+	#[serde(default)]
+	pub non_scaling: bool,
 }
 
 impl core::hash::Hash for Stroke {
@@ -480,6 +544,7 @@ impl core::hash::Hash for Stroke {
 		self.line_cap.hash(state);
 		self.line_join.hash(state);
 		self.line_join_miter_limit.to_bits().hash(state);
+		self.non_scaling.hash(state);
 	}
 }
 
@@ -505,6 +570,7 @@ impl Stroke {
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 		}
 	}
 
@@ -521,6 +587,7 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
+			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 		}
 	}
 
@@ -575,7 +642,7 @@ impl Stroke {
 		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
 
 		// Render the needed stroke attributes
-		let mut attributes = format!(r##" stroke="#{}""##, color.rgb_hex());
+		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 		if color.a() < 1. {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
@@ -589,15 +656,18 @@ impl Stroke {
 			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
 		}
 		if let Some(line_cap) = line_cap {
-			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap);
+			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap.svg_name());
 		}
 		if let Some(line_join) = line_join {
-			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join);
+			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join.svg_name());
 		}
 		if let Some(line_join_miter_limit) = line_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);
 		}
-
+		// Add vector-effect attribute to make strokes non-scaling
+		if self.non_scaling {
+			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
+		}
 		attributes
 	}
 
@@ -644,6 +714,11 @@ impl Stroke {
 		self.line_join_miter_limit = limit;
 		self
 	}
+
+	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
+		self.non_scaling = non_scaling;
+		self
+	}
 }
 
 // Having an alpha of 1 to start with leads to a better experience with the properties panel
@@ -658,6 +733,7 @@ impl Default for Stroke {
 			line_join: LineJoin::Miter,
 			line_join_miter_limit: 4.,
 			transform: DAffine2::IDENTITY,
+			non_scaling: false,
 		}
 	}
 }
@@ -820,7 +896,10 @@ impl PathStyle {
 		match view_mode {
 			ViewMode::Outline => {
 				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
-				let stroke_attribute = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render();
+				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
+				// Outline strokes should be non-scaling by default
+				outline_stroke.non_scaling = true;
+				let stroke_attribute = outline_stroke.render();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {

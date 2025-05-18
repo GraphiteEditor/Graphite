@@ -3,13 +3,13 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 
@@ -225,16 +225,17 @@ impl Fsm for ArtboardToolFsmState {
 		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
-				if state != ArtboardToolFsmState::Drawing {
+				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
+				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
 					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 						bounding_box_manager.bounds = bounds;
 						bounding_box_manager.transform = document.metadata().document_to_viewport;
 
-						bounding_box_manager.render_overlays(&mut overlay_context);
-					} else {
-						tool_data.bounding_box_manager.take();
+						bounding_box_manager.render_overlays(&mut overlay_context, true);
 					}
+				} else {
+					tool_data.bounding_box_manager.take();
 				}
 
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -267,7 +268,7 @@ impl Fsm for ArtboardToolFsmState {
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 				tool_data.resize_artboard(responses, document, input, from_center, constrain_square);
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
@@ -277,14 +278,14 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
 					let snap_data = SnapData::ignore(document, input, &ignore);
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
-					let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+					let mouse_delta = snap_drag(start, current, axis_align, Axis::None, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 					let size = bounds.bounds[1] - bounds.bounds[0];
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);
@@ -306,7 +307,7 @@ impl Fsm for ArtboardToolFsmState {
 					bounds.bounds[0] = position.round();
 					bounds.bounds[1] = position.round() + size.round();
 
-					// AutoPanning
+					// Auto-panning
 					let messages = [
 						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
@@ -316,7 +317,9 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, center, constrain_axis_or_aspect);
+				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, center, constrain_axis_or_aspect, true);
+				let viewport_to_document = document.metadata().document_to_viewport.inverse();
+				let [start, end] = [start, end].map(|point| viewport_to_document.transform_point2(point));
 				if let Some(artboard) = tool_data.selected_artboard {
 					assert_ne!(artboard, LayerNodeIdentifier::ROOT_PARENT, "Selected artboard cannot be ROOT_PARENT");
 
@@ -343,7 +346,7 @@ impl Fsm for ArtboardToolFsmState {
 					})
 				}
 
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
@@ -375,25 +378,25 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				// AutoPanning
+				// Auto-panning
 				tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::Drawing
 			}
 			(state, ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }) => {
-				// AutoPanning
+				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),

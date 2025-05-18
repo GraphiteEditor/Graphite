@@ -1,7 +1,5 @@
 use super::*;
-
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
-
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 
@@ -36,6 +34,7 @@ impl GridSnapper {
 		}
 		lines
 	}
+
 	// Isometric grid has 6 lines around a point, 2 y axis, 2 on the angle a, and 2 on the angle b.
 	fn get_snap_lines_isometric(&self, document_point: DVec2, snap_data: &mut SnapData, y_axis_spacing: f64, angle_a: f64, angle_b: f64) -> Vec<Line> {
 		let document = snap_data.document;
@@ -88,9 +87,10 @@ impl GridSnapper {
 
 		lines
 	}
+
 	fn get_snap_lines(&self, document_point: DVec2, snap_data: &mut SnapData) -> Vec<Line> {
 		match snap_data.document.snapping_state.grid.grid_type {
-			GridType::Rectangle { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
+			GridType::Rectangular { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
 			GridType::Isometric { y_axis_spacing, angle_a, angle_b } => self.get_snap_lines_isometric(document_point, snap_data, y_axis_spacing, angle_a, angle_b),
 		}
 	}

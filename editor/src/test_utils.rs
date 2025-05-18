@@ -1,5 +1,5 @@
-use crate::application::set_uuid_seed;
 use crate::application::Editor;
+use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
 use crate::messages::portfolio::utility_types::Platform;
@@ -8,12 +8,11 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
-
-use graph_craft::document::DocumentNode;
-use graphene_core::raster::color::Color;
-use graphene_core::InputAccessor;
-
+use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
+use graph_craft::document::DocumentNode;
+use graphene_core::InputAccessor;
+use graphene_core::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -48,7 +47,7 @@ impl EditorTestUtils {
 
 			let viewport_resolution = glam::UVec2::ONE;
 			exector
-				.submit_current_node_graph_evaluation(document, viewport_resolution)
+				.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default())
 				.expect("submit_current_node_graph_evaluation failed");
 			runtime.run().await;
 
@@ -219,6 +218,10 @@ impl EditorTestUtils {
 		self.handle_message(Message::Tool(ToolMessage::SelectPrimaryColor { color })).await;
 	}
 
+	pub async fn select_secondary_color(&mut self, color: Color) {
+		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
+	}
+
 	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(PortfolioMessage::PasteImage {
 			name: None,
@@ -226,6 +229,55 @@ impl EditorTestUtils {
 			mouse,
 			parent_and_insert_index: None,
 		})
+		.await;
+	}
+	pub async fn draw_spline(&mut self, points: &[DVec2]) {
+		self.select_tool(ToolType::Spline).await;
+
+		for &point in points {
+			self.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+
+		self.press(Key::Enter, ModifierKeys::empty()).await;
+	}
+
+	pub async fn get_selected_layer(&mut self) -> Option<LayerNodeIdentifier> {
+		self.active_document().network_interface.selected_nodes().selected_layers(self.active_document().metadata()).next()
+	}
+
+	pub async fn double_click(&mut self, position: DVec2) {
+		self.handle_message(InputPreprocessorMessage::DoubleClick {
+			editor_mouse_state: EditorMouseState {
+				editor_position: position,
+				mouse_keys: MouseKeys::LEFT,
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys: ModifierKeys::empty(),
+		})
+		.await;
+	}
+
+	pub async fn drag_path(&mut self, points: &[DVec2], modifier_keys: ModifierKeys) {
+		if points.is_empty() {
+			return;
+		}
+
+		let first_point = points[0];
+		self.move_mouse(first_point.x, first_point.y, modifier_keys, MouseKeys::empty()).await;
+		self.left_mousedown(first_point.x, first_point.y, modifier_keys).await;
+
+		for &point in &points[1..] {
+			self.move_mouse(point.x, point.y, modifier_keys, MouseKeys::LEFT).await;
+		}
+
+		self.mouseup(
+			EditorMouseState {
+				editor_position: points[points.len() - 1],
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys,
+		)
 		.await;
 	}
 }
@@ -256,7 +308,7 @@ pub mod test_prelude {
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
-	pub use crate::messages::tool::common_functionality::graph_modification_utils::{is_layer_fed_by_node_of_name, NodeGraphLayer};
+	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;
 	pub use crate::node_graph_executor::NodeRuntime;
 	pub use crate::test_utils::EditorTestUtils;
@@ -266,7 +318,7 @@ pub mod test_prelude {
 	pub use graph_craft::document::DocumentNode;
 	pub use graphene_core::raster::{Color, Image};
 	pub use graphene_core::{InputAccessor, InputAccessorSource};
-	pub use graphene_std::{transform::Footprint, GraphicGroup};
+	pub use graphene_std::transform::Footprint;
 
 	#[macro_export]
 	macro_rules! float_eq {

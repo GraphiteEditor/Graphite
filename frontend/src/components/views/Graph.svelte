@@ -207,7 +207,7 @@
 		const LINE_WIDTH = 2;
 
 		// Calculate coordinates for input and output connectors
-		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
@@ -475,7 +475,7 @@
 		const outConnectorX = (outX - containerBounds.x) / $nodeGraph.transform.scale;
 		const outConnectorY = (outY - containerBounds.y) / $nodeGraph.transform.scale;
 
-		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
+		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
@@ -581,11 +581,12 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return value.resolvedType ? `Resolved Data:\n${value.resolvedType}` : `Unresolved Data ${value.dataType}`;
+		return value.resolvedType ? `Data Type:\n${value.resolvedType}` : `Data Type (Unresolved):\n${value.dataType}`;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
-		return `Valid Types:\n${value.validTypes.join(",\n ")}`;
+		const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
+		return `Valid Types:\n${validTypes}`;
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
@@ -653,8 +654,10 @@
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
 		>
-			{#if $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
+			{#if typeof $nodeGraph.contextMenuInformation.contextMenuData === "string" && $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
 				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
+			{:else if $nodeGraph.contextMenuInformation.contextMenuData && "compatibleType" in $nodeGraph.contextMenuInformation.contextMenuData}
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
 			{:else}
 				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">
@@ -1067,7 +1070,7 @@
 					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
 						{#each exposedInputsOutputs as [input, output]}
 							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltip={input !== undefined ? input.name : output.name}>
+								<TextLabel tooltip={(input !== undefined ? `${input.name}\n\n${input.description}` : `${output.name}\n\n${output.description}`).trim()}>
 									{input !== undefined ? input.name : output.name}
 								</TextLabel>
 							</div>

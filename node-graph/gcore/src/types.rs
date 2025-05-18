@@ -29,7 +29,7 @@ macro_rules! concrete {
 
 #[macro_export]
 macro_rules! concrete_with_name {
-	($type:ty, $name:expr) => {
+	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
@@ -42,16 +42,12 @@ macro_rules! concrete_with_name {
 
 #[macro_export]
 macro_rules! generic {
-	($type:ty) => {{
-		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
 #[macro_export]
 macro_rules! future {
-	($type:ty) => {{
-		$crate::Type::Future(Box::new(concrete!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
 	($type:ty, $name:ty) => {
 		$crate::Type::Future(Box::new(concrete!($type, $name)))
 	};
@@ -82,7 +78,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -297,12 +293,24 @@ impl Type {
 		}
 	}
 
-	pub fn nested_type(self) -> Type {
+	pub fn nested_type(&self) -> &Type {
 		match self {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
 			Self::Future(output) => output.nested_type(),
+		}
+	}
+
+	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
+		if let Some(replacement) = f(self) {
+			return Some(std::mem::replace(self, replacement));
+		}
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(_) => None,
+			Self::Fn(_, output) => output.replace_nested(f),
+			Self::Future(output) => output.replace_nested(f),
 		}
 	}
 }
@@ -316,26 +324,30 @@ fn format_type(ty: &str) -> String {
 
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			Self::Generic(arg0) => write!(f, "Generic<{arg0}>"),
+		let result = match self {
+			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(arg0) => write!(f, "Concrete<{}, {:?}>", arg0.name, arg0.id),
+			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => write!(f, "Concrete<{}>", format_type(&arg0.name)),
-			Self::Fn(arg0, arg1) => write!(f, "{arg0:?} → {arg1:?}"),
-			Self::Future(arg0) => write!(f, "Future<{arg0:?}>"),
-		}
+			Self::Concrete(ty) => format_type(&ty.name),
+			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
+			Self::Future(ty) => format!("{ty:?}"),
+		};
+		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
+		write!(f, "{}", result)
 	}
 }
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Type::Generic(name) => write!(f, "{name}"),
-			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
-			Type::Fn(input, output) => write!(f, "{input} → {output}"),
-			Type::Future(ty) => write!(f, "Future<{ty}>"),
-		}
+		let result = match self {
+			Type::Generic(name) => name.to_string(),
+			Type::Concrete(ty) => format_type(&ty.name),
+			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
+			Type::Future(ty) => ty.to_string(),
+		};
+		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
+		write!(f, "{}", result)
 	}
 }
 
@@ -348,5 +360,9 @@ impl From<&'static str> for ProtoNodeIdentifier {
 impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
 		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
 }

@@ -1,12 +1,10 @@
+use crate::Color;
 use crate::graphene_core::raster::image::ImageFrameTable;
 use crate::raster::Image;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
-use crate::Color;
-
-use dyn_any::DynAny;
-
 use core::hash::Hash;
+use dyn_any::DynAny;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -33,7 +31,7 @@ struct BrushCacheImpl {
 impl BrushCacheImpl {
 	fn compute_brush_plan(&mut self, mut background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
 		// Do background invalidation.
-		if background.one_instance().instance != self.background.one_instance().instance {
+		if background.one_instance_ref().instance != self.background.one_instance_ref().instance {
 			self.background = background.clone();
 			return BrushPlan {
 				strokes: input.to_vec(),

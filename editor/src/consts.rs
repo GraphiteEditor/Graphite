@@ -16,6 +16,8 @@ pub const VIEWPORT_ZOOM_LEVELS: [f64; 74] = [
 	0.04, 0.05, 0.06, 0.08, 0.1, 0.125, 0.15, 0.2, 0.25, 0.33333333, 0.4, 0.5, 0.66666666, 0.8, 1., 1.25, 1.6, 2., 2.5, 3.2, 4., 5., 6.4, 8., 10., 12.5, 16., 20., 25., 32., 40., 50., 64., 80., 100.,
 	128., 160., 200., 256., 320., 400., 512., 640., 800., 1024., 1280., 1600., 2048., 2560.,
 ];
+/// Higher values create a steeper curve (a faster zoom rate change)
+pub const VIEWPORT_ZOOM_WHEEL_RATE_CHANGE: f64 = 3.;
 
 /// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function.
 pub const VIEWPORT_GRID_ROUNDING_BIAS: f64 = 0.002;
@@ -97,8 +99,10 @@ pub const MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY: f64 = 48.;
 pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
-pub const INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE: f64 = 50.;
 pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
+pub const SEGMENT_INSERTION_DISTANCE: f64 = 7.5;
+pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
+pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
 // PEN TOOL
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;

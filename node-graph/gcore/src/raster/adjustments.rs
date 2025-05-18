@@ -1,20 +1,19 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
 #[cfg(feature = "alloc")]
-use crate::raster::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
+use crate::raster::curve::{Curve, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::{Channel, Color, Pixel};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
-use crate::vector::style::GradientStops;
 use crate::vector::VectorDataTable;
+use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
-
-use dyn_any::DynAny;
-
 use core::cmp::Ordering;
 use core::fmt::Debug;
+use dyn_any::DynAny;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -36,38 +35,16 @@ use spirv_std::num_traits::float::Float;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
+	#[label("sRGB")]
 	SRGB,
 	Perceptual,
 	AverageChannels,
 	MinimumChannels,
 	MaximumChannels,
-}
-
-impl LuminanceCalculation {
-	pub fn list() -> [LuminanceCalculation; 5] {
-		[
-			LuminanceCalculation::SRGB,
-			LuminanceCalculation::Perceptual,
-			LuminanceCalculation::AverageChannels,
-			LuminanceCalculation::MinimumChannels,
-			LuminanceCalculation::MaximumChannels,
-		]
-	}
-}
-
-impl core::fmt::Display for LuminanceCalculation {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			LuminanceCalculation::SRGB => write!(f, "sRGB"),
-			LuminanceCalculation::Perceptual => write!(f, "Perceptual"),
-			LuminanceCalculation::AverageChannels => write!(f, "Average Channels"),
-			LuminanceCalculation::MinimumChannels => write!(f, "Minimum Channels"),
-			LuminanceCalculation::MaximumChannels => write!(f, "Maximum Channels"),
-		}
-	}
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -350,10 +327,100 @@ fn make_opaque<T: Adjust<Color>>(
 }
 
 // Aims for interoperable compatibility with:
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Brightness/Contrast-,%27levl%27%20%3D%20Levels,-%27curv%27%20%3D%20Curves
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27brit%27%20%3D%20Brightness/Contrast
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Padding-,Brightness%20and%20Contrast,-Key%20is%20%27brit
+//
+// Some further analysis available at:
+// https://geraldbakker.nl/psnumbers/brightness-contrast.html
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"))]
+fn brightness_contrast<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(
+	Color,
+	ImageFrameTable<Color>,
+	GradientStops,
+)]
+	mut input: T,
+	brightness: SignedPercentage,
+	contrast: SignedPercentage,
+	use_classic: bool,
+) -> T {
+	if use_classic {
+		let brightness = brightness as f32 / 255.;
+
+		let contrast = contrast as f32 / 100.;
+		let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+
+		let offset = brightness * contrast + brightness - contrast / 2.;
+
+		input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
+
+		return input;
+	}
+
+	const WINDOW_SIZE: usize = 1024;
+
+	// Brightness LUT
+	let brightness_is_negative = brightness < 0.;
+	// We clamp the brightness before the two curve X-axis points `130 - brightness * 26` and `233 - brightness * 48` intersect.
+	// Beyond the point of intersection, the cubic spline fitting becomes invalid and fails an assertion, which we need to avoid.
+	// See the intersection of the red lines at x = 103/22*100 = 468.18182 in the graph: https://www.desmos.com/calculator/ekvz4zyd9c
+	let brightness = (brightness.abs() / 100.).min(103. / 22. - 0.00001) as f32;
+	let brightness_curve_points = CubicSplines {
+		x: [0., 130. - brightness * 26., 233. - brightness * 48., 255.].map(|x| x / 255.),
+		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
+	};
+	let brightness_curve_solutions = brightness_curve_points.solve();
+	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
+		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
+		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
+	});
+	// Special handling for when brightness is negative
+	if brightness_is_negative {
+		brightness_lut = core::array::from_fn(|i| {
+			let mut x = i;
+			while x > 1 && brightness_lut[x] > i as f32 / WINDOW_SIZE as f32 {
+				x -= 1;
+			}
+			x as f32 / WINDOW_SIZE as f32
+		});
+	}
+
+	// Contrast LUT
+	// Unlike with brightness, the X-axis points `64` and `192` don't intersect at any contrast value, because they are constants.
+	// So we don't have to worry about clamping the contrast value to avoid invalid cubic spline fitting.
+	// See the graph: https://www.desmos.com/calculator/iql9vsca56
+	let contrast = contrast as f32 / 100.;
+	let contrast_curve_points = CubicSplines {
+		x: [0., 64., 192., 255.].map(|x| x / 255.),
+		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
+	};
+	let contrast_curve_solutions = contrast_curve_points.solve();
+	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
+		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
+		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
+	});
+
+	// Composed brightness and contrast LUTs
+	let combined_lut = brightness_lut.map(|brightness| {
+		let index_in_contrast_lut = (brightness * (contrast_lut.len() - 1) as f32).round() as usize;
+		contrast_lut[index_in_contrast_lut]
+	});
+	let lut_max = (combined_lut.len() - 1) as f32;
+
+	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| combined_lut[(c * lut_max).round() as usize]).to_linear_srgb());
+
+	input
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels
 //
 // Algorithm from:
 // https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+//
+// Some further analysis available at:
+// https://geraldbakker.nl/psnumbers/levels.html
 #[node_macro::node(category("Raster: Adjustment"))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -574,11 +641,7 @@ async fn threshold<T: Adjust<Color>>(
 			LuminanceCalculation::MaximumChannels => color.maximum_rgb_channels(),
 		};
 
-		if luminance >= min_luminance && luminance <= max_luminance {
-			Color::WHITE
-		} else {
-			Color::BLACK
-		}
+		if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK }
 	});
 	image
 }
@@ -604,7 +667,7 @@ impl Blend<Color> for ImageFrameTable<Color> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		let mut result = self.clone();
 
-		for (over, under) in result.instances_mut().zip(under.instances()) {
+		for (over, under) in result.instance_mut_iter().zip(under.instance_ref_iter()) {
 			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 			*over.instance = Image {
@@ -620,21 +683,21 @@ impl Blend<Color> for ImageFrameTable<Color> {
 }
 impl Blend<Color> for GradientStops {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut combined_stops = self.0.iter().map(|(position, _)| position).chain(under.0.iter().map(|(position, _)| position)).collect::<Vec<_>>();
+		let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
 		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
 		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
 		let stops = combined_stops
 			.into_iter()
 			.map(|&position| {
-				let over_color = self.evalute(position);
-				let under_color = under.evalute(position);
+				let over_color = self.evaluate(position);
+				let under_color = under.evaluate(position);
 				let color = blend_fn(over_color, under_color);
 				(position, color)
 			})
 			.collect::<Vec<_>>();
 
-		GradientStops(stops)
+		GradientStops::new(stops)
 	}
 }
 
@@ -720,14 +783,14 @@ impl Adjust<Color> for Color {
 }
 impl Adjust<Color> for Option<Color> {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		if let Some(ref mut v) = self {
+		if let Some(v) = self {
 			*v = map_fn(v)
 		}
 	}
 }
 impl Adjust<Color> for GradientStops {
 	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for (_pos, c) in self.0.iter_mut() {
+		for (_pos, c) in self.iter_mut() {
 			*c = map_fn(c);
 		}
 	}
@@ -737,7 +800,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			for c in instance.instance.data.iter_mut() {
 				*c = map_fn(c);
 			}
@@ -776,7 +839,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evalute(intensity as f64)
+		gradient.evaluate(intensity as f64).to_linear_srgb()
 	});
 
 	image
@@ -788,7 +851,15 @@ async fn gradient_map<T: Adjust<Color>>(
 //
 // Algorithm based on:
 // https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
-// The results of this implementation are very close to correct, but not quite perfect
+// The results of this implementation are very close to correct, but not quite perfect.
+//
+// Some further analysis available at:
+// https://www.photo-mark.com/notes/analyzing-photoshop-vibrance-and-saturation/
+//
+// This algorithm is currently lacking a "Saturation" parameter which is needed for interoperability.
+// It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
+// When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
+// (Except for some noise probably due to rounding error.)
 #[node_macro::node(category("Raster: Adjustment"))]
 async fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -850,9 +921,11 @@ async fn vibrance<T: Adjust<Color>>(
 	image
 }
 
+/// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
 	Red,
@@ -860,19 +933,11 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
-impl core::fmt::Display for RedGreenBlue {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RedGreenBlue::Red => write!(f, "Red"),
-			RedGreenBlue::Green => write!(f, "Green"),
-			RedGreenBlue::Blue => write!(f, "Blue"),
-		}
-	}
-}
-
+/// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -881,24 +946,17 @@ pub enum RedGreenBlueAlpha {
 	Alpha,
 }
 
-impl core::fmt::Display for RedGreenBlueAlpha {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RedGreenBlueAlpha::Red => write!(f, "Red"),
-			RedGreenBlueAlpha::Green => write!(f, "Green"),
-			RedGreenBlueAlpha::Blue => write!(f, "Blue"),
-			RedGreenBlueAlpha::Alpha => write!(f, "Alpha"),
-		}
-	}
-}
-
+/// Style of noise pattern
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
 	Perlin,
+	#[label("OpenSimplex2")]
 	OpenSimplex2,
+	#[label("OpenSimplex2S")]
 	OpenSimplex2S,
 	Cellular,
 	ValueCubic,
@@ -906,174 +964,69 @@ pub enum NoiseType {
 	WhiteNoise,
 }
 
-impl core::fmt::Display for NoiseType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			NoiseType::Perlin => write!(f, "Perlin"),
-			NoiseType::OpenSimplex2 => write!(f, "OpenSimplex2"),
-			NoiseType::OpenSimplex2S => write!(f, "OpenSimplex2S"),
-			NoiseType::Cellular => write!(f, "Cellular"),
-			NoiseType::ValueCubic => write!(f, "Value Cubic"),
-			NoiseType::Value => write!(f, "Value"),
-			NoiseType::WhiteNoise => write!(f, "White Noise"),
-		}
-	}
-}
-
-impl NoiseType {
-	pub fn list() -> &'static [NoiseType; 7] {
-		&[
-			NoiseType::Perlin,
-			NoiseType::OpenSimplex2,
-			NoiseType::OpenSimplex2S,
-			NoiseType::Cellular,
-			NoiseType::ValueCubic,
-			NoiseType::Value,
-			NoiseType::WhiteNoise,
-		]
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+/// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
 	None,
+	#[label("Fractional Brownian Motion")]
 	FBm,
 	Ridged,
 	PingPong,
+	#[label("Progressive (Domain Warp Only)")]
 	DomainWarpProgressive,
+	#[label("Independent (Domain Warp Only)")]
 	DomainWarpIndependent,
 }
 
-impl core::fmt::Display for FractalType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			FractalType::None => write!(f, "None"),
-			FractalType::FBm => write!(f, "Fractional Brownian Motion"),
-			FractalType::Ridged => write!(f, "Ridged"),
-			FractalType::PingPong => write!(f, "Ping Pong"),
-			FractalType::DomainWarpProgressive => write!(f, "Progressive (Domain Warp Only)"),
-			FractalType::DomainWarpIndependent => write!(f, "Independent (Domain Warp Only)"),
-		}
-	}
-}
-
-impl FractalType {
-	pub fn list() -> &'static [FractalType; 6] {
-		&[
-			FractalType::None,
-			FractalType::FBm,
-			FractalType::Ridged,
-			FractalType::PingPong,
-			FractalType::DomainWarpProgressive,
-			FractalType::DomainWarpIndependent,
-		]
-	}
-}
-
+/// Distance function used by the cellular noise
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
+	#[label("Euclidean Squared (Faster)")]
 	EuclideanSq,
 	Manhattan,
 	Hybrid,
 }
 
-impl core::fmt::Display for CellularDistanceFunction {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			CellularDistanceFunction::Euclidean => write!(f, "Euclidean"),
-			CellularDistanceFunction::EuclideanSq => write!(f, "Euclidean Squared (Faster)"),
-			CellularDistanceFunction::Manhattan => write!(f, "Manhattan"),
-			CellularDistanceFunction::Hybrid => write!(f, "Hybrid"),
-		}
-	}
-}
-
-impl CellularDistanceFunction {
-	pub fn list() -> &'static [CellularDistanceFunction; 4] {
-		&[
-			CellularDistanceFunction::Euclidean,
-			CellularDistanceFunction::EuclideanSq,
-			CellularDistanceFunction::Manhattan,
-			CellularDistanceFunction::Hybrid,
-		]
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
+	#[label("Nearest (F1)")]
 	Nearest,
+	#[label("Next Nearest (F2)")]
 	NextNearest,
+	#[label("Average (F1 / 2 + F2 / 2)")]
 	Average,
+	#[label("Difference (F2 - F1)")]
 	Difference,
+	#[label("Product (F2 * F1 / 2)")]
 	Product,
+	#[label("Division (F1 / F2)")]
 	Division,
 }
 
-impl core::fmt::Display for CellularReturnType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			CellularReturnType::CellValue => write!(f, "Cell Value"),
-			CellularReturnType::Nearest => write!(f, "Nearest (F1)"),
-			CellularReturnType::NextNearest => write!(f, "Next Nearest (F2)"),
-			CellularReturnType::Average => write!(f, "Average (F1 / 2 + F2 / 2)"),
-			CellularReturnType::Difference => write!(f, "Difference (F2 - F1)"),
-			CellularReturnType::Product => write!(f, "Product (F2 * F1 / 2)"),
-			CellularReturnType::Division => write!(f, "Division (F1 / F2)"),
-		}
-	}
-}
-
-impl CellularReturnType {
-	pub fn list() -> &'static [CellularReturnType; 7] {
-		&[
-			CellularReturnType::CellValue,
-			CellularReturnType::Nearest,
-			CellularReturnType::NextNearest,
-			CellularReturnType::Average,
-			CellularReturnType::Difference,
-			CellularReturnType::Product,
-			CellularReturnType::Division,
-		]
-	}
-}
-
+/// Type of domain warp
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
 	None,
+	#[label("OpenSimplex2")]
 	OpenSimplex2,
+	#[label("OpenSimplex2 Reduced")]
 	OpenSimplex2Reduced,
 	BasicGrid,
-}
-
-impl core::fmt::Display for DomainWarpType {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			DomainWarpType::None => write!(f, "None"),
-			DomainWarpType::OpenSimplex2 => write!(f, "OpenSimplex2"),
-			DomainWarpType::OpenSimplex2Reduced => write!(f, "OpenSimplex2 Reduced"),
-			DomainWarpType::BasicGrid => write!(f, "Basic Grid"),
-		}
-	}
-}
-
-impl DomainWarpType {
-	pub fn list() -> &'static [DomainWarpType; 4] {
-		&[DomainWarpType::None, DomainWarpType::OpenSimplex2, DomainWarpType::OpenSimplex2Reduced, DomainWarpType::BasicGrid]
-	}
 }
 
 // Aims for interoperable compatibility with:
@@ -1175,26 +1128,18 @@ async fn channel_mixer<T: Adjust<Color>>(
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
 	Relative,
 	Absolute,
 }
 
-impl core::fmt::Display for RelativeAbsolute {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			RelativeAbsolute::Relative => write!(f, "Relative"),
-			RelativeAbsolute::Absolute => write!(f, "Absolute"),
-		}
-	}
-}
-
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1203,25 +1148,11 @@ pub enum SelectiveColorChoice {
 	Cyans,
 	Blues,
 	Magentas,
+
+	#[menu_separator]
 	Whites,
 	Neutrals,
 	Blacks,
-}
-
-impl core::fmt::Display for SelectiveColorChoice {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			SelectiveColorChoice::Reds => write!(f, "Reds"),
-			SelectiveColorChoice::Yellows => write!(f, "Yellows"),
-			SelectiveColorChoice::Greens => write!(f, "Greens"),
-			SelectiveColorChoice::Cyans => write!(f, "Cyans"),
-			SelectiveColorChoice::Blues => write!(f, "Blues"),
-			SelectiveColorChoice::Magentas => write!(f, "Magentas"),
-			SelectiveColorChoice::Whites => write!(f, "Whites"),
-			SelectiveColorChoice::Neutrals => write!(f, "Neutrals"),
-			SelectiveColorChoice::Blacks => write!(f, "Blacks"),
-		}
-	}
 }
 
 // Aims for interoperable compatibility with:
@@ -1366,14 +1297,14 @@ impl MultiplyAlpha for Color {
 }
 impl MultiplyAlpha for VectorDataTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
 }
 impl MultiplyAlpha for GraphicGroupTable {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1383,7 +1314,7 @@ where
 	GraphicElement: From<Image<P>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
-		for instance in self.instances_mut() {
+		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
 		}
 	}
@@ -1405,7 +1336,7 @@ async fn posterize<T: Adjust<Color>>(
 	)]
 	mut input: T,
 	#[default(4)]
-	#[min(2.)]
+	#[hard_min(2.)]
 	levels: u32,
 ) -> T {
 	input.adjust(|color| {
@@ -1441,6 +1372,7 @@ async fn exposure<T: Adjust<Color>>(
 	offset: f64,
 	#[default(1.)]
 	#[range((0.01, 10.))]
+	#[hard_min(0.0001)]
 	gamma_correction: f64,
 ) -> T {
 	input.adjust(|color| {
@@ -1583,7 +1515,7 @@ mod test {
 		let opacity = 100_f64;
 
 		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.one_instance().instance;
+		let result = result.instance_ref_iter().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

@@ -1,10 +1,11 @@
 use crate::application_io::TextureFrameTable;
+use crate::instances::Instances;
 use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::image::ImageFrameTable;
 use crate::vector::VectorDataTable;
-use crate::{Artboard, ArtboardGroupTable, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
-
-use glam::{DAffine2, DVec2};
+use crate::{Artboard, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
+use core::f64;
+use glam::{DAffine2, DMat2, DVec2};
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
@@ -90,25 +91,30 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
-	/// When the transform is set downstream, all upstream modifications have to be ignored
-	pub ignore_modifications: bool,
 }
 
 impl Default for Footprint {
 	fn default() -> Self {
-		Self::empty()
+		Self::DEFAULT
 	}
 }
 
 impl Footprint {
-	pub const fn empty() -> Self {
-		Self {
-			transform: DAffine2::IDENTITY,
-			resolution: glam::UVec2::new(1920, 1080),
-			quality: RenderQuality::Full,
-			ignore_modifications: false,
-		}
-	}
+	pub const DEFAULT: Self = Self {
+		transform: DAffine2::IDENTITY,
+		resolution: glam::UVec2::new(1920, 1080),
+		quality: RenderQuality::Full,
+	};
+
+	pub const BOUNDLESS: Self = Self {
+		transform: DAffine2 {
+			matrix2: DMat2::from_diagonal(DVec2::splat(f64::INFINITY)),
+			translation: DVec2::ZERO,
+		},
+		resolution: glam::UVec2::new(0, 0),
+		quality: RenderQuality::Full,
+	};
+
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
 		let inverse = self.transform.inverse();
 		let start = inverse.transform_point2((0., 0.).into());
@@ -131,11 +137,6 @@ impl From<()> for Footprint {
 	}
 }
 
-#[node_macro::node(category("Debug"))]
-fn cull<T>(_: impl Ctx, #[implementations(VectorDataTable, GraphicGroupTable, Artboard, ImageFrameTable<Color>, ArtboardGroupTable)] data: T) -> T {
-	data
-}
-
 impl core::hash::Hash for Footprint {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
@@ -156,7 +157,7 @@ impl ApplyTransform for () {
 }
 
 #[node_macro::node(category(""))]
-async fn transform<T: 'n + TransformMut + 'static>(
+async fn transform<T: 'n + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		Context -> VectorDataTable,
@@ -164,39 +165,176 @@ async fn transform<T: 'n + TransformMut + 'static>(
 		Context -> ImageFrameTable<Color>,
 		Context -> TextureFrameTable,
 	)]
-	transform_target: impl Node<Context<'static>, Output = T>,
+	transform_target: impl Node<Context<'static>, Output = Instances<T>>,
 	translate: DVec2,
 	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
 	_pivot: DVec2,
-) -> T {
-	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+) -> Instances<T> {
+	let matrix = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+
 	let footprint = ctx.try_footprint().copied();
 
 	let mut ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
-		if !footprint.ignore_modifications {
-			footprint.apply_transform(&modification);
-		}
+		footprint.apply_transform(&matrix);
 		ctx = ctx.with_footprint(footprint);
 	}
 
 	let mut transform_target = transform_target.eval(ctx.into_context()).await;
 
-	let data_transform = transform_target.transform_mut();
-	*data_transform = modification * (*data_transform);
+	for data_transform in transform_target.instance_mut_iter() {
+		*data_transform.transform = matrix * *data_transform.transform;
+	}
 
 	transform_target
 }
 
 #[node_macro::node(category(""))]
-fn replace_transform<Data: TransformMut, TransformInput: Transform>(
+fn replace_transform<Data, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Data,
+	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Instances<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
-) -> Data {
-	let data_transform = data.transform_mut();
-	*data_transform = transform.transform();
+) -> Instances<Data> {
+	for data_transform in data.instance_mut_iter() {
+		*data_transform.transform = transform.transform();
+	}
 	data
+}
+
+#[node_macro::node(category("Debug"))]
+async fn boundless_footprint<T: 'n + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
+		Context -> String,
+		Context -> f64,
+	)]
+	transform_target: impl Node<Context<'static>, Output = T>,
+) -> T {
+	let ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::BOUNDLESS);
+
+	transform_target.eval(ctx.into_context()).await
+}
+#[node_macro::node(category("Debug"))]
+async fn freeze_real_time<T: 'n + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Context -> VectorDataTable,
+		Context -> GraphicGroupTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
+		Context -> String,
+		Context -> f64,
+	)]
+	transform_target: impl Node<Context<'static>, Output = T>,
+) -> T {
+	let ctx = OwnedContextImpl::from(ctx).with_real_time(0.);
+
+	transform_target.eval(ctx.into_context()).await
+}
+
+#[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ReferencePoint {
+	#[default]
+	None,
+	TopLeft,
+	TopCenter,
+	TopRight,
+	CenterLeft,
+	Center,
+	CenterRight,
+	BottomLeft,
+	BottomCenter,
+	BottomRight,
+}
+
+impl ReferencePoint {
+	pub fn point_in_bounding_box(&self, bounding_box: AxisAlignedBbox) -> Option<DVec2> {
+		let size = bounding_box.size();
+		let offset = match self {
+			ReferencePoint::None => return None,
+			ReferencePoint::TopLeft => DVec2::ZERO,
+			ReferencePoint::TopCenter => DVec2::new(size.x / 2., 0.),
+			ReferencePoint::TopRight => DVec2::new(size.x, 0.),
+			ReferencePoint::CenterLeft => DVec2::new(0., size.y / 2.),
+			ReferencePoint::Center => DVec2::new(size.x / 2., size.y / 2.),
+			ReferencePoint::CenterRight => DVec2::new(size.x, size.y / 2.),
+			ReferencePoint::BottomLeft => DVec2::new(0., size.y),
+			ReferencePoint::BottomCenter => DVec2::new(size.x / 2., size.y),
+			ReferencePoint::BottomRight => DVec2::new(size.x, size.y),
+		};
+		Some(bounding_box.start + offset)
+	}
+}
+
+impl From<&str> for ReferencePoint {
+	fn from(input: &str) -> Self {
+		match input {
+			"None" => ReferencePoint::None,
+			"TopLeft" => ReferencePoint::TopLeft,
+			"TopCenter" => ReferencePoint::TopCenter,
+			"TopRight" => ReferencePoint::TopRight,
+			"CenterLeft" => ReferencePoint::CenterLeft,
+			"Center" => ReferencePoint::Center,
+			"CenterRight" => ReferencePoint::CenterRight,
+			"BottomLeft" => ReferencePoint::BottomLeft,
+			"BottomCenter" => ReferencePoint::BottomCenter,
+			"BottomRight" => ReferencePoint::BottomRight,
+			_ => panic!("Failed parsing unrecognized ReferencePosition enum value '{input}'"),
+		}
+	}
+}
+
+impl From<ReferencePoint> for Option<DVec2> {
+	fn from(input: ReferencePoint) -> Self {
+		match input {
+			ReferencePoint::None => None,
+			ReferencePoint::TopLeft => Some(DVec2::new(0., 0.)),
+			ReferencePoint::TopCenter => Some(DVec2::new(0.5, 0.)),
+			ReferencePoint::TopRight => Some(DVec2::new(1., 0.)),
+			ReferencePoint::CenterLeft => Some(DVec2::new(0., 0.5)),
+			ReferencePoint::Center => Some(DVec2::new(0.5, 0.5)),
+			ReferencePoint::CenterRight => Some(DVec2::new(1., 0.5)),
+			ReferencePoint::BottomLeft => Some(DVec2::new(0., 1.)),
+			ReferencePoint::BottomCenter => Some(DVec2::new(0.5, 1.)),
+			ReferencePoint::BottomRight => Some(DVec2::new(1., 1.)),
+		}
+	}
+}
+
+impl From<DVec2> for ReferencePoint {
+	fn from(input: DVec2) -> Self {
+		const TOLERANCE: f64 = 1e-5_f64;
+		if input.y.abs() < TOLERANCE {
+			if input.x.abs() < TOLERANCE {
+				return ReferencePoint::TopLeft;
+			} else if (input.x - 0.5).abs() < TOLERANCE {
+				return ReferencePoint::TopCenter;
+			} else if (input.x - 1.).abs() < TOLERANCE {
+				return ReferencePoint::TopRight;
+			}
+		} else if (input.y - 0.5).abs() < TOLERANCE {
+			if input.x.abs() < TOLERANCE {
+				return ReferencePoint::CenterLeft;
+			} else if (input.x - 0.5).abs() < TOLERANCE {
+				return ReferencePoint::Center;
+			} else if (input.x - 1.).abs() < TOLERANCE {
+				return ReferencePoint::CenterRight;
+			}
+		} else if (input.y - 1.).abs() < TOLERANCE {
+			if input.x.abs() < TOLERANCE {
+				return ReferencePoint::BottomLeft;
+			} else if (input.x - 0.5).abs() < TOLERANCE {
+				return ReferencePoint::BottomCenter;
+			} else if (input.x - 1.).abs() < TOLERANCE {
+				return ReferencePoint::BottomRight;
+			}
+		}
+		ReferencePoint::None
+	}
 }

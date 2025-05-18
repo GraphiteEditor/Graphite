@@ -1,17 +1,14 @@
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
-use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGBMut, Rec709Primaries, RGB, SRGB};
-
+use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
+use bytemuck::{Pod, Zeroable};
+use core::hash::Hash;
 use dyn_any::DynAny;
+use half::f16;
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::Euclid;
 #[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::Euclid;
-
-use bytemuck::{Pod, Zeroable};
-use core::hash::Hash;
-use half::f16;
-use std::fmt::Write;
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -390,7 +387,7 @@ impl Color {
 		Color::from_rgbaf32_unchecked(red * alpha, green * alpha, blue * alpha, alpha)
 	}
 
-	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`.
+	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`, premultiplied by alpha.
 	///
 	/// # Examples
 	/// ```
@@ -404,7 +401,8 @@ impl Color {
 		Color::from_rgba8_srgb(red, green, blue, 255)
 	}
 
-	/// Return an SDR `Color` given RGBA channels from `0` to `255`.
+	// TODO: Should this be premult?
+	/// Return an SDR `Color` given RGBA channels from `0` to `255`, premultiplied by alpha.
 	///
 	/// # Examples
 	/// ```
@@ -413,16 +411,13 @@ impl Color {
 	/// ```
 	#[inline(always)]
 	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
-		let alpha = alpha as f32 / 255.;
 		let map_range = |int_color| int_color as f32 / 255.;
-		Color {
-			red: map_range(red),
-			green: map_range(green),
-			blue: map_range(blue),
-			alpha,
-		}
-		.to_linear_srgb()
-		.map_rgb(|channel| channel * alpha)
+
+		let red = map_range(red);
+		let green = map_range(green);
+		let blue = map_range(blue);
+		let alpha = map_range(alpha);
+		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
@@ -663,11 +658,7 @@ impl Color {
 
 	#[inline(always)]
 	pub fn blend_darker_color(&self, other: Color) -> Color {
-		if self.average_rgb_channels() <= other.average_rgb_channels() {
-			*self
-		} else {
-			other
-		}
+		if self.average_rgb_channels() <= other.average_rgb_channels() { *self } else { other }
 	}
 
 	#[inline(always)]
@@ -682,11 +673,7 @@ impl Color {
 
 	#[inline(always)]
 	pub fn blend_color_dodge(c_b: f32, c_s: f32) -> f32 {
-		if c_s == 1. {
-			1.
-		} else {
-			(c_b / (1. - c_s)).min(1.)
-		}
+		if c_s == 1. { 1. } else { (c_b / (1. - c_s)).min(1.) }
 	}
 
 	#[inline(always)]
@@ -696,11 +683,7 @@ impl Color {
 
 	#[inline(always)]
 	pub fn blend_lighter_color(&self, other: Color) -> Color {
-		if self.average_rgb_channels() >= other.average_rgb_channels() {
-			*self
-		} else {
-			other
-		}
+		if self.average_rgb_channels() >= other.average_rgb_channels() { *self } else { other }
 	}
 
 	pub fn blend_softlight(c_b: f32, c_s: f32) -> f32 {
@@ -745,11 +728,7 @@ impl Color {
 	}
 
 	pub fn blend_hard_mix(c_b: f32, c_s: f32) -> f32 {
-		if Color::blend_linear_light(c_b, c_s) < 0.5 {
-			0.
-		} else {
-			1.
-		}
+		if Color::blend_linear_light(c_b, c_s) < 0.5 { 0. } else { 1. }
 	}
 
 	pub fn blend_difference(c_b: f32, c_s: f32) -> f32 {
@@ -765,11 +744,7 @@ impl Color {
 	}
 
 	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
-		if c_b == 0. {
-			1.
-		} else {
-			c_b / c_s
-		}
+		if c_b == 0. { 1. } else { c_b / c_s }
 	}
 
 	pub fn blend_hue(&self, c_s: Color) -> Color {
@@ -810,56 +785,49 @@ impl Color {
 		(self.red, self.green, self.blue, self.alpha)
 	}
 
-	/// Return an 8-character RGBA hex string (without a # prefix).
+	/// Return an 8-character RGBA hex string (without a # prefix). Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a261", color.rgba_hex())
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
+	/// assert_eq!("3240a261", color.to_rgba_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
 	#[cfg(feature = "std")]
-	pub fn rgba_hex(&self) -> String {
+	pub fn to_rgba_hex_srgb(&self) -> String {
+		let gamma = self.to_gamma_srgb();
 		format!(
 			"{:02x?}{:02x?}{:02x?}{:02x?}",
-			(self.r() * 255.) as u8,
-			(self.g() * 255.) as u8,
-			(self.b() * 255.) as u8,
-			(self.a() * 255.) as u8,
+			(gamma.r() * 255.) as u8,
+			(gamma.g() * 255.) as u8,
+			(gamma.b() * 255.) as u8,
+			(gamma.a() * 255.) as u8,
 		)
 	}
 
-	/// Return a 6-character RGB, or 8-character RGBA, hex string (without a # prefix). The shorter form is used if the alpha is 1.
-	///
-	/// # Examples
+	/// Return a 6-character RGB hex string (without a # prefix). Use this if the [`Color`] is in linear space.
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color1 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a261", color1.rgb_optional_a_hex());
-	/// let color2 = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0xFF).to_gamma_srgb();
-	/// assert_eq!("5267fa", color2.rgb_optional_a_hex());
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
+	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
 	#[cfg(feature = "std")]
-	pub fn rgb_optional_a_hex(&self) -> String {
-		let mut result = format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8);
-		if self.a() < 1. {
-			let _ = write!(&mut result, "{:02x?}", (self.a() * 255.) as u8);
-		}
-		result
+	pub fn to_rgb_hex_srgb(&self) -> String {
+		self.to_gamma_srgb().to_rgb_hex_srgb_from_gamma()
 	}
 
-	/// Return a 6-character RGB hex string (without a # prefix).
+	/// Return a 6-character RGB hex string (without a # prefix). Use this if the [`Color`] is in gamma space.
 	/// ```
 	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("3240a2", color.rgb_hex())
+	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
+	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
 	#[cfg(feature = "std")]
-	pub fn rgb_hex(&self) -> String {
+	pub fn to_rgb_hex_srgb_from_gamma(&self) -> String {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
 
-	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.
+	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
 	/// ```
@@ -930,6 +898,7 @@ impl Color {
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
+	///
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
@@ -961,6 +930,8 @@ impl Color {
 
 	#[inline(always)]
 	pub fn gamma(&self, gamma: f32) -> Color {
+		let gamma = gamma.max(0.0001);
+
 		// From https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
 		let inverse_gamma = 1. / gamma;
 		self.map_rgb(|c: f32| c.powf(inverse_gamma))
@@ -988,20 +959,12 @@ impl Color {
 
 	#[inline(always)]
 	pub fn srgb_to_linear(channel: f32) -> f32 {
-		if channel <= 0.04045 {
-			channel / 12.92
-		} else {
-			((channel + 0.055) / 1.055).powf(2.4)
-		}
+		if channel <= 0.04045 { channel / 12.92 } else { ((channel + 0.055) / 1.055).powf(2.4) }
 	}
 
 	#[inline(always)]
 	pub fn linear_to_srgb(channel: f32) -> f32 {
-		if channel <= 0.0031308 {
-			channel * 12.92
-		} else {
-			1.055 * channel.powf(1. / 2.4) - 0.055
-		}
+		if channel <= 0.0031308 { channel * 12.92 } else { 1.055 * channel.powf(1. / 2.4) - 0.055 }
 	}
 
 	#[inline(always)]

@@ -1,9 +1,9 @@
-use super::discrete_srgb::float_to_srgb_u8;
 use super::Color;
-use crate::instances::Instances;
-use crate::transform::TransformMut;
+use super::discrete_srgb::float_to_srgb_u8;
 use crate::AlphaBlending;
 use crate::GraphicElement;
+use crate::instances::Instances;
+use crate::transform::TransformMut;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -232,7 +232,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
-					image: image.one_instance().instance.clone(),
+					image: image.one_instance_ref().instance.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -274,7 +274,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			*image_frame_table.one_instance_mut().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.one_instance().instance.image.clone()),
+		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.one_instance_ref().instance.image.clone()),
 		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table,
 	})
 }
@@ -315,8 +315,8 @@ where
 	// TODO: Improve sampling logic
 	#[inline(always)]
 	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
-		let image_transform = self.one_instance().transform;
-		let image = self.one_instance().instance;
+		let image_transform = self.one_instance_ref().transform;
+		let image = self.one_instance_ref().instance;
 
 		let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 		let pos = (DAffine2::from_scale(image_size) * image_transform.inverse()).transform_point2(pos);
@@ -333,19 +333,19 @@ where
 	type Pixel = P;
 
 	fn width(&self) -> u32 {
-		let image = self.one_instance().instance;
+		let image = self.one_instance_ref().instance;
 
 		image.width()
 	}
 
 	fn height(&self) -> u32 {
-		let image = self.one_instance().instance;
+		let image = self.one_instance_ref().instance;
 
 		image.height()
 	}
 
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
-		let image = self.one_instance().instance;
+		let image = self.one_instance_ref().instance;
 
 		image.get_pixel(x, y)
 	}

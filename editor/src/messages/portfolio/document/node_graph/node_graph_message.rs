@@ -3,7 +3,6 @@ use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
-
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -59,7 +58,8 @@ pub enum NodeGraphMessage {
 	DuplicateSelectedNodes,
 	ExposeInput {
 		input_connector: InputConnector,
-		new_exposed: bool,
+		set_to_exposed: bool,
+		start_transaction: bool,
 	},
 	InsertNode {
 		node_id: NodeId,
@@ -213,5 +213,6 @@ pub enum NodeGraphMessage {
 	UpdateActionButtons,
 	UpdateGraphBarRight,
 	UpdateInSelectedNetwork,
+	UpdateHints,
 	SendSelectedNodes,
 }

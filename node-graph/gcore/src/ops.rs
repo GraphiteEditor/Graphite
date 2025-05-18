@@ -1,17 +1,16 @@
-use crate::raster::image::ImageFrameTable;
-use crate::raster::BlendMode;
-use crate::registry::types::Percentage;
-use crate::vector::style::GradientStops;
 use crate::Ctx;
+use crate::raster::BlendMode;
+use crate::raster::image::ImageFrameTable;
+use crate::registry::types::{Fraction, Percentage};
+use crate::vector::style::GradientStops;
 use crate::{Color, Node};
-
+use core::marker::PhantomData;
+use core::ops::{Add, Div, Mul, Rem, Sub};
+use dyn_any::DynAny;
+use glam::{DVec2, IVec2, UVec2};
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
-
-use core::marker::PhantomData;
-use core::ops::{Add, Div, Mul, Rem, Sub};
-use glam::DVec2;
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 
@@ -115,14 +114,22 @@ fn multiply<U: Mul<T>, T>(
 }
 
 /// The division operation (÷) calculates the quotient of two numbers.
+///
+/// Produces 0 if the denominator is 0.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn divide<U: Div<T>, T>(
+fn divide<U: Div<T> + Default + PartialEq, T: Default + PartialEq>(
 	_: impl Ctx,
-	#[implementations(f64, &f64, f64, &f64, f32, &f32, f32, &f32, u32, &u32, u32, &u32, DVec2, DVec2, f64)] numerator: U,
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)] numerator: U,
 	#[default(1.)]
-	#[implementations(f64, f64, &f64, &f64, f32, f32, &f32, &f32, u32, u32, &u32, &u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, f64, DVec2)]
 	denominator: T,
-) -> <U as Div<T>>::Output {
+) -> <U as Div<T>>::Output
+where
+	<U as Div<T>>::Output: Default,
+{
+	if denominator == T::default() {
+		return <U as Div<T>>::Output::default();
+	}
 	numerator / denominator
 }
 
@@ -136,11 +143,7 @@ fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy
 	modulus: T,
 	always_positive: bool,
 ) -> <U as Rem<T>>::Output {
-	if always_positive {
-		(numerator % modulus + modulus) % modulus
-	} else {
-		numerator % modulus
-	}
+	if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus }
 }
 
 /// The exponent operation (^) calculates the result of raising a number to a power.
@@ -198,77 +201,61 @@ fn logarithm<U: num_traits::float::Float>(
 /// The sine trigonometric function (sin) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
 fn sine<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
-	if radians {
-		theta.sin()
-	} else {
-		theta.to_radians().sin()
-	}
+	if radians { theta.sin() } else { theta.to_radians().sin() }
 }
 
 /// The cosine trigonometric function (cos) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
 fn cosine<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
-	if radians {
-		theta.cos()
-	} else {
-		theta.to_radians().cos()
-	}
+	if radians { theta.cos() } else { theta.to_radians().cos() }
 }
 
 /// The tangent trigonometric function (tan) calculates the ratio of the angle's opposite side length to its adjacent side length.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] theta: U, radians: bool) -> U {
-	if radians {
-		theta.tan()
-	} else {
-		theta.to_radians().tan()
-	}
+	if radians { theta.tan() } else { theta.to_radians().tan() }
 }
 
 /// The inverse sine trigonometric function (asin) calculates the angle whose sine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
 fn sine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians {
-		value.asin()
-	} else {
-		value.asin().to_degrees()
-	}
+	if radians { value.asin() } else { value.asin().to_degrees() }
 }
 
 /// The inverse cosine trigonometric function (acos) calculates the angle whose cosine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
 fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians {
-		value.acos()
-	} else {
-		value.acos().to_degrees()
-	}
+	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
-/// The inverse tangent trigonometric function (atan) calculates the angle whose tangent is the specified value.
+/// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
+/// atan: the angle whose tangent is the specified scalar number.
+/// atan2: the angle of a ray from the origin to the specified vector2 point.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U, radians: bool) -> U {
-	if radians {
-		value.atan()
-	} else {
-		value.atan().to_degrees()
-	}
+fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
+	value.atan(radians)
 }
 
-/// The inverse tangent trigonometric function (atan2) calculates the angle whose tangent is the ratio of the two specified values.
-#[node_macro::node(name("Tangent Inverse 2-Argument"), category("Math: Trig"))]
-fn tangent_inverse_2_argument<U: num_traits::float::Float>(
-	_: impl Ctx,
-	#[implementations(f64, f32)] y: U,
-	#[expose]
-	#[implementations(f64, f32)]
-	x: U,
-	radians: bool,
-) -> U {
-	if radians {
-		y.atan2(x)
-	} else {
-		y.atan2(x).to_degrees()
+pub trait TangentInverse {
+	type Output: num_traits::float::Float;
+	fn atan(self, radians: bool) -> Self::Output;
+}
+impl TangentInverse for f32 {
+	type Output = f32;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for f64 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.atan() } else { self.atan().to_degrees() }
+	}
+}
+impl TangentInverse for glam::DVec2 {
+	type Output = f64;
+	fn atan(self, radians: bool) -> Self::Output {
+		if radians { self.y.atan2(self.x) } else { self.y.atan2(self.x).to_degrees() }
 	}
 }
 
@@ -306,6 +293,12 @@ fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)]
 	value.to_u64().unwrap()
 }
 
+/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
+#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
+	value.to_f64().unwrap()
+}
+
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
 fn round<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> U {
@@ -333,19 +326,13 @@ fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn min<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value < other_value {
-		true => value,
-		false => other_value,
-	}
+	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
 fn max<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
-	match value > other_value {
-		true => value,
-		false => other_value,
-	}
+	if value > other_value { value } else { other_value }
 }
 
 /// The clamp function (clamp) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
@@ -371,10 +358,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 fn equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value == value
 }
@@ -384,12 +368,33 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 fn not_equals<U: core::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
-	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)]
-	#[min(100.)]
-	#[max(200.)]
-	other_value: U,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
 ) -> bool {
 	other_value != value
+}
+
+/// The less-than operation (<) compares two values and returns true if the first value is less than the second, or false if it is not.
+/// If enabled with "Or Equal", the less-than-or-equal operation (<=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn less_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value <= other_value } else { value < other_value }
+}
+
+/// The greater-than operation (>) compares two values and returns true if the first value is greater than the second, or false if it is not.
+/// If enabled with "Or Equal", the greater-than-or-equal operation (>=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn greater_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value >= other_value } else { value > other_value }
 }
 
 /// The logical or operation (||) returns true if either of the two inputs are true, or false if both are false.
@@ -440,6 +445,37 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 	color
 }
 
+// // Aims for interoperable compatibility with:
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
+// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
+// #[node_macro::node(category("Raster: Adjustment"))]
+// async fn gradient_map<T: Adjust<Color>>(
+// 	_: impl Ctx,
+// 	#[implementations(
+// 		Color,
+// 		ImageFrameTable<Color>,
+// 		GradientStops,
+// 	)]
+// 	mut image: T,
+// 	gradient: GradientStops,
+// 	reverse: bool,
+// ) -> T {
+// 	image.adjust(|color| {
+// 		let intensity = color.luminance_srgb();
+// 		let intensity = if reverse { 1. - intensity } else { intensity };
+// 		gradient.evaluate(intensity as f64)
+// 	});
+
+// 	image
+// }
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("General"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
+	let position = position.clamp(0., 1.);
+	gradient.evaluate(position)
+}
+
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
@@ -450,6 +486,12 @@ fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Gradien
 #[node_macro::node(category("Value"))]
 fn blend_mode_value(_: impl Ctx, _primary: (), blend_mode: BlendMode) -> BlendMode {
 	blend_mode
+}
+
+/// Constructs a string value which may be set to any plain text.
+#[node_macro::node(category("Value"))]
+fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
+	string
 }
 
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
@@ -480,6 +522,26 @@ fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Colo
 #[node_macro::node(category("Math: Vector"))]
 fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
+}
+
+/// Obtain the X or Y component of a vector2.
+#[node_macro::node(name("Extract XY"), category("Math: Vector"))]
+fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: T, axis: XY) -> f64 {
+	match axis {
+		XY::X => vector.into().x,
+		XY::Y => vector.into().y,
+	}
+}
+
+/// The X or Y component of a vector2.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum XY {
+	#[default]
+	X,
+	Y,
 }
 
 // TODO: Rename to "Passthrough"
@@ -523,16 +585,28 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
 
 // Into
-pub struct IntoNode<O> {
-	_o: PhantomData<O>,
+pub struct IntoNode<O>(PhantomData<O>);
+impl<_O> IntoNode<_O> {
+	#[cfg(feature = "alloc")]
+	pub const fn new() -> Self {
+		Self(core::marker::PhantomData)
+	}
 }
-#[cfg(feature = "alloc")]
-#[node_macro::old_node_fn(IntoNode<_O>)]
-async fn into<I, _O>(input: I) -> _O
+impl<_O> Default for IntoNode<_O> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+impl<'input, I: 'input, _O: 'input> Node<'input, I> for IntoNode<_O>
 where
 	I: Into<_O> + Sync + Send,
 {
-	input.into()
+	type Output = ::dyn_any::DynFuture<'input, _O>;
+
+	#[inline]
+	fn eval(&'input self, input: I) -> Self::Output {
+		Box::pin(async move { input.into() })
+	}
 }
 
 #[cfg(test)]

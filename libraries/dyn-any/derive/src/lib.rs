@@ -5,7 +5,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, GenericParam, Lifetime, LifetimeParam, TypeParamBound};
+use syn::{DeriveInput, GenericParam, Lifetime, LifetimeParam, TypeParamBound, parse_macro_input};
 
 /// Derives an implementation for the [`DynAny`] trait.
 ///
@@ -62,7 +62,7 @@ fn replace_lifetimes(generics: &syn::Generics, replacement: &str) -> Vec<proc_ma
 				GenericParam::Type(t) => {
 					let mut t = t.clone();
 					t.bounds.iter_mut().for_each(|bond| {
-						if let TypeParamBound::Lifetime(ref mut t) = bond {
+						if let TypeParamBound::Lifetime(t) = bond {
 							*t = Lifetime::new(replacement, Span::call_site())
 						}
 					});

@@ -5,8 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{Error, EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED};
-
+use crate::{EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error};
 use editor::application::Editor;
 use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -18,21 +17,12 @@ use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
-
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
-
-// /// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
-// /// This avoids creating a json with a list millions of numbers long.
-// #[wasm_bindgen(module = "/../src/editor.ts")]
-// extern "C" {
-// 	// fn dispatchTauri(message: String) -> String;
-// 	fn dispatchTauri(message: String);
-// }
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -140,18 +130,23 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
+			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					editor_and_handle(|editor, handle| {
-						let micros: f64 = timestamp * 1000.;
-						let timestamp = Duration::from_micros(micros.round() as u64);
-
-						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
+							timestamp: js_sys::Date::now() as u64,
+						}) {
 							handle.send_frontend_message_to_js(message);
 						}
 
+						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
+							handle.send_frontend_message_to_js(message);
+						}
+
+						// Used by auto-panning, but this could possibly be refactored in the future, see:
+						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
 						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
 							handle.send_frontend_message_to_js(message);
 						}
@@ -180,21 +175,6 @@ impl EditorHandle {
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
 	}
-
-	// #[wasm_bindgen(js_name = tauriResponse)]
-	// pub fn tauri_response(&self, _message: JsValue) {
-	// 	#[cfg(feature = "tauri")]
-	// 	match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
-	// 		Ok(response) => {
-	// 			for message in response {
-	// 				self.send_frontend_message_to_js(message);
-	// 			}
-	// 		}
-	// 		Err(error) => {
-	// 			log::error!("tauri response: {error:?}\n{_message:?}");
-	// 		}
-	// 	}
-	// }
 
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
@@ -355,7 +335,7 @@ impl EditorHandle {
 	/// Inform the overlays system of the current device pixel ratio
 	#[wasm_bindgen(js_name = setDevicePixelRatio)]
 	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = OverlaysMessage::SetDevicePixelRatio { ratio };
+		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -483,12 +463,13 @@ impl EditorHandle {
 	/// Update primary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updatePrimaryColor)]
 	pub fn update_primary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let primary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
-			Some(color) => color,
-			None => return Err(Error::new("Invalid color").into()),
+		let Some(primary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectPrimaryColor { color: primary_color };
+		let message = ToolMessage::SelectPrimaryColor {
+			color: primary_color.to_linear_srgb(),
+		};
 		self.dispatch(message);
 
 		Ok(())
@@ -497,15 +478,23 @@ impl EditorHandle {
 	/// Update secondary color with values on a scale from 0 to 1.
 	#[wasm_bindgen(js_name = updateSecondaryColor)]
 	pub fn update_secondary_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
-		let secondary_color = match Color::from_rgbaf32(red, green, blue, alpha) {
-			Some(color) => color,
-			None => return Err(Error::new("Invalid color").into()),
+		let Some(secondary_color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
 		};
 
-		let message = ToolMessage::SelectSecondaryColor { color: secondary_color };
+		let message = ToolMessage::SelectSecondaryColor {
+			color: secondary_color.to_linear_srgb(),
+		};
 		self.dispatch(message);
 
 		Ok(())
+	}
+
+	/// Visit the given URL
+	#[wasm_bindgen(js_name = visitUrl)]
+	pub fn visit_url(&self, url: String) {
+		let message = FrontendMessage::TriggerVisitLink { url };
+		self.dispatch(message);
 	}
 
 	/// Paste layers from a serialized json representation
@@ -700,9 +689,9 @@ impl EditorHandle {
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, id: u64) {
+	pub fn toggle_layer_expansion(&self, id: u64, recursive: bool) {
 		let id = NodeId(id);
-		let message = DocumentMessage::ToggleLayerExpansion { id };
+		let message = DocumentMessage::ToggleLayerExpansion { id, recursive };
 		self.dispatch(message);
 	}
 
@@ -757,10 +746,11 @@ impl EditorHandle {
 		use editor::messages::portfolio::document::graph_operation::transform_utils::*;
 		use editor::messages::portfolio::document::graph_operation::utility_types::*;
 		use editor::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-		use editor::node_graph_executor::replace_node_runtime;
 		use editor::node_graph_executor::NodeRuntime;
+		use editor::node_graph_executor::replace_node_runtime;
+		use graph_craft::document::DocumentNodeImplementation;
 		use graph_craft::document::NodeInput;
-		use graph_craft::document::{value::TaggedValue, DocumentNodeImplementation};
+		use graph_craft::document::value::TaggedValue;
 		use graphene_core::vector::*;
 
 		let (_, request_receiver) = std::sync::mpsc::channel();
@@ -778,7 +768,10 @@ impl EditorHandle {
 			to_front: false,
 		});
 
-		let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+		let Some(document) = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut() else {
+			warn!("Document wasn't loaded");
+			return;
+		};
 		for node in document
 			.network_interface
 			.document_network_metadata()
@@ -814,7 +807,7 @@ impl EditorHandle {
 					document
 						.network_interface
 						.replace_implementation(&node_id, &[], DocumentNodeImplementation::proto("graphene_core::ToArtboardNode"));
-					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", &[node_id]);
+					document.network_interface.add_import(TaggedValue::IVec2(glam::IVec2::default()), false, 2, "", "", &[node_id]);
 				}
 			}
 		}
@@ -822,7 +815,13 @@ impl EditorHandle {
 		let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 		portfolio
 			.executor
-			.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(), glam::UVec2::ONE, true)
+			.submit_node_graph_evaluation(
+				portfolio.documents.get_mut(&portfolio.active_document_id().unwrap()).unwrap(),
+				glam::UVec2::ONE,
+				Default::default(),
+				None,
+				true,
+			)
 			.unwrap();
 		editor::node_graph_executor::run_node_graph().await;
 
@@ -989,7 +988,7 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
-		let Ok(Some(ref mut editor)) = guard.as_deref_mut() else { return T::default() };
+		let Ok(Some(editor)) = guard.as_deref_mut() else { return T::default() };
 
 		callback(editor)
 	})
@@ -1000,7 +999,7 @@ pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut Edito
 	EDITOR_HANDLE.with(|editor_handle| {
 		editor(|editor| {
 			let mut guard = editor_handle.try_lock();
-			let Ok(Some(ref mut editor_handle)) = guard.as_deref_mut() else {
+			let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
 				log::error!("Failed to borrow editor handle");
 				return;
 			};

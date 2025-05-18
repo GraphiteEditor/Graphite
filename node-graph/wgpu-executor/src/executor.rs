@@ -1,8 +1,6 @@
 use super::context::Context;
-
-use dyn_any::StaticTypeSized;
-
 use bytemuck::Pod;
+use dyn_any::StaticTypeSized;
 use std::borrow::Cow;
 use std::error::Error;
 use std::pin::Pin;

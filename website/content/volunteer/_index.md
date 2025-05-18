@@ -8,7 +8,7 @@ css = ["/page/volunteer.css", "/component/feature-box.css"]
 <section>
 <div class="block">
 
-# Volunteer
+# Get involved
 
 **Graphite is 100% built by volunteers.** Get involved in the effort to bring great, free creative software to the world.
 

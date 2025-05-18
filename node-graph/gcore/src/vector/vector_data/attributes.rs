@@ -1,9 +1,8 @@
-use crate::transform::Transform;
-use crate::vector::vector_data::{HandleId, VectorData, VectorDataTable};
-use crate::vector::ConcatElement;
-
+use crate::vector::misc::dvec2_to_point;
+use crate::vector::vector_data::{HandleId, VectorData};
+use bezier_rs::BezierHandles;
+use core::iter::zip;
 use dyn_any::DynAny;
-
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -84,7 +83,7 @@ impl core::hash::BuildHasher for NoHashBuilder {
 pub struct PointDomain {
 	id: Vec<PointId>,
 	#[serde(alias = "positions")]
-	position: Vec<DVec2>,
+	pub(crate) position: Vec<DVec2>,
 }
 
 impl core::hash::Hash for PointDomain {
@@ -116,7 +115,8 @@ impl PointDomain {
 				id_map.push(new_index);
 				new_index += 1;
 			} else {
-				id_map.push(usize::MAX); // A placeholder for invalid ids. This is checked after the segment domain is modified.
+				// A placeholder for invalid IDs. This is checked after the segment domain is modified.
+				id_map.push(usize::MAX);
 			}
 		}
 
@@ -166,19 +166,32 @@ impl PointDomain {
 		self.id.iter().position(|&check_id| check_id == id)
 	}
 
-	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.position.extend(other.position.iter().map(|&pos| transform.transform_point2(pos)));
 	}
 
-	fn map_ids(&mut self, id_map: &IdMap) {
+	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.point_map.get(id).unwrap_or(id));
 	}
 
-	fn transform(&mut self, transform: DAffine2) {
+	pub fn transform(&mut self, transform: DAffine2) {
 		for pos in &mut self.position {
 			*pos = transform.transform_point2(*pos);
 		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.id.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.id.is_empty()
+	}
+
+	/// Iterate over point IDs and positions
+	pub fn iter(&self) -> impl Iterator<Item = (PointId, DVec2)> + '_ {
+		self.ids().iter().copied().zip(self.positions().iter().copied())
 	}
 }
 
@@ -220,7 +233,7 @@ impl SegmentDomain {
 			.zip(&self.start_point)
 			.zip(&self.end_point)
 			.filter(|((_, start), end)| **start >= points_length || **end >= points_length)
-			.map(|x| *x.0 .0)
+			.map(|x| *x.0.0)
 			.collect::<Vec<_>>();
 
 		let can_delete = || {
@@ -347,6 +360,7 @@ impl SegmentDomain {
 		})
 	}
 
+	/// Get index from ID by linear search. Takes `O(n)` time.
 	fn id_to_index(&self, id: SegmentId) -> Option<usize> {
 		debug_assert_eq!(self.id.len(), self.handles.len());
 		debug_assert_eq!(self.id.len(), self.start_point.len());
@@ -364,7 +378,7 @@ impl SegmentDomain {
 		}
 	}
 
-	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.segment_map.get(id).unwrap_or(id)));
 		self.start_point.extend(other.start_point.iter().map(|&index| id_map.point_offset + index));
 		self.end_point.extend(other.end_point.iter().map(|&index| id_map.point_offset + index));
@@ -372,11 +386,11 @@ impl SegmentDomain {
 		self.stroke.extend(&other.stroke);
 	}
 
-	fn map_ids(&mut self, id_map: &IdMap) {
+	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.segment_map.get(id).unwrap_or(id));
 	}
 
-	fn transform(&mut self, transform: DAffine2) {
+	pub fn transform(&mut self, transform: DAffine2) {
 		for handles in &mut self.handles {
 			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
 		}
@@ -401,11 +415,34 @@ impl SegmentDomain {
 	pub(crate) fn connected_count(&self, point: usize) -> usize {
 		self.all_connected(point).count()
 	}
+
+	/// Iterates over segments in the domain.
+	///
+	/// Tuple is: (id, start point, end point, handles)
+	pub fn iter(&self) -> impl Iterator<Item = (SegmentId, usize, usize, BezierHandles)> + '_ {
+		let ids = self.id.iter().copied();
+		let start_point = self.start_point.iter().copied();
+		let end_point = self.end_point.iter().copied();
+		let handles = self.handles.iter().copied();
+		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
+	}
+
+	/// Iterates over segments in the domain, mutably.
+	///
+	/// Tuple is: (id, start point, end point, handles)
+	pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&mut SegmentId, &mut usize, &mut usize, &mut BezierHandles)> + '_ {
+		let ids = self.id.iter_mut();
+		let start_point = self.start_point.iter_mut();
+		let end_point = self.end_point.iter_mut();
+		let handles = self.handles.iter_mut();
+		zip(ids, zip(start_point, zip(end_point, handles))).map(|(id, (start_point, (end_point, handles)))| (id, start_point, end_point, handles))
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the
+/// [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
 	#[serde(alias = "ids")]
 	id: Vec<RegionId>,
@@ -434,6 +471,19 @@ impl RegionDomain {
 		let mut keep = self.id.iter().map(&f);
 		self.fill.retain(|_| keep.next().unwrap_or_default());
 		self.id.retain(&f);
+	}
+
+	/// Like [`Self::retain`] but also gives the function access to the segment range.
+	///
+	/// Note that this function requires an allocation that `retain` avoids.
+	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &core::ops::RangeInclusive<SegmentId>) -> bool) {
+		let keep = self.id.iter().zip(self.segment_range.iter()).map(|(id, range)| f(id, range)).collect::<Vec<_>>();
+		let mut iter = keep.iter().copied();
+		self.segment_range.retain(|_| iter.next().unwrap());
+		let mut iter = keep.iter().copied();
+		self.fill.retain(|_| iter.next().unwrap());
+		let mut iter = keep.iter().copied();
+		self.id.retain(|_| iter.next().unwrap());
 	}
 
 	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
@@ -474,7 +524,7 @@ impl RegionDomain {
 		&self.fill
 	}
 
-	fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
+	pub fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.region_map.get(id).unwrap_or(id)));
 		self.segment_range.extend(
 			other
@@ -485,11 +535,109 @@ impl RegionDomain {
 		self.fill.extend(&other.fill);
 	}
 
-	fn map_ids(&mut self, id_map: &IdMap) {
+	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.region_map.get(id).unwrap_or(id));
 		self.segment_range
 			.iter_mut()
 			.for_each(|range| *range = *id_map.segment_map.get(range.start()).unwrap_or(range.start())..=*id_map.segment_map.get(range.end()).unwrap_or(range.end()));
+	}
+
+	/// Iterates over regions in the domain.
+	///
+	/// Tuple is: (id, segment_range, fill)
+	pub fn iter(&self) -> impl Iterator<Item = (RegionId, core::ops::RangeInclusive<SegmentId>, FillId)> + '_ {
+		let ids = self.id.iter().copied();
+		let segment_range = self.segment_range.iter().cloned();
+		let fill = self.fill.iter().copied();
+		zip(ids, zip(segment_range, fill)).map(|(id, (segment_range, fill))| (id, segment_range, fill))
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HalfEdge {
+	pub id: SegmentId,
+	pub start: usize,
+	pub end: usize,
+	pub reverse: bool,
+}
+
+impl HalfEdge {
+	pub fn new(id: SegmentId, start: usize, end: usize, reverse: bool) -> Self {
+		Self { id, start, end, reverse }
+	}
+
+	pub fn reversed(&self) -> Self {
+		Self {
+			id: self.id,
+			start: self.start,
+			end: self.end,
+			reverse: !self.reverse,
+		}
+	}
+
+	pub fn normalize_direction(&self) -> Self {
+		if self.reverse {
+			Self {
+				id: self.id,
+				start: self.end,
+				end: self.start,
+				reverse: false,
+			}
+		} else {
+			*self
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FoundSubpath {
+	pub edges: Vec<HalfEdge>,
+}
+
+impl FoundSubpath {
+	pub fn new(segments: Vec<HalfEdge>) -> Self {
+		Self { edges: segments }
+	}
+
+	pub fn endpoints(&self) -> Option<(&HalfEdge, &HalfEdge)> {
+		match (self.edges.first(), self.edges.last()) {
+			(Some(first), Some(last)) => Some((first, last)),
+			_ => None,
+		}
+	}
+
+	pub fn push(&mut self, segment: HalfEdge) {
+		self.edges.push(segment);
+	}
+
+	pub fn insert(&mut self, index: usize, segment: HalfEdge) {
+		self.edges.insert(index, segment);
+	}
+
+	pub fn extend(&mut self, segments: impl IntoIterator<Item = HalfEdge>) {
+		self.edges.extend(segments);
+	}
+
+	pub fn splice<I>(&mut self, range: std::ops::Range<usize>, replace_with: I)
+	where
+		I: IntoIterator<Item = HalfEdge>,
+	{
+		self.edges.splice(range, replace_with);
+	}
+
+	pub fn is_closed(&self) -> bool {
+		match (self.edges.first(), self.edges.last()) {
+			(Some(first), Some(last)) => first.start == last.end,
+			_ => false,
+		}
+	}
+
+	pub fn from_segment(segment: HalfEdge) -> Self {
+		Self { edges: vec![segment] }
+	}
+
+	pub fn contains(&self, segment_id: SegmentId) -> bool {
+		self.edges.iter().any(|s| s.id == segment_id)
 	}
 }
 
@@ -530,6 +678,114 @@ impl VectorData {
 			.zip(self.segment_domain.start_point())
 			.zip(self.segment_domain.end_point())
 			.map(to_bezier)
+	}
+
+	pub fn auto_join_paths(&self) -> Vec<FoundSubpath> {
+		let segments = self.segment_domain.iter().map(|(id, start, end, _)| HalfEdge::new(id, start, end, false));
+
+		let mut paths: Vec<FoundSubpath> = Vec::new();
+		let mut current_path: Option<&mut FoundSubpath> = None;
+		let mut previous: Option<(usize, usize)> = None;
+
+		// First pass. Generates subpaths from continuous segments.
+		for seg_ref in segments {
+			let (start, end) = (seg_ref.start, seg_ref.end);
+
+			if previous.is_some_and(|(_, prev_end)| start == prev_end) {
+				if let Some(path) = current_path.as_mut() {
+					path.push(seg_ref);
+				}
+			} else {
+				paths.push(FoundSubpath::from_segment(seg_ref));
+				current_path = paths.last_mut();
+			}
+
+			previous = Some((start, end));
+		}
+
+		// Second pass. Try to join paths together.
+		let mut joined_paths = Vec::new();
+
+		loop {
+			let mut prev_index: Option<usize> = None;
+			let original_len = paths.len();
+
+			for current in paths.into_iter() {
+				// If there's no previous subpath, start a new one
+				if prev_index.is_none() {
+					joined_paths.push(current);
+					prev_index = Some(joined_paths.len() - 1);
+					continue;
+				}
+
+				let prev = &mut joined_paths[prev_index.unwrap()];
+
+				// Compare segment connections
+				let (prev_first, prev_last) = prev.endpoints().unwrap();
+				let (cur_first, cur_last) = current.endpoints().unwrap();
+
+				// Join paths if the endpoints connect
+				if prev_last.end == cur_first.start {
+					prev.edges.extend(current.edges.into_iter().map(|s| s.normalize_direction()));
+				} else if prev_first.start == cur_last.end {
+					prev.edges.splice(0..0, current.edges.into_iter().rev().map(|s| s.normalize_direction()));
+				} else if prev_last.end == cur_last.end {
+					prev.edges.extend(current.edges.into_iter().rev().map(|s| s.reversed().normalize_direction()));
+				} else if prev_first.start == cur_first.start {
+					prev.edges.splice(0..0, current.edges.into_iter().map(|s| s.reversed().normalize_direction()));
+				} else {
+					// If not connected, start a new subpath
+					joined_paths.push(current);
+					prev_index = Some(joined_paths.len() - 1);
+				}
+			}
+
+			// If no paths were joined in this pass, we're done
+			if joined_paths.len() == original_len {
+				return joined_paths;
+			}
+
+			// Repeat pass with newly joined paths
+			paths = joined_paths;
+			joined_paths = Vec::new();
+		}
+	}
+
+	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.
+	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, usize, usize)>) -> Option<bezier_rs::Subpath<PointId>> {
+		let mut first_point = None;
+		let mut groups = Vec::new();
+		let mut last: Option<(usize, bezier_rs::BezierHandles)> = None;
+
+		for (handle, start, end) in segments {
+			first_point = Some(first_point.unwrap_or(start));
+
+			groups.push(bezier_rs::ManipulatorGroup {
+				anchor: self.point_domain.positions()[start],
+				in_handle: last.and_then(|(_, handle)| handle.end()),
+				out_handle: handle.start(),
+				id: self.point_domain.ids()[start],
+			});
+
+			last = Some((end, handle));
+		}
+
+		let closed = groups.len() > 1 && last.map(|(point, _)| point) == first_point;
+
+		if let Some((end, last_handle)) = last {
+			if closed {
+				groups[0].in_handle = last_handle.end();
+			} else {
+				groups.push(bezier_rs::ManipulatorGroup {
+					anchor: self.point_domain.positions()[end],
+					in_handle: last_handle.end(),
+					out_handle: None,
+					id: self.point_domain.ids()[end],
+				});
+			}
+		}
+
+		Some(bezier_rs::Subpath::new(groups, closed))
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the segments are not continuous.
@@ -593,8 +849,7 @@ impl VectorData {
 			})
 	}
 
-	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
-	pub fn stroke_bezier_paths(&self) -> StrokePathIter<'_> {
+	fn build_stroke_path_iter(&self) -> StrokePathIter {
 		let mut points = vec![StrokePathIterPointMetadata::default(); self.point_domain.ids().len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			points[start].set(StrokePathIterPointSegmentMetadata::new(segment_index, false));
@@ -607,6 +862,44 @@ impl VectorData {
 			skip: 0,
 			done_one: false,
 		}
+	}
+
+	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
+	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = bezier_rs::Subpath<PointId>> {
+		self.build_stroke_path_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
+	}
+
+	/// Construct a [`kurbo::BezPath`] curve for stroke.
+	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = kurbo::BezPath> {
+		self.build_stroke_path_iter().map(|(group, closed)| {
+			let mut bezpath = kurbo::BezPath::new();
+			let mut out_handle;
+
+			let Some(first) = group.first() else { return bezpath };
+			bezpath.move_to(dvec2_to_point(first.anchor));
+			out_handle = first.out_handle;
+
+			for manipulator in group.iter().skip(1) {
+				match (out_handle, manipulator.in_handle) {
+					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(manipulator.anchor)),
+					(None, None) => bezpath.line_to(dvec2_to_point(manipulator.anchor)),
+					(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
+					(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(manipulator.anchor)),
+				}
+				out_handle = manipulator.out_handle;
+			}
+
+			if closed {
+				match (out_handle, first.in_handle) {
+					(Some(handle_start), Some(handle_end)) => bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(first.anchor)),
+					(None, None) => bezpath.line_to(dvec2_to_point(first.anchor)),
+					(None, Some(handle)) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
+					(Some(handle), None) => bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(first.anchor)),
+				}
+				bezpath.close_path();
+			}
+			bezpath
+		})
 	}
 
 	/// Construct an iterator [`bezier_rs::ManipulatorGroup`] for stroke.
@@ -695,7 +988,7 @@ pub struct StrokePathIter<'a> {
 }
 
 impl Iterator for StrokePathIter<'_> {
-	type Item = bezier_rs::Subpath<PointId>;
+	type Item = (Vec<bezier_rs::ManipulatorGroup<PointId>>, bool);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let current_start = if let Some((index, _)) = self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() == 1) {
@@ -754,7 +1047,7 @@ impl Iterator for StrokePathIter<'_> {
 			}
 		}
 
-		Some(bezier_rs::Subpath::new(groups, closed))
+		Some((groups, closed))
 	}
 }
 
@@ -764,57 +1057,10 @@ impl bezier_rs::Identifier for PointId {
 	}
 }
 
-impl ConcatElement for VectorData {
-	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
-		let new_ids = other
-			.point_domain
-			.id
-			.iter()
-			.filter(|id| self.point_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let point_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other
-			.segment_domain
-			.id
-			.iter()
-			.filter(|id| self.segment_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let segment_map = new_ids.collect::<HashMap<_, _>>();
-		let new_ids = other
-			.region_domain
-			.id
-			.iter()
-			.filter(|id| self.region_domain.id.contains(id))
-			.map(|&old| (old, old.generate_from_hash(node_id)));
-		let region_map = new_ids.collect::<HashMap<_, _>>();
-		let id_map = IdMap {
-			point_offset: self.point_domain.ids().len(),
-			point_map,
-			segment_map,
-			region_map,
-		};
-		self.point_domain.concat(&other.point_domain, transform, &id_map);
-		self.segment_domain.concat(&other.segment_domain, transform, &id_map);
-		self.region_domain.concat(&other.region_domain, transform, &id_map);
-		// TODO: properly deal with fills such as gradients
-		self.style = other.style.clone();
-		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
-	}
-}
-
-impl ConcatElement for VectorDataTable {
-	fn concat(&mut self, other: &Self, transform: glam::DAffine2, node_id: u64) {
-		for (instance, other_instance) in self.instances_mut().zip(other.instances()) {
-			*instance.alpha_blending = *other_instance.alpha_blending;
-			instance.instance.concat(other_instance.instance, transform * other_instance.transform(), node_id);
-		}
-	}
-}
-
 /// Represents the conversion of ids used when concatenating vector data with conflicting ids.
-struct IdMap {
-	point_offset: usize,
-	point_map: HashMap<PointId, PointId>,
-	segment_map: HashMap<SegmentId, SegmentId>,
-	region_map: HashMap<RegionId, RegionId>,
+pub struct IdMap {
+	pub point_offset: usize,
+	pub point_map: HashMap<PointId, PointId>,
+	pub segment_map: HashMap<SegmentId, SegmentId>,
+	pub region_map: HashMap<RegionId, RegionId>,
 }

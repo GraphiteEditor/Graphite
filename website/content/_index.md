@@ -171,7 +171,7 @@ Starting life as a vector editor, Graphite is evolving into a generalized, all-i
 
 ## One app to rule them all
 
-Stop jumping between programs— upcoming tools will make Graphite a first-class content creation suite for many workflows, including:
+Stop jumping between programs. Upcoming tools will make Graphite a first-class content creation suite for many workflows, including:
 
 <div class="feature-icons stacked no-background">
 	<div class="feature-icon">
@@ -179,12 +179,12 @@ Stop jumping between programs— upcoming tools will make Graphite a first-class
 		<span>Graphic Design</span>
 	</div>
 	<div class="feature-icon">
-		<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span>Image Editing</span>
-	</div>
-	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
 		<span>Motion Graphics</span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
+		<span>Image Editing</span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
@@ -192,7 +192,7 @@ Stop jumping between programs— upcoming tools will make Graphite a first-class
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span>Desktop Publishing</span>
+		<span>Page Layout & Print</span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
@@ -261,11 +261,11 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux should be available in early 2025.
+Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux should be available in 2025.
 
 Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick, casual usage. It's built for speed with (nearly) no JavaScript. And regardless of platform, your work runs locally and privately on your own hardware. There is no server.
 
-Engineering the tech for a native app distributed across three new platforms takes extra time. That's why supporting the web platform, which keeps up-to-date and reaches all devices, has been the initial target. For now, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install the app as a PWA</a> for a desktop-like experience.
+<a href="https://github.com/GraphiteEditor/Graphite/issues/2535" target="_blank">Engineering the tech</a> for a native app distributed across three new platforms takes extra time. That's why supporting the web platform, which keeps up-to-date and reaches all devices, has been the initial target. For now, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install the app as a PWA</a> for a desktop-like experience.
 
 Once it's ready to shine, Graphite's code architecture is structured to deliver native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
 
@@ -369,9 +369,9 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 
 ## Support the mission
 
-If you aren't paying for your free software, someone else is covering your share. Chip in so Graphite can remain sustainable and independent.
+Free software doesn't grow on trees! Chip in your share of the (very real) development costs so you're not leaving others to pick up the tab. Becoming a member (or giving a one-time donation) lets you help maintain Graphite's sustainability and independence.
 
-<a href="/donate" class="button arrow">Donate</a>
+<a href="/donate" class="button arrow">Become a member</a>
 
 </div>
 

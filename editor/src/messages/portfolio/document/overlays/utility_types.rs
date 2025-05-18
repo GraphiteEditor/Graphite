@@ -4,21 +4,122 @@ use crate::consts::{
 	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
 use crate::messages::prelude::Message;
-
 use bezier_rs::{Bezier, Subpath};
-use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, SegmentId, VectorData};
-
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
+use graphene_core::Color;
+use graphene_core::renderer::Quad;
+use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
 pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
+}
+
+// Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum OverlaysType {
+	ArtboardName,
+	CompassRose,
+	QuickMeasurement,
+	TransformMeasurement,
+	TransformCage,
+	HoverOutline,
+	SelectionOutline,
+	Pivot,
+	Path,
+	Anchors,
+	Handles,
+}
+
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct OverlaysVisibilitySettings {
+	pub all: bool,
+	pub artboard_name: bool,
+	pub compass_rose: bool,
+	pub quick_measurement: bool,
+	pub transform_measurement: bool,
+	pub transform_cage: bool,
+	pub hover_outline: bool,
+	pub selection_outline: bool,
+	pub pivot: bool,
+	pub path: bool,
+	pub anchors: bool,
+	pub handles: bool,
+}
+
+impl Default for OverlaysVisibilitySettings {
+	fn default() -> Self {
+		Self {
+			all: true,
+			artboard_name: true,
+			compass_rose: true,
+			quick_measurement: true,
+			transform_measurement: true,
+			transform_cage: true,
+			hover_outline: true,
+			selection_outline: true,
+			pivot: true,
+			path: true,
+			anchors: true,
+			handles: true,
+		}
+	}
+}
+
+impl OverlaysVisibilitySettings {
+	pub fn all(&self) -> bool {
+		self.all
+	}
+
+	pub fn artboard_name(&self) -> bool {
+		self.all && self.artboard_name
+	}
+
+	pub fn compass_rose(&self) -> bool {
+		self.all && self.compass_rose
+	}
+
+	pub fn quick_measurement(&self) -> bool {
+		self.all && self.quick_measurement
+	}
+
+	pub fn transform_measurement(&self) -> bool {
+		self.all && self.transform_measurement
+	}
+
+	pub fn transform_cage(&self) -> bool {
+		self.all && self.transform_cage
+	}
+
+	pub fn hover_outline(&self) -> bool {
+		self.all && self.hover_outline
+	}
+
+	pub fn selection_outline(&self) -> bool {
+		self.all && self.selection_outline
+	}
+
+	pub fn pivot(&self) -> bool {
+		self.all && self.pivot
+	}
+
+	pub fn path(&self) -> bool {
+		self.all && self.path
+	}
+
+	pub fn anchors(&self) -> bool {
+		self.all && self.anchors
+	}
+
+	pub fn handles(&self) -> bool {
+		self.all && self.anchors && self.handles
+	}
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -31,6 +132,7 @@ pub struct OverlayContext {
 	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
 	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
 	pub device_pixel_ratio: f64,
+	pub visibility_settings: OverlaysVisibilitySettings,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
@@ -38,8 +140,8 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
-	pub fn quad(&mut self, quad: Quad, color_fill: Option<&str>) {
-		self.dashed_polygon(&quad.0, color_fill, None, None, None);
+	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.dashed_polygon(&quad.0, stroke_color, color_fill, None, None, None);
 	}
 
 	pub fn draw_triangle(&mut self, base: DVec2, direction: DVec2, size: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -66,15 +168,15 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn dashed_quad(&mut self, quad: Quad, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		self.dashed_polygon(&quad.0, color_fill, dash_width, dash_gap_width, dash_offset);
+	pub fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.dashed_polygon(&quad.0, stroke_color, color_fill, dash_width, dash_gap_width, dash_offset);
 	}
 
-	pub fn polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>) {
-		self.dashed_polygon(polygon, color_fill, None, None, None);
+	pub fn polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>) {
+		self.dashed_polygon(polygon, stroke_color, color_fill, None, None, None);
 	}
 
-	pub fn dashed_polygon(&mut self, polygon: &[DVec2], color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	pub fn dashed_polygon(&mut self, polygon: &[DVec2], stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		if polygon.len() < 2 {
 			return;
 		}
@@ -112,7 +214,8 @@ impl OverlayContext {
 			self.render_context.fill();
 		}
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		let stroke_color = stroke_color.unwrap_or(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(stroke_color);
 		self.render_context.stroke();
 
 		// Reset the dash pattern back to solid
@@ -129,11 +232,12 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
-		self.dashed_line(start, end, color, None, None, None)
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>) {
+		self.dashed_line(start, end, color, thickness, None, None, None)
 	}
 
-	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+	#[allow(clippy::too_many_arguments)]
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
 		self.start_dpi_aware_transform();
 
 		// Set the dash pattern
@@ -161,8 +265,10 @@ impl OverlayContext {
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
+		self.render_context.set_line_width(thickness.unwrap_or(1.));
 		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
+		self.render_context.set_line_width(1.);
 
 		// Reset the dash pattern back to solid
 		if dash_width.is_some() {
@@ -307,13 +413,10 @@ impl OverlayContext {
 	}
 
 	pub fn draw_angle(&mut self, pivot: DVec2, radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
-		let color_line = COLOR_OVERLAY_BLUE;
-
 		let end_point1 = pivot + radius * DVec2::from_angle(angle + offset_angle);
 		let end_point2 = pivot + radius * DVec2::from_angle(offset_angle);
-		self.line(pivot, end_point1, Some(color_line));
-		self.line(pivot, end_point2, Some(color_line));
-
+		self.line(pivot, end_point1, None, None);
+		self.dashed_line(pivot, end_point2, None, None, Some(2.), Some(2.), Some(0.5));
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
@@ -322,10 +425,10 @@ impl OverlayContext {
 		let mut fill_color = graphene_std::Color::from_rgb_str(crate::consts::COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
-			.rgba_hex();
+			.to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
-		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None);
+		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None, None);
 		self.circle(start, radius, fill_color, None);
 		self.circle(start, radius * scale.abs(), fill_color, None);
 		self.text(
@@ -359,7 +462,10 @@ impl OverlayContext {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).rgba_hex();
+			let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+				.unwrap()
+				.with_alpha(0.5)
+				.to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			self.render_context.set_line_width(HOVER_RING_STROKE_WIDTH);
@@ -443,6 +549,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// Used by the Pen and Path tools to outline the path of the shape.
 	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -461,6 +568,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	/// Used by the Pen tool in order to show how the bezier curve would look like.
 	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
@@ -489,7 +597,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -536,10 +644,64 @@ impl OverlayContext {
 			}
 		}
 
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
-		self.render_context.stroke();
-
 		self.end_dpi_aware_transform();
+	}
+
+	/// Used by the Select tool to outline a path selected or hovered.
+	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
+		self.push_path(subpaths, transform);
+
+		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
+		self.render_context.set_stroke_style_str(color);
+		self.render_context.stroke();
+	}
+
+	/// Fills the area inside the path. Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed.
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
+		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_str(color);
+		self.render_context.fill();
+	}
+
+	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Used by the fill tool to show the area to be filled.
+	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+		const PATTERN_WIDTH: usize = 4;
+		const PATTERN_HEIGHT: usize = 4;
+
+		let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
+			.get_context("2d")
+			.ok()
+			.flatten()
+			.expect("Failed to get canvas context")
+			.dyn_into()
+			.expect("Context should be a canvas 2d context");
+
+		// 4x4 pixels, 4 components (RGBA) per pixel
+		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
+
+		// ┌▄▄┬──┬──┬──┐
+		// ├▀▀┼──┼──┼──┤
+		// ├──┼──┼▄▄┼──┤
+		// ├──┼──┼▀▀┼──┤
+		// └──┴──┴──┴──┘
+		let pixels = [(0, 0), (2, 2)];
+		for &(x, y) in &pixels {
+			let index = (x + y * PATTERN_WIDTH as usize) * 4;
+			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
+		}
+
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
+		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+
+		self.push_path(subpaths, transform);
+
+		self.render_context.set_fill_style_canvas_pattern(&pattern);
+		self.render_context.fill();
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {

@@ -105,18 +105,18 @@
 		--color-error-red: #d6536e;
 		--color-error-red-rgb: 214, 83, 110;
 
-		--color-data-general: #c5c5c5;
-		--color-data-general-dim: #767676;
+		--color-data-general: #cfcfcf;
+		--color-data-general-dim: #8a8a8a;
 		--color-data-raster: #e4bb72;
 		--color-data-raster-dim: #8b7752;
 		--color-data-vectordata: #65bbe5;
 		--color-data-vectordata-dim: #4b778c;
-		--color-data-number: #cbbab4;
-		--color-data-number-dim: #87736b;
-		--color-data-group: #6b84e8;
-		--color-data-group-dim: #4a557b;
-		--color-data-artboard: #70a898;
-		--color-data-artboard-dim: #3a6156;
+		--color-data-group: #66b195;
+		--color-data-group-dim: #3d725e;
+		--color-data-artboard: #fbf9eb;
+		--color-data-artboard-dim: #b9b9a9;
+		--color-data-number: #c9a699;
+		--color-data-number-dim: #886b60;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;
@@ -152,8 +152,11 @@
 			transparent calc((3px * sqrt(2) / 2) + 0.5px),
 			transparent calc(6px * sqrt(2) / 2)
 		);
-		--inheritance-dots-background: url('data:image/svg+xml;utf8,\
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 6" width="6px" height="6px" fill="%23444"><rect width="1" height="1" /><rect x="3" y="3" width="1" height="1" /></svg>\
+		--inheritance-dots-background-4-dimgray: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4px" height="4px" fill="%23444"><rect width="1" height="1" /><rect x="2" y="2" width="1" height="1" /></svg>\
+			');
+		--inheritance-dots-background-6-lowergray: url('data:image/svg+xml;utf8,\
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4px" height="4px" fill="%23666"><rect width="1" height="1" /><rect x="2" y="2" width="1" height="1" /></svg>\
 			');
 
 		// Array of 2x3 dots (fill: --color-e-nearwhite)

@@ -3,22 +3,20 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
-
 use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::BlendMode;
+use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
-use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::GraphicGroupTable;
-
-use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::vector::{VectorData, VectorDataTable};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -82,10 +80,9 @@ impl<'a> ModifyInputsContext<'a> {
 			if current_index == insert_index {
 				break;
 			}
-			let next_node_in_stack_id =
-				network_interface
-					.input_from_connector(&post_node_input_connector, &[])
-					.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
+			let next_node_in_stack_id = network_interface
+				.input_from_connector(&post_node_input_connector, &[])
+				.and_then(|input_from_connector| if let NodeInput::Node { node_id, .. } = input_from_connector { Some(node_id) } else { None });
 
 			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
 				// Only increment index for layer nodes
@@ -237,45 +234,52 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		})
 	}
+
 	/// Gets the node id of a node with a specific reference that is upstream from the layer node, and optionally creates it if it does not exist.
 	/// The returned node is based on the selection dots in the layer. The right most dot will always insert/access the path that flows directly into the layer.
 	/// Each dot after that represents an existing path node. If there is an existing upstream node, then it will always be returned first.
-	pub fn existing_node_id(&mut self, reference: &'static str, create_if_nonexistent: bool) -> Option<NodeId> {
+	pub fn existing_node_id(&mut self, reference_name: &'static str, create_if_nonexistent: bool) -> Option<NodeId> {
 		// Start from the layer node or export
 		let output_layer = self.get_output_layer()?;
 
-		let upstream = self
-			.network_interface
-			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
-
-		// Take until another layer node is found (but not the first layer node)
-		let mut existing_node_id = None;
-		for upstream_node in upstream.collect::<Vec<_>>() {
-			// Check if this is the node we have been searching for.
-			if self
-				.network_interface
-				.reference(&upstream_node, &[])
-				.is_some_and(|node_reference| *node_reference == Some(reference.to_string()))
-			{
-				existing_node_id = Some(upstream_node);
-				break;
-			}
-
-			let is_traversal_start = |node_id: NodeId| {
-				self.layer_node.map(|layer| layer.to_node()) == Some(node_id) || self.network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id))
-			};
-
-			if !is_traversal_start(upstream_node) && (self.network_interface.is_layer(&upstream_node, &[])) {
-				break;
-			}
-		}
+		let existing_node_id = Self::locate_node_in_layer_chain(reference_name, output_layer, self.network_interface);
 
 		// Create a new node if the node does not exist and update its inputs
 		if create_if_nonexistent {
-			return existing_node_id.or_else(|| self.create_node(reference));
+			return existing_node_id.or_else(|| self.create_node(reference_name));
 		}
 
 		existing_node_id
+	}
+
+	/// Gets the node id of a node with a specific reference (name) that is upstream (leftward) from the layer node, but before reaching another upstream layer stack.
+	/// For example, if given a group layer, this would find a requested "Transform" or "Boolean Operation" node in its chain, between the group layer and its layer stack child contents.
+	/// It would also travel up an entire layer that's not fed by a stack until reaching the generator node, such as a "Rectangle" or "Path" layer.
+	pub fn locate_node_in_layer_chain(reference_name: &str, left_of_layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+		let upstream = network_interface.upstream_flow_back_from_nodes(vec![left_of_layer.to_node()], &[], network_interface::FlowType::HorizontalFlow);
+
+		// Look at all of the upstream nodes
+		for upstream_node in upstream {
+			// Check if this is the node we have been searching for.
+			if network_interface
+				.reference(&upstream_node, &[])
+				.is_some_and(|node_reference| *node_reference == Some(reference_name.to_string()))
+			{
+				if !network_interface.is_visible(&upstream_node, &[]) {
+					continue;
+				}
+
+				return Some(upstream_node);
+			}
+
+			// Take until another layer node is found (but not the first layer node)
+			let is_traversal_start = |node_id: NodeId| left_of_layer.to_node() == node_id || network_interface.document_network().exports.iter().any(|export| export.as_node() == Some(node_id));
+			if !is_traversal_start(upstream_node) && (network_interface.is_layer(&upstream_node, &[])) {
+				return None;
+			}
+		}
+
+		None
 	}
 
 	/// Create a new node inside the layer
@@ -288,7 +292,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type();
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(GraphicGroupTable) {
 				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
 					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
@@ -409,21 +413,13 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn transform_set_direct(&mut self, transform: DAffine2, skip_rerender: bool, transform_node_id: Option<NodeId>) {
 		// If the Transform node didn't exist yet, create it now
 		let Some(transform_node_id) = transform_node_id.or_else(|| {
-			// Check if the transform is the identity transform within an epsilon
-			let is_identity = {
-				let transform = transform.to_scale_angle_translation();
-				let identity = DAffine2::IDENTITY.to_scale_angle_translation();
-
-				(transform.0.x - identity.0.x).abs() < 1e-6
-					&& (transform.0.y - identity.0.y).abs() < 1e-6
-					&& (transform.1 - identity.1).abs() < 1e-6
-					&& (transform.2.x - identity.2.x).abs() < 1e-6
-					&& (transform.2.y - identity.2.y).abs() < 1e-6
-			};
-
-			// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
-			if is_identity {
-				return None;
+			// Check if the transform is the identity transform and if so, don't create a new Transform node
+			if let Some((scale, angle, translation)) = (transform.matrix2.determinant() != 0.).then(|| transform.to_scale_angle_translation()) {
+				// Check if the transform is the identity transform within an epsilon
+				if scale.x.abs() < 1e-6 && scale.y.abs() < 1e-6 && angle.abs() < 1e-6 && translation.x.abs() < 1e-6 && translation.y.abs() < 1e-6 {
+					// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
+					return None;
+				}
 			}
 
 			// Create the Transform node

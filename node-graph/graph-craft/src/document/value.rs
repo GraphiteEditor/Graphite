@@ -1,18 +1,16 @@
 use super::DocumentNode;
-pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
-
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
+use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
 use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
-
-pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -52,14 +50,24 @@ macro_rules! tagged_value {
 			}
 		}
 		impl<'a> TaggedValue {
-			/// Converts to a Box<dyn DynAny> - this isn't very neat but I'm not sure of a better approach
-			pub fn to_any(self) -> DAny<'a> {
+			/// Converts to a Box<dyn DynAny>
+			pub fn to_dynany(self) -> DAny<'a> {
 				match self {
 					Self::None => Box::new(()),
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
 					Self::EditorApi(x) => Box::new(x),
+				}
+			}
+			/// Converts to a Arc<dyn Any + Send + Sync + 'static>
+			pub fn to_any(self) -> Arc<dyn std::any::Any + Send + Sync + 'static> {
+				match self {
+					Self::None => Arc::new(()),
+					$( Self::$identifier(x) => Arc::new(x), )*
+					Self::RenderOutput(x) => Arc::new(x),
+					Self::SurfaceFrame(x) => Arc::new(x),
+					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
 			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
@@ -85,6 +93,18 @@ macro_rules! tagged_value {
 
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
+				}
+			}
+			/// Attempts to downcast the dynamic type to a tagged value
+			pub fn try_from_std_any_ref(input: &(dyn std::any::Any)) -> Result<Self, String> {
+				use std::any::TypeId;
+
+				match input.type_id() {
+					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
+					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
+					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
+					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(graphene_core::SurfaceFrame::clone(input.downcast_ref().unwrap()))),
+					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
 			pub fn from_type(input: &Type) -> Option<Self> {
@@ -137,54 +157,75 @@ macro_rules! tagged_value {
 }
 
 tagged_value! {
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))]
-	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))]
-	VectorData(graphene_core::vector::VectorDataTable),
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_graphic_group"))]
-	GraphicGroup(graphene_core::GraphicGroupTable),
-	// TODO: Eventually remove this migration document upgrade code
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "graphene_core::migrate_artboard_group"))]
-	ArtboardGroup(graphene_core::ArtboardGroupTable),
-	GraphicElement(graphene_core::GraphicElement),
-	Artboard(graphene_core::Artboard),
-	String(String),
+	// ===============
+	// PRIMITIVE TYPES
+	// ===============
+	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias document upgrade code
+	F64(f64),
 	U32(u32),
 	U64(u64),
-	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(feature = "serde", serde(alias = "F32"))]
-	F64(f64),
-	OptionalF64(Option<f64>),
 	Bool(bool),
+	String(String),
 	UVec2(UVec2),
 	IVec2(IVec2),
 	DVec2(DVec2),
-	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
-	Image(graphene_core::raster::Image<Color>),
-	ImaginateCache(ImaginateCache),
-	Color(graphene_core::raster::color::Color),
-	OptionalColor(Option<graphene_core::raster::color::Color>),
-	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
-	BlendMode(BlendMode),
-	LuminanceCalculation(LuminanceCalculation),
-	ImaginateSamplingMethod(ImaginateSamplingMethod),
-	ImaginateMaskStartingFill(ImaginateMaskStartingFill),
-	ImaginateController(ImaginateController),
-	Fill(graphene_core::vector::style::Fill),
-	Stroke(graphene_core::vector::style::Stroke),
-	F64Array4([f64; 4]),
-	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))]
+	OptionalF64(Option<f64>),
+	OptionalDVec2(Option<DVec2>),
+	// ==========================
+	// PRIMITIVE COLLECTION TYPES
+	// ==========================
+	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
 	VecU64(Vec<u64>),
-	NodePath(Vec<NodeId>),
 	VecDVec2(Vec<DVec2>),
+	F64Array4([f64; 4]),
+	NodePath(Vec<NodeId>),
+	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))] // TODO: Eventually remove this alias document upgrade code
+	PointIds(Vec<graphene_core::vector::PointId>),
+	// ====================
+	// GRAPHICAL DATA TYPES
+	// ====================
+	GraphicElement(graphene_core::GraphicElement),
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
+	VectorData(graphene_core::vector::VectorDataTable),
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
+	GraphicGroup(graphene_core::GraphicGroupTable),
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	ArtboardGroup(graphene_core::ArtboardGroupTable),
+	// ============
+	// STRUCT TYPES
+	// ============
+	Artboard(graphene_core::Artboard),
+	Image(graphene_core::raster::Image<Color>),
+	Color(graphene_core::raster::color::Color),
+	OptionalColor(Option<graphene_core::raster::color::Color>),
+	Palette(Vec<Color>),
+	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
+	Fill(graphene_core::vector::style::Fill),
+	Stroke(graphene_core::vector::style::Stroke),
+	Gradient(graphene_core::vector::style::Gradient),
+	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))] // TODO: Eventually remove this alias document upgrade code
+	GradientStops(graphene_core::vector::style::GradientStops),
+	Font(graphene_core::text::Font),
+	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
+	BrushCache(BrushCache),
+	DocumentNode(DocumentNode),
+	Curve(graphene_core::raster::curve::Curve),
+	Footprint(graphene_core::transform::Footprint),
+	VectorModification(Box<graphene_core::vector::VectorModification>),
+	FontCache(Arc<graphene_core::text::FontCache>),
+	// ==========
+	// ENUM TYPES
+	// ==========
+	BlendMode(BlendMode),
+	LuminanceCalculation(LuminanceCalculation),
+	XY(graphene_core::ops::XY),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha),
+	RealTimeMode(graphene_core::animation::RealTimeMode),
 	NoiseType(graphene_core::raster::NoiseType),
 	FractalType(graphene_core::raster::FractalType),
 	CellularDistanceFunction(graphene_core::raster::CellularDistanceFunction),
@@ -192,29 +233,21 @@ tagged_value! {
 	DomainWarpType(graphene_core::raster::DomainWarpType),
 	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
+	GridType(graphene_core::vector::misc::GridType),
+	ArcType(graphene_core::vector::misc::ArcType),
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),
-	Gradient(graphene_core::vector::style::Gradient),
 	GradientType(graphene_core::vector::style::GradientType),
-	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))]
-	GradientStops(graphene_core::vector::style::GradientStops),
-	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))]
-	PointIds(Vec<graphene_core::vector::PointId>),
-	Font(graphene_core::text::Font),
-	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
-	BrushCache(BrushCache),
-	DocumentNode(DocumentNode),
-	Curve(graphene_core::raster::curve::Curve),
-	Footprint(graphene_core::transform::Footprint),
-	Palette(Vec<Color>),
-	VectorModification(Box<graphene_core::vector::VectorModification>),
+	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
-	FontCache(Arc<graphene_core::text::FontCache>),
+
+	// ImaginateCache(ImaginateCache),
+	// ImaginateSamplingMethod(ImaginateSamplingMethod),
+	// ImaginateMaskStartingFill(ImaginateMaskStartingFill),
+	// ImaginateController(ImaginateController),
 }
 
 impl TaggedValue {
@@ -279,6 +312,32 @@ impl TaggedValue {
 			None
 		}
 
+		fn to_reference_point(input: &str) -> Option<ReferencePoint> {
+			let mut choices = input.split("::");
+			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
+			if first == "ReferencePoint" {
+				return Some(match second {
+					"None" => ReferencePoint::None,
+					"TopLeft" => ReferencePoint::TopLeft,
+					"TopCenter" => ReferencePoint::TopCenter,
+					"TopRight" => ReferencePoint::TopRight,
+					"CenterLeft" => ReferencePoint::CenterLeft,
+					"Center" => ReferencePoint::Center,
+					"CenterRight" => ReferencePoint::CenterRight,
+					"BottomLeft" => ReferencePoint::BottomLeft,
+					"BottomCenter" => ReferencePoint::BottomCenter,
+					"BottomRight" => ReferencePoint::BottomRight,
+					_ => {
+						log::error!("Invalid ReferencePoint default type variant: {}", input);
+						return None;
+					}
+				});
+			}
+
+			log::error!("Invalid ReferencePoint default type: {}", input);
+			None
+		}
+
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
@@ -297,6 +356,7 @@ impl TaggedValue {
 					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
 					x if x == TypeId::of::<Option<Color>>() => to_color(string).map(|color| TaggedValue::OptionalColor(Some(color)))?,
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
+					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
 				};
 				Some(ty)
@@ -334,7 +394,7 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
 
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		Box::pin(async move { self.value.clone().into_inner().to_any() })
+		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
 	}
 }
 impl UpcastNode {

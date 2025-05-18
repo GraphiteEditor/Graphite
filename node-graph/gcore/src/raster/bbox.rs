@@ -1,5 +1,4 @@
 use dyn_any::DynAny;
-
 use glam::{DAffine2, DVec2};
 
 #[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
@@ -52,6 +51,12 @@ impl AxisAlignedBbox {
 			start: DVec2::new(self.start.x.max(other.start.x), self.start.y.max(other.start.y)),
 			end: DVec2::new(self.end.x.min(other.end.x), self.end.y.min(other.end.y)),
 		}
+	}
+}
+
+impl From<(DVec2, DVec2)> for AxisAlignedBbox {
+	fn from((start, end): (DVec2, DVec2)) -> Self {
+		Self { start, end }
 	}
 }
 
