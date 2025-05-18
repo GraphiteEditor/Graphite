@@ -69,6 +69,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			// Sub-messages
 			PortfolioMessage::MenuBar(message) => {
 				self.menu_bar_message_handler.has_active_document = false;
+				self.menu_bar_message_handler.canvas_tilted = false;
+				self.menu_bar_message_handler.canvas_flipped = false;
 				self.menu_bar_message_handler.rulers_visible = false;
 				self.menu_bar_message_handler.node_graph_open = false;
 				self.menu_bar_message_handler.has_selected_nodes = false;
@@ -80,6 +82,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					self.menu_bar_message_handler.has_active_document = true;
+					self.menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
+					self.menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
 					self.menu_bar_message_handler.rulers_visible = document.rulers_visible;
 					self.menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
 					let selected_nodes = document.network_interface.selected_nodes();

@@ -1969,7 +1969,7 @@ impl NodeGraphMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
-		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, "Node Graph"));
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true));
 		widgets.extend([
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
