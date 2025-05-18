@@ -10,6 +10,7 @@ use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
+use graphene_std::renderer::ClickTargetType;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
@@ -647,23 +648,23 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// Used by the Select tool to outline a path selected or hovered.
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
-		self.push_path(subpaths, transform);
+	/// Used by the Select tool to outline a path or a free point when selected or hovered.
+	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
 
-		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
-		self.render_context.set_stroke_style_str(color);
-		self.render_context.stroke();
-	}
-
-	pub fn outline_free_floating_anchors(&mut self, vector_data: VectorData, transform: DAffine2) {
-		for &point_id in vector_data.point_domain.ids() {
-			// Check if the point in the layer is not part of a segment
-			if vector_data.connected_count(point_id) == 0 {
-				if let Some(position) = vector_data.point_domain.position_from_id(point_id) {
-					self.manipulator_anchor(transform.transform_point2(position), false, None);
-				}
+		target_types.for_each(|target_type| match target_type.borrow() {
+			ClickTargetType::FreePoint(point) => {
+				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 			}
+			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+		});
+
+		if !subpaths.is_empty() {
+			self.push_path(subpaths.iter(), transform);
+
+			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
+			self.render_context.set_stroke_style_str(color);
+			self.render_context.stroke();
 		}
 	}
 

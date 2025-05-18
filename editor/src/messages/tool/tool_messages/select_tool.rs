@@ -528,15 +528,11 @@ impl Fsm for SelectToolFsmState {
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
 						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-						overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport, None);
+						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
 							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
-						}
-
-						if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-							overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
 						}
 					}
 				}
@@ -585,10 +581,7 @@ impl Fsm for SelectToolFsmState {
 										overlay_context.quad(Quad::from_box(bounds), color, None);
 									}
 								} else {
-									overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport, color);
-									if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-										overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
-									}
+									overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -827,11 +820,7 @@ impl Fsm for SelectToolFsmState {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
 							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-							overlay_context.outline(document.metadata().layer_outline(layer), layer_to_viewport, None);
-
-							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
-								overlay_context.outline_free_floating_anchors(vector_data, layer_to_viewport);
-							}
+							overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 						}
 					}
 

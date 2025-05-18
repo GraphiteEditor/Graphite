@@ -185,6 +185,12 @@ impl DocumentMetadata {
 		})
 	}
 
+	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
+		static EMPTY: Vec<ClickTarget> = Vec::new();
+		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
+		click_targets.iter().map(|target| target.target_type())
+	}
+
 	pub fn is_clip(&self, node: NodeId) -> bool {
 		self.clip_targets.contains(&node)
 	}
