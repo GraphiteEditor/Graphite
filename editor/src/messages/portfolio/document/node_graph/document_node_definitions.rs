@@ -1851,28 +1851,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "GPU Image",
-			category: "Debug: GPU",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Image", "TODO").into(), ("Node", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "Debug",

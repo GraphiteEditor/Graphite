@@ -2,7 +2,6 @@ use dyn_any::StaticType;
 use glam::{DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
-use graphene_core::fn_type;
 use graphene_core::raster::color::Color;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;
@@ -21,7 +20,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "gpu")]
-use wgpu_executor::{ShaderInputFrame, WgpuExecutor};
+use wgpu_executor::ShaderInputFrame;
 use wgpu_executor::{WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap
@@ -112,25 +111,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuSurface]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
-		#[cfg(feature = "gpu")]
-		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
-		(
-			ProtoNodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode"),
-			|args| {
-				Box::pin(async move {
-					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
-					let editor_api: DowncastBothNode<(), &WasmEditorApi> = DowncastBothNode::new(args[1].clone());
-					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node, editor_api);
-					let any: DynAnyNode<ImageFrameTable<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
-					any.into_type_erased()
-				})
-			},
-			NodeIOTypes::new(
-				concrete!(ImageFrameTable<Color>),
-				concrete!(ImageFrameTable<Color>),
-				vec![fn_type!(graph_craft::document::DocumentNode), fn_type!(WasmEditorApi)],
-			),
-		),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),
