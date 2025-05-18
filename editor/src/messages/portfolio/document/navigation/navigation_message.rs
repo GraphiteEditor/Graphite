@@ -20,10 +20,10 @@ pub enum NavigationMessage {
 	CanvasZoomIncrease { center_on_mouse: bool },
 	CanvasZoomMouseWheel,
 	CanvasZoomSet { zoom_factor: f64 },
+	CanvasFlip,
 	EndCanvasPTZ { abort_transform: bool },
 	EndCanvasPTZWithClick { commit_key: Key },
 	FitViewportToBounds { bounds: [DVec2; 2], prevent_zoom_past_100: bool },
 	FitViewportToSelection,
 	PointerMove { snap: Key },
-	FlipCanvas,
 }

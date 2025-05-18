@@ -9,6 +9,8 @@ use graphene_std::vector::misc::BooleanOperation;
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {
 	pub has_active_document: bool,
+	pub canvas_tilted: bool,
+	pub canvas_flipped: bool,
 	pub rulers_visible: bool,
 	pub node_graph_open: bool,
 	pub has_selected_nodes: bool,
@@ -503,7 +505,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							icon: Some("TiltReset".into()),
 							shortcut: action_keys!(NavigationMessageDiscriminant::CanvasTiltSet),
 							action: MenuBarEntry::create_action(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0.into() }.into()),
-							disabled: no_active_document || node_graph_open,
+							disabled: no_active_document || node_graph_open || !self.canvas_tilted,
 							..MenuBarEntry::default()
 						},
 					],
@@ -525,7 +527,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
-							label: "Zoom to Fit Selection".into(),
+							label: "Zoom to Selection".into(),
 							icon: Some("FrameSelected".into()),
 							shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
 							action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
@@ -533,7 +535,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
-							label: "Zoom to Fit All".into(),
+							label: "Zoom to Fit".into(),
 							icon: Some("FrameAll".into()),
 							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
@@ -557,6 +559,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
+					vec![MenuBarEntry {
+						label: "Flip".into(),
+						icon: Some(if self.canvas_flipped { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+						shortcut: action_keys!(NavigationMessageDiscriminant::CanvasFlip),
+						action: MenuBarEntry::create_action(|_| NavigationMessage::CanvasFlip.into()),
+						disabled: no_active_document || node_graph_open,
+						..MenuBarEntry::default()
+					}],
 					vec![MenuBarEntry {
 						label: "Rulers".into(),
 						icon: Some(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),

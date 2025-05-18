@@ -204,6 +204,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 				if !graph_view_overlay_open {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					responses.add(MenuBarMessage::SendLayout);
 				}
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
@@ -272,6 +273,22 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
+			}
+			NavigationMessage::CanvasFlip => {
+				if graph_view_overlay_open {
+					return;
+				}
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get mutable PTZ in CanvasFlip");
+					return;
+				};
+
+				ptz.flip = !ptz.flip;
+
+				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -393,7 +410,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						..
 					} => {
 						let tilt_raw_not_snapped = {
-							// Compute the angle in document space to counter for any flipping
+							// Compute the angle in document space to counter for the canvas being flipped
 							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
 							let half_viewport = ipp.viewport_bounds.size() / 2.;
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
@@ -458,17 +475,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				self.mouse_position = ipp.mouse.position;
 			}
-			NavigationMessage::FlipCanvas => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in FlipCanvas");
-					return;
-				};
-
-				ptz.canvas_flipped = !ptz.canvas_flipped;
-
-				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(BroadcastEvent::CanvasTransformed);
-			}
 		}
 	}
 
@@ -484,6 +490,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			CanvasZoomDecrease,
 			CanvasZoomIncrease,
 			CanvasZoomMouseWheel,
+			CanvasFlip,
 			FitViewportToSelection,
 		);
 
@@ -527,7 +534,7 @@ impl NavigationMessageHandler {
 		let zoom = ptz.zoom();
 
 		let scale = self.snapped_zoom(zoom);
-		let scale_vec = if ptz.canvas_flipped { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
+		let scale_vec = if ptz.flip { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
 		let scaled_center = viewport_center / scale_vec;
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
