@@ -29,6 +29,8 @@
 		"wasm:watch-production": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --release --target=web -- --color=always\""
 	},
 	"dependencies": {
+		"@fontsource/inconsolata": "^5.2.5",
+		"@fontsource/source-sans-pro": "^5.2.5",
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.1",
 		"reflect-metadata": "^0.2.2"

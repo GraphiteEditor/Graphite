@@ -746,7 +746,7 @@ impl OverlayContext {
 			);
 		}
 
-		self.render_context.set_font("12px Source Sans Pro, Arial, sans-serif");
+		self.render_context.set_font(r#"12px "Source Sans Pro", Arial, sans-serif"#);
 		self.render_context.set_fill_style_str(font_color);
 		self.render_context.fill_text(text, 0., 0.).expect("Failed to draw the text at the calculated position");
 		self.render_context.reset_transform().expect("Failed to reset the render context transform");
