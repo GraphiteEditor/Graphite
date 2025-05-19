@@ -636,14 +636,9 @@ impl ShapeState {
 		!self.selected_shape_state.is_empty()
 	}
 
-	/// Provide the currently selected points by reference.(TODO: Use unique ids)
+	/// Provide the currently selected points by reference.
 	pub fn selected_points(&self) -> impl Iterator<Item = &'_ ManipulatorPointId> {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
-	}
-
-	// Alternative for above
-	pub fn selected_points_by_layer(&self) -> HashMap<LayerNodeIdentifier, impl Iterator<Item = &ManipulatorPointId> + '_> {
-		self.selected_shape_state.iter().map(|(&k, v)| (k, v.selected_points.iter())).collect()
 	}
 
 	pub fn selected_points_in_layer(&self, layer: LayerNodeIdentifier) -> Option<&HashSet<ManipulatorPointId>> {
@@ -1538,16 +1533,6 @@ impl ShapeState {
 		for layer in layers_to_modify {
 			if let Some(state) = self.selected_shape_state.get_mut(&layer) {
 				for point in points {
-					state.select_point(*point);
-				}
-			}
-		}
-	}
-
-	pub fn select_points_by_manipulator_id_by_layer(&mut self, points: &HashMap<LayerNodeIdentifier, Vec<ManipulatorPointId>>) {
-		for (layer, point_iter) in points {
-			if let Some(state) = self.selected_shape_state.get_mut(layer) {
-				for point in point_iter {
 					state.select_point(*point);
 				}
 			}
