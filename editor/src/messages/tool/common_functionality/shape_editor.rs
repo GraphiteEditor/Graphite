@@ -1572,34 +1572,11 @@ impl ShapeState {
 			let handles = vector_data.all_connected(id);
 			let positions = handles
 				.filter_map(|handle| handle.to_manipulator_point().get_position(&vector_data))
-<<<<<<< HEAD
-				.filter(|&handle| !anchor.abs_diff_eq(handle, 1e-5));
-			let already_sharp = positions.next().is_none();
-			for &layer in self.selected_shape_state.keys() {
-				self.flip_smooth_sharp_each(network_interface, layer, already_sharp, responses);
-			}
-		}
-	}
-
-	fn flip_smooth_sharp_each(&self, network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, already_sharp: bool, responses: &mut VecDeque<Message>) {
-		let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
-			return;
-		};
-		let Some(selected_state) = self.selected_shape_state.get(&layer) else {
-			return;
-		};
-
-		let anchors = selected_state.selected_points.iter().filter_map(|point| point.as_anchor());
-
-		for id in anchors {
-			if already_sharp {
-=======
 				.filter(|&handle| anchor.abs_diff_eq(handle, 1e-5))
 				.count();
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
 			if positions != 0 {
->>>>>>> master
 				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
 			} else {
 				for handle in vector_data.all_connected(id) {
