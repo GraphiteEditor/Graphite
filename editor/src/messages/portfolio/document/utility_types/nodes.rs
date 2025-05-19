@@ -55,6 +55,7 @@ pub struct LayerPanelEntry {
 	pub ancestor_of_selected: bool,
 	#[serde(rename = "descendantOfSelected")]
 	pub descendant_of_selected: bool,
+	pub clipped: bool,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

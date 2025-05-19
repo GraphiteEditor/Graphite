@@ -352,6 +352,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
+	pub fn blending_fill_set(&mut self, fill: f64) {
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 3);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
+	}
+
 	pub fn stroke_set(&mut self, stroke: Stroke) {
 		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 

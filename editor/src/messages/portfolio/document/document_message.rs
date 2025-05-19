@@ -145,6 +145,9 @@ pub enum DocumentMessage {
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
+	SetFillForSelectedLayers {
+		fill: f64,
+	},
 	SetOverlaysVisibility {
 		visible: bool,
 		overlays_type: Option<OverlaysType>,

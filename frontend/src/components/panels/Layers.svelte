@@ -427,6 +427,7 @@
 						"descendant-of-selected": listing.entry.descendantOfSelected,
 						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
+						"clipped-layer": listing.entry.clipped,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
@@ -570,6 +571,10 @@
 				&.insert-folder {
 					outline: 3px solid var(--color-e-nearwhite);
 					outline-offset: -3px;
+				}
+
+				&.clipped-layer {
+					margin-left: 12px;
 				}
 
 				.expand-arrow {

@@ -303,6 +303,14 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	Some(*opacity)
 }
 
+pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::F64(fill) = inputs.get(3)?.as_value()? else {
+		return None;
+	};
+	Some(*fill)
+}
+
 pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
 	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {

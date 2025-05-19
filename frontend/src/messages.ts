@@ -907,6 +907,8 @@ export class LayerPanelEntry {
 	ancestorOfSelected!: boolean;
 
 	descendantOfSelected!: boolean;
+
+	clipped!: boolean;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

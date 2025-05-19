@@ -1152,6 +1152,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
+			DocumentMessage::SetFillForSelectedLayers { fill } => {
+				let fill = fill.clamp(0., 1.);
+				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
+					responses.add(GraphOperationMessage::BlendingFillSet { layer, fill });
+				}
+			}
 			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
 				let visibility_settings = &mut self.overlays_visibility_settings;
 				let overlays_type = match overlays_type {
@@ -2511,6 +2517,26 @@ impl DocumentMessageHandler {
 				.on_update(|number_input: &NumberInput| {
 					if let Some(value) = number_input.value {
 						DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()
+					} else {
+						Message::NoOp
+					}
+				})
+				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(opacity)
+				.label("Fill")
+				.unit("%")
+				.display_decimal_places(2)
+				.disabled(disabled)
+				.min(0.)
+				.max(100.)
+				.range_min(Some(0.))
+				.range_max(Some(100.))
+				.mode_range()
+				.on_update(|number_input: &NumberInput| {
+					if let Some(value) = number_input.value {
+						DocumentMessage::SetFillForSelectedLayers { fill: value / 100. }.into()
 					} else {
 						Message::NoOp
 					}

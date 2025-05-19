@@ -21,6 +21,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
+	BlendingFillSet {
+		layer: LayerNodeIdentifier,
+		fill: f64,
+	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,

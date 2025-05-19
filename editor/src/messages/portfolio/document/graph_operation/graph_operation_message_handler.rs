@@ -42,6 +42,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.fill_set(fill);
 				}
 			}
+			GraphOperationMessage::BlendingFillSet { layer, fill } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.blending_fill_set(fill);
+				}
+			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_set(opacity);

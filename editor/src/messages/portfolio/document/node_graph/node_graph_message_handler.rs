@@ -15,6 +15,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
@@ -2437,6 +2438,7 @@ impl NodeGraphMessageHandler {
 					selected: selected_layers.contains(&node_id),
 					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
 					descendant_of_selected: descendants_of_selected.contains(&node_id),
+					clipped: get_clip_mode(layer, network_interface).unwrap_or(false),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
