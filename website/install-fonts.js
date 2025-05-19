@@ -7,17 +7,15 @@ const basePath = path.resolve(__dirname);
 // Define files to copy as [source, destination] pairs
 // Files with the same destination will be concatenated
 const FILES_TO_COPY = [
-	["node_modules/@fontsource-variable/inter/index.css", "static/fonts/common.css"],
-	["node_modules/@fontsource-variable/inter/wght-italic.css", "static/fonts/common.css"],
+	["node_modules/@fontsource-variable/inter/opsz.css", "static/fonts/common.css"],
+	["node_modules/@fontsource-variable/inter/opsz-italic.css", "static/fonts/common.css"],
 	["node_modules/@fontsource/bona-nova/700.css", "static/fonts/common.css"],
-	// ["node_modules/@fontsource/noto-color-emoji/index.css", "static/fonts/noto-color-emoji.css"],
 ];
 
 // Define directories to copy recursively as [source, destination] pairs
 const DIRECTORIES_TO_COPY = [
 	["node_modules/@fontsource-variable/inter/files", "static/fonts/files"],
 	["node_modules/@fontsource/bona-nova/files", "static/fonts/files"],
-	// ["node_modules/@fontsource/noto-color-emoji/files", "static/fonts/files"],
 ];
 
 // Track processed destination files and CSS content
