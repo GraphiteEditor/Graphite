@@ -1,4 +1,3 @@
-use super::document::graph_operation::transform_utils;
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface::{self, InputConnector, OutputConnector};
 use super::spreadsheet::SpreadsheetMessageHandler;
@@ -11,7 +10,6 @@ use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageData;
-use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
@@ -21,7 +19,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use bezier_rs::Subpath;
-use glam::IVec2;
+use glam::{DVec2, IVec2, DAffine2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::renderer::Quad;
@@ -1027,93 +1025,107 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
-					let viewport_bounds = Quad::from_box_at_zero(ipp.viewport_bounds.size());
-					let viewport_center = viewport_bounds.center();
-					let transform = document.metadata().document_to_viewport;
+					let viewport_bounds_quad_pixels = Quad::from_box_at_zero(ipp.viewport_bounds.size());
+					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
 
-					let viewport_in_doc_space = transform.inverse() * viewport_bounds;
-					let viewport_center_in_doc_space = transform.inverse().transform_point2(viewport_center);
+					let doc_to_viewport_transform = document.metadata().document_to_viewport;
+					let viewport_to_doc_transform = doc_to_viewport_transform.inverse();
 
-					let mut positions = Vec::new();
-					let mut artboards = Vec::new(); // Track artboards separately
+					let viewport_quad_doc_space = viewport_to_doc_transform * viewport_bounds_quad_pixels;
 
-					for &layer in &layers {
-						if document.network_interface.is_artboard(&layer.to_node(), &[]) {
-							if let Some(bounds) = document.metadata().bounding_box_document(layer) {
-								let artboard_quad = Quad::from_box(bounds);
+					let mut top_level_items_to_center: Vec<LayerNodeIdentifier> = Vec::new();
+					let mut artboards_in_selection: Vec<LayerNodeIdentifier> = Vec::new();
 
-								// Only center if nothing is in the viewport
-								if artboard_quad.intersects(viewport_in_doc_space) {
-									return;
-								}
-
-								positions.push((layer, bounds[0], true));
-								artboards.push(layer); // Add to artboards list
-							}
-						} else {
-							// Skip layers that are children of artboards we're already moving
-							let is_child_of_moving_artboard = artboards.iter().any(|&artboard| {
-								layer.ancestors(document.metadata())
-                        .skip(1) // Skip self
-                        .any(|ancestor| ancestor == artboard)
-							});
-
-							if is_child_of_moving_artboard {
-								continue; // Skip this layer as its parent artboard will be moved
-							}
-
-							if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, &mut document.network_interface, responses) {
-								if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
-									let network = modify_inputs.network_interface.document_network();
-
-									if let Some(node) = network.nodes.get(&transform_node_id) {
-										let current_transform = transform_utils::get_current_transform(&node.inputs);
-
-										// Only center if nothing is in the viewport
-										if viewport_in_doc_space.contains(current_transform.translation) {
-											return;
-										}
-
-										positions.push((layer, current_transform.translation, false));
-									}
-								}
-							}
+					for &layer_id in &layers {
+						if document.network_interface.is_artboard(&layer_id.to_node(), &document.node_graph_handler.network) {
+							artboards_in_selection.push(layer_id);
 						}
 					}
 
-					if !positions.is_empty() {
-						let mean_pos = positions.iter().fold(glam::DVec2::ZERO, |acc, (_, pos, _)| acc + *pos) / positions.len() as f64;
-						let doc_space_translation = viewport_center_in_doc_space - mean_pos;
+					for &layer_id in &layers {
+						let is_child_of_selected_artboard = artboards_in_selection.iter().any(|&artboard_id| {
+							if layer_id == artboard_id {
+								return false;
+							}
+							layer_id.ancestors(document.metadata()).any(|ancestor| ancestor == artboard_id)
+						});
 
-						for (layer, pos, is_artboard) in positions {
-							if is_artboard {
-								if let Some(bounds) = document.metadata().bounding_box_document(layer) {
-									let dimensions = (bounds[1] - bounds[0]).round().as_ivec2();
-									let new_artboard_pos = pos + doc_space_translation - bounds[1].midpoint(bounds[0]);
+						if !is_child_of_selected_artboard {
+							top_level_items_to_center.push(layer_id);
+						}
+					}
 
-									responses.add(GraphOperationMessage::ResizeArtboard {
-										layer,
-										location: new_artboard_pos.round().as_ivec2(),
-										dimensions,
-									});
-								}
-							} else {
-								let offset_from_center = pos - mean_pos;
-								let new_pos = viewport_center + transform.transform_vector2(offset_from_center);
+					if top_level_items_to_center.is_empty() {
+						return;
+					}
 
-								let mut new_transform = transform;
-								new_transform.translation = new_pos;
-								responses.add(GraphOperationMessage::TransformSet {
-									layer,
-									transform: new_transform,
-									transform_in: TransformIn::Viewport,
-									skip_rerender: false,
+					let mut combined_min_doc = DVec2::MAX;
+					let mut combined_max_doc = DVec2::MIN;
+					let mut has_any_bounds = false;
+
+					for &item_id in &top_level_items_to_center {
+						if let Some(bounds_doc) = document.metadata().bounding_box_document(item_id) {
+							combined_min_doc = combined_min_doc.min(bounds_doc[0]);
+							combined_max_doc = combined_max_doc.max(bounds_doc[1]);
+							has_any_bounds = true;
+						}
+					}
+
+					if !has_any_bounds {
+						return;
+					}
+
+					let combined_bounds_doc_quad = Quad::from_box([combined_min_doc, combined_max_doc]);
+
+					if combined_bounds_doc_quad.intersects(viewport_quad_doc_space) {
+						return;
+					}
+
+					let combined_center_doc = combined_bounds_doc_quad.center();
+					let combined_center_viewport_pixels = doc_to_viewport_transform.transform_point2(combined_center_doc);
+					let translation_viewport_pixels_rounded = (viewport_center_pixels - combined_center_viewport_pixels).round();
+
+					let final_translation_offset_doc = viewport_to_doc_transform.transform_vector2(translation_viewport_pixels_rounded);
+
+					if final_translation_offset_doc.abs_diff_eq(glam::DVec2::ZERO, 1e-9) {
+						return;
+					}
+
+					responses.add(DocumentMessage::AddTransaction);
+
+					for &item_id in &top_level_items_to_center {
+						if document.network_interface.is_artboard(&item_id.to_node(), &document.node_graph_handler.network) {
+							if let Some(bounds_doc) = document.metadata().bounding_box_document(item_id) {
+								let current_artboard_origin_doc = bounds_doc[0];
+								let dimensions_doc = bounds_doc[1] - bounds_doc[0];
+								let new_artboard_origin_doc = current_artboard_origin_doc + final_translation_offset_doc;
+
+								responses.add(GraphOperationMessage::ResizeArtboard {
+									layer: item_id,
+									location: new_artboard_origin_doc.round().as_ivec2(),
+									dimensions: dimensions_doc.round().as_ivec2(),
 								});
 							}
-						}
+						} else {
+							let current_abs_doc_transform = document.metadata().transform_to_document(item_id);
 
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+							let new_abs_doc_transform = DAffine2 {
+								matrix2: current_abs_doc_transform.matrix2,
+								translation: current_abs_doc_transform.translation + final_translation_offset_doc,
+							};
+
+							let transform = doc_to_viewport_transform * new_abs_doc_transform;
+
+							responses.add(GraphOperationMessage::TransformSet {
+								layer: item_id,
+								transform,
+								transform_in: TransformIn::Viewport,
+								skip_rerender: false,
+							});
+						}
 					}
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
 			PortfolioMessage::PasteImage {
