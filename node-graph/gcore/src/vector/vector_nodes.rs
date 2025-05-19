@@ -1,21 +1,22 @@
-use super::algorithms::bezpath_algorithms::{PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster::image::ImageFrameTable;
-use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, SeedValue};
+use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
+use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, Shape};
+use kurbo::{Affine, BezPath, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -206,7 +207,7 @@ async fn repeat<I: 'n + Send>(
 	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: DVec2,
+	direction: PixelSize,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
 ) -> GraphicGroupTable
@@ -1364,36 +1365,30 @@ async fn poisson_disk_points(
 		return VectorDataTable::new(result);
 	}
 	let path_with_bounding_boxes: Vec<_> = vector_data
-		.stroke_bezier_paths()
-		.filter_map(|mut subpath| {
+		.stroke_bezpath_iter()
+		.map(|mut subpath| {
 			// TODO: apply transform to points instead of modifying the paths
-			subpath.apply_transform(vector_data_transform);
-			subpath.loose_bounding_box().map(|bb| (subpath, bb))
+			subpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+			let bbox = subpath.bounding_box();
+			(subpath, bbox)
 		})
 		.collect();
 
 	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
-		if subpath.manipulator_groups().len() < 3 {
+		if subpath.segments().count() < 2 {
 			continue;
 		}
 
-		let mut previous_point_index: Option<usize> = None;
+		let mut poisson_disk_bezpath = BezPath::new();
 
-		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
-			let point_id = PointId::generate();
-			result.point_domain.push(point_id, point);
-
-			// Get the index of the newly added point.
-			let point_index = result.point_domain.ids().len() - 1;
-
-			// If there is a previous point, connect it with the current point by adding a segment.
-			if let Some(prev_point_index) = previous_point_index {
-				let segment_id = SegmentId::generate();
-				result.segment_domain.push(segment_id, prev_point_index, point_index, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+		for point in bezpath_algorithms::poisson_disk_points(subpath, separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
+			if poisson_disk_bezpath.elements().is_empty() {
+				poisson_disk_bezpath.move_to(dvec2_to_point(point));
+			} else {
+				poisson_disk_bezpath.line_to(dvec2_to_point(point));
 			}
-
-			previous_point_index = Some(point_index);
 		}
+		result.append_bezpath(poisson_disk_bezpath);
 	}
 
 	// Transfer the style from the input vector data to the result.

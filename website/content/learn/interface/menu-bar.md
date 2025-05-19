@@ -96,10 +96,11 @@ The **View menu** lists actions related to the view of the canvas within the vie
 | Reset Tilt | <p>Sets the viewport tilt angle back to 0°.</p> |
 | Zoom In | <p>Narrows the view to the next whole zoom increment, such as:</p><p>25%, 33.33%, 40%, 50%, 66.67%, 80%, 100%, 125%, 160%, 200%, 250%, 320%, 400%, 500%</p> |
 | Zoom Out | <p>Widens the view to the next whole zoom increment, such as above.</p> |
-| Zoom to Fit Selection | <p>Zooms and frames the viewport to the bounding box of the selected layer(s).</p> |
-| Zoom to Fit All | <p>Zooms and frames the viewport to fit all artboards, or all artwork if using infinite canvas.</p> |
+| Zoom to Selection | <p>Zooms and frames the viewport to the bounding box of the selected layer(s).</p> |
+| Zoom to Fit | <p>Zooms and frames the viewport to fit all artboards, or all artwork if using infinite canvas.</p> |
 | Zoom to 100% | <p>Zooms the viewport in or out to 100% scale, making the document and viewport scales match 1:1.</p> |
 | Zoom to 200% | <p>Zooms the viewport in or out to 200% scale, displaying the artwork at twice the actual size.</p> |
+| Flip | <p>Mirrors the viewport horizontally, flipping the view of the artwork until deactivated.</p> |
 | Rulers | <p>Toggles visibility of the rulers along the top/left edges of the viewport.</p> |
 
 ## Help
