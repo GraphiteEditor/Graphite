@@ -19,7 +19,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use bezier_rs::Subpath;
-use glam::{DVec2, IVec2, DAffine2};
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::renderer::Quad;
