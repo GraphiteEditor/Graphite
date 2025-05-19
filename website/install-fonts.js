@@ -58,6 +58,11 @@ FILES_TO_COPY.forEach(([source, dest]) => {
 			processedDestinations.add(destPath);
 			console.log(`Copied: ${sourcePath} → ${destPath}`);
 		}
+
+		// Replace all occurrences of "./files" with "/fonts" in the destination file
+		let destFileContent = fs.readFileSync(destPath, "utf8");
+		destFileContent = destFileContent.replaceAll("./files/", "/fonts/files/");
+		fs.writeFileSync(destPath, destFileContent);
 	} catch (error) {
 		console.error(`Error processing ${sourcePath} to ${destPath}:`, error);
 		process.exit(1);
