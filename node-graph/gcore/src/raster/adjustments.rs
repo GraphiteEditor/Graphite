@@ -1,7 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
 #[cfg(feature = "alloc")]
-use crate::raster::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
+use crate::raster::curve::{Curve, ValueMapperNode};
 #[cfg(feature = "alloc")]
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::raster::{Channel, Color, Pixel};
@@ -326,10 +327,100 @@ fn make_opaque<T: Adjust<Color>>(
 }
 
 // Aims for interoperable compatibility with:
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Brightness/Contrast-,%27levl%27%20%3D%20Levels,-%27curv%27%20%3D%20Curves
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27brit%27%20%3D%20Brightness/Contrast
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Padding-,Brightness%20and%20Contrast,-Key%20is%20%27brit
+//
+// Some further analysis available at:
+// https://geraldbakker.nl/psnumbers/brightness-contrast.html
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"))]
+fn brightness_contrast<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(
+	Color,
+	ImageFrameTable<Color>,
+	GradientStops,
+)]
+	mut input: T,
+	brightness: SignedPercentage,
+	contrast: SignedPercentage,
+	use_classic: bool,
+) -> T {
+	if use_classic {
+		let brightness = brightness as f32 / 255.;
+
+		let contrast = contrast as f32 / 100.;
+		let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+
+		let offset = brightness * contrast + brightness - contrast / 2.;
+
+		input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
+
+		return input;
+	}
+
+	const WINDOW_SIZE: usize = 1024;
+
+	// Brightness LUT
+	let brightness_is_negative = brightness < 0.;
+	// We clamp the brightness before the two curve X-axis points `130 - brightness * 26` and `233 - brightness * 48` intersect.
+	// Beyond the point of intersection, the cubic spline fitting becomes invalid and fails an assertion, which we need to avoid.
+	// See the intersection of the red lines at x = 103/22*100 = 468.18182 in the graph: https://www.desmos.com/calculator/ekvz4zyd9c
+	let brightness = (brightness.abs() / 100.).min(103. / 22. - 0.00001) as f32;
+	let brightness_curve_points = CubicSplines {
+		x: [0., 130. - brightness * 26., 233. - brightness * 48., 255.].map(|x| x / 255.),
+		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
+	};
+	let brightness_curve_solutions = brightness_curve_points.solve();
+	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
+		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
+		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
+	});
+	// Special handling for when brightness is negative
+	if brightness_is_negative {
+		brightness_lut = core::array::from_fn(|i| {
+			let mut x = i;
+			while x > 1 && brightness_lut[x] > i as f32 / WINDOW_SIZE as f32 {
+				x -= 1;
+			}
+			x as f32 / WINDOW_SIZE as f32
+		});
+	}
+
+	// Contrast LUT
+	// Unlike with brightness, the X-axis points `64` and `192` don't intersect at any contrast value, because they are constants.
+	// So we don't have to worry about clamping the contrast value to avoid invalid cubic spline fitting.
+	// See the graph: https://www.desmos.com/calculator/iql9vsca56
+	let contrast = contrast as f32 / 100.;
+	let contrast_curve_points = CubicSplines {
+		x: [0., 64., 192., 255.].map(|x| x / 255.),
+		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
+	};
+	let contrast_curve_solutions = contrast_curve_points.solve();
+	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
+		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
+		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
+	});
+
+	// Composed brightness and contrast LUTs
+	let combined_lut = brightness_lut.map(|brightness| {
+		let index_in_contrast_lut = (brightness * (contrast_lut.len() - 1) as f32).round() as usize;
+		contrast_lut[index_in_contrast_lut]
+	});
+	let lut_max = (combined_lut.len() - 1) as f32;
+
+	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| combined_lut[(c * lut_max).round() as usize]).to_linear_srgb());
+
+	input
+}
+
+// Aims for interoperable compatibility with:
+// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels
 //
 // Algorithm from:
 // https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+//
+// Some further analysis available at:
+// https://geraldbakker.nl/psnumbers/levels.html
 #[node_macro::node(category("Raster: Adjustment"))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -748,7 +839,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	image.adjust(|color| {
 		let intensity = color.luminance_srgb();
 		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64)
+		gradient.evaluate(intensity as f64).to_linear_srgb()
 	});
 
 	image
@@ -762,7 +853,7 @@ async fn gradient_map<T: Adjust<Color>>(
 // https://stackoverflow.com/questions/33966121/what-is-the-algorithm-for-vibrance-filters
 // The results of this implementation are very close to correct, but not quite perfect.
 //
-// A bit of additional analysis can be found at here:
+// Some further analysis available at:
 // https://www.photo-mark.com/notes/analyzing-photoshop-vibrance-and-saturation/
 //
 // This algorithm is currently lacking a "Saturation" parameter which is needed for interoperability.

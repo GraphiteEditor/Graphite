@@ -324,26 +324,30 @@ fn format_type(ty: &str) -> String {
 
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			Self::Generic(arg0) => write!(f, "Generic<{arg0}>"),
+		let result = match self {
+			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(arg0) => write!(f, "Concrete<{}, {:?}>", arg0.name, arg0.id),
+			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => write!(f, "Concrete<{}>", format_type(&arg0.name)),
-			Self::Fn(arg0, arg1) => write!(f, "{arg0:?} → {arg1:?}"),
-			Self::Future(arg0) => write!(f, "Future<{arg0:?}>"),
-		}
+			Self::Concrete(ty) => format_type(&ty.name),
+			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
+			Self::Future(ty) => format!("{ty:?}"),
+		};
+		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
+		write!(f, "{}", result)
 	}
 }
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Type::Generic(name) => write!(f, "{name}"),
-			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
-			Type::Fn(input, output) => write!(f, "{input} → {output}"),
-			Type::Future(ty) => write!(f, "Future<{ty}>"),
-		}
+		let result = match self {
+			Type::Generic(name) => name.to_string(),
+			Type::Concrete(ty) => format_type(&ty.name),
+			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
+			Type::Future(ty) => ty.to_string(),
+		};
+		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
+		write!(f, "{}", result)
 	}
 }
 

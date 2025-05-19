@@ -33,7 +33,7 @@ use proc_macro::TokenStream;
 ///
 /// # Helper attributes
 /// - `#[sub_discriminant]`: only usable on variants with a single field; instead of no fields, the discriminant of the single field will be included in the discriminant,
-///     acting as a sub-discriminant.
+///   acting as a sub-discriminant.
 /// - `#[discriminant_attr(…)]`: usable on the enum itself or on any variant; applies `#[…]` in its place on the discriminant.
 ///
 /// # Attributes on the Discriminant
@@ -82,7 +82,7 @@ pub fn derive_discriminant(input_item: TokenStream) -> TokenStream {
 ///
 /// # Helper Attributes
 /// - `#[parent(<Type>, <Expr>)]` (**required**): declare the parent type (`<Type>`)
-///     and a function (`<Expr>`, has to evaluate to a single arg function) for converting a value of this type to the parent type
+///   and a function (`<Expr>`, has to evaluate to a single arg function) for converting a value of this type to the parent type
 /// - `#[parent_is_top]`: Denote that the parent type has no further parent type (this is required because otherwise the `From` impls for parent and top parent would overlap)
 ///
 /// # Example
@@ -204,18 +204,18 @@ pub fn derive_message(input_item: TokenStream) -> TokenStream {
 /// # Usage
 /// There are three possible argument syntaxes you can use:
 /// 1. no arguments: this is for the top-level message enum. It derives `ToDiscriminant`, `AsMessage` on the discriminant, and implements `TransitiveChild` on both
-///     (the parent and top parent being the respective types themselves).
-///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+///    (the parent and top parent being the respective types themselves).
+///    It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
 /// 2. two arguments: this is for message enums whose direct parent is the top level message enum. The syntax is `#[impl_message(<Type>, <Ident>)]`,
-///     where `<Type>` is the parent message type and `<Ident>` is the identifier of the variant used to construct this child.
-///     It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both (adding `#[parent_is_top]` to both).
-///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+///    where `<Type>` is the parent message type and `<Ident>` is the identifier of the variant used to construct this child.
+///    It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both (adding `#[parent_is_top]` to both).
+///    It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
 /// 3. three arguments: this is for all other message enums that are transitive children of the top level message enum. The syntax is
-///     `#[impl_message(<Type>, <Type>, <Ident>)]`, where the first `<Type>` is the top parent message type, the second `<Type>` is the parent message type
-///     and `<Ident>` is the identifier of the variant used to construct this child.
-///     It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both.
-///     It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
-///     **This third option will likely change in the future**
+///    `#[impl_message(<Type>, <Type>, <Ident>)]`, where the first `<Type>` is the top parent message type, the second `<Type>` is the parent message type
+///    and `<Ident>` is the identifier of the variant used to construct this child.
+///    It derives `ToDiscriminant`, `AsMessage` on the discriminant, and `TransitiveChild` on both.
+///    It also derives the following `std` traits on the discriminant: `Debug, Copy, Clone, PartialEq, Eq, Hash`.
+///    **This third option will likely change in the future**
 #[proc_macro_attribute]
 pub fn impl_message(attr: TokenStream, input_item: TokenStream) -> TokenStream {
 	TokenStream::from(combined_message_attrs_impl(attr.into(), input_item.into()).unwrap_or_else(|err| err.to_compile_error()))

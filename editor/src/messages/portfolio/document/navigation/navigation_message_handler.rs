@@ -206,6 +206,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 				if !graph_view_overlay_open {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					responses.add(MenuBarMessage::SendLayout);
 				}
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
@@ -274,6 +275,22 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
+			}
+			NavigationMessage::CanvasFlip => {
+				if graph_view_overlay_open {
+					return;
+				}
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get mutable PTZ in CanvasFlip");
+					return;
+				};
+
+				ptz.flip = !ptz.flip;
+
+				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -395,9 +412,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						..
 					} => {
 						let tilt_raw_not_snapped = {
+							// Compute the angle in document space to counter for the canvas being flipped
+							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
 							let half_viewport = ipp.viewport_bounds.size() / 2.;
-							let start_offset = self.mouse_position - half_viewport;
-							let end_offset = ipp.mouse.position - half_viewport;
+							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
+							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
 
 							tilt_raw_not_snapped + angle
@@ -473,6 +492,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			CanvasZoomDecrease,
 			CanvasZoomIncrease,
 			CanvasZoomMouseWheel,
+			CanvasFlip,
 			FitViewportToSelection,
 		);
 
@@ -515,15 +535,16 @@ impl NavigationMessageHandler {
 		let tilt = ptz.tilt();
 		let zoom = ptz.zoom();
 
-		let scaled_center = viewport_center / self.snapped_zoom(zoom);
+		let scale = self.snapped_zoom(zoom);
+		let scale_vec = if ptz.flip { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
+		let scaled_center = viewport_center / scale_vec;
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
-		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);
-		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
+		let scale_transform = DAffine2::from_scale(scale_vec);
 		let angle_transform = DAffine2::from_angle(self.snapped_tilt(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
