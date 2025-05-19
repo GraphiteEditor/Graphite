@@ -12,3 +12,29 @@
 </div>
 {% endfor %}
 {% endmacro blog_posts %}
+
+{% macro text_balancer() %}
+<style>
+.balance-text {
+	visibility: hidden;
+}
+
+@media (scripting: none) {
+	.balance-text {
+		visibility: visible !important;
+	}
+}
+
+@supports (text-wrap: balance) {
+	.balance-text,
+	.balanced-text {
+		text-align: left;
+		text-wrap: balance;
+		visibility: visible;
+	}
+}
+</style>
+<script>
+{{ load_data(path="static/text-balancer.js", format="plain") | safe }}
+</script>
+{% endmacro text_balancer %}

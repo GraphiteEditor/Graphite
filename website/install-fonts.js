@@ -1,4 +1,5 @@
 const fs = require("fs");
+const https = require("https");
 const path = require("path");
 
 // Define basePath
@@ -155,3 +156,39 @@ if (unusedFiles.length > 0) {
 }
 
 console.log("\nFont installation complete!");
+
+// Fetch and save text-balancer.js, which we don't commit to the repo so we're not version controlling dependency code
+const textBalancerUrl = "https://static.graphite.rs/text-balancer/text-balancer.js";
+const textBalancerDest = path.join(basePath, "static", "text-balancer.js");
+console.log("\nDownloading text-balancer.js...");
+https
+	.get(textBalancerUrl, (res) => {
+		if (res.statusCode !== 200) {
+			console.error(`Failed to download text-balancer.js. Status code: ${res.statusCode}`);
+			res.resume();
+			return;
+		}
+
+		let data = "";
+		res.on("data", (chunk) => {
+			data += chunk;
+		});
+
+		res.on("end", () => {
+			try {
+				// Ensure destination directory exists
+				const destDir = path.dirname(textBalancerDest);
+				if (!fs.existsSync(destDir)) {
+					fs.mkdirSync(destDir, { recursive: true });
+					console.log(`Created directory: ${destDir}`);
+				}
+				fs.writeFileSync(textBalancerDest, data, "utf8");
+				console.log(`Downloaded and saved: ${textBalancerDest}`);
+			} catch (error) {
+				console.error(`Error saving text-balancer.js:`, error);
+			}
+		});
+	})
+	.on("error", (err) => {
+		console.error(`Error downloading text-balancer.js:`, err);
+	});

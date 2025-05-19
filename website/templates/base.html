@@ -124,7 +124,9 @@
 		</header>
 		<main>
 			{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
+			{%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}
 			{%- block content -%}{%- endblock -%}
+			{%- endfilter -%}
 			{%- endfilter -%}
 		</main>
 		<footer>
