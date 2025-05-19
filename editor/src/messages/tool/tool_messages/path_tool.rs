@@ -374,6 +374,8 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
+	time: u64,
+	points_before_flip: HashSet<ManipulatorPointId>,
 }
 
 impl PathToolData {
@@ -447,6 +449,15 @@ impl PathToolData {
 		self.opposing_handle_lengths = None;
 
 		self.drag_start_pos = input.mouse.position;
+		let current_time = input.time;
+
+		log::info!("{:}", current_time - self.time);
+
+		if !self.points_before_flip.is_empty() && (current_time - self.time > 500) {
+			self.points_before_flip.clear();
+		}
+
+		self.time = current_time;
 
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
@@ -1296,6 +1307,10 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
 
+				if !tool_data.points_before_flip.is_empty() {
+					tool_data.points_before_flip.clear();
+				}
+
 				// If there is a point nearby, then remove the overlay
 				if shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
@@ -1490,6 +1505,9 @@ impl Fsm for PathToolFsmState {
 					if !drag_occurred && !extend_selection {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 						if clicked_selected {
+							if tool_data.points_before_flip.is_empty() {
+								tool_data.points_before_flip = shape_editor.selected_points().copied().collect::<HashSet<_>>();
+							}
 							shape_editor.deselect_all_points();
 							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
 							responses.add(OverlaysMessage::Draw);
@@ -1536,10 +1554,13 @@ impl Fsm for PathToolFsmState {
 				if nearest_point.is_some() {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+						log::info!("{:?}", tool_data.points_before_flip);
 						responses.add(DocumentMessage::StartTransaction);
+						shape_editor.select_points_by_manipulator_id(&tool_data.points_before_flip.iter().copied().collect::<Vec<_>>());
 						shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
 						responses.add(DocumentMessage::EndTransaction);
 						responses.add(PathToolMessage::SelectedPointUpdated);
+						tool_data.points_before_flip.clear();
 					}
 
 					return PathToolFsmState::Ready;

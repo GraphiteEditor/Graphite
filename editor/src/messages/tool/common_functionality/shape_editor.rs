@@ -1568,44 +1568,47 @@ impl ShapeState {
 				.count();
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
-			if positions != 0 {
-				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
-			} else {
-				for handle in vector_data.all_connected(id) {
-					let Some(bezier) = vector_data.segment_from_id(handle.segment) else { continue };
+			for point in self.selected_points() {
+				let Some(point_id) = point.as_anchor() else { continue };
+				if positions != 0 {
+					self.convert_manipulator_handles_to_colinear(&vector_data, point_id, responses, layer);
+				} else {
+					for handle in vector_data.all_connected(point_id) {
+						let Some(bezier) = vector_data.segment_from_id(handle.segment) else { continue };
 
-					match bezier.handles {
-						BezierHandles::Linear => {}
-						BezierHandles::Quadratic { .. } => {
-							let segment = handle.segment;
-							// Convert to linear
-							let modification_type = VectorModificationType::SetHandles { segment, handles: [None; 2] };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						match bezier.handles {
+							BezierHandles::Linear => {}
+							BezierHandles::Quadratic { .. } => {
+								let segment = handle.segment;
+								// Convert to linear
+								let modification_type = VectorModificationType::SetHandles { segment, handles: [None; 2] };
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-							// Set the manipulator to have non-colinear handles
-							for &handles in &vector_data.colinear_manipulators {
-								if handles.contains(&HandleId::primary(segment)) {
-									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-									responses.add(GraphOperationMessage::Vector { layer, modification_type });
+								// Set the manipulator to have non-colinear handles
+								for &handles in &vector_data.colinear_manipulators {
+									if handles.contains(&HandleId::primary(segment)) {
+										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+										responses.add(GraphOperationMessage::Vector { layer, modification_type });
+									}
 								}
 							}
-						}
-						BezierHandles::Cubic { .. } => {
-							// Set handle position to anchor position
-							let modification_type = handle.set_relative_position(DVec2::ZERO);
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							BezierHandles::Cubic { .. } => {
+								// Set handle position to anchor position
+								let modification_type = handle.set_relative_position(DVec2::ZERO);
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-							// Set the manipulator to have non-colinear handles
-							for &handles in &vector_data.colinear_manipulators {
-								if handles.contains(&handle) {
-									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-									responses.add(GraphOperationMessage::Vector { layer, modification_type });
+								// Set the manipulator to have non-colinear handles
+								for &handles in &vector_data.colinear_manipulators {
+									if handles.contains(&handle) {
+										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+										responses.add(GraphOperationMessage::Vector { layer, modification_type });
+									}
 								}
 							}
 						}
 					}
-				}
-			};
+				};
+			}
 
 			Some(true)
 		};
