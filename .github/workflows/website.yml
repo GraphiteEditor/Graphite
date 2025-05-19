@@ -42,6 +42,7 @@ jobs:
           MODE: prod
         run: |
           cd website
+          npm run install-fonts
           zola --config config.toml build --minify
 
       - name: 🔍 Check if `website/other` directory changed
