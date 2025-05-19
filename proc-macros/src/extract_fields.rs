@@ -1,3 +1,4 @@
+use crate::helpers::clean_rust_type_syntax;
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{Data, DeriveInput, Fields, Type, parse2};
@@ -23,7 +24,7 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 		.map(|field| {
 			let ident = field.ident.as_ref().unwrap();
 			let name = ident.to_string();
-			let ty = field.ty.to_token_stream().to_string();
+			let ty = clean_rust_type_syntax(field.ty.to_token_stream().to_string());
 			let line = ident.span().start().line;
 			field_line.push(line);
 			(name, ty)

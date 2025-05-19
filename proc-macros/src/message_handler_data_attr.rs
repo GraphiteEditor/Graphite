@@ -1,8 +1,8 @@
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{ToTokens, quote};
 use syn::{ItemImpl, Type, parse2, spanned::Spanned};
 
-use crate::helpers::call_site_ident;
+use crate::helpers::{call_site_ident, clean_rust_type_syntax};
 
 pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream) -> syn::Result<TokenStream> {
 	// Parse the input as an impl block
@@ -97,11 +97,12 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									syn::Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
 									_ => return Err(syn::Error::new(type_reference.elem.span(), "Expected type path")),
 								};
+								let tr = clean_rust_type_syntax(type_reference.to_token_stream().to_string());
 								quote! {
 									#input_item
 									impl #message_type {
 										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}",stringify!(#type_reference)),#type_ident::field_types())
+											MessageData::new(format!("{}", #tr),#type_ident::field_types())
 										}
 
 										pub fn message_handler_str() -> MessageData {
