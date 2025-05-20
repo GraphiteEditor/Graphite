@@ -3,7 +3,6 @@ title = "About Graphite"
 
 [extra]
 css = ["/page/about.css", "/component/feature-box.css"]
-linked_css = ["https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"]
 +++
 
 <section>
@@ -117,7 +116,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
-## Keavon Chambers <span class="handle">(@Keavon)</span> <span class="flag" title="American">🇺🇸</span>
+## Keavon Chambers <span class="handle">(@Keavon)</span> <img src="https://static.graphite.rs/icons/flags/us.png" class="flag" title="American" />
 
 ***Founder, UI & product design, frontend, editor systems***
 
@@ -128,7 +127,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
-## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <span class="flag" title="German">🇩🇪</span>
+## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <img src="https://static.graphite.rs/icons/flags/de.png" class="flag" title="German" />
 
 ***Graphene node engine, research, architecture***
 
@@ -143,7 +142,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-hypercube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
-## "Hypercube" <span class="handle">(@0Hypercube)</span> <span class="flag" title="British">🇬🇧</span>
+## "Hypercube" <span class="handle">(@0Hypercube)</span> <img src="https://static.graphite.rs/icons/flags/gb.png" class="flag" title="British" />
 
 ***Editor systems, nodes, tools, architecture***
 
@@ -155,7 +154,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-adam-gerhant.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Adam Gerhant" />
 
-## Adam Gerhant <span class="handle">(@pendapia)</span> <span class="flag" title="American">🇺🇸</span>
+## Adam Gerhant <span class="handle">(@pendapia)</span> <img src="https://static.graphite.rs/icons/flags/us.png" class="flag" title="American" />
 
 ***Editor graph tooling, node data formats***
 
