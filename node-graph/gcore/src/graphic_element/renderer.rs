@@ -61,8 +61,12 @@ impl ClickTarget {
 	}
 
 	pub fn new_with_free_point(point: FreePoint) -> Self {
-		let stroke_width = 2e-4;
-		let bounding_box = Some([point.position - DVec2::splat(stroke_width / 2.), point.position + DVec2::splat(stroke_width / 2.)]);
+		const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4 / 2.;
+		let stroke_width = 10.;
+		let bounding_box = Some([
+			point.position - DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT),
+			point.position + DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT),
+		]);
 
 		Self {
 			target_type: ClickTargetType::FreePoint(point),

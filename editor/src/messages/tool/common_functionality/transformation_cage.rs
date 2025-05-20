@@ -1,8 +1,8 @@
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
-	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
-	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
-	SKEW_TRIANGLE_SIZE,
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY,
+	MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE,
+	SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -666,12 +666,12 @@ impl BoundingBoxManager {
 
 	/// Determine if these bounds are flat ([`TransformCageSizeCategory::Flat`]), which means that the width and/or height is essentially zero and the bounds are a line with effectively no area. This can happen on actual lines (axis-aligned, i.e. drawn horizontally or vertically) or when an element is scaled to zero in X or Y. A flat transform cage can still be rotated by a transformation, but its local space remains flat.
 	fn is_bounds_flat(&self) -> bool {
-		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).any()
 	}
 
 	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on actual points (axis-aligned, i.e. drawn at a single pixel) or when an element is scaled to zero in both X and Y. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
 	fn is_bounds_point(&self) -> bool {
-		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).all()
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).all()
 	}
 
 	/// Determine if the given point in viewport space falls within the bounds of `self`.
@@ -752,11 +752,11 @@ impl BoundingBoxManager {
 				}
 
 				// On bounds with no width/height, disallow transformation in the relevant axis
-				if width < 1e-4 {
+				if width < MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT {
 					left = false;
 					right = false;
 				}
-				if height < 1e-4 {
+				if height < MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT {
 					top = false;
 					bottom = false;
 				}
