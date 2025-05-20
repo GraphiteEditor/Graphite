@@ -9,8 +9,6 @@ env:
 
 jobs:
   profile:
-    # TODO(TrueDoctor): Fix and reenable this action
-    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -48,7 +46,7 @@ jobs:
 
       - name: Run baseline benchmarks
         run: |
-          cargo bench --bench compile_demo_art --features=iai -- --save-baseline=master
+          cargo bench --bench compile_demo_art_iai -- --save-baseline=master
 
       - name: Checkout PR branch
         run: |
@@ -57,7 +55,7 @@ jobs:
       - name: Run PR benchmarks
         id: benchmark
         run: |
-          BENCH_OUTPUT=$(cargo bench --bench compile_demo_art --features=iai -- --baseline=master --output-format=json  | jq -sc | sed 's/\\"//g')
+          BENCH_OUTPUT=$(cargo bench --bench compile_demo_art_iai -- --baseline=master --output-format=json  | jq -sc | sed 's/\\"//g')
           echo "BENCHMARK_OUTPUT<<EOF" >> $GITHUB_OUTPUT
           echo "$BENCH_OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

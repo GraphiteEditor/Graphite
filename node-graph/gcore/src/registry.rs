@@ -28,6 +28,8 @@ pub mod types {
 	pub type SeedValue = u32;
 	/// Non-negative integer vector2 with px unit
 	pub type Resolution = glam::UVec2;
+	/// DVec2 with px unit
+	pub type PixelSize = glam::DVec2;
 }
 
 // Translation struct between macro and definition

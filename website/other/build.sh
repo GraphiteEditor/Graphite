@@ -29,5 +29,6 @@ mkdir dist/libraries/bezier-rs
 cd bezier-rs-demos
 npm ci
 NODE_ENV=production npm run build
+cp ../../static/fonts/common.css dist/fonts.css
 mv dist/* ../dist/libraries/bezier-rs
 cd ..

@@ -647,11 +647,18 @@ pub struct PTZ {
 	tilt: f64,
 	/// Scale factor.
 	zoom: f64,
+	/// Flipped status.
+	pub flip: bool,
 }
 
 impl Default for PTZ {
 	fn default() -> Self {
-		Self { pan: DVec2::ZERO, tilt: 0., zoom: 1. }
+		Self {
+			pan: DVec2::ZERO,
+			tilt: 0.,
+			zoom: 1.,
+			flip: false,
+		}
 	}
 }
 

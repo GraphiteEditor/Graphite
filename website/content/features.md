@@ -145,17 +145,21 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Desktop app (Windows, Mac, Linux)</span>
 		</div>
-		<div class="feature-icon ongoing">
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Simplified main properties panel</span>
 		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>GPU-accelerated raster rendering</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Infinitely zoomable/panable content</span>
+			<span>Infinitely zoomable/panable raster</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Select mode (marquee masking)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -171,7 +175,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 57" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Signed distance fields</span>
+			<span>Signed distance field rendering</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -180,10 +184,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 52" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Command palette and context menus</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Select mode (marquee masking)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
