@@ -1,4 +1,4 @@
-use crate::raster::{BlendImageTupleNode, ExtendImageToBoundsNode, blend_image_closure};
+use crate::raster::{BlendImageTupleNode, blend_image_closure, extend_image_to_bounds};
 use glam::{DAffine2, DVec2};
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
@@ -8,7 +8,7 @@ use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{Alpha, Bitmap, BlendMode, Color, Pixel, Sample};
 use graphene_core::transform::{Transform, TransformMut};
-use graphene_core::value::{ClonedNode, CopiedNode, ValueNode};
+use graphene_core::value::{ClonedNode, ValueNode};
 use graphene_core::vector::VectorDataTable;
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
@@ -225,7 +225,7 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 		background_bounds = bounds.transform();
 	}
 
-	let mut actual_image = ExtendImageToBoundsNode::new(ClonedNode::new(background_bounds)).eval(brush_plan.background);
+	let mut actual_image = extend_image_to_bounds((), brush_plan.background, background_bounds);
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
 	for (idx, stroke) in brush_plan.strokes.into_iter().enumerate() {
 		// Create brush texture.
@@ -262,7 +262,7 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 			);
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				ExtendImageToBoundsNode::new(CopiedNode::new(stroke_to_layer)).eval(target)
+				extend_image_to_bounds((), target, stroke_to_layer)
 			} else {
 				use crate::raster::empty_image;
 				empty_image((), stroke_to_layer, Color::TRANSPARENT)
