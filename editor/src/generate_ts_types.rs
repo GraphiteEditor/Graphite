@@ -1,12 +1,9 @@
-/// Running this test will generate a `types.ts` file at the root of the repo,
-/// containing every type annotated with `specta::Type`
-
+/// Running this test will generate a `bindings.ts` file containing every type annotated with `specta::Type`.
 #[test]
 fn generate_ts_types() {
+	use crate::messages::prelude::FrontendMessage;
 	use specta::TypeCollection;
 	use specta_typescript::{BigIntExportBehavior, Typescript};
-
-	use crate::messages::prelude::FrontendMessage;
 
 	Typescript::default()
 		.bigint(BigIntExportBehavior::Number)

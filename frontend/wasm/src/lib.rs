@@ -42,7 +42,7 @@ pub fn get_specta_types() -> Result<String, String> {
 
 	Typescript::default()
 		.bigint(BigIntExportBehavior::Number)
-		.export(&TypeCollection::default().register::<FrontendMessage>())
+		.export(TypeCollection::default().register::<FrontendMessage>())
 		.map_err(|err| err.to_string())
 }
 
