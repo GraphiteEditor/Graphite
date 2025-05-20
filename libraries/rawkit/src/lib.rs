@@ -19,9 +19,15 @@ use tiff::{Ifd, TiffError};
 pub(crate) const CHANNELS_IN_RGB: usize = 3;
 pub(crate) type Histogram = [[usize; 0x2000]; CHANNELS_IN_RGB];
 
+pub enum ThumbnailFormat {
+	Jpeg,
+	Unsupported,
+}
+
 /// A thumbnail image extracted from the raw file. This is usually a JPEG image.
 pub struct ThumbnailImage {
 	pub data: Vec<u8>,
+	pub format: ThumbnailFormat,
 }
 
 /// The amount of black level to be subtracted from Raw Image.
@@ -150,10 +156,12 @@ impl RawImage {
 		Ok(raw_image)
 	}
 
+	/// Extracts the thumbnail image from the raw file.
 	pub fn extract_thumbnail<R: Read + Seek>(reader: &mut R) -> Result<ThumbnailImage, DecoderError> {
 		let mut file = TiffRead::new(reader)?;
 		let ifd = Ifd::new_first_ifd(&mut file)?;
 
+		// TODO: ARW files Store the thumbnail offset and length in the first IFD. Add support for other file types in the future.
 		let thumbnail_offset = ifd.get_value::<ThumbnailOffset, _>(&mut file)?;
 		let thumbnail_length = ifd.get_value::<ThumbnailLength, _>(&mut file)?;
 		file.seek_from_start(thumbnail_offset)?;
@@ -161,7 +169,17 @@ impl RawImage {
 		let mut thumbnail_data = vec![0; thumbnail_length as usize];
 		file.read_exact(&mut thumbnail_data)?;
 
-		Ok(ThumbnailImage { data: thumbnail_data })
+		// Check the first two bytes to determine the format of the thumbnail.
+		// JPEG format starts with 0xFF, 0xD8.
+		if thumbnail_data[0..2] == [0xFF, 0xD8] {
+			return Ok(ThumbnailImage {
+				data: thumbnail_data,
+				format: ThumbnailFormat::Jpeg,
+			});
+		} else {
+			Err(DecoderError::UnsupportedThumbnailFormat)
+		}
+
 	}
 
 	/// Converts the [`RawImage`] to an [`Image`] with 8 bit resolution for each channel.
@@ -278,4 +296,6 @@ pub enum DecoderError {
 	ConversionError(#[from] std::num::TryFromIntError),
 	#[error("An IO Error ocurred")]
 	IoError(#[from] std::io::Error),
+	#[error("The thumbnail format is unsupported")]
+	UnsupportedThumbnailFormat,
 }
