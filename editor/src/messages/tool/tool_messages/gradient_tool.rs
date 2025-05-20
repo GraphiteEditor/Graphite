@@ -7,7 +7,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{Node
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct GradientTool {
 	fsm_state: GradientToolFsmState,
 	data: GradientToolData,
@@ -53,6 +53,7 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions(action)) = message else {

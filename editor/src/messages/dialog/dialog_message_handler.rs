@@ -2,19 +2,21 @@ use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArt
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct DialogMessageData<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
 /// Stores the dialogs which require state. These are the ones that have their own message handlers, and are not the ones defined in `simple_dialogs`.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, ExtractField)]
 pub struct DialogMessageHandler {
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
 	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
+#[message_handler_data]
 impl MessageHandler<DialogMessage, DialogMessageData<'_>> for DialogMessageHandler {
 	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, data: DialogMessageData) {
 		let DialogMessageData { portfolio, preferences } = data;

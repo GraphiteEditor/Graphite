@@ -4,9 +4,10 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct PropertiesPanelMessageHandler {}
 
+#[message_handler_data]
 impl MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'_>)> for PropertiesPanelMessageHandler {
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		let PropertiesPanelMessageHandlerData {

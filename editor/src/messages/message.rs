@@ -45,3 +45,76 @@ impl specta::Type for MessageDiscriminant {
 		specta::DataType::Any
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn print_tool_message_handler() {
+		ToolMessageHandler::print_field_types();
+	}
+
+	#[test]
+	fn generate_message_tree() {
+		let res = Message::build_message_tree();
+		println!("{} {}", res.name(), res.path());
+		if let Some(variants) = res.variants() {
+			for (i, variant) in variants.iter().enumerate() {
+				let is_last = i == variants.len() - 1;
+				print_tree_node(variant, "", is_last);
+			}
+		}
+	}
+
+	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool) {
+		// Print the current node
+		let (branch, child_prefix) = if tree.has_message_handler_data_fields() || tree.has_message_handler_fields() {
+			("├── ", format!("{}│   ", prefix))
+		} else {
+			if is_last {
+				("└── ", format!("{}    ", prefix))
+			} else {
+				("├── ", format!("{}│   ", prefix))
+			}
+		};
+
+		println!("{}{}{} {}", prefix, branch, tree.name(), tree.path());
+
+		// Print children if any
+		if let Some(variants) = tree.variants() {
+			let len = variants.len();
+			for (i, variant) in variants.iter().enumerate() {
+				let is_last_child = i == len - 1;
+				print_tree_node(variant, &child_prefix, is_last_child);
+			}
+		}
+
+		// Print handler field if any
+		if let Some(data) = tree.message_handler_fields() {
+			let len = data.fields().len();
+			let (branch, child_prefix) = if tree.has_message_handler_data_fields() {
+				("├── ", format!("{}│   ", prefix))
+			} else {
+				("└── ", format!("{}    ", prefix))
+			};
+			println!("{}{}{}", prefix, branch, data.name());
+			for (i, field) in data.fields().iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+				println!("{}{}{}", child_prefix, branch, field.0);
+			}
+		}
+
+		// Print data field if any
+		if let Some(data) = tree.message_handler_data_fields() {
+			let len = data.fields().len();
+			println!("{}{}{}", prefix, "└── ", data.name());
+			for (i, field) in data.fields().iter().enumerate() {
+				let is_last_field = i == len - 1;
+				let branch = if is_last_field { "└── " } else { "├── " };
+				println!("{}{}{}", format!("{}    ", prefix), branch, field.0);
+			}
+		}
+	}
+}

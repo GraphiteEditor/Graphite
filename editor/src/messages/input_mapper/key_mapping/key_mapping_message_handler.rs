@@ -2,16 +2,18 @@ use crate::messages::input_mapper::input_mapper_message_handler::InputMapperMess
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct KeyMappingMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub actions: ActionList,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, ExtractField)]
 pub struct KeyMappingMessageHandler {
 	mapping_handler: InputMapperMessageHandler,
 }
 
+#[message_handler_data]
 impl MessageHandler<KeyMappingMessage, KeyMappingMessageData<'_>> for KeyMappingMessageHandler {
 	fn process_message(&mut self, message: KeyMappingMessage, responses: &mut VecDeque<Message>, data: KeyMappingMessageData) {
 		let KeyMappingMessageData { input, actions } = data;
