@@ -13,7 +13,7 @@ use std::io::{Read, Seek};
 use thiserror::Error;
 use tiff::file::TiffRead;
 use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
-use tiff::values::{CompressionValue, Transform};
+use tiff::values::{CompressionValue, OrientationValue};
 use tiff::{Ifd, TiffError};
 
 pub(crate) const CHANNELS_IN_RGB: usize = 3;
@@ -48,7 +48,7 @@ pub struct RawImage {
 	pub cfa_pattern: [u8; 4],
 
 	/// Transformation to be applied to negate the orientation of camera.
-	pub transform: Transform,
+	pub orientation: OrientationValue,
 
 	/// The maximum possible value of pixel that the camera sensor could give.
 	pub maximum: u16,
@@ -97,8 +97,8 @@ pub struct Image<T> {
 
 	/// The transformation required to orient the image correctly.
 	///
-	/// This will be [`Transform::Horizontal`] after the transform step is applied.
-	pub transform: Transform,
+	/// This will be [`OrientationValue::Horizontal`] after the orientation step is applied.
+	pub orientation: OrientationValue,
 }
 
 #[allow(dead_code)]
@@ -119,7 +119,7 @@ impl RawImage {
 		let ifd = Ifd::new_first_ifd(&mut file)?;
 
 		let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
-		let transform = ifd.get_value::<Orientation, _>(&mut file)?;
+		let orientation = ifd.get_value::<Orientation, _>(&mut file)?;
 
 		let mut raw_image = if camera_model.model == "DSLR-A100" {
 			decoder::arw1::decode_a100(ifd, &mut file)
@@ -138,7 +138,7 @@ impl RawImage {
 		};
 
 		raw_image.camera_model = Some(camera_model);
-		raw_image.transform = transform;
+		raw_image.orientation = orientation;
 
 		raw_image.calculate_conversion_matrices();
 
@@ -156,7 +156,7 @@ impl RawImage {
 			data: image.data.iter().map(|x| (x >> 8) as u8).collect(),
 			width: image.width,
 			height: image.height,
-			transform: image.transform,
+			orientation: image.orientation,
 		}
 	}
 
@@ -174,7 +174,7 @@ impl RawImage {
 		let image = raw_image.demosaic_and_apply((convert_to_rgb, &mut record_histogram));
 
 		let gamma_correction = image.gamma_correction_fn(&record_histogram.histogram);
-		if image.transform == Transform::Horizontal {
+		if image.orientation == OrientationValue::Horizontal {
 			image.apply(gamma_correction)
 		} else {
 			image.transform_and_apply(gamma_correction)
@@ -211,7 +211,7 @@ impl RawImage {
 			data: image,
 			width: self.width,
 			height: self.height,
-			transform: self.transform,
+			orientation: self.orientation,
 		}
 	}
 }
@@ -232,7 +232,7 @@ impl Image<u16> {
 
 	pub fn transform_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
 		let mut image = vec![0; self.width * self.height * 3];
-		let (width, height, iter) = self.transform_iter();
+		let (width, height, iter) = self.orientation_iter();
 		for Pixel { values, row, column } in iter.map(|mut pixel| {
 			pixel.values = transform.apply(pixel);
 			pixel
@@ -246,7 +246,7 @@ impl Image<u16> {
 			data: image,
 			width,
 			height,
-			transform: Transform::Horizontal,
+			orientation: OrientationValue::Horizontal,
 		}
 	}
 }
