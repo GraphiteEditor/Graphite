@@ -643,13 +643,13 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				if overlay_context.visibility_settings.transform_cage() {
-					if let Some(bounds) = bounds {
-						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+				if let Some(bounds) = bounds {
+					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
-						bounding_box_manager.bounds = bounds;
-						bounding_box_manager.transform = transform;
-						bounding_box_manager.transform_tampered = transform_tampered;
+					bounding_box_manager.bounds = bounds;
+					bounding_box_manager.transform = transform;
+					bounding_box_manager.transform_tampered = transform_tampered;
+					if overlay_context.visibility_settings.transform_cage() {
 						bounding_box_manager.render_overlays(&mut overlay_context, true);
 					}
 				} else {
@@ -683,7 +683,7 @@ impl Fsm for SelectToolFsmState {
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 
-				if overlay_context.visibility_settings.transform_cage() && bounds.is_some() {
+				if overlay_context.visibility_settings.transform_cage() {
 					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
 						let edges = bounds.check_selected_edges(input.mouse.position);
 						let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
