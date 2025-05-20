@@ -2,7 +2,7 @@ use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
 use crate::tiff::values::{CompressionValue, CurveLookupTable};
 use crate::tiff::{Ifd, TiffError};
-use crate::{RawImage, SubtractBlack, OrientationValue};
+use crate::{OrientationValue, RawImage, SubtractBlack};
 use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 

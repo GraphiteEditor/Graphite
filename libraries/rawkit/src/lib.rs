@@ -172,14 +172,13 @@ impl RawImage {
 		// Check the first two bytes to determine the format of the thumbnail.
 		// JPEG format starts with 0xFF, 0xD8.
 		if thumbnail_data[0..2] == [0xFF, 0xD8] {
-			return Ok(ThumbnailImage {
+			Ok(ThumbnailImage {
 				data: thumbnail_data,
 				format: ThumbnailFormat::Jpeg,
-			});
+			})
 		} else {
 			Err(DecoderError::UnsupportedThumbnailFormat)
 		}
-
 	}
 
 	/// Converts the [`RawImage`] to an [`Image`] with 8 bit resolution for each channel.

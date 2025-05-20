@@ -1,5 +1,5 @@
 use super::file::TiffRead;
-use super::values::{CompressionValue, CurveLookupTable, Rational, OrientationValue};
+use super::values::{CompressionValue, CurveLookupTable, OrientationValue, Rational};
 use super::{Ifd, IfdTagType, TiffError};
 use std::io::{Read, Seek};
 
@@ -380,7 +380,7 @@ impl TagType for TypeOrientation {
 	type Output = OrientationValue;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		Ok(OrientationValue::try_from(TypeShort::read(file)?).map_err(|_| TiffError::InvalidValue)?)
+		OrientationValue::try_from(TypeShort::read(file)?).map_err(|_| TiffError::InvalidValue)
 	}
 }
 
@@ -388,6 +388,6 @@ impl TagType for TypeCompression {
 	type Output = CompressionValue;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		Ok(CompressionValue::try_from(TypeShort::read(file)?).map_err(|_| TiffError::InvalidValue)?)
+		CompressionValue::try_from(TypeShort::read(file)?).map_err(|_| TiffError::InvalidValue)
 	}
 }

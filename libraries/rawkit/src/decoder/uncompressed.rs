@@ -2,7 +2,7 @@ use crate::tiff::file::TiffRead;
 use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
 use crate::tiff::values::CompressionValue;
 use crate::tiff::{Ifd, TiffError};
-use crate::{RawImage, SubtractBlack, OrientationValue};
+use crate::{OrientationValue, RawImage, SubtractBlack};
 use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 

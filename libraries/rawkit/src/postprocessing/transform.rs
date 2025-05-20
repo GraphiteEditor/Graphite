@@ -1,4 +1,4 @@
-use crate::{Image, Pixel, OrientationValue};
+use crate::{Image, OrientationValue, Pixel};
 
 impl Image<u16> {
 	pub fn orientation_iter(&self) -> (usize, usize, impl Iterator<Item = Pixel> + use<'_>) {
