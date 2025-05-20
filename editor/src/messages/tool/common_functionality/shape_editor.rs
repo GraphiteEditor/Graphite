@@ -70,7 +70,7 @@ impl SelectedLayerState {
 	}
 
 	pub fn ignore_handles(&mut self, status: bool) {
-		if self.ignore_handles == !status {
+		if self.ignore_handles != status {
 			return;
 		}
 
@@ -86,7 +86,7 @@ impl SelectedLayerState {
 	}
 
 	pub fn ignore_anchors(&mut self, status: bool) {
-		if self.ignore_anchors == !status {
+		if self.ignore_anchors != status {
 			return;
 		}
 
@@ -774,7 +774,7 @@ impl ShapeState {
 
 		// For a non-endpoint anchor, handles are perpendicular to the average tangent of adjacent segments.(Refer:https://github.com/GraphiteEditor/Graphite/pull/2620#issuecomment-2881501494)
 		let mut handle_direction = if segment_count > 1. {
-			segment_angle = segment_angle / segment_count;
+			segment_angle /= segment_count;
 			segment_angle += std::f64::consts::FRAC_PI_2;
 			DVec2::new(segment_angle.cos(), segment_angle.sin())
 		} else {
@@ -801,7 +801,7 @@ impl ShapeState {
 			let (non_zero_handle, zero_handle) = if a.length(vector_data) > 1e-6 { (a, b) } else { (b, a) };
 			let Some(direction) = non_zero_handle
 				.to_manipulator_point()
-				.get_position(&vector_data)
+				.get_position(vector_data)
 				.and_then(|position| (position - anchor_position).try_normalize())
 			else {
 				return;
