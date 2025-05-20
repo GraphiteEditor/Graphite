@@ -88,10 +88,10 @@ impl Ifd {
 		}
 
 		file.seek_from_start(offset)?;
-		let num = file.read_u16()?;
+		let num_entries = file.read_u16()?;
 
-		let mut ifd_entries = Vec::with_capacity(num.into());
-		for _ in 0..num {
+		let mut ifd_entries = Vec::with_capacity(num_entries.into());
+		for _ in 0..num_entries {
 			let tag = file.read_u16()?.into();
 			let the_type = file.read_u16()?.into();
 			let count = file.read_u32()?;

@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeOrientation, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeCompression, TypeIfd, TypeLong, TypeNumber, TypeOrientation, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
 use super::{Ifd, TagId, TiffError, TiffRead};
 use std::io::{Read, Seek};
 
@@ -55,7 +55,7 @@ impl SimpleTag for BitsPerSample {
 }
 
 impl SimpleTag for Compression {
-	type Type = TypeShort;
+	type Type = TypeCompression;
 
 	const ID: TagId = TagId::Compression;
 	const NAME: &'static str = "Compression";

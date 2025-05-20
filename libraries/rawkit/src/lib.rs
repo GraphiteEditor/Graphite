@@ -13,7 +13,7 @@ use std::io::{Read, Seek};
 use thiserror::Error;
 use tiff::file::TiffRead;
 use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
-use tiff::values::Transform;
+use tiff::values::{CompressionValue, Transform};
 use tiff::{Ifd, TiffError};
 
 pub(crate) const CHANNELS_IN_RGB: usize = 3;
@@ -127,7 +127,7 @@ impl RawImage {
 			let sub_ifd = ifd.get_value::<SubIfd, _>(&mut file)?;
 			let arw_ifd = sub_ifd.get_value::<ArwIfd, _>(&mut file)?;
 
-			if arw_ifd.compression == 1 {
+			if arw_ifd.compression == CompressionValue::Uncompressed {
 				decoder::uncompressed::decode(sub_ifd, &mut file)
 			} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
 				decoder::arw2::decode(sub_ifd, &mut file)

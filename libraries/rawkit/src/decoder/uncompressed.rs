@@ -1,5 +1,6 @@
 use crate::tiff::file::TiffRead;
 use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
+use crate::tiff::values::CompressionValue;
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack, Transform};
 use rawkit_proc_macros::Tag;
@@ -26,7 +27,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	assert!(ifd.strip_offsets.len() == ifd.strip_byte_counts.len());
 	assert!(ifd.strip_offsets.len() == 1);
-	assert!(ifd.compression == 1); // 1 is the value for uncompressed format
+	assert!(ifd.compression == CompressionValue::Uncompressed);
 
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();

@@ -1,6 +1,6 @@
 use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
-use crate::tiff::values::CurveLookupTable;
+use crate::tiff::values::{CompressionValue, CurveLookupTable};
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack, Transform};
 use rawkit_proc_macros::Tag;
@@ -26,7 +26,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	assert!(ifd.strip_offsets.len() == ifd.strip_byte_counts.len());
 	assert!(ifd.strip_offsets.len() == 1);
-	assert!(ifd.compression == 32767);
+	assert!(ifd.compression == CompressionValue::Sony_ARW_Compressed);
 
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
