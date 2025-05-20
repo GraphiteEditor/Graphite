@@ -1008,6 +1008,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let mut layers = Vec::new();
 
 						let mut added_nodes = false;
+
 						for entry in data.into_iter().rev() {
 							if !added_nodes {
 								responses.add(DocumentMessage::DeselectAllLayers);
@@ -1031,7 +1032,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
-					let viewport_bounds_quad_pixels = Quad::from_box_at_zero(ipp.viewport_bounds.size());
+					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, ipp.viewport_bounds.size()]);
 					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
 
 					let doc_to_viewport_transform = document.metadata().document_to_viewport;
