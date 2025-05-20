@@ -102,6 +102,7 @@ pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
 pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SEGMENT_INSERTION_DISTANCE: f64 = 7.5;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
+pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
 // PEN TOOL
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
@@ -135,3 +136,6 @@ pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
 pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 15;
+
+// INPUT
+pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;

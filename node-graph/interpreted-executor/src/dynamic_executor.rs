@@ -8,7 +8,6 @@ use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContaine
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::panic::UnwindSafe;
 use std::sync::Arc;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
@@ -99,6 +98,14 @@ impl DynamicExecutor {
 
 	pub fn input_type(&self) -> Option<Type> {
 		self.typing_context.type_of(self.output).map(|node_io| node_io.call_argument.clone())
+	}
+
+	pub fn tree(&self) -> &BorrowTree {
+		&self.tree
+	}
+
+	pub fn output(&self) -> NodeId {
+		self.output
 	}
 
 	pub fn output_type(&self) -> Option<Type> {
@@ -239,7 +246,7 @@ impl BorrowTree {
 	/// This ensures that no borrowed data can escape the node graph.
 	pub async fn eval_tagged_value<I>(&self, id: NodeId, input: I) -> Result<TaggedValue, String>
 	where
-		I: StaticType + 'static + Send + Sync + UnwindSafe,
+		I: StaticType + 'static + Send + Sync,
 	{
 		let (node, _path) = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
 		let output = node.eval(Box::new(input));

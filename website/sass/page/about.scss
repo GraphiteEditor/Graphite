@@ -5,8 +5,12 @@
 	animation: fadeInAfterWait 2s ease-in 2s forwards;
 
 	@keyframes fadeInAfterWait {
-		0% { opacity: 0; }
-		100% { opacity: 1; }
+		0% {
+			opacity: 0;
+		}
+		100% {
+			opacity: 1;
+		}
 	}
 }
 
@@ -34,11 +38,9 @@
 			}
 
 			.flag {
-				font-family: "Noto Color Emoji", sans-serif;
-				font-style: normal;
+				width: 1em;
+				height: 1em;
 				vertical-align: middle;
-				font-size: 0.8em;
-				cursor: default;
 			}
 		}
 	}

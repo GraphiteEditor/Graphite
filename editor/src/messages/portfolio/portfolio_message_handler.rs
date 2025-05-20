@@ -10,6 +10,7 @@ use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageData;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -18,9 +19,10 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use bezier_rs::Subpath;
-use glam::IVec2;
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
+use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 use graphene_std::vector::{VectorData, VectorDataTable};
@@ -69,6 +71,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			// Sub-messages
 			PortfolioMessage::MenuBar(message) => {
 				self.menu_bar_message_handler.has_active_document = false;
+				self.menu_bar_message_handler.canvas_tilted = false;
+				self.menu_bar_message_handler.canvas_flipped = false;
 				self.menu_bar_message_handler.rulers_visible = false;
 				self.menu_bar_message_handler.node_graph_open = false;
 				self.menu_bar_message_handler.has_selected_nodes = false;
@@ -80,6 +84,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					self.menu_bar_message_handler.has_active_document = true;
+					self.menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
+					self.menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
 					self.menu_bar_message_handler.rulers_visible = document.rulers_visible;
 					self.menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
 					let selected_nodes = document.network_interface.selected_nodes();
@@ -461,7 +467,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 34] = [
+				const REPLACEMENTS: [(&str, &str); 36] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -500,6 +506,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"),
 					("graphene_std::executor::BlendGpuImageNode", "graphene_std::gpu_nodes::BlendGpuImageNode"),
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
+					("graphene_core::transform::CullNode", "graphene_core::ops::IdentityNode"),
+					("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 				];
 				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
@@ -997,6 +1005,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
+						let mut layers = Vec::new();
 
 						let mut added_nodes = false;
 
@@ -1006,14 +1015,124 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								responses.add(DocumentMessage::AddTransaction);
 								added_nodes = true;
 							}
+
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
+							layers.push(layer);
 						}
+
 						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(Message::StartBuffer);
+						responses.add(PortfolioMessage::CenterPastedLayers { layers });
 					}
+				}
+			}
+			PortfolioMessage::CenterPastedLayers { layers } => {
+				if let Some(document) = self.active_document_mut() {
+					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, ipp.viewport_bounds.size()]);
+					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
+
+					let doc_to_viewport_transform = document.metadata().document_to_viewport;
+					let viewport_to_doc_transform = doc_to_viewport_transform.inverse();
+
+					let viewport_quad_doc_space = viewport_to_doc_transform * viewport_bounds_quad_pixels;
+
+					let mut top_level_items_to_center: Vec<LayerNodeIdentifier> = Vec::new();
+					let mut artboards_in_selection: Vec<LayerNodeIdentifier> = Vec::new();
+
+					for &layer_id in &layers {
+						if document.network_interface.is_artboard(&layer_id.to_node(), &document.node_graph_handler.network) {
+							artboards_in_selection.push(layer_id);
+						}
+					}
+
+					for &layer_id in &layers {
+						let is_child_of_selected_artboard = artboards_in_selection.iter().any(|&artboard_id| {
+							if layer_id == artboard_id {
+								return false;
+							}
+							layer_id.ancestors(document.metadata()).any(|ancestor| ancestor == artboard_id)
+						});
+
+						if !is_child_of_selected_artboard {
+							top_level_items_to_center.push(layer_id);
+						}
+					}
+
+					if top_level_items_to_center.is_empty() {
+						return;
+					}
+
+					let mut combined_min_doc = DVec2::MAX;
+					let mut combined_max_doc = DVec2::MIN;
+					let mut has_any_bounds = false;
+
+					for &item_id in &top_level_items_to_center {
+						if let Some(bounds_doc) = document.metadata().bounding_box_document(item_id) {
+							combined_min_doc = combined_min_doc.min(bounds_doc[0]);
+							combined_max_doc = combined_max_doc.max(bounds_doc[1]);
+							has_any_bounds = true;
+						}
+					}
+
+					if !has_any_bounds {
+						return;
+					}
+
+					let combined_bounds_doc_quad = Quad::from_box([combined_min_doc, combined_max_doc]);
+
+					if combined_bounds_doc_quad.intersects(viewport_quad_doc_space) {
+						return;
+					}
+
+					let combined_center_doc = combined_bounds_doc_quad.center();
+					let combined_center_viewport_pixels = doc_to_viewport_transform.transform_point2(combined_center_doc);
+					let translation_viewport_pixels_rounded = (viewport_center_pixels - combined_center_viewport_pixels).round();
+
+					let final_translation_offset_doc = viewport_to_doc_transform.transform_vector2(translation_viewport_pixels_rounded);
+
+					if final_translation_offset_doc.abs_diff_eq(glam::DVec2::ZERO, 1e-9) {
+						return;
+					}
+
+					responses.add(DocumentMessage::AddTransaction);
+
+					for &item_id in &top_level_items_to_center {
+						if document.network_interface.is_artboard(&item_id.to_node(), &document.node_graph_handler.network) {
+							if let Some(bounds_doc) = document.metadata().bounding_box_document(item_id) {
+								let current_artboard_origin_doc = bounds_doc[0];
+								let dimensions_doc = bounds_doc[1] - bounds_doc[0];
+								let new_artboard_origin_doc = current_artboard_origin_doc + final_translation_offset_doc;
+
+								responses.add(GraphOperationMessage::ResizeArtboard {
+									layer: item_id,
+									location: new_artboard_origin_doc.round().as_ivec2(),
+									dimensions: dimensions_doc.round().as_ivec2(),
+								});
+							}
+						} else {
+							let current_abs_doc_transform = document.metadata().transform_to_document(item_id);
+
+							let new_abs_doc_transform = DAffine2 {
+								matrix2: current_abs_doc_transform.matrix2,
+								translation: current_abs_doc_transform.translation + final_translation_offset_doc,
+							};
+
+							let transform = doc_to_viewport_transform * new_abs_doc_transform;
+
+							responses.add(GraphOperationMessage::TransformSet {
+								layer: item_id,
+								transform,
+								transform_in: TransformIn::Viewport,
+								skip_rerender: false,
+							});
+						}
+					}
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
 			PortfolioMessage::PasteImage {

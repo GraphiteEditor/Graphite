@@ -1,7 +1,7 @@
 use super::misc::{ArcType, AsU64, GridType};
 use super::{PointId, SegmentId, StrokeId};
 use crate::Ctx;
-use crate::registry::types::Angle;
+use crate::registry::types::{Angle, PixelSize};
 use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
@@ -130,7 +130,7 @@ fn star<T: AsU64>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: DVec2, #[default((0., 50.))] end: DVec2) -> VectorDataTable {
+fn line(_: impl Ctx, _primary: (), #[default((0., -50.))] start: PixelSize, #[default((0., 50.))] end: PixelSize) -> VectorDataTable {
 	VectorDataTable::new(VectorData::from_subpath(Subpath::new_line(start, end)))
 }
 
@@ -206,7 +206,7 @@ fn grid<T: GridSpacing>(
 					// Add current point to the grid with offset for odd columns
 					let current_index = vector_data.point_domain.ids().len();
 
-					let a_angles_eaten = ((x + 1) / 2) as f64;
+					let a_angles_eaten = x.div_ceil(2) as f64;
 					let b_angles_eaten = (x / 2) as f64;
 
 					let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;

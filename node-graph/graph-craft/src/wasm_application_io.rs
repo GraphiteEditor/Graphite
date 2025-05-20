@@ -208,14 +208,14 @@ impl ApplicationIo for WasmApplicationIo {
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
 		log::trace!("Spawning window");
 
-		#[cfg(not(test))]
+		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
 		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		#[cfg(not(test))]
+		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
 		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
-
-		#[cfg(test)]
+		#[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
 		let event_loop = winit::event_loop::EventLoop::new().unwrap();
+
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
