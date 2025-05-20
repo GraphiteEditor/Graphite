@@ -52,6 +52,7 @@ enum TransformCageSizeCategory {
 	Narrow,
 	/// - ![Diagram](https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png)
 	Flat,
+	Point,
 }
 
 impl SelectedEdges {
@@ -635,6 +636,10 @@ impl BoundingBoxManager {
 	fn overlay_display_category(&self) -> TransformCageSizeCategory {
 		let quad = self.transform * Quad::from_box(self.bounds);
 
+		if self.is_bounds_point() {
+			return TransformCageSizeCategory::Point;
+		}
+
 		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
 		if self.is_bounds_flat() {
 			return TransformCageSizeCategory::Flat;
@@ -662,6 +667,11 @@ impl BoundingBoxManager {
 	/// Determine if these bounds are flat ([`TransformCageSizeCategory::Flat`]), which means that the width and/or height is essentially zero and the bounds are a line with effectively no area. This can happen on actual lines (axis-aligned, i.e. drawn horizontally or vertically) or when an element is scaled to zero in X or Y. A flat transform cage can still be rotated by a transformation, but its local space remains flat.
 	fn is_bounds_flat(&self) -> bool {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any()
+	}
+
+	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on actual points (axis-aligned, i.e. drawn at a single pixel) or when an element is scaled to zero in both X and Y. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
+	fn is_bounds_point(&self) -> bool {
+		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).all()
 	}
 
 	/// Determine if the given point in viewport space falls within the bounds of `self`.
@@ -699,7 +709,7 @@ impl BoundingBoxManager {
 		let [edge_min_x, edge_min_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR);
 		let [midpoint_threshold_x, midpoint_threshold_y] = self.compute_viewport_threshold(MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS);
 
-		if min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y && cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y {
+		if (min.x - cursor.x < threshold_x && min.y - cursor.y < threshold_y) && (cursor.x - max.x < threshold_x && cursor.y - max.y < threshold_y) {
 			let mut top = (cursor.y - min.y).abs() < threshold_y;
 			let mut bottom = (max.y - cursor.y).abs() < threshold_y;
 			let mut left = (cursor.x - min.x).abs() < threshold_x;
@@ -731,6 +741,7 @@ impl BoundingBoxManager {
 				}
 
 				// Prioritize single axis transformations on very small bounds
+				// debug!("check_selected_edges: corner_min_x: {}, corner_min_y: {}", corner_min_x, corner_min_y);
 				if height < corner_min_y && (left || right) {
 					top = false;
 					bottom = false;
@@ -741,11 +752,11 @@ impl BoundingBoxManager {
 				}
 
 				// On bounds with no width/height, disallow transformation in the relevant axis
-				if width < f64::EPSILON * 1000. {
+				if width < 1e-4 {
 					left = false;
 					right = false;
 				}
-				if height < f64::EPSILON * 1000. {
+				if height < 1e-4 {
 					top = false;
 					bottom = false;
 				}
@@ -767,9 +778,12 @@ impl BoundingBoxManager {
 		let [threshold_x, threshold_y] = self.compute_viewport_threshold(BOUNDS_ROTATE_THRESHOLD);
 		let cursor = self.transform.inverse().transform_point2(cursor);
 
-		let flat = (self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(1e-4)).any();
+		let flat = self.is_bounds_flat();
+		let point = self.is_bounds_point();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
-		if flat {
+		if point {
+			return false;
+		} else if flat {
 			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
 		} else {
 			self.evaluate_transform_handle_positions().iter().any(within_square_bounds)
@@ -793,6 +807,7 @@ impl BoundingBoxManager {
 			};
 		}
 
+		// debug!("get_cursor: edges: {:?}, rotate: {}, dragging_bounds: {}, skew_edge: {:?}", edges, rotate, dragging_bounds, skew_edge);
 		match edges {
 			Some((top, bottom, left, right)) => match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,
