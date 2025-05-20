@@ -88,7 +88,6 @@ impl AlignmentSnapper {
 									distance,
 									tolerance,
 									distance_to_align_target,
-									fully_constrained: false,
 									at_intersection: true,
 									alignment_target_x: Some(endpoint),
 									..Default::default()
@@ -130,7 +129,6 @@ impl AlignmentSnapper {
 						tolerance,
 						distance_to_align_target,
 						alignment_target_x: Some(target_position),
-						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
 					});
@@ -149,7 +147,6 @@ impl AlignmentSnapper {
 						tolerance,
 						distance_to_align_target,
 						alignment_target_y: Some(target_position),
-						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
 					});
