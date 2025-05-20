@@ -12,12 +12,17 @@ use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 use thiserror::Error;
 use tiff::file::TiffRead;
-use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
+use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag, ThumbnailLength, ThumbnailOffset};
 use tiff::values::{CompressionValue, OrientationValue};
 use tiff::{Ifd, TiffError};
 
 pub(crate) const CHANNELS_IN_RGB: usize = 3;
 pub(crate) type Histogram = [[usize; 0x2000]; CHANNELS_IN_RGB];
+
+/// A thumbnail image extracted from the raw file. This is usually a JPEG image.
+pub struct ThumbnailImage {
+	pub data: Vec<u8>,
+}
 
 /// The amount of black level to be subtracted from Raw Image.
 pub enum SubtractBlack {
@@ -143,6 +148,20 @@ impl RawImage {
 		raw_image.calculate_conversion_matrices();
 
 		Ok(raw_image)
+	}
+
+	pub fn extract_thumbnail<R: Read + Seek>(reader: &mut R) -> Result<ThumbnailImage, DecoderError> {
+		let mut file = TiffRead::new(reader)?;
+		let ifd = Ifd::new_first_ifd(&mut file)?;
+
+		let thumbnail_offset = ifd.get_value::<ThumbnailOffset, _>(&mut file)?;
+		let thumbnail_length = ifd.get_value::<ThumbnailLength, _>(&mut file)?;
+		file.seek_from_start(thumbnail_offset)?;
+
+		let mut thumbnail_data = vec![0; thumbnail_length as usize];
+		file.read_exact(&mut thumbnail_data)?;
+
+		Ok(ThumbnailImage { data: thumbnail_data })
 	}
 
 	/// Converts the [`RawImage`] to an [`Image`] with 8 bit resolution for each channel.
