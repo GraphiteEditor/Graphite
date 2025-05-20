@@ -43,7 +43,7 @@
 	</div>
 </section>
 {%- if not page.summary -%}
-{{ throw(message = "ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page would be missing its preview text." | safe) }}
+{{ throw(message = "------------------------------------------------------------> ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page would be missing its preview text." | safe) }}
 {%- endif -%}
 {%- endblock content -%}
 

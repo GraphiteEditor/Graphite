@@ -83,7 +83,10 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
-		data: image.chunks(4).map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
+		data: image
+			.chunks(4)
+			.map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3]).to_linear_srgb())
+			.collect(),
 		width: image.width(),
 		height: image.height(),
 		..Default::default()

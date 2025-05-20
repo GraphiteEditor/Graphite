@@ -7,7 +7,7 @@ use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
-use bezier_rs::{BezierHandles, ManipulatorGroup};
+use bezier_rs::ManipulatorGroup;
 use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -179,66 +179,7 @@ impl VectorData {
 
 	/// Appends a Kurbo BezPath to the vector data.
 	pub fn append_bezpath(&mut self, bezpath: kurbo::BezPath) {
-		let mut first_point_index = None;
-		let mut last_point_index = None;
-
-		let mut first_segment_id = None;
-		let mut last_segment_id = None;
-
-		let mut point_id = self.point_domain.next_id();
-		let mut segment_id = self.segment_domain.next_id();
-
-		let stroke_id = StrokeId::ZERO;
-		let fill_id = FillId::ZERO;
-
-		for element in bezpath.elements() {
-			match *element {
-				kurbo::PathEl::MoveTo(point) => {
-					let next_point_index = self.point_domain.ids().len();
-					self.point_domain.push(point_id.next_id(), point_to_dvec2(point));
-					first_point_index = Some(next_point_index);
-					last_point_index = Some(next_point_index);
-				}
-				kurbo::PathEl::ClosePath => match (first_point_index, last_point_index) {
-					(Some(first_point_index), Some(last_point_index)) => {
-						let next_segment_id = segment_id.next_id();
-						self.segment_domain.push(next_segment_id, first_point_index, last_point_index, BezierHandles::Linear, stroke_id);
-
-						let next_region_id = self.region_domain.next_id();
-						self.region_domain.push(next_region_id, first_segment_id.unwrap()..=next_segment_id, fill_id);
-					}
-					_ => {
-						error!("Empty bezpath cannot be closed.")
-					}
-				},
-				_ => {}
-			}
-
-			let mut append_path_element = |handle: BezierHandles, point: kurbo::Point| {
-				let next_point_index = self.point_domain.ids().len();
-				self.point_domain.push(point_id.next_id(), point_to_dvec2(point));
-
-				let next_segment_id = segment_id.next_id();
-				self.segment_domain.push(segment_id.next_id(), last_point_index.unwrap(), next_point_index, handle, stroke_id);
-
-				last_point_index = Some(next_point_index);
-				first_segment_id = Some(first_segment_id.unwrap_or(next_segment_id));
-				last_segment_id = Some(next_segment_id);
-			};
-
-			match *element {
-				kurbo::PathEl::LineTo(point) => append_path_element(BezierHandles::Linear, point),
-				kurbo::PathEl::QuadTo(handle, point) => append_path_element(BezierHandles::Quadratic { handle: point_to_dvec2(handle) }, point),
-				kurbo::PathEl::CurveTo(handle_start, handle_end, point) => append_path_element(
-					BezierHandles::Cubic {
-						handle_start: point_to_dvec2(handle_start),
-						handle_end: point_to_dvec2(handle_end),
-					},
-					point,
-				),
-				_ => {}
-			}
-		}
+		AppendBezpath::append_bezpath(self, bezpath);
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
