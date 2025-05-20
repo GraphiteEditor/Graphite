@@ -58,14 +58,14 @@ impl SnappedPoint {
 	pub fn distribute(point: &SnapCandidatePoint, target: DistributionSnapTarget, boxes: VecDeque<Rect>, distances: DistributionMatch, bounds: Rect, translation: DVec2, tolerance: f64) -> Self {
 		let is_x = target.is_x();
 
-		let [distribution_boxes_x, distribution_boxes_y] = if is_x { [boxes, Default::default()] } else { [Default::default(), boxes] };
+		let [distribution_boxes_horizontal, distribution_boxes_vertical] = if is_x { [boxes, Default::default()] } else { [Default::default(), boxes] };
 		Self {
 			snapped_point_document: point.document_point + translation,
 			source: point.source,
 			target: SnapTarget::DistributeEvenly(target),
-			distribution_boxes_horizontal: distribution_boxes_x,
+			distribution_boxes_horizontal,
 			distribution_equal_distance_horizontal: is_x.then_some(distances.equal),
-			distribution_boxes_vertical: distribution_boxes_y,
+			distribution_boxes_vertical,
 			distribution_equal_distance_vertical: (!is_x).then_some(distances.equal),
 			distance: (distances.first - distances.equal).abs(),
 			constrained: true,
