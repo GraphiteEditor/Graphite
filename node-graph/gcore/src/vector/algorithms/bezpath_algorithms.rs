@@ -206,7 +206,7 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	}
 
 	let offset = DVec2::new(this_bbox.x0, this_bbox.y0);
-	let (width, height) = (this_bbox.x1 - this_bbox.x0, this_bbox.y1 - this_bbox.y0);
+	let (width, height) = (this_bbox.width(), this_bbox.height());
 
 	// TODO: Optimize the following code and make it more robust
 
@@ -215,16 +215,19 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 		let mut number = 0;
 		for (i, (shape, bbox)) in bezpaths.iter().enumerate() {
 			let point = point + offset;
+
 			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
 				continue;
 			}
-			let winding = shape.winding(dvec2_to_point(point));
 
-			if i == bezpath_index && winding == 0 {
+			let winding = shape.winding(dvec2_to_point(point));
+			if winding == 0 && i == bezpath_index {
 				return false;
 			}
 			number += winding;
 		}
+
+		// Non-zero fill rule
 		number != 0
 	};
 
@@ -236,12 +239,12 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 
 	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
 	for point in &mut points {
-		point.x += offset.x;
-		point.y += offset.y;
+		*point += offset;
 	}
 	points
 }
 
+#[inline(always)]
 fn bezpath_rectangle_intersections_exist(bezpath: &BezPath, rect: Rect) -> bool {
 	// Top left
 	let p1 = Point::new(rect.x0, rect.y0);
