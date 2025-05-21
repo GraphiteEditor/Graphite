@@ -70,7 +70,7 @@ impl SelectedLayerState {
 	}
 
 	pub fn ignore_handles(&mut self, status: bool) {
-		if self.ignore_handles == !status {
+		if self.ignore_handles != status {
 			return;
 		}
 
@@ -86,7 +86,7 @@ impl SelectedLayerState {
 	}
 
 	pub fn ignore_anchors(&mut self, status: bool) {
-		if self.ignore_anchors == !status {
+		if self.ignore_anchors != status {
 			return;
 		}
 
@@ -774,7 +774,7 @@ impl ShapeState {
 
 		// For a non-endpoint anchor, handles are perpendicular to the average tangent of adjacent segments.(Refer:https://github.com/GraphiteEditor/Graphite/pull/2620#issuecomment-2881501494)
 		let mut handle_direction = if segment_count > 1. {
-			segment_angle = segment_angle / segment_count;
+			segment_angle /= segment_count;
 			segment_angle += std::f64::consts::FRAC_PI_2;
 			DVec2::new(segment_angle.cos(), segment_angle.sin())
 		} else {
@@ -801,7 +801,7 @@ impl ShapeState {
 			let (non_zero_handle, zero_handle) = if a.length(vector_data) > 1e-6 { (a, b) } else { (b, a) };
 			let Some(direction) = non_zero_handle
 				.to_manipulator_point()
-				.get_position(&vector_data)
+				.get_position(vector_data)
 				.and_then(|position| (position - anchor_position).try_normalize())
 			else {
 				return;
@@ -1538,6 +1538,7 @@ impl ShapeState {
 			}
 		}
 	}
+
 	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
 	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
 	/// This can can be activated by double clicking on an anchor with the Path tool.
@@ -1568,44 +1569,47 @@ impl ShapeState {
 				.count();
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
-			if positions != 0 {
-				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
-			} else {
-				for handle in vector_data.all_connected(id) {
-					let Some(bezier) = vector_data.segment_from_id(handle.segment) else { continue };
+			for point in self.selected_points() {
+				let Some(point_id) = point.as_anchor() else { continue };
+				if positions != 0 {
+					self.convert_manipulator_handles_to_colinear(&vector_data, point_id, responses, layer);
+				} else {
+					for handle in vector_data.all_connected(point_id) {
+						let Some(bezier) = vector_data.segment_from_id(handle.segment) else { continue };
 
-					match bezier.handles {
-						BezierHandles::Linear => {}
-						BezierHandles::Quadratic { .. } => {
-							let segment = handle.segment;
-							// Convert to linear
-							let modification_type = VectorModificationType::SetHandles { segment, handles: [None; 2] };
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						match bezier.handles {
+							BezierHandles::Linear => {}
+							BezierHandles::Quadratic { .. } => {
+								let segment = handle.segment;
+								// Convert to linear
+								let modification_type = VectorModificationType::SetHandles { segment, handles: [None; 2] };
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-							// Set the manipulator to have non-colinear handles
-							for &handles in &vector_data.colinear_manipulators {
-								if handles.contains(&HandleId::primary(segment)) {
-									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-									responses.add(GraphOperationMessage::Vector { layer, modification_type });
+								// Set the manipulator to have non-colinear handles
+								for &handles in &vector_data.colinear_manipulators {
+									if handles.contains(&HandleId::primary(segment)) {
+										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+										responses.add(GraphOperationMessage::Vector { layer, modification_type });
+									}
 								}
 							}
-						}
-						BezierHandles::Cubic { .. } => {
-							// Set handle position to anchor position
-							let modification_type = handle.set_relative_position(DVec2::ZERO);
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							BezierHandles::Cubic { .. } => {
+								// Set handle position to anchor position
+								let modification_type = handle.set_relative_position(DVec2::ZERO);
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-							// Set the manipulator to have non-colinear handles
-							for &handles in &vector_data.colinear_manipulators {
-								if handles.contains(&handle) {
-									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-									responses.add(GraphOperationMessage::Vector { layer, modification_type });
+								// Set the manipulator to have non-colinear handles
+								for &handles in &vector_data.colinear_manipulators {
+									if handles.contains(&handle) {
+										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+										responses.add(GraphOperationMessage::Vector { layer, modification_type });
+									}
 								}
 							}
 						}
 					}
-				}
-			};
+				};
+			}
 
 			Some(true)
 		};

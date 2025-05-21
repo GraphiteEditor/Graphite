@@ -365,6 +365,8 @@ struct PathToolData {
 	select_anchor_toggled: bool,
 	saved_points_before_handle_drag: Vec<ManipulatorPointId>,
 	handle_drag_toggle: bool,
+	saved_points_before_anchor_convert_smooth_sharp: HashSet<ManipulatorPointId>,
+	last_click_time: u64,
 	dragging_state: DraggingState,
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
@@ -448,6 +450,12 @@ impl PathToolData {
 
 		self.drag_start_pos = input.mouse.position;
 
+		if !self.saved_points_before_anchor_convert_smooth_sharp.is_empty() && (input.time - self.last_click_time > 500) {
+			self.saved_points_before_anchor_convert_smooth_sharp.clear();
+		}
+
+		self.last_click_time = input.time;
+
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
@@ -489,7 +497,7 @@ impl PathToolData {
 								let modification_type = handle.set_relative_position(DVec2::ZERO);
 								responses.add(GraphOperationMessage::Vector { layer, modification_type });
 								for &handles in &vector_data.colinear_manipulators {
-									if handles.contains(&handle) {
+									if handles.contains(handle) {
 										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 										responses.add(GraphOperationMessage::Vector { layer, modification_type });
 									}
@@ -506,7 +514,7 @@ impl PathToolData {
 
 				if let Some((Some(point), Some(vector_data))) = shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
-					.and_then(|(layer, point)| Some((point.as_anchor(), document.network_interface.compute_modified_vector(layer))))
+					.map(|(layer, point)| (point.as_anchor(), document.network_interface.compute_modified_vector(layer)))
 				{
 					let handles = vector_data
 						.all_connected(point)
@@ -1296,6 +1304,10 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
 
+				if !tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
+					tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+				}
+
 				// If there is a point nearby, then remove the overlay
 				if shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
@@ -1490,6 +1502,10 @@ impl Fsm for PathToolFsmState {
 					if !drag_occurred && !extend_selection {
 						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 						if clicked_selected {
+							if tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
+								tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
+							}
+
 							shape_editor.deselect_all_points();
 							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
 							responses.add(OverlaysMessage::Draw);
@@ -1537,7 +1553,11 @@ impl Fsm for PathToolFsmState {
 					// Flip the selected point between smooth and sharp
 					if !tool_data.double_click_handled && tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
 						responses.add(DocumentMessage::StartTransaction);
+
+						shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_convert_smooth_sharp.iter().copied().collect::<Vec<_>>());
 						shape_editor.flip_smooth_sharp(&document.network_interface, input.mouse.position, SELECTION_TOLERANCE, responses);
+						tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+
 						responses.add(DocumentMessage::EndTransaction);
 						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
