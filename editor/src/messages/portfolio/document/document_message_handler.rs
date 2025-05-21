@@ -20,7 +20,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_opacity};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -2467,38 +2467,47 @@ impl DocumentMessageHandler {
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
-		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
+		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
 				get_opacity(layer, &self.network_interface).unwrap_or(100.),
+				get_fill(layer, &self.network_interface).unwrap_or(100.),
 				get_blend_mode(layer, &self.network_interface).unwrap_or_default(),
 			)
 		});
-		let first_opacity_and_blend_mode = opacity_and_blend_mode.next();
-		let result_opacity_and_blend_mode = opacity_and_blend_mode;
+		let first_blending_options = blending_options.next();
+		let result_blending_options = blending_options;
 
 		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_opacity_and_blend_mode.is_none();
+		let disabled = first_blending_options.is_none();
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.
 		// If identical, we display the value in the widget. If not, we display a dash indicating dissimilarity.
-		let (opacity, blend_mode) = first_opacity_and_blend_mode
-			.map(|(first_opacity, first_blend_mode)| {
+		let (opacity, fill, blend_mode) = first_blending_options
+			.map(|(first_opacity, first_fill, first_blend_mode)| {
 				let mut opacity_identical = true;
+				let mut fill_identical = true;
 				let mut blend_mode_identical = true;
 
-				for (opacity, blend_mode) in result_opacity_and_blend_mode {
+				for (opacity, fill, blend_mode) in result_blending_options {
 					if (opacity - first_opacity).abs() > (f64::EPSILON * 100.) {
 						opacity_identical = false;
+					}
+					if (fill - first_fill).abs() > (f64::EPSILON * 100.) {
+						fill_identical = false;
 					}
 					if blend_mode != first_blend_mode {
 						blend_mode_identical = false;
 					}
 				}
 
-				(opacity_identical.then_some(first_opacity), blend_mode_identical.then_some(first_blend_mode))
+				(
+					opacity_identical.then_some(first_opacity),
+					fill_identical.then_some(first_fill),
+					blend_mode_identical.then_some(first_blend_mode),
+				)
 			})
-			.unwrap_or((None, None));
+			.unwrap_or((None, None, None));
 
 		let blend_mode_menu_entries = BlendMode::list_svg_subset()
 			.iter()
@@ -2558,7 +2567,7 @@ impl DocumentMessageHandler {
 				.tooltip("Opacity")
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(opacity)
+			NumberInput::new(fill)
 				.label("Fill")
 				.unit("%")
 				.display_decimal_places(0)
