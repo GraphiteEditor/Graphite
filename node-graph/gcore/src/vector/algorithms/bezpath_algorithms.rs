@@ -229,6 +229,7 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	};
 
 	let square_edges_intersect_shape_checker = |position: DVec2, size: f64| {
+		let position = position + offset;
 		let rect = Rect::new(position.x, position.y, position.x + size, position.y + size);
 		bezpath_rectangle_intersections_exist(&this_bezpath, rect)
 	};
