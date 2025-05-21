@@ -3,10 +3,11 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { HSV, RGB, FillChoice } from "@graphite/messages";
+	import type { MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
 
-	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
+	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

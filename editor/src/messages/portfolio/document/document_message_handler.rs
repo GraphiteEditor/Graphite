@@ -299,7 +299,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Clear the control bar
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(Default::default()),
-					layout_target: LayoutTarget::LayersPanelControlBar,
+					layout_target: LayoutTarget::LayersPanelControlLeftBar,
+				});
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(Default::default()),
+					layout_target: LayoutTarget::LayersPanelControlRightBar,
+				});
+
+				// Clear the bottom bar
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(Default::default()),
+					layout_target: LayoutTarget::LayersPanelBottomBar,
 				});
 			}
 			DocumentMessage::CreateEmptyFolder => {
@@ -344,6 +354,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(ipp, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_control_bar_widgets(responses);
+				self.update_layers_panel_bottom_bar_widgets(responses);
 
 				self.network_interface.load_structure();
 				let data_buffer: RawBuffer = self.serialize_root();
@@ -2521,12 +2532,14 @@ impl DocumentMessageHandler {
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 				.disabled(disabled)
 				.draw_icon(false)
+				.max_width(100)
+				.tooltip("Blend Mode")
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(opacity)
 				.label("Opacity")
 				.unit("%")
-				.display_decimal_places(2)
+				.display_decimal_places(0)
 				.disabled(disabled)
 				.min(0.)
 				.max(100.)
@@ -2541,12 +2554,14 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.max_width(100)
+				.tooltip("Opacity")
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(opacity)
 				.label("Fill")
 				.unit("%")
-				.display_decimal_places(2)
+				.display_decimal_places(0)
 				.disabled(disabled)
 				.min(0.)
 				.max(100.)
@@ -2561,33 +2576,13 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.max_width(100)
+				.tooltip("Fill")
 				.widget_holder(),
-			//
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			//
-			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
-			IconButton::new("Folder", 24)
-				.tooltip("Group Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-				.on_update(|_| {
-					let group_folder_type = GroupFolderType::Layer;
-					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-				})
-				.disabled(!has_selection)
-				.widget_holder(),
-			IconButton::new("Trash", 24)
-				.tooltip("Delete Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
-				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-				.disabled(!has_selection)
-				.widget_holder(),
-			//
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			//
+		];
+		let layers_panel_control_bar_left = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+
+		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
@@ -2603,11 +2598,75 @@ impl DocumentMessageHandler {
 				.disabled(!has_selection)
 				.widget_holder(),
 		];
-		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_right = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layers_panel_control_bar),
-			layout_target: LayoutTarget::LayersPanelControlBar,
+			layout: Layout::WidgetLayout(layers_panel_control_bar_left),
+			layout_target: LayoutTarget::LayersPanelControlLeftBar,
+		});
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layers_panel_control_bar_right),
+			layout_target: LayoutTarget::LayersPanelControlRightBar,
+		});
+	}
+
+	pub fn update_layers_panel_bottom_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+		let selected_nodes = self.network_interface.selected_nodes();
+		let mut selected_layers = selected_nodes.selected_layers(self.metadata());
+		let selected_layer = selected_layers.next();
+		let has_selection = selected_layer.is_some();
+		let has_multiple_selection = selected_layers.next().is_some();
+
+		let widgets = vec![
+			PopoverButton::new()
+				.icon(Some("Node".to_string()))
+				.menu_direction(Some(MenuDirection::Top))
+				.tooltip("Add an operation to the end of this layer's chain of nodes")
+				.disabled(!has_selection || has_multiple_selection)
+				.popover_layout({
+					let node_chooser = NodeCatalog::new()
+						.on_update(move |node_type| {
+							if let Some(layer) = selected_layer {
+								NodeGraphMessage::CreateNodeInLayerWithTransaction {
+									node_type: node_type.clone(),
+									layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
+								}
+								.into()
+							} else {
+								Message::NoOp
+							}
+						})
+						.widget_holder();
+					vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
+				})
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.widget_holder(),
+			IconButton::new("Trash", 24)
+				.tooltip("Delete Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+		];
+		let layers_panel_bottom_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layers_panel_bottom_bar),
+			layout_target: LayoutTarget::LayersPanelBottomBar,
 		});
 	}
 

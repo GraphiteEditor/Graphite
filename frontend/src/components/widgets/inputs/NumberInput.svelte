@@ -53,6 +53,7 @@
 
 	// Styling
 	export let minWidth = 0;
+	export let maxWidth = 0;
 
 	// Callbacks
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
@@ -88,6 +89,7 @@
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
 		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	};
 

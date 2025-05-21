@@ -1492,6 +1492,7 @@ impl PortfolioMessageHandler {
 			self.document_ids.push_back(document_id);
 		}
 		new_document.update_layers_panel_control_bar_widgets(responses);
+		new_document.update_layers_panel_bottom_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
 
