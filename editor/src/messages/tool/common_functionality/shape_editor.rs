@@ -249,6 +249,55 @@ impl ClosestSegment {
 		.unwrap_or(DVec2::ZERO);
 		tangent.perp()
 	}
+
+	//directly applying the logic of cubic beziers
+	pub fn mould_handle_positions(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, c1: DVec2, c2: DVec2, new_b: DVec2, _falloff: f64) {
+		let t = self.t;
+
+		let transform = document.metadata().transform_to_viewport(self.layer);
+		let new_b = transform.inverse().transform_point2(new_b);
+
+		if let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) {
+			if let (Some(start), Some(end)) = (
+				ManipulatorPointId::Anchor(self.points[0]).get_position(&vector_data),
+				ManipulatorPointId::Anchor(self.points[1]).get_position(&vector_data),
+			) {
+				let v1 = (1. - t) * start + t * c1;
+				let a = (1. - t) * c1 + t * c2;
+				let v2 = (1. - t) * c2 + t * end;
+				let e1 = (1. - t) * v1 + t * a;
+				let e2 = (1. - t) * a + t * v2;
+				let b = (1. - t) * e1 + t * e2;
+
+				let d1 = e1 - b;
+				let d2 = e2 - b;
+				let ne1 = new_b + d1;
+				let ne2 = new_b + d2;
+
+				// Calculating new points A and C (C stays the same)
+				let ut = (1.0 - t).powi(3) / (t.powi(3) + (1.0 - t).powi(3));
+				let ratiot = ((t.powi(3) + (1.0 - t).powi(3) - 1.0) / (t.powi(3) + (1.0 - t).powi(3))).abs();
+				let c = ut * start + (1. - ut) * end;
+				let new_a = new_b + (new_b - c) / ratiot;
+
+				// Derive the new control points v1, v2, c1, c2
+				let nv1 = (ne1 - t * new_a) / (1. - t);
+				let nv2 = (ne2 - (1. - t) * new_a) / t;
+				let nc1 = (nv1 - (1. - t) * start) / t;
+				let nc2 = (nv2 - t * end) / (1. - t);
+
+				let handle1 = HandleId::primary(self.segment);
+				let handle2 = HandleId::end(self.segment);
+				let layer = self.layer;
+
+				let modification_type = handle1.set_relative_position(nc1 - start);
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				let modification_type = handle2.set_relative_position(nc2 - end);
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+		}
+	}
 }
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
