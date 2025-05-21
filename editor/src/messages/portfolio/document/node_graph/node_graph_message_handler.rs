@@ -2009,12 +2009,38 @@ impl NodeGraphMessageHandler {
 		}
 
 		// Next, we decide what to display based on the number of layers and nodes selected
-		match layers.len() {
+		match *layers.as_slice() {
 			// If no layers are selected, show properties for all selected nodes
-			0 => {
+			[] => {
 				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
-					return selected_nodes;
+					let mut properties = Vec::new();
+
+					if let [node_id] = *nodes.as_slice() {
+						properties.push(LayoutGroup::Row {
+							widgets: vec![
+								Separator::new(SeparatorType::Related).widget_holder(),
+								IconLabel::new("Node").tooltip("Name of the selected node").widget_holder(),
+								Separator::new(SeparatorType::Related).widget_holder(),
+								TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
+									.tooltip("Name of the selected node")
+									.on_update(move |text_input| {
+										NodeGraphMessage::SetDisplayName {
+											node_id,
+											alias: text_input.value.clone(),
+											skip_adding_history_step: false,
+										}
+										.into()
+									})
+									.widget_holder(),
+								Separator::new(SeparatorType::Related).widget_holder(),
+							],
+						});
+					}
+
+					properties.extend(selected_nodes);
+
+					return properties;
 				}
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
@@ -2056,8 +2082,7 @@ impl NodeGraphMessageHandler {
 				properties
 			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
-			1 => {
-				let layer = layers[0];
+			[layer] => {
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
 					!context
 						.network_interface

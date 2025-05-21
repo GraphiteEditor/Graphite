@@ -3,7 +3,15 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelControlBarLayout } from "@graphite/messages";
+	import {
+		defaultWidgetLayout,
+		patchWidgetLayout,
+		UpdateDocumentLayerDetails,
+		UpdateDocumentLayerStructureJs,
+		UpdateLayersPanelControlBarLeftLayout,
+		UpdateLayersPanelControlBarRightLayout,
+		UpdateLayersPanelBottomBarLayout,
+	} from "@graphite/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
@@ -13,6 +21,7 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	type LayerListingInfo = {
@@ -47,12 +56,24 @@
 	let dragInPanel = false;
 
 	// Layouts
-	let layersPanelControlBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
+	let layersPanelControlBarRightLayout = defaultWidgetLayout();
+	let layersPanelBottomBarLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLayout, (updateLayersPanelControlBarLayout) => {
-			patchWidgetLayout(layersPanelControlBarLayout, updateLayersPanelControlBarLayout);
-			layersPanelControlBarLayout = layersPanelControlBarLayout;
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
+			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
+		});
+
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
+			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
+		});
+
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
+			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -407,7 +428,9 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLayout} />
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
+		<Separator />
+		<WidgetLayout layout={layersPanelControlBarRightLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
@@ -490,6 +513,9 @@
 			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
 		{/if}
 	</LayoutRow>
+	<LayoutRow class="bottom-bar" scrollableX={true}>
+		<WidgetLayout layout={layersPanelBottomBarLayout} />
+	</LayoutRow>
 </LayoutCol>
 
 <style lang="scss" global>
@@ -499,33 +525,25 @@
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
+			border-bottom: 1px solid var(--color-2-mildblack);
+			justify-content: space-between;
 
-			.widget-span {
-				width: 100%;
-				height: 100%;
-				min-width: 300px;
-			}
-
-			// Blend mode selector and opacity slider
-			.dropdown-input,
-			.number-input {
+			.widget-span:first-child {
 				flex: 1 1 auto;
 			}
+		}
 
-			// Blend mode selector
-			.dropdown-input {
-				max-width: 120px;
-				flex-basis: 120px;
-			}
+		// Bottom bar
+		.bottom-bar {
+			height: 24px;
+			padding-top: 4px;
+			flex: 0 0 auto;
+			margin: 0 4px;
+			justify-content: flex-end;
+			border-top: 1px solid var(--color-2-mildblack);
 
-			// Opacity slider
-			.number-input {
-				max-width: 180px;
-				flex-basis: 180px;
-
-				+ .separator ~ .separator {
-					flex-grow: 1;
-				}
+			.widget-span > * {
+				margin: 0;
 			}
 		}
 
