@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -1408,7 +1408,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 		.stroke_bezpath_iter()
 		.flat_map(|mut bezpath| {
 			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>()
+			bezpath.segments().map(|segment| segment.perimeter(kurbo::DEFAULT_ACCURACY)).collect::<Vec<f64>>()
 		})
 		.collect()
 }

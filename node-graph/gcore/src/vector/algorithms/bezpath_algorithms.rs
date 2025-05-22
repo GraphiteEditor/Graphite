@@ -1,12 +1,7 @@
 use super::poisson_disk::poisson_disk_sample;
 use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
-use kurbo::{BezPath, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
-
-/// Accuracy to find the position on [kurbo::Bezpath].
-const POSITION_ACCURACY: f64 = 1e-5;
-/// Accuracy to find the length of the [kurbo::PathSeg].
-pub const PERIMETER_ACCURACY: f64 = 1e-5;
+use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
@@ -79,7 +74,7 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 		let t = (next_length / next_segment_length).clamp(0., 1.);
 
 		let segment = bezpath.get_seg(next_segment_index + 1).unwrap();
-		let t = eval_pathseg_euclidean(segment, t, POSITION_ACCURACY);
+		let t = eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY);
 		let point = segment.eval(t);
 
 		if sample_bezpath.elements().is_empty() {
@@ -96,7 +91,7 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segment
 	if euclidian {
 		let (segment_index, t) = bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalEuclidean(t), segments_length);
 		let segment = bezpath.get_seg(segment_index + 1).unwrap();
-		return (segment_index, eval_pathseg_euclidean(segment, t, POSITION_ACCURACY));
+		return (segment_index, eval_pathseg_euclidean(segment, t, DEFAULT_ACCURACY));
 	}
 	bezpath_t_value_to_parametric(bezpath, BezPathTValue::GlobalParametric(t), segments_length)
 }
@@ -164,7 +159,7 @@ fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, pre
 			let segments_length = if let Some(segments_length) = precomputed_segments_length {
 				segments_length
 			} else {
-				computed_segments_length = bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>();
+				computed_segments_length = bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>();
 				computed_segments_length.as_slice()
 			};
 
