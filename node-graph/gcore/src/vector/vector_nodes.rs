@@ -10,7 +10,7 @@ use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::style::{LineCap, LineJoin};
+use crate::vector::style::{LineCap, LineJoin, Spacing};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
@@ -210,6 +210,7 @@ async fn repeat<I: 'n + Send>(
 	direction: PixelSize,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
+	spacing: Spacing,
 ) -> GraphicGroupTable
 where
 	Instances<I>: GraphicElementRendered,
@@ -229,7 +230,12 @@ where
 	for index in 0..instances {
 		let angle = index as f64 * angle / total;
 		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
+		let transform = match spacing {
+			Spacing::Span => DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center),
+			Spacing::Envelope => todo!(),
+			Spacing::Pitch => todo!(),
+			Spacing::Gap => todo!(),
+		};
 
 		result_table.push(Instance {
 			instance: instance.to_graphic_element().clone(),
