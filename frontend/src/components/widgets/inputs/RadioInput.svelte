@@ -24,7 +24,7 @@
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled }} styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : "" }}>
+<LayoutRow class="radio-input" classes={{ disabled }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
 	{#each entries as entry, index}
 		<button class:active={index === selectedIndex} class:mixed class:disabled on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
 			{#if entry.icon}
