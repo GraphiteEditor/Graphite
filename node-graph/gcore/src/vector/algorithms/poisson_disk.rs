@@ -223,8 +223,7 @@ impl ActiveListLevel {
 				let point_in_shape = point_in_shape_checker(corner);
 				let square_edges_intersect_shape = square_edges_intersect_shape_checker(corner, square_size);
 				let square_not_outside_shape = point_in_shape || square_edges_intersect_shape;
-				let square_in_shape = point_in_shape_checker(corner + square_size) && !square_edges_intersect_shape;
-				// if !square_edges_intersect_shape { assert_eq!(point_in_shape_checker(corner), point_in_shape_checker(corner + square_size)); }
+				let square_in_shape = !square_edges_intersect_shape && point_in_shape_checker(corner + square_size);
 				// Sometimes this fails so it is necessary to also check the bottom right corner.
 				square_not_outside_shape.then_some(ActiveSquare::new(corner, square_in_shape))
 			})
