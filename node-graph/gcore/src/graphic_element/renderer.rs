@@ -28,6 +28,29 @@ pub struct ClickTarget {
 	bounding_box: Option<[DVec2; 2]>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+enum MaskType {
+	Clip,
+	Mask,
+}
+
+impl MaskType {
+	fn to_attribute(self) -> String {
+		match self {
+			Self::Mask => "mask".to_string(),
+			Self::Clip => "clip-path".to_string(),
+		}
+	}
+
+	fn write_to_defs(self, svg_defs: &mut String, uuid: u64, svg_string: String) {
+		let id = format!("mask-{}", uuid);
+		match self {
+			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg_string).unwrap(),
+			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg_string).unwrap(),
+		}
+	}
+}
+
 impl ClickTarget {
 	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
 		let bounding_box = subpath.loose_bounding_box();
@@ -303,7 +326,7 @@ pub trait GraphicElementRendered {
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut iter = self.instance_ref_iter().peekable();
-		let mut uuid_state = None;
+		let mut mask_state = None;
 		while let Some(instance) = iter.next() {
 			render.parent_tag(
 				"g",
@@ -333,25 +356,25 @@ impl GraphicElementRendered for GraphicGroupTable {
 							})
 					});
 
-					if next_clips && uuid_state.is_none() {
+					if next_clips && mask_state.is_none() {
 						let uuid = generate_uuid();
-						let id = format!("mask-{}", uuid);
-						uuid_state = Some(uuid);
+						let mask_type = if instance.instance.is_opaque() { MaskType::Clip } else { MaskType::Mask };
+						mask_state = Some((uuid, mask_type));
 						let mut svg = SvgRender::new();
 						let render_params = RenderParams { for_mask: true, ..*render_params };
 						instance.instance.render_svg(&mut svg, &render_params);
 
 						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
-						write!(&mut attributes.0.svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
-					} else if let Some(uuid) = uuid_state {
+						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+					} else if let Some((uuid, mask_type)) = mask_state {
 						if !next_clips {
-							uuid_state = None;
+							mask_state = None;
 						}
 
 						let id = format!("mask-{}", uuid);
 						let selector = format!("url(#{id})");
 
-						attributes.push("mask", selector);
+						attributes.push(mask_type.to_attribute(), selector);
 					}
 				},
 				|render| {

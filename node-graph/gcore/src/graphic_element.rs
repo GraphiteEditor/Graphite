@@ -4,6 +4,7 @@ use crate::raster::BlendMode;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
+use crate::vector::style::{Fill, Stroke};
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
@@ -198,6 +199,32 @@ impl GraphicElement {
 		match self {
 			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
+		}
+	}
+
+	pub fn is_opaque(&self) -> bool {
+		let is_color_opaque = |color: &Color| -> bool { color.a() == 1.0f32 };
+
+		let is_fill_opaque = |fill: &Fill| -> bool {
+			match fill {
+				Fill::Solid(color) => is_color_opaque(color),
+				Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| is_color_opaque(color)),
+				Fill::None => true,
+			}
+		};
+
+		let is_stroke_opaque = |stroke: &Stroke| -> bool { stroke.color.map_or(true, |ref color_ref| is_color_opaque(color_ref)) };
+
+		match self {
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
+				let style = &instance_data.instance.style;
+				is_fill_opaque(&style.fill()) && style.stroke().map_or(true, |s| is_stroke_opaque(&s))
+			}),
+			GraphicElement::GraphicGroup(group_table) => group_table.instance_ref_iter().all(|instance_wrapper| {
+				let blending = &instance_wrapper.alpha_blending;
+				(blending.opacity == 1.0f32) && (blending.fill == 1.0f32) && instance_wrapper.instance.is_opaque()
+			}),
+			_ => false,
 		}
 	}
 }
