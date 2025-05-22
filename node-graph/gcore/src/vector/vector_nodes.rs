@@ -1366,11 +1366,12 @@ async fn poisson_disk_points(
 	}
 	let path_with_bounding_boxes: Vec<_> = vector_data
 		.stroke_bezpath_iter()
-		.map(|mut subpath| {
+		.map(|mut bezpath| {
 			// TODO: apply transform to points instead of modifying the paths
-			subpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			let bbox = subpath.bounding_box();
-			(subpath, bbox)
+			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+			bezpath.close_path();
+			let bbox = bezpath.bounding_box();
+			(bezpath, bbox)
 		})
 		.collect();
 
@@ -1381,7 +1382,7 @@ async fn poisson_disk_points(
 
 		let mut poisson_disk_bezpath = BezPath::new();
 
-		for point in bezpath_algorithms::poisson_disk_points(subpath, separation_disk_diameter, || rng.random::<f64>(), &path_with_bounding_boxes, i) {
+		for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation_disk_diameter, || rng.random::<f64>()) {
 			if poisson_disk_bezpath.elements().is_empty() {
 				poisson_disk_bezpath.move_to(dvec2_to_point(point));
 			} else {
