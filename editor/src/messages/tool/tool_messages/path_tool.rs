@@ -737,22 +737,26 @@ impl PathToolData {
 
 			let mut required_angle = None;
 
-			// If the handle is dragged over its adjacent anchors while holding down the Ctrl key
+			// If the handle is dragged near its adjacent anchors while holding down the Ctrl key,compute the angle based on the tangent formed with the neighboring anchor points.
 			if adjacent_anchors.len() != 0 && lock_angle && !self.angle_locked {
 				let anchor = handle_id.get_anchor(&vector_data);
 				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(anchor, adjacent_anchors, &vector_data);
+
 				let layer_to_document = document.metadata().transform_to_document(*layer);
+
 				self.adjacent_anchor_offset = handle_id
 					.get_anchor_position(&vector_data)
 					.and_then(|handle_anchor| anchor_position.map(|adjacent_anchor| layer_to_document.transform_point2(adjacent_anchor) - layer_to_document.transform_point2(handle_anchor)));
+
 				required_angle = angle;
 			}
 
-			// If the handle is dragged over its adjacent anchors while holding down the Ctrl key
+			// If the handle is dragged near its adjacent anchors while holding down the Ctrl key, compute the angle using the tangent direction of neighboring segments.
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
 				required_angle = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id, tangent_to_neighboring_tangents);
 			}
 
+			// Finalize and apply angle locking if a valid target angle was determined.
 			if let Some(angle) = required_angle {
 				self.angle = angle;
 				self.angle_locked = true;
@@ -918,9 +922,8 @@ impl PathToolData {
 				snap_angle,
 				equidistant,
 			);
-			let adjacent_anchor_offset = self.adjacent_anchor_offset.unwrap_or(DVec2::ZERO);
-			log::info!("adjacent_anchor_offset: {:?}", adjacent_anchor_offset);
 
+			let adjacent_anchor_offset = self.adjacent_anchor_offset.unwrap_or(DVec2::ZERO);
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
 			let projected_length = (cursor_position - anchor_position - adjacent_anchor_offset).dot(constrained_direction);
 			let constrained_target = anchor_position + adjacent_anchor_offset + constrained_direction * projected_length;
@@ -1339,6 +1342,10 @@ impl Fsm for PathToolFsmState {
 
 				if !tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
 					tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+				}
+
+				if tool_data.adjacent_anchor_offset.is_some() {
+					tool_data.adjacent_anchor_offset = None;
 				}
 
 				// If there is a point nearby, then remove the overlay
@@ -1952,6 +1959,7 @@ fn calculate_adjacent_anchor_tangent(anchor: Option<PointId>, adjacent_anchor: V
 		}
 
 		2 => {
+			// Use the angle formed by the handle of the shared segment relative to its associated anchor point.
 			let angle = handles[0]
 				.to_manipulator_point()
 				.get_position(vector_data)
