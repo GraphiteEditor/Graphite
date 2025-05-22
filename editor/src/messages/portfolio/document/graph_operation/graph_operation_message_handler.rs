@@ -56,6 +56,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.stroke_set(stroke);
 				}
 			}
+			GraphOperationMessage::StrokeColorSet { layer, stroke_color } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.stroke_color_set(Some(stroke_color));
+				}
+			}
 			GraphOperationMessage::TransformChange {
 				layer,
 				transform,

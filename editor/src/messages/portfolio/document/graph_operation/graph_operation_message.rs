@@ -33,6 +33,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		stroke: Stroke,
 	},
+	StrokeColorSet {
+		layer: LayerNodeIdentifier,
+		stroke_color: Color,
+	},
 	TransformChange {
 		layer: LayerNodeIdentifier,
 		transform: DAffine2,
