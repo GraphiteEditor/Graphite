@@ -213,6 +213,7 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	let point_in_shape_checker = |point: DVec2| {
 		// Check against all paths the point is contained in to compute the correct winding number
 		let mut number = 0;
+
 		for (i, (shape, bbox)) in bezpaths.iter().enumerate() {
 			let point = point + offset;
 
@@ -232,9 +233,23 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	};
 
 	let square_edges_intersect_shape_checker = |position: DVec2, size: f64| {
-		let position = position + offset;
-		let rect = Rect::new(position.x, position.y, position.x + size, position.y + size);
-		bezpath_rectangle_intersections_exist(&this_bezpath, rect)
+		let min = position + offset;
+		let max = min + DVec2::splat(size);
+
+		let top_line = Line::new((min.x, min.y), (max.x, min.y));
+		let right_line = Line::new((max.x, min.y), (max.x, max.y));
+		let bottom_line = Line::new((max.x, max.y), (min.x, max.y));
+		let left_line = Line::new((min.x, max.y), (min.x, min.y));
+
+		for line in [top_line, right_line, bottom_line, left_line] {
+			for segment in this_bezpath.segments() {
+				if !segment.intersect_line(line).is_empty() {
+					return true;
+				}
+			}
+		}
+
+		false
 	};
 
 	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
@@ -242,31 +257,4 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 		*point += offset;
 	}
 	points
-}
-
-#[inline(always)]
-fn bezpath_rectangle_intersections_exist(bezpath: &BezPath, rect: Rect) -> bool {
-	// Top left
-	let p1 = Point::new(rect.x0, rect.y0);
-	// Top right
-	let p2 = Point::new(rect.x1, rect.y0);
-	// Bottom right
-	let p3 = Point::new(rect.x1, rect.y1);
-	// Bottom left
-	let p4 = Point::new(rect.x0, rect.y1);
-
-	let top_line = Line::new((p1.x, p1.y), (p2.x, p2.y));
-	let right_line = Line::new((p2.x, p2.y), (p3.x, p3.y));
-	let bottom_line = Line::new((p3.x, p3.y), (p4.x, p4.y));
-	let left_line = Line::new((p4.x, p4.y), (p1.x, p1.y));
-
-	for segment in bezpath.segments() {
-		for line in [top_line, right_line, bottom_line, left_line] {
-			if !segment.intersect_line(line).is_empty() {
-				return true;
-			}
-		}
-	}
-
-	false
 }
