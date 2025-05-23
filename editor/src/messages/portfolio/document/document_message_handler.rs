@@ -1082,8 +1082,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::ClipLayer { id } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 
-				responses.add(DocumentMessage::AddTransaction);
-				responses.add(GraphOperationMessage::ClipModeToggle { layer });
+				if layer.can_be_clipped(self.network_interface.document_metadata()) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(GraphOperationMessage::ClipModeToggle { layer });
+				}
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);

@@ -2463,7 +2463,7 @@ impl NodeGraphMessageHandler {
 					selected: selected_layers.contains(&node_id),
 					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
 					descendant_of_selected: descendants_of_selected.contains(&node_id),
-					clipped: get_clip_mode(layer, network_interface).unwrap_or(false),
+					clipped: get_clip_mode(layer, network_interface).unwrap_or(false) && layer.can_be_clipped(network_interface.document_metadata()),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
