@@ -1,7 +1,7 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, MOULDING_FALLOFF, SEGMENT_INSERTION_DISTANCE,
 	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -1288,7 +1288,7 @@ impl Fsm for PathToolFsmState {
 							moulding_segment_handles.0,
 							moulding_segment_handles.1,
 							input.mouse.position,
-							0.0,
+							MOULDING_FALLOFF,
 						);
 					}
 				}
