@@ -223,7 +223,7 @@
 		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
 
 		// Alt-clicking to make a clipping mask
-		if (layerToClipAltKeyPressed && layerToClipUponClick) clipLayer(layerToClipUponClick);
+		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
 		// Select the layer only if the accel and/or shift keys are pressed
 		else if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
@@ -495,7 +495,7 @@
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol
 			class="list"
-			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed ? "alias" : "auto" }}
+			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
 			data-layer-panel
 			bind:this={list}
 			on:click={() => deselectAllLayers()}
