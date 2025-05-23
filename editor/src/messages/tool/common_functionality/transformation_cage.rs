@@ -636,11 +636,12 @@ impl BoundingBoxManager {
 	fn overlay_display_category(&self) -> TransformCageSizeCategory {
 		let quad = self.transform * Quad::from_box(self.bounds);
 
+		// Check if the bounds are essentially the same because the width and height are smaller than MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT
 		if self.is_bounds_point() {
 			return TransformCageSizeCategory::Point;
 		}
 
-		// Check if the area is essentially zero because either the width or height is smaller than an epsilon
+		// Check if the area is essentially zero because either the width or height is smaller than MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT
 		if self.is_bounds_flat() {
 			return TransformCageSizeCategory::Flat;
 		}
@@ -669,7 +670,7 @@ impl BoundingBoxManager {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).any()
 	}
 
-	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on actual points (axis-aligned, i.e. drawn at a single pixel) or when an element is scaled to zero in both X and Y. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
+	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on points when an element is scaled to zero in both X and Y. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
 	fn is_bounds_point(&self) -> bool {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).all()
 	}
