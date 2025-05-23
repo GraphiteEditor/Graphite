@@ -334,28 +334,28 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_node_id) = self.existing_node_id("Blend Mode", true) else { return };
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
 		let input_connector = InputConnector::node(blend_node_id, 1);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(blend_node_id) = self.existing_node_id("Opacity", true) else { return };
-		let input_connector = InputConnector::node(blend_node_id, 1);
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 2);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
+	}
+
+	pub fn blending_fill_set(&mut self, fill: f64) {
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 3);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
 	}
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
 		let clip = !clip_mode.unwrap_or(false);
-		let Some(clip_node_id) = self.existing_node_id("Clip", true) else { return };
-		let input_connector = InputConnector::node(clip_node_id, 1);
+		let Some(clip_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(clip_node_id, 4);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
-	}
-
-	pub fn blending_fill_set(&mut self, fill: f64) {
-		let Some(blend_node_id) = self.existing_node_id("Clip", true) else { return };
-		let input_connector = InputConnector::node(blend_node_id, 2);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
 	}
 
 	pub fn stroke_set(&mut self, stroke: Stroke) {

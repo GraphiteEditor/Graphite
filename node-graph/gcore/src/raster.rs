@@ -377,7 +377,7 @@ fn opacity<T: MultiplyAlpha>(
 }
 
 #[node_macro::node(category("Style"))]
-fn clip<T: MultiplyFill + SetClip>(
+fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	_: impl Ctx,
 	#[implementations(
 		GraphicGroupTable,
@@ -385,11 +385,15 @@ fn clip<T: MultiplyFill + SetClip>(
 		ImageFrameTable<Color>,
 	)]
 	mut value: T,
-	#[default(false)] clip: bool,
+	blend_mode: BlendMode,
+	#[default(100.)] opacity: Percentage,
 	#[default(100.)] fill: Percentage,
+	#[default(false)] clip: bool,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
-	value.set_clip(clip);
+	value.set_blend_mode(blend_mode);
+	value.multiply_alpha(opacity / 100.);
 	value.multiply_fill(fill / 100.);
+	value.set_clip(clip);
 	value
 }
