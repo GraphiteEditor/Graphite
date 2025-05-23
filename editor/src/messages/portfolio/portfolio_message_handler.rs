@@ -675,67 +675,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 
-					// Combine the Blend Mode node and Opacity node into one
-					if reference == "Blend Mode" && inputs_count == 2 {
-						let new_node_definition_name = "Blending";
-						if let Some(blending_node_definition) = resolve_document_node_type(new_node_definition_name) {
-							let new_node_template = blending_node_definition.default_node_template();
-							let new_document_node_struct = new_node_template.document_node;
-
-							document
-								.network_interface
-								.replace_implementation(node_id, network_path, new_document_node_struct.implementation.clone());
-							let old_inputs = document.network_interface.replace_inputs(node_id, new_document_node_struct.inputs.clone(), network_path);
-							document
-								.network_interface
-								.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata.clone());
-							document.network_interface.set_reference(node_id, network_path, Some(new_node_definition_name.to_string()));
-
-							document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-							document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-							document
-								.network_interface
-								.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(100.0), false), network_path);
-							document
-								.network_interface
-								.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::F64(100.0), false), network_path);
-							document
-								.network_interface
-								.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::Bool(false), false), network_path);
-						}
-					}
-
-					if reference == "Opacity" && inputs_count == 2 {
-						let new_node_definition_name = "Blending";
-						if let Some(blending_node_definition) = resolve_document_node_type(new_node_definition_name) {
-							let new_node_template = blending_node_definition.default_node_template();
-							let new_document_node_struct = new_node_template.document_node;
-
-							document
-								.network_interface
-								.replace_implementation(node_id, network_path, new_document_node_struct.implementation.clone());
-							let old_inputs = document.network_interface.replace_inputs(node_id, new_document_node_struct.inputs.clone(), network_path);
-							document
-								.network_interface
-								.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata.clone());
-							document.network_interface.set_reference(node_id, network_path, Some(new_node_definition_name.to_string()));
-
-							document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-							document.network_interface.set_input(
-								&InputConnector::node(*node_id, 1),
-								NodeInput::value(TaggedValue::BlendMode(graphene_core::raster::BlendMode::Normal), false),
-								network_path,
-							);
-							document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
-							document
-								.network_interface
-								.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::F64(100.0), false), network_path);
-							document
-								.network_interface
-								.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::Bool(false), false), network_path);
-						}
-					}
-
 					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node
 					if reference == "Splines from Points" {
 						document.network_interface.set_reference(node_id, network_path, Some("Spline".to_string()));

@@ -15,6 +15,7 @@ pub mod renderer;
 
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[serde(default)]
 pub struct AlphaBlending {
 	pub blend_mode: BlendMode,
 	pub opacity: f32,

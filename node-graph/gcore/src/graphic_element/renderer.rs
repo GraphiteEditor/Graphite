@@ -815,13 +815,13 @@ impl GraphicElementRendered for Artboard {
 		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-		let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 
 		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
 		scene.pop_layer();
 
 		if self.clip {
+			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
@@ -1201,7 +1201,6 @@ impl GraphicElementRendered for Vec<Color> {
 				attributes.push("x", (index * 120).to_string());
 				attributes.push("y", "40");
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
-				debug!("{}", color.to_rgb_hex_srgb_from_gamma());
 				if color.a() < 1. {
 					attributes.push("fill-opacity", ((color.a() * 1000.).round() / 1000.).to_string());
 				}
