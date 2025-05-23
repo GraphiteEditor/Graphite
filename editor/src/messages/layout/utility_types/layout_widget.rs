@@ -31,8 +31,12 @@ pub enum LayoutTarget {
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
-	/// Options for opacity seen at the top of the Layers panel.
-	LayersPanelControlBar,
+	/// Blending options at the top of the Layers panel.
+	LayersPanelControlLeftBar,
+	/// Selected layer status (locked/hidden) at the top of the Layers panel.
+	LayersPanelControlRightBar,
+	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
+	LayersPanelBottomBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.

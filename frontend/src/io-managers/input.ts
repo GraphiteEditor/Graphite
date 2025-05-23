@@ -212,7 +212,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (textToolInteractiveInputElement) return;
 
 		// Allow only double-clicks
-		if (e.detail !== 2) return;
+		if (e.detail % 2 == 1) return;
 
 		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
 		let buttons = 1;

@@ -1,5 +1,6 @@
 use core::f64;
 use glam::DVec2;
+use std::collections::HashMap;
 
 const DEEPEST_SUBDIVISION_LEVEL_BEFORE_DISCARDING: usize = 8;
 
@@ -8,11 +9,12 @@ const DEEPEST_SUBDIVISION_LEVEL_BEFORE_DISCARDING: usize = 8;
 /// "Poisson Disk Point Sets by Hierarchical Dart Throwing"
 /// <https://scholarsarchive.byu.edu/facpub/237/>
 pub fn poisson_disk_sample(
+	offset: DVec2,
 	width: f64,
 	height: f64,
 	diameter: f64,
 	point_in_shape_checker: impl Fn(DVec2) -> bool,
-	square_edges_intersect_shape_checker: impl Fn(DVec2, f64) -> bool,
+	line_intersect_shape_checker: impl Fn((f64, f64), (f64, f64)) -> bool,
 	rng: impl FnMut() -> f64,
 ) -> Vec<DVec2> {
 	let mut rng = rng;
@@ -28,7 +30,7 @@ pub fn poisson_disk_sample(
 	let base_level_grid_size = greater_dimension / (greater_dimension * std::f64::consts::SQRT_2 / (diameter / 2.)).ceil();
 
 	// Initialize the problem by including all base-level squares in the active list since they're all part of the yet-to-be-targetted dartboard domain
-	let base_level = ActiveListLevel::new_filled(base_level_grid_size, width, height, &point_in_shape_checker, &square_edges_intersect_shape_checker);
+	let base_level = ActiveListLevel::new_filled(base_level_grid_size, offset, width, height, &point_in_shape_checker, &line_intersect_shape_checker);
 	// In the future, if necessary, this could be turned into a fixed-length array with worst-case length `f64::MANTISSA_DIGITS`
 	let mut active_list_levels = vec![base_level];
 
@@ -60,7 +62,7 @@ pub fn poisson_disk_sample(
 		// If the dart hit a valid spot, save that point (we're now permanently done with this target square's region)
 		if point_not_covered_by_poisson_points(point, diameter_squared, &points_grid) {
 			// Silently reject the point if it lies outside the shape
-			if active_square.fully_in_shape() || point_in_shape_checker(point) {
+			if active_square.fully_in_shape() || point_in_shape_checker(point + offset) {
 				points_grid.insert(point);
 			}
 		}
@@ -105,10 +107,21 @@ pub fn poisson_disk_sample(
 				// Intersecting the shape's border
 				else {
 					// The sub-square is fully inside the shape if its top-left corner is inside and its edges don't intersect the shape border
-					let sub_square_fully_inside_shape =
-						!square_edges_intersect_shape_checker(sub_square, subdivided_size) && point_in_shape_checker(sub_square) && point_in_shape_checker(sub_square + subdivided_size);
-					// if !square_edges_intersect_shape_checker(sub_square, subdivided_size) { assert_eq!(point_in_shape_checker(sub_square), point_in_shape_checker(sub_square + subdivided_size)); }
-					// Sometimes this fails so it is necessary to also check the bottom right corner.
+					let point_with_offset = sub_square + offset;
+					let square_edges_intersect_shape = {
+						let min = point_with_offset;
+						let max = min + DVec2::splat(subdivided_size);
+
+						// Top edge line
+						line_intersect_shape_checker((min.x, min.y), (max.x, min.y)) ||
+						// Right edge line
+						line_intersect_shape_checker((max.x, min.y), (max.x, max.y)) ||
+						// Bottom edge line
+						line_intersect_shape_checker((max.x, max.y), (min.x, max.y)) ||
+						// Left edge line
+						line_intersect_shape_checker((min.x, max.y), (min.x, min.y))
+					};
+					let sub_square_fully_inside_shape = !square_edges_intersect_shape && point_in_shape_checker(point_with_offset) && point_in_shape_checker(point_with_offset + subdivided_size);
 
 					Some(ActiveSquare::new(sub_square, sub_square_fully_inside_shape))
 				}
@@ -117,7 +130,7 @@ pub fn poisson_disk_sample(
 		}
 	}
 
-	points_grid.final_points()
+	points_grid.final_points(offset)
 }
 
 /// Randomly pick a square in the dartboard domain, with probability proportional to its area.
@@ -209,24 +222,64 @@ impl ActiveListLevel {
 		}
 	}
 
-	#[inline(always)]
-	pub fn new_filled(square_size: f64, width: f64, height: f64, point_in_shape_checker: impl Fn(DVec2) -> bool, square_edges_intersect_shape_checker: impl Fn(DVec2, f64) -> bool) -> Self {
+	pub fn new_filled(
+		square_size: f64,
+		offset: DVec2,
+		width: f64,
+		height: f64,
+		point_in_shape_checker: impl Fn(DVec2) -> bool,
+		line_intersect_shape_checker: impl Fn((f64, f64), (f64, f64)) -> bool,
+	) -> Self {
 		// These should divide evenly but rounding is to protect against small numerical imprecision errors
 		let x_squares = (width / square_size).round() as usize;
 		let y_squares = (height / square_size).round() as usize;
 
+		// Hashes based on the grid cell coordinates and direction of the line: (x, y, is_vertical)
+		let mut line_intersection_cache: HashMap<(usize, usize, bool), bool> = HashMap::new();
+
 		// Populate each square with its top-left corner coordinate
 		let active_squares: Vec<_> = cartesian_product(0..x_squares, 0..y_squares)
 			.filter_map(|(x, y)| {
-				let corner = (x as f64 * square_size, y as f64 * square_size).into();
+				let corner = DVec2::new(x as f64 * square_size, y as f64 * square_size);
+				let corner_with_offset = corner + offset;
 
-				let point_in_shape = point_in_shape_checker(corner);
-				let square_edges_intersect_shape = square_edges_intersect_shape_checker(corner, square_size);
-				let square_not_outside_shape = point_in_shape || square_edges_intersect_shape;
-				let square_in_shape = point_in_shape_checker(corner + square_size) && !square_edges_intersect_shape;
-				// if !square_edges_intersect_shape { assert_eq!(point_in_shape_checker(corner), point_in_shape_checker(corner + square_size)); }
-				// Sometimes this fails so it is necessary to also check the bottom right corner.
-				square_not_outside_shape.then_some(ActiveSquare::new(corner, square_in_shape))
+				// Lazily check (and cache) if the square's edges intersect the shape, which is an expensive operation
+				let mut square_edges_intersect_shape_value = None;
+				let mut square_edges_intersect_shape = || {
+					square_edges_intersect_shape_value.unwrap_or_else(|| {
+						let square_edges_intersect_shape = {
+							let min = corner_with_offset;
+							let max = min + DVec2::splat(square_size);
+
+							// Top edge line
+							*line_intersection_cache.entry((x, y, false)).or_insert_with(|| line_intersect_shape_checker((min.x, min.y), (max.x, min.y))) ||
+							// Right edge line
+							*line_intersection_cache.entry((x + 1, y, true)).or_insert_with(|| line_intersect_shape_checker((max.x, min.y), (max.x, max.y))) ||
+							// Bottom edge line
+							*line_intersection_cache.entry((x, y + 1, false)).or_insert_with(|| line_intersect_shape_checker((max.x, max.y), (min.x, max.y))) ||
+							// Left edge line
+							*line_intersection_cache.entry((x, y, true)).or_insert_with(|| line_intersect_shape_checker((min.x, max.y), (min.x, min.y)))
+						};
+						square_edges_intersect_shape_value = Some(square_edges_intersect_shape);
+						square_edges_intersect_shape
+					})
+				};
+
+				// Check if this cell's top-left corner is inside the shape
+				let point_in_shape = point_in_shape_checker(corner_with_offset);
+
+				// Determine if the square is inside the shape
+				let square_not_outside_shape = point_in_shape || square_edges_intersect_shape();
+				if square_not_outside_shape {
+					// Check if this cell's bottom-right corner is inside the shape
+					let opposite_corner_with_offset = DVec2::new((x + 1) as f64 * square_size, (y + 1) as f64 * square_size) + offset;
+					let opposite_corner_in_shape = point_in_shape_checker(opposite_corner_with_offset);
+
+					let square_in_shape = opposite_corner_in_shape && !square_edges_intersect_shape();
+					Some(ActiveSquare::new(corner, square_in_shape))
+				} else {
+					None
+				}
 			})
 			.collect();
 
@@ -363,7 +416,7 @@ impl AccelerationGrid {
 	}
 
 	#[inline(always)]
-	pub fn final_points(&self) -> Vec<DVec2> {
-		self.cells.iter().flat_map(|cell| cell.list_cell()).collect()
+	pub fn final_points(&self, offset: DVec2) -> Vec<DVec2> {
+		self.cells.iter().flat_map(|cell| cell.list_cell()).map(|point| point + offset).collect()
 	}
 }

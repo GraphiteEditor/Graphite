@@ -1085,6 +1085,12 @@ export class DropdownInput extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	// Styling
+
+	minWidth!: number;
+
+	maxWidth!: number;
 }
 
 export class FontInput extends WidgetProps {
@@ -1185,6 +1191,8 @@ export class NumberInput extends WidgetProps {
 	// Styling
 
 	minWidth!: number;
+
+	maxWidth!: number;
 }
 
 export class NodeCatalog extends WidgetProps {
@@ -1193,6 +1201,8 @@ export class NodeCatalog extends WidgetProps {
 
 export class PopoverButton extends WidgetProps {
 	style!: PopoverButtonStyle | undefined;
+
+	menuDirection!: MenuDirection | undefined;
 
 	icon!: IconName | undefined;
 
@@ -1206,6 +1216,8 @@ export class PopoverButton extends WidgetProps {
 
 	popoverMinWidth: number | undefined;
 }
+
+export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 
 export type RadioEntryData = {
 	value?: string;
@@ -1581,7 +1593,11 @@ export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayersPanelControlBarLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
+
+export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
+
+export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1680,7 +1696,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportsExports,
 	UpdateInputHints,
 	UpdateInSelectedNetwork,
-	UpdateLayersPanelControlBarLayout,
+	UpdateLayersPanelControlBarLeftLayout,
+	UpdateLayersPanelControlBarRightLayout,
+	UpdateLayersPanelBottomBarLayout,
 	UpdateLayerWidths,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
