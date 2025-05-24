@@ -103,7 +103,7 @@ pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SEGMENT_INSERTION_DISTANCE: f64 = 7.5;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
-pub const MOULDING_FALLOFF: f64 = 75.;
+pub const MOLDING_FALLOFF: f64 = 75.;
 
 // PEN TOOL
 pub const CREATE_CURVE_THRESHOLD: f64 = 5.;

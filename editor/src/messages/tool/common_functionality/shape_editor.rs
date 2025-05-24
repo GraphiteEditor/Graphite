@@ -275,14 +275,14 @@ impl ClosestSegment {
 		tangent.perp()
 	}
 
-	// Moulding the bezier curve
-	pub fn mould_handle_positions(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, c1: DVec2, c2: DVec2, new_b: DVec2, falloff: f64) {
+	// Molding the bezier curve
+	pub fn mold_handle_positions(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, c1: DVec2, c2: DVec2, new_b: DVec2, falloff: f64) {
 		let t = self.t;
 
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let new_b = transform.inverse().transform_point2(new_b);
 
-		let (nc1, nc2) = self.bezier.moulded_control_points(t, falloff, new_b, c1, c2);
+		let (nc1, nc2) = self.bezier.molded_control_points(t, falloff, new_b, c1, c2);
 
 		let start = self.bezier.start;
 		let end = self.bezier.end;

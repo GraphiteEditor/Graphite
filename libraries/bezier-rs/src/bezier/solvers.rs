@@ -701,9 +701,9 @@ impl Bezier {
 			.sum()
 	}
 
-	// Returns two control points for new moulded cubic bezier curve
-	// Implementation of moulding the segment, as described in https://pomax.github.io/bezierinfo/#molding
-	pub fn moulded_control_points(&self, t: f64, falloff: f64, new_b: DVec2, c1: DVec2, c2: DVec2) -> (DVec2, DVec2) {
+	// Returns two control points for new molded cubic bezier curve
+	// Implementation of molding the segment, as described in https://pomax.github.io/bezierinfo/#molding
+	pub fn molded_control_points(&self, t: f64, falloff: f64, new_b: DVec2, c1: DVec2, c2: DVec2) -> (DVec2, DVec2) {
 		let start = self.start;
 		let end = self.end;
 		let v1 = (1. - t) * start + t * c1;

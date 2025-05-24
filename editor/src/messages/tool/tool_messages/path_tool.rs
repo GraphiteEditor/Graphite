@@ -1,7 +1,7 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, MOULDING_FALLOFF, SEGMENT_INSERTION_DISTANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, MOLDING_FALLOFF, SEGMENT_INSERTION_DISTANCE,
 	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -303,7 +303,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick,
 			),
-			PathToolFsmState::MouldingSegment => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
 				PointerMove,
 				DragStop,
 				RightClick,
@@ -344,7 +344,7 @@ enum PathToolFsmState {
 	Drawing {
 		selection_shape: SelectionShapeType,
 	},
-	MouldingSegment,
+	MoldingSegment,
 }
 
 #[derive(Default)]
@@ -382,7 +382,7 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
-	moulding_info: Option<(DVec2, DVec2)>,
+	molding_info: Option<(DVec2, DVec2)>,
 }
 
 impl PathToolData {
@@ -552,11 +552,11 @@ impl PathToolData {
 
 			if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
 				if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
-					self.moulding_info = Some((pos1, pos2))
+					self.molding_info = Some((pos1, pos2))
 				}
 			}
 
-			PathToolFsmState::MouldingSegment
+			PathToolFsmState::MoldingSegment
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
@@ -1140,7 +1140,7 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 					}
-					Self::MouldingSegment => {}
+					Self::MoldingSegment => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -1308,7 +1308,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
 			(
-				PathToolFsmState::MouldingSegment,
+				PathToolFsmState::MoldingSegment,
 				PathToolMessage::PointerMove {
 					// equidistant,
 					// toggle_colinear,
@@ -1320,21 +1320,21 @@ impl Fsm for PathToolFsmState {
 				},
 			) => {
 
-				// Logic for moulding segment
+				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment {
-					if let Some(moulding_segment_handles) = tool_data.moulding_info {
-						segment.mould_handle_positions(
+					if let Some(molding_segment_handles) = tool_data.molding_info {
+						segment.mold_handle_positions(
 							&document,
 							responses,
-							moulding_segment_handles.0,
-							moulding_segment_handles.1,
+							molding_segment_handles.0,
+							molding_segment_handles.1,
 							input.mouse.position,
-							MOULDING_FALLOFF,
+							MOLDING_FALLOFF,
 						);
 					}
 				}
 
-				PathToolFsmState::MouldingSegment
+				PathToolFsmState::MoldingSegment
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
@@ -1513,7 +1513,7 @@ impl Fsm for PathToolFsmState {
 						responses.add(DocumentMessage::EndTransaction);
 					}
 					tool_data.segment = None;
-					tool_data.moulding_info = None;
+					tool_data.molding_info = None;
 					return PathToolFsmState::Ready;
 				}
 
@@ -1783,7 +1783,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 				]),
 			]),
-			PathToolFsmState::MouldingSegment => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mould segment")])]),
+			PathToolFsmState::MoldingSegment => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold segment")])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
