@@ -89,6 +89,8 @@ pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 ///
 /// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
 pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
+/// The width or height that the transform cage needs before it is considered to have no width or height.
+pub const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4;
 
 // SKEW TRIANGLES
 pub const SKEW_TRIANGLE_SIZE: f64 = 7.;
