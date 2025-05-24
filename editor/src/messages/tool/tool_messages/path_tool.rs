@@ -730,17 +730,13 @@ impl PathToolData {
 			.next()
 			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer).map(|vector_data| (vector_data, layer)))
 		{
-			let adjacent_anchors = vector_data
-				.connected_points(handle_id.get_anchor(&vector_data).unwrap())
-				.filter(|anchor| (vector_data.point_domain.position_from_id(*anchor).unwrap() - handle_id.get_position(&vector_data).unwrap()).length() < 1e-6)
-				.collect::<Vec<_>>();
-
+			let adjacent_anchor = check_handle_over_adjacent_anchor(handle_id, &vector_data);
 			let mut required_angle = None;
 
-			// If the handle is dragged over one of its adjacent anchors while holding down the Ctrl key, compute the angle based on the tangent formed with the neighboring anchor points.
-			if !adjacent_anchors.is_empty() && lock_angle && !self.angle_locked {
+			// If the handle is dragged near its adjacent anchors while holding down the Ctrl key,compute the angle based on the tangent formed with the neighboring anchor points.
+			if adjacent_anchor.is_some() && lock_angle && !self.angle_locked {
 				let anchor = handle_id.get_anchor(&vector_data);
-				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(anchor, adjacent_anchors, &vector_data);
+				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
 
 				let layer_to_document = document.metadata().transform_to_document(*layer);
 
@@ -1920,10 +1916,29 @@ fn calculate_lock_angle(
 	}
 }
 
-fn calculate_adjacent_anchor_tangent(anchor: Option<PointId>, adjacent_anchor: Vec<PointId>, vector_data: &VectorData) -> (Option<f64>, Option<DVec2>) {
+fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector_data: &VectorData) -> Option<PointId> {
+	let Some((anchor, handle_position)) = handle_id.get_anchor(&vector_data).zip(handle_id.get_position(vector_data)) else {
+		return None;
+	};
+
+	let check_if_close = |point_id: &PointId| {
+		let Some(anchor_position) = vector_data.point_domain.position_from_id(*point_id) else {
+			return false;
+		};
+		(anchor_position - handle_position).length() < 10.
+	};
+
+	vector_data.connected_points(anchor).find(|point| check_if_close(point))
+}
+fn calculate_adjacent_anchor_tangent(
+	currently_dragged_handle: ManipulatorPointId,
+	anchor: Option<PointId>,
+	adjacent_anchor: Option<PointId>,
+	vector_data: &VectorData,
+) -> (Option<f64>, Option<DVec2>) {
 	// Early return if no anchor or no adjacent anchors
 
-	let Some((dragged_handle_anchor, adjacent_anchor)) = anchor.zip(adjacent_anchor.first().copied()) else {
+	let Some((dragged_handle_anchor, adjacent_anchor)) = anchor.zip(adjacent_anchor) else {
 		return (None, None);
 	};
 	let adjacent_anchor_position = vector_data.point_domain.position_from_id(adjacent_anchor);
@@ -1960,11 +1975,18 @@ fn calculate_adjacent_anchor_tangent(anchor: Option<PointId>, adjacent_anchor: V
 
 		2 => {
 			// Use the angle formed by the handle of the shared segment relative to its associated anchor point.
-			let angle = handles[0]
-				.to_manipulator_point()
-				.get_position(vector_data)
+			let Some(shared_segment_handle) = handles
+				.iter()
+				.find(|handle| handle.opposite().to_manipulator_point() == currently_dragged_handle)
+				.map(|handle| handle.to_manipulator_point())
+			else {
+				return (None, None);
+			};
+
+			let angle = shared_segment_handle
+				.get_position(&vector_data)
 				.zip(adjacent_anchor_position)
-				.map(|(handle_pos, anchor_pos)| -(handle_pos - anchor_pos).angle_to(DVec2::X));
+				.map(|(handle, anchor)| -(handle - anchor).angle_to(DVec2::X));
 
 			(angle, adjacent_anchor_position)
 		}
