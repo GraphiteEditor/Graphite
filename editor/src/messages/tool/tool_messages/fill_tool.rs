@@ -121,9 +121,18 @@ impl Fsm for FillToolFsmState {
 					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
 					_ => return self,
 				};
+				let stroke_color = match color_event {
+					FillToolMessage::FillPrimaryColor => global_tool_data.primary_color.to_gamma_srgb(),
+					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color.to_gamma_srgb(),
+					_ => return self,
+				};
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+				responses.add(GraphOperationMessage::StrokeColorSet {
+					layer: layer_identifier,
+					stroke_color,
+				});
 
 				FillToolFsmState::Filling
 			}
