@@ -49,6 +49,8 @@ web-sys = { workspace = true, features = [
 	"HtmlCanvasElement",
 	"IdleRequestOptions",
 ] }
+specta = { workspace = true }
+specta-typescript = { workspace = true }
 
 # Optional workspace dependencies
 ron = { workspace = true, optional = true }
