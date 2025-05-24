@@ -44,6 +44,7 @@ in
       cargo-watch
       cargo-nextest
       cargo-expand
+      cargo-about
       wasm-pack
       binaryen
       wasm-bindgen-cli
