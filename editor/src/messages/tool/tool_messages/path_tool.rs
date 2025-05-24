@@ -736,7 +736,7 @@ impl PathToolData {
 			let adjacent_anchor = check_handle_over_adjacent_anchor(handle_id, &vector_data);
 			let mut required_angle = None;
 
-			// If the handle is dragged near its adjacent anchors while holding down the Ctrl key,compute the angle based on the tangent formed with the neighboring anchor points.
+			// If the handle is dragged over one of its adjacent anchors while holding down the Ctrl key, compute the angle based on the tangent formed with the neighboring anchor points.
 			if adjacent_anchor.is_some() && lock_angle && !self.angle_locked {
 				let anchor = handle_id.get_anchor(&vector_data);
 				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
