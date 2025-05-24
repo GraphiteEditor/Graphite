@@ -4,6 +4,7 @@ use crate::raster::BlendMode;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
+use crate::vector::style::{Fill, Stroke};
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
@@ -14,9 +15,12 @@ pub mod renderer;
 
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[serde(default)]
 pub struct AlphaBlending {
-	pub opacity: f32,
 	pub blend_mode: BlendMode,
+	pub opacity: f32,
+	pub fill: f32,
+	pub clip: bool,
 }
 impl Default for AlphaBlending {
 	fn default() -> Self {
@@ -26,14 +30,18 @@ impl Default for AlphaBlending {
 impl core::hash::Hash for AlphaBlending {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
+		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
+		self.clip.hash(state);
 	}
 }
 impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
 			opacity: 1.,
+			fill: 1.,
 			blend_mode: BlendMode::Normal,
+			clip: false,
 		}
 	}
 }
@@ -192,6 +200,29 @@ impl GraphicElement {
 		match self {
 			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
+		}
+	}
+
+	pub fn can_use_clip(&self) -> bool {
+		let is_color_opaque = |color: &Color| -> bool { color.a() == 1.0f32 };
+
+		let is_fill_opaque = |fill: &Fill| -> bool {
+			match fill {
+				Fill::Solid(color) => is_color_opaque(color),
+				Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| is_color_opaque(color)),
+				Fill::None => true,
+			}
+		};
+
+		let is_stroke_opaque = |stroke: &Stroke| -> bool { stroke.color.map_or(true, |ref color_ref| is_color_opaque(color_ref)) };
+
+		match self {
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
+				let style = &instance_data.instance.style;
+				let alpha_blending = &instance_data.alpha_blending;
+				(alpha_blending.opacity > 1. - f32::EPSILON) && is_fill_opaque(&style.fill()) && style.stroke().map_or(true, |s| is_stroke_opaque(&s))
+			}),
+			_ => false,
 		}
 	}
 }

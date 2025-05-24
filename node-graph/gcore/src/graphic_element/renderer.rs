@@ -28,6 +28,29 @@ pub struct ClickTarget {
 	bounding_box: Option<[DVec2; 2]>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+enum MaskType {
+	Clip,
+	Mask,
+}
+
+impl MaskType {
+	fn to_attribute(self) -> String {
+		match self {
+			Self::Mask => "mask".to_string(),
+			Self::Clip => "clip-path".to_string(),
+		}
+	}
+
+	fn write_to_defs(self, svg_defs: &mut String, uuid: u64, svg_string: String) {
+		let id = format!("mask-{}", uuid);
+		match self {
+			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg_string).unwrap(),
+			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg_string).unwrap(),
+		}
+	}
+}
+
 impl ClickTarget {
 	pub fn new(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
 		let bounding_box = subpath.loose_bounding_box();
@@ -226,16 +249,19 @@ pub struct RenderParams {
 	pub hide_artboards: bool,
 	/// Are we exporting? Causes the text above an artboard to be hidden.
 	pub for_export: bool,
+	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
+	pub for_mask: bool,
 }
 
 impl RenderParams {
-	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool) -> Self {
+	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool, for_mask: bool) -> Self {
 		Self {
 			view_mode,
 			culling_bounds,
 			thumbnail,
 			hide_artboards,
 			for_export,
+			for_mask,
 		}
 	}
 }
@@ -299,7 +325,9 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for instance in self.instance_ref_iter() {
+		let mut iter = self.instance_ref_iter().peekable();
+		let mut mask_state = None;
+		while let Some(instance) = iter.next() {
 			render.parent_tag(
 				"g",
 				|attributes| {
@@ -308,12 +336,45 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("transform", matrix);
 					}
 
-					if instance.alpha_blending.opacity < 1. {
-						attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
 					}
 
 					if instance.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+
+					let next_clips = iter.peek().map_or(false, |next_instance| {
+						let instance = next_instance.instance;
+						instance.as_vector_data().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+							|| instance.as_group().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
+							|| instance.as_raster().is_some_and(|data| match data {
+								RasterFrame::ImageFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+								RasterFrame::TextureFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+							})
+					});
+
+					if next_clips && mask_state.is_none() {
+						let uuid = generate_uuid();
+						let mask_type = if instance.instance.can_use_clip() { MaskType::Clip } else { MaskType::Mask };
+						mask_state = Some((uuid, mask_type));
+						let mut svg = SvgRender::new();
+						let render_params = RenderParams { for_mask: true, ..*render_params };
+						instance.instance.render_svg(&mut svg, &render_params);
+
+						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+					} else if let Some((uuid, mask_type)) = mask_state {
+						if !next_clips {
+							mask_state = None;
+						}
+
+						let id = format!("mask-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push(mask_type.to_attribute(), selector);
 					}
 				},
 				|render| {
@@ -452,11 +513,13 @@ impl GraphicElementRendered for VectorDataTable {
 				let fill_and_stroke = instance
 					.instance
 					.style
-					.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
+					.render(defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds, render_params);
 				attributes.push_val(fill_and_stroke);
 
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
@@ -752,13 +815,13 @@ impl GraphicElementRendered for Artboard {
 		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-		let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 
 		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
 		scene.pop_layer();
 
 		if self.clip {
+			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
@@ -843,7 +906,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 }
 
 impl GraphicElementRendered for ImageFrameTable<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
 
@@ -869,8 +932,10 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
 				}
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
 					attributes.push("style", instance.alpha_blending.blend_mode.render());
