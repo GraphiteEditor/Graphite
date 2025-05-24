@@ -203,7 +203,7 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn is_opaque(&self) -> bool {
+	pub fn can_use_clip(&self) -> bool {
 		let is_color_opaque = |color: &Color| -> bool { color.a() == 1.0f32 };
 
 		let is_fill_opaque = |fill: &Fill| -> bool {
@@ -220,10 +220,6 @@ impl GraphicElement {
 			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
 				let style = &instance_data.instance.style;
 				is_fill_opaque(&style.fill()) && style.stroke().map_or(true, |s| is_stroke_opaque(&s))
-			}),
-			GraphicElement::GraphicGroup(group_table) => group_table.instance_ref_iter().all(|instance_wrapper| {
-				let blending = &instance_wrapper.alpha_blending;
-				(blending.opacity == 1.0f32) && (blending.fill == 1.0f32) && instance_wrapper.instance.is_opaque()
 			}),
 			_ => false,
 		}

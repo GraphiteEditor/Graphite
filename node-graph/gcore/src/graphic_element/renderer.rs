@@ -358,7 +358,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 					if next_clips && mask_state.is_none() {
 						let uuid = generate_uuid();
-						let mask_type = if instance.instance.is_opaque() { MaskType::Clip } else { MaskType::Mask };
+						let mask_type = if instance.instance.can_use_clip() { MaskType::Clip } else { MaskType::Mask };
 						mask_state = Some((uuid, mask_type));
 						let mut svg = SvgRender::new();
 						let render_params = RenderParams { for_mask: true, ..*render_params };
