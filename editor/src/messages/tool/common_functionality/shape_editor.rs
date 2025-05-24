@@ -1,13 +1,16 @@
+use core::panic;
+
 use super::graph_modification_utils::{self, merge_layers};
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::calculate_segment_angle;
 use crate::consts::HANDLE_LENGTH_FACTOR;
+use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-use crate::messages::tool::tool_messages::path_tool::PointSelectState;
+use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_core::transform::Transform;
@@ -467,7 +470,14 @@ impl ShapeState {
 		None
 	}
 
-	pub fn get_point_selection_state(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(bool, Option<SelectedPointsInfo>)> {
+	pub fn get_point_selection_state(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		mouse_position: DVec2,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		select_threshold: f64,
+	) -> Option<(bool, Option<SelectedPointsInfo>)> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
@@ -475,6 +485,11 @@ impl ShapeState {
 		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
 			let vector_data = network_interface.compute_modified_vector(layer)?;
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
+
+			// Check if point is visible under current overlay mode or not
+			if !self.is_visible_point(manipulator_point_id, &network_interface, &vector_data, path_overlay_mode, frontier_handles_info) {
+				return None;
+			}
 
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
 			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
@@ -1014,7 +1029,7 @@ impl ShapeState {
 		}
 	}
 
-	/// The opposing handle lengths.
+	/// The opposing handle lengths.vector_data
 	pub fn opposing_handle_lengths(&self, document: &DocumentMessageHandler) -> OpposingHandleLengths {
 		self.selected_shape_state
 			.iter()
@@ -1320,6 +1335,93 @@ impl ShapeState {
 		None
 	}
 
+	pub fn find_nearest_visible_point_indices(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		mouse_position: DVec2,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		select_threshold: f64,
+	) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
+		if self.selected_shape_state.is_empty() {
+			return None;
+		}
+
+		let select_threshold_squared = select_threshold * select_threshold;
+
+		// Find the closest control point among all elements of shapes_to_modify
+		for &layer in self.selected_shape_state.keys() {
+			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(network_interface, layer, mouse_position) {
+				// Choose the first point under the threshold
+				if distance_squared < select_threshold_squared {
+					trace!("Selecting... manipulator point: {manipulator_point_id:?}");
+
+					// Check if point is visible in current PathOverlayMode
+					let vector_data = network_interface.compute_modified_vector(layer)?;
+					if !self.is_visible_point(manipulator_point_id, network_interface, &vector_data, path_overlay_mode, frontier_handles_info) {
+						return None;
+					}
+					return Some((layer, manipulator_point_id));
+				}
+			}
+		}
+
+		None
+	}
+
+	// Function to check whether current point is visible in the current overlay mode or not
+	pub fn is_visible_point(
+		&self,
+		manipulator_point_id: ManipulatorPointId,
+		network_interface: &NodeNetworkInterface,
+		vector_data: &VectorData,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	) -> bool {
+		match manipulator_point_id {
+			ManipulatorPointId::Anchor(_) => {
+				return true;
+			}
+			ManipulatorPointId::EndHandle(segment_id) | ManipulatorPointId::PrimaryHandle(segment_id) => {
+				let selected_segments = selected_segments(&network_interface, self);
+				match path_overlay_mode {
+					PathOverlayMode::AllHandles => {
+						return true;
+					}
+					PathOverlayMode::SelectedPointHandles => {
+						//TODO: Here consider the handles the opposite handle of which is selected
+						// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
+						if let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) {
+							let other_handle = handle_pair[1].to_manipulator_point();
+							let selected_points_contains_other = self.selected_points().any(|&point| point == other_handle);
+							return selected_segments.contains(&segment_id) || selected_points_contains_other;
+						} else {
+							return selected_segments.contains(&segment_id);
+						}
+					}
+					PathOverlayMode::FrontierHandles => {
+						if self.selected_points().count() == 1 {
+							return selected_segments.contains(&segment_id);
+						} else {
+							let Some(anchor) = manipulator_point_id.get_anchor(&vector_data) else {
+								panic!("No anchor for selected handle")
+							};
+							if let Some(frontier_handles) = &frontier_handles_info {
+								if let Some(anchors) = frontier_handles.get(&segment_id) {
+									return anchors.contains(&anchor);
+								} else {
+									return false;
+								}
+							} else {
+								panic!("No frontier handles info provided")
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// TODO Use quadtree or some equivalent spatial acceleration structure to improve this to O(log(n))
 	/// Find the closest manipulator, manipulator point, and distance so we can select path elements.
 	/// Brute force comparison to determine which manipulator (handle or anchor) we want to select taking O(n) time.
@@ -1623,7 +1725,14 @@ impl ShapeState {
 		false
 	}
 
-	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
+	pub fn select_all_in_shape(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		selection_shape: SelectionShape,
+		selection_change: SelectionChange,
+		_path_overlay_mode: PathOverlayMode,
+		_frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			if selection_change == SelectionChange::Clear {
 				state.clear_points()
@@ -1666,6 +1775,7 @@ impl ShapeState {
 					};
 
 					if select {
+						// let is_visible_handle = self.is_visible_point(id, network_interface, &vector_data, path_overlay_mode, frontier_handles_info.clone());
 						match selection_change {
 							SelectionChange::Shrink => state.deselect_point(id),
 							_ => {

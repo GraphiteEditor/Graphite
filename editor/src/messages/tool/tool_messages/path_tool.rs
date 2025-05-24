@@ -376,6 +376,7 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
+	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 }
 
 impl PathToolData {
@@ -444,6 +445,7 @@ impl PathToolData {
 		lasso_select: bool,
 		handle_drag_from_anchor: bool,
 		drag_zero_handle: bool,
+		path_overlay_mode: PathOverlayMode,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -459,7 +461,14 @@ impl PathToolData {
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
-		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+		// Here we don't want to select the points which are not shown currently in overlays (depending upon current tool mode)
+		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(
+			&document.network_interface,
+			input.mouse.position,
+			path_overlay_mode,
+			self.frontier_handles_info.clone(),
+			SELECTION_THRESHOLD,
+		) {
 			responses.add(DocumentMessage::StartTransaction);
 
 			self.last_clicked_point_was_selected = already_selected;
@@ -1017,14 +1026,16 @@ impl Fsm for PathToolFsmState {
 				match tool_options.path_overlay_mode {
 					PathOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
+						tool_data.frontier_handles_info = None;
 					}
 					PathOverlayMode::SelectedPointHandles => {
-						let selected_segments = selected_segments(document, shape_editor);
+						let selected_segments = selected_segments(&document.network_interface, shape_editor);
 
 						path_overlays(document, DrawHandles::SelectedAnchors(selected_segments), shape_editor, &mut overlay_context);
+						tool_data.frontier_handles_info = None;
 					}
 					PathOverlayMode::FrontierHandles => {
-						let selected_segments = selected_segments(document, shape_editor);
+						let selected_segments = selected_segments(&document.network_interface, shape_editor);
 						let selected_points = shape_editor.selected_points();
 						let selected_anchors = selected_points
 							.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(*p) } else { None })
@@ -1052,12 +1063,17 @@ impl Fsm for PathToolFsmState {
 								for (point, attached_segments) in selected_segments_by_point {
 									if attached_segments.len() == 1 {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
-									} else if !selected_anchors.contains(&point) {
+									}
+									//This is for edge case of a loop where a point rather not selected can be art of two segments
+									else if !selected_anchors.contains(&point) {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 										segment_endpoints.entry(attached_segments[1]).or_default().push(point);
 									}
 								}
 							}
+
+							// Caching segment endpoints for use in point selection logic
+							tool_data.frontier_handles_info = Some(segment_endpoints.clone());
 
 							// Now frontier anchors can be sent for rendering overlays
 							path_overlays(document, DrawHandles::FrontierHandles(segment_endpoints), shape_editor, &mut overlay_context);
@@ -1160,7 +1176,17 @@ impl Fsm for PathToolFsmState {
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
 
-				tool_data.mouse_down(shape_editor, document, input, responses, extend_selection, lasso_select, handle_drag_from_anchor, drag_zero_handle)
+				tool_data.mouse_down(
+					shape_editor,
+					document,
+					input,
+					responses,
+					extend_selection,
+					lasso_select,
+					handle_drag_from_anchor,
+					drag_zero_handle,
+					tool_options.path_overlay_mode,
+				)
 			}
 			(
 				PathToolFsmState::Drawing { selection_shape },
@@ -1309,8 +1335,15 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// If there is a point nearby, then remove the overlay
+
 				if shape_editor
-					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+					.find_nearest_visible_point_indices(
+						&document.network_interface,
+						input.mouse.position,
+						tool_options.path_overlay_mode,
+						tool_data.frontier_handles_info.clone(),
+						SELECTION_THRESHOLD,
+					)
 					.is_some()
 				{
 					tool_data.segment = None;
@@ -1402,9 +1435,21 @@ impl Fsm for PathToolFsmState {
 					match selection_shape {
 						SelectionShapeType::Box => {
 							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
-							shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Box(bbox), selection_change);
+							shape_editor.select_all_in_shape(
+								&document.network_interface,
+								SelectionShape::Box(bbox),
+								selection_change,
+								tool_options.path_overlay_mode,
+								tool_data.frontier_handles_info.clone(),
+							);
 						}
-						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Lasso(&tool_data.lasso_polygon), selection_change),
+						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
+							&document.network_interface,
+							SelectionShape::Lasso(&tool_data.lasso_polygon),
+							selection_change,
+							tool_options.path_overlay_mode,
+							tool_data.frontier_handles_info.clone(),
+						),
 					}
 				}
 
@@ -1448,9 +1493,21 @@ impl Fsm for PathToolFsmState {
 					match selection_shape {
 						SelectionShapeType::Box => {
 							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
-							shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Box(bbox), select_kind);
+							shape_editor.select_all_in_shape(
+								&document.network_interface,
+								SelectionShape::Box(bbox),
+								select_kind,
+								tool_options.path_overlay_mode,
+								tool_data.frontier_handles_info.clone(),
+							);
 						}
-						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(&document.network_interface, SelectionShape::Lasso(&tool_data.lasso_polygon), select_kind),
+						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
+							&document.network_interface,
+							SelectionShape::Lasso(&tool_data.lasso_polygon),
+							select_kind,
+							tool_options.path_overlay_mode,
+							tool_data.frontier_handles_info.clone(),
+						),
 					}
 				}
 				responses.add(OverlaysMessage::Draw);
