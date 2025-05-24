@@ -379,6 +379,7 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
+	adjacent_anchor_offset: Option<DVec2>,
 }
 
 impl PathToolData {
@@ -726,18 +727,39 @@ impl PathToolData {
 	) -> f64 {
 		let current_angle = -handle_vector.angle_to(DVec2::X);
 
-		if let Some(vector_data) = shape_editor
+		if let Some((vector_data, layer)) = shape_editor
 			.selected_shape_state
 			.iter()
 			.next()
-			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer))
+			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer).map(|vector_data| (vector_data, layer)))
 		{
+			let adjacent_anchor = check_handle_over_adjacent_anchor(handle_id, &vector_data);
+			let mut required_angle = None;
+
+			// If the handle is dragged over one of its adjacent anchors while holding down the Ctrl key, compute the angle based on the tangent formed with the neighboring anchor points.
+			if adjacent_anchor.is_some() && lock_angle && !self.angle_locked {
+				let anchor = handle_id.get_anchor(&vector_data);
+				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector_data);
+
+				let layer_to_document = document.metadata().transform_to_document(*layer);
+
+				self.adjacent_anchor_offset = handle_id
+					.get_anchor_position(&vector_data)
+					.and_then(|handle_anchor| anchor_position.map(|adjacent_anchor| layer_to_document.transform_point2(adjacent_anchor) - layer_to_document.transform_point2(handle_anchor)));
+
+				required_angle = angle;
+			}
+
+			// If the handle is dragged near its adjacent anchors while holding down the Ctrl key, compute the angle using the tangent direction of neighboring segments.
 			if relative_vector.length() < 25. && lock_angle && !self.angle_locked {
-				if let Some(angle) = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id, tangent_to_neighboring_tangents) {
-					self.angle = angle;
-					self.angle_locked = true;
-					return angle;
-				}
+				required_angle = calculate_lock_angle(self, shape_editor, responses, document, &vector_data, handle_id, tangent_to_neighboring_tangents);
+			}
+
+			// Finalize and apply angle locking if a valid target angle was determined.
+			if let Some(angle) = required_angle {
+				self.angle = angle;
+				self.angle_locked = true;
+				return angle;
 			}
 		}
 
@@ -885,27 +907,36 @@ impl PathToolData {
 		let current_mouse = input.mouse.position;
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
-		let snapped_delta = if let Some((handle_pos, anchor_pos, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
-			let cursor_pos = handle_pos + raw_delta;
+		let snapped_delta = if let Some((handle_position, anchor_position, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
+			let cursor_position = handle_position + raw_delta;
 
 			let handle_angle = self.calculate_handle_angle(
 				shape_editor,
 				document,
 				responses,
-				handle_pos - anchor_pos,
-				cursor_pos - anchor_pos,
+				handle_position - anchor_position,
+				cursor_position - anchor_position,
 				handle_id,
 				lock_angle,
 				snap_angle,
 				equidistant,
 			);
 
+			let adjacent_anchor_offset = self.adjacent_anchor_offset.unwrap_or(DVec2::ZERO);
 			let constrained_direction = DVec2::new(handle_angle.cos(), handle_angle.sin());
-			let projected_length = (cursor_pos - anchor_pos).dot(constrained_direction);
-			let constrained_target = anchor_pos + constrained_direction * projected_length;
-			let constrained_delta = constrained_target - handle_pos;
+			let projected_length = (cursor_position - anchor_position - adjacent_anchor_offset).dot(constrained_direction);
+			let constrained_target = anchor_position + adjacent_anchor_offset + constrained_direction * projected_length;
+			let constrained_delta = constrained_target - handle_position;
 
-			self.apply_snapping(constrained_direction, handle_pos + constrained_delta, anchor_pos, lock_angle || snap_angle, handle_pos, document, input)
+			self.apply_snapping(
+				constrained_direction,
+				handle_position + constrained_delta,
+				anchor_position + adjacent_anchor_offset,
+				lock_angle || snap_angle,
+				handle_position,
+				document,
+				input,
+			)
 		} else {
 			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
 		};
@@ -1265,6 +1296,7 @@ impl Fsm for PathToolFsmState {
 
 				if !lock_angle_state {
 					tool_data.angle_locked = false;
+					tool_data.adjacent_anchor_offset = None;
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
@@ -1309,6 +1341,10 @@ impl Fsm for PathToolFsmState {
 
 				if !tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
 					tool_data.saved_points_before_anchor_convert_smooth_sharp.clear();
+				}
+
+				if tool_data.adjacent_anchor_offset.is_some() {
+					tool_data.adjacent_anchor_offset = None;
 				}
 
 				// If there is a point nearby, then remove the overlay
@@ -1880,5 +1916,84 @@ fn calculate_lock_angle(
 				(None, None) => None,
 			}
 		}
+	}
+}
+
+fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector_data: &VectorData) -> Option<PointId> {
+	let Some((anchor, handle_position)) = handle_id.get_anchor(&vector_data).zip(handle_id.get_position(vector_data)) else {
+		return None;
+	};
+
+	let check_if_close = |point_id: &PointId| {
+		let Some(anchor_position) = vector_data.point_domain.position_from_id(*point_id) else {
+			return false;
+		};
+		(anchor_position - handle_position).length() < 10.
+	};
+
+	vector_data.connected_points(anchor).find(|point| check_if_close(point))
+}
+fn calculate_adjacent_anchor_tangent(
+	currently_dragged_handle: ManipulatorPointId,
+	anchor: Option<PointId>,
+	adjacent_anchor: Option<PointId>,
+	vector_data: &VectorData,
+) -> (Option<f64>, Option<DVec2>) {
+	// Early return if no anchor or no adjacent anchors
+
+	let Some((dragged_handle_anchor, adjacent_anchor)) = anchor.zip(adjacent_anchor) else {
+		return (None, None);
+	};
+	let adjacent_anchor_position = vector_data.point_domain.position_from_id(adjacent_anchor);
+
+	let handles: Vec<_> = vector_data.all_connected(adjacent_anchor).filter(|handle| handle.length(vector_data) > 1e-6).collect();
+
+	match handles.len() {
+		0 => {
+			// Find non-shared segments
+			let non_shared_segment: Vec<_> = vector_data
+				.segment_bezier_iter()
+				.filter_map(|(segment_id, _, start, end)| {
+					let touches_adjacent = start == adjacent_anchor || end == adjacent_anchor;
+					let shares_with_dragged = start == dragged_handle_anchor || end == dragged_handle_anchor;
+
+					if touches_adjacent && !shares_with_dragged { Some(segment_id) } else { None }
+				})
+				.collect();
+
+			match non_shared_segment.first() {
+				Some(&segment) => {
+					let angle = calculate_segment_angle(adjacent_anchor, segment, vector_data, true);
+					(angle, adjacent_anchor_position)
+				}
+				None => (None, None),
+			}
+		}
+
+		1 => {
+			let segment = handles[0].segment;
+			let angle = calculate_segment_angle(adjacent_anchor, segment, vector_data, true);
+			(angle, adjacent_anchor_position)
+		}
+
+		2 => {
+			// Use the angle formed by the handle of the shared segment relative to its associated anchor point.
+			let Some(shared_segment_handle) = handles
+				.iter()
+				.find(|handle| handle.opposite().to_manipulator_point() == currently_dragged_handle)
+				.map(|handle| handle.to_manipulator_point())
+			else {
+				return (None, None);
+			};
+
+			let angle = shared_segment_handle
+				.get_position(&vector_data)
+				.zip(adjacent_anchor_position)
+				.map(|(handle, anchor)| -(handle - anchor).angle_to(DVec2::X));
+
+			(angle, adjacent_anchor_position)
+		}
+
+		_ => (None, None),
 	}
 }
