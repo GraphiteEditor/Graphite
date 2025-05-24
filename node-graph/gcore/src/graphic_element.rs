@@ -219,7 +219,8 @@ impl GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
 				let style = &instance_data.instance.style;
-				is_fill_opaque(&style.fill()) && style.stroke().map_or(true, |s| is_stroke_opaque(&s))
+				let alpha_blending = &instance_data.alpha_blending;
+				(alpha_blending.opacity > 1. - f32::EPSILON) && is_fill_opaque(&style.fill()) && style.stroke().map_or(true, |s| is_stroke_opaque(&s))
 			}),
 			_ => false,
 		}
