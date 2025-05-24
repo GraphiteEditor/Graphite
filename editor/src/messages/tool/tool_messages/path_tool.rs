@@ -383,6 +383,7 @@ struct PathToolData {
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
 	molding_info: Option<(DVec2, DVec2)>,
+	molding_segment: bool,
 }
 
 impl PathToolData {
@@ -1320,6 +1321,10 @@ impl Fsm for PathToolFsmState {
 				},
 			) => {
 
+				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					tool_data.molding_segment = true;
+				}
+
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment {
 					if let Some(molding_segment_handles) = tool_data.molding_info {
@@ -1499,7 +1504,7 @@ impl Fsm for PathToolFsmState {
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 
 				if let Some(segment) = &mut tool_data.segment {
-					if !drag_occurred {
+					if !drag_occurred && !tool_data.molding_segment {
 						if tool_data.delete_segment_pressed {
 							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
@@ -1514,6 +1519,7 @@ impl Fsm for PathToolFsmState {
 					}
 					tool_data.segment = None;
 					tool_data.molding_info = None;
+					tool_data.molding_segment = false;
 					return PathToolFsmState::Ready;
 				}
 
