@@ -1,7 +1,7 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, MOLDING_FALLOFF, SEGMENT_INSERTION_DISTANCE,
 	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -306,6 +306,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick,
 			),
+			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
+				PointerMove,
+				DragStop,
+				RightClick,
+			),
 		}
 	}
 }
@@ -342,6 +347,7 @@ enum PathToolFsmState {
 	Drawing {
 		selection_shape: SelectionShapeType,
 	},
+	MoldingSegment,
 }
 
 #[derive(Default)]
@@ -379,6 +385,8 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
+	molding_info: Option<(DVec2, DVec2)>,
+	molding_segment: bool,
 	adjacent_anchor_offset: Option<DVec2>,
 }
 
@@ -543,19 +551,17 @@ impl PathToolData {
 		else if let Some(closed_segment) = &mut self.segment {
 			responses.add(DocumentMessage::StartTransaction);
 
-			if self.delete_segment_pressed {
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
-					shape_editor.dissolve_segment(responses, closed_segment.layer(), &vector_data, closed_segment.segment(), closed_segment.points());
-					responses.add(DocumentMessage::EndTransaction);
+			// Calculating and storing handle positions
+			let handle1 = ManipulatorPointId::PrimaryHandle(closed_segment.segment());
+			let handle2 = ManipulatorPointId::EndHandle(closed_segment.segment());
+
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
+				if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
+					self.molding_info = Some((pos1, pos2))
 				}
-			} else {
-				closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
-				responses.add(DocumentMessage::EndTransaction);
 			}
 
-			self.segment = None;
-
-			PathToolFsmState::Ready
+			PathToolFsmState::MoldingSegment
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
@@ -1169,6 +1175,7 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 					}
+					Self::MoldingSegment => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -1336,6 +1343,39 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
+			(
+				PathToolFsmState::MoldingSegment,
+				PathToolMessage::PointerMove {
+					// equidistant,
+					// toggle_colinear,
+					// move_anchor_with_handles,
+					// snap_angle,
+					// lock_angle,
+					// delete_segment,
+					..
+				},
+			) => {
+
+				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					tool_data.molding_segment = true;
+				}
+
+				// Logic for molding segment
+				if let Some(segment) = &mut tool_data.segment {
+					if let Some(molding_segment_handles) = tool_data.molding_info {
+						segment.mold_handle_positions(
+							&document,
+							responses,
+							molding_segment_handles.0,
+							molding_segment_handles.1,
+							input.mouse.position,
+							MOLDING_FALLOFF,
+						);
+					}
+				}
+
+				PathToolFsmState::MoldingSegment
+			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
 
@@ -1501,6 +1541,26 @@ impl Fsm for PathToolFsmState {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+
+				if let Some(segment) = &mut tool_data.segment {
+					if !drag_occurred && !tool_data.molding_segment {
+						if tool_data.delete_segment_pressed {
+							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
+								responses.add(DocumentMessage::EndTransaction);
+							}
+						} else {
+							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
+							responses.add(DocumentMessage::EndTransaction);
+						}
+					} else {
+						responses.add(DocumentMessage::EndTransaction);
+					}
+					tool_data.segment = None;
+					tool_data.molding_info = None;
+					tool_data.molding_segment = false;
+					return PathToolFsmState::Ready;
+				}
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if !drag_occurred && extend_selection {
@@ -1768,6 +1828,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 				]),
 			]),
+			PathToolFsmState::MoldingSegment => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold segment")])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

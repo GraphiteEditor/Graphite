@@ -274,6 +274,52 @@ impl ClosestSegment {
 		.unwrap_or(DVec2::ZERO);
 		tangent.perp()
 	}
+
+	// Molding the bezier curve
+	pub fn mold_handle_positions(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, c1: DVec2, c2: DVec2, new_b: DVec2, falloff: f64) {
+		let t = self.t;
+
+		let transform = document.metadata().transform_to_viewport(self.layer);
+		let new_b = transform.inverse().transform_point2(new_b);
+
+		let (nc1, nc2) = self.bezier.molded_control_points(t, falloff, new_b, c1, c2);
+
+		let start = self.bezier.start;
+		let end = self.bezier.end;
+
+		let handle1 = HandleId::primary(self.segment);
+		let handle2 = HandleId::end(self.segment);
+		let layer = self.layer;
+
+		let modification_type = handle1.set_relative_position(nc1 - start);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		let modification_type = handle2.set_relative_position(nc2 - end);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// If adjacent segments have colinear handles, their direction is changed but their handle lengths is preserved
+		// TODO: Find something which is more appropriate
+		if let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) {
+			if let Some(other_handle1) = vector_data.other_colinear_handle(handle1) {
+				// Now we need to direct this so that colinearity is maintained
+				let handle_position = other_handle1.to_manipulator_point().get_position(&vector_data).unwrap();
+				if let Some(other_direction) = (start - nc1).try_normalize() {
+					let new_relative_position = (handle_position - start).length() * other_direction;
+					let modification_type = other_handle1.set_relative_position(new_relative_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			};
+			if let Some(other_handle2) = vector_data.other_colinear_handle(handle2) {
+				// Now we need to direct this so that colinearity is maintained
+				let handle_position = other_handle2.to_manipulator_point().get_position(&vector_data).unwrap();
+				if let Some(other_direction) = (end - nc2).try_normalize() {
+					let new_relative_position = (handle_position - end).length() * other_direction;
+					let modification_type = other_handle2.set_relative_position(new_relative_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			};
+		}
+	}
 }
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
