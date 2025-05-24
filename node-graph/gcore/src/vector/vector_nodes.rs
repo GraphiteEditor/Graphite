@@ -230,11 +230,18 @@ where
 	for index in 0..instances {
 		let angle = index as f64 * angle / total;
 		let translation = index as f64 * direction / total;
+		let pitch = DAffine2::from_translation(translation) * DAffine2::from_angle(angle);
 		let transform = match spacing {
-			Spacing::Span => DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center),
-			Spacing::Envelope => todo!(),
-			Spacing::Pitch => todo!(),
-			Spacing::Gap => todo!(),
+			Spacing::Span => DAffine2::from_translation(center) * pitch * DAffine2::from_translation(-center),
+			Spacing::Envelope => {
+				let width = (bounding_box[1].x - bounding_box[0].x).abs() * index as f64;
+				DAffine2::from_translation(center) * DAffine2::from_translation(DVec2::new(width, 0.)) * pitch * DAffine2::from_translation(-center)
+			}
+			Spacing::Pitch => pitch,
+			Spacing::Gap => {
+				let width = (bounding_box[1].x - bounding_box[0].x).abs() * index as f64;
+				pitch * DAffine2::from_translation(DVec2::new(width, 0.))
+			}
 		};
 
 		result_table.push(Instance {
