@@ -339,6 +339,7 @@
 // 						resolution_index,
 // 					))
 // 					.on_commit(commit_value)
+// 					.for_label(checkbox_id.clone())
 // 					.widget_holder(),
 // 				Separator::new(SeparatorType::Related).widget_holder(),
 // 				NumberInput::new(Some(vec2.x))
@@ -438,7 +439,7 @@
 // 		LayoutGroup::Row { widgets }.with_tooltip("A negative text prompt can be used to list things like objects or colors to avoid")
 // 	};
 // 	let base_image = {
-// 		let widgets = bool_widget(document_node, node_id, base_img_index, "Adapt Input Image", CheckboxInput::default(), true);
+// 		let widgets = bool_widget(document_node, node_id, base_img_index, "Adapt Input Image", CheckboxInput::default().for_label(checkbox_id.clone()), true);
 // 		LayoutGroup::Row { widgets }.with_tooltip("Generate an image based upon the bitmap data plugged into this node")
 // 	};
 // 	let image_creativity = {
@@ -529,7 +530,7 @@
 // 	// }
 
 // 	let improve_faces = {
-// 		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces", CheckboxInput::default(), true);
+// 		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces", CheckboxInput::default().for_label(checkbox_id.clone()), true);
 // 		LayoutGroup::Row { widgets }.with_tooltip(
 // 			"Postprocess human (or human-like) faces to look subtly less distorted.\n\
 // 			\n\
@@ -537,7 +538,7 @@
 // 		)
 // 	};
 // 	let tiling = {
-// 		let widgets = bool_widget(document_node, node_id, tiling_index, "Tiling", CheckboxInput::default(), true);
+// 		let widgets = bool_widget(document_node, node_id, tiling_index, "Tiling", CheckboxInput::default().for_label(checkbox_id.clone()), true);
 // 		LayoutGroup::Row { widgets }.with_tooltip("Generate the image so its edges loop seamlessly to make repeatable patterns or textures")
 // 	};
 // 	layout.extend_from_slice(&[improve_faces, tiling]);
