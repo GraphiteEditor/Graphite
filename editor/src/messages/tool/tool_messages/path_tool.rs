@@ -461,7 +461,7 @@ impl PathToolData {
 		let old_selection = shape_editor.selected_points().cloned().collect::<Vec<_>>();
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
-		// Here we don't want to select the points which are not shown currently in overlays (depending upon current tool mode)
+		// Don't select the points which are not shown currently in PathOverlayMode
 		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(
 			&document.network_interface,
 			input.mouse.position,
@@ -1064,7 +1064,7 @@ impl Fsm for PathToolFsmState {
 									if attached_segments.len() == 1 {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 									}
-									//This is for edge case of a loop where a point rather not selected can be art of two segments
+									// This is for edge case of a loop where a point rather not selected can be part of two segments
 									else if !selected_anchors.contains(&point) {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 										segment_endpoints.entry(attached_segments[1]).or_default().push(point);

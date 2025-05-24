@@ -1029,7 +1029,7 @@ impl ShapeState {
 		}
 	}
 
-	/// The opposing handle lengths.vector_data
+	/// The opposing handle lengths.
 	pub fn opposing_handle_lengths(&self, document: &DocumentMessageHandler) -> OpposingHandleLengths {
 		self.selected_shape_state
 			.iter()
@@ -1369,7 +1369,7 @@ impl ShapeState {
 		None
 	}
 
-	// Function to check whether current point is visible in the current overlay mode or not
+	// Function to check whether current point is visible in the current overlay mode
 	pub fn is_visible_point(
 		&self,
 		manipulator_point_id: ManipulatorPointId,
@@ -1389,7 +1389,6 @@ impl ShapeState {
 						return true;
 					}
 					PathOverlayMode::SelectedPointHandles => {
-						//TODO: Here consider the handles the opposite handle of which is selected
 						// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
 						if let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) {
 							let other_handle = handle_pair[1].to_manipulator_point();
