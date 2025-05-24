@@ -1851,11 +1851,6 @@ impl NodeGraphMessageHandler {
 			//
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			//
-			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
 			IconButton::new("Folder", 24)
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
@@ -1864,6 +1859,11 @@ impl NodeGraphMessageHandler {
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip("Delete Selected")
