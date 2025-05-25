@@ -258,9 +258,13 @@ where
 						* DAffine2::from_translation(-center)
 				}
 			}
-			Spacing::Pitch => DAffine2::from_translation(center) * DAffine2::from_translation(translation) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center),
+			Spacing::Pitch => DAffine2::from_translation(center) * DAffine2::from_translation(index as f64 * direction) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center),
 			Spacing::Gap => {
-				DAffine2::from_translation(center) * DAffine2::from_scale(size).inverse() * DAffine2::from_translation(translation) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center)
+				DAffine2::from_translation(center)
+					* DAffine2::from_translation(index as f64 * exact_size)
+					* DAffine2::from_translation(index as f64 * direction)
+					* DAffine2::from_angle(angle)
+					* DAffine2::from_translation(-center)
 			}
 		};
 
