@@ -1418,48 +1418,51 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 }
 
 #[node_macro::node(name("Spline"), category("Vector"), path(graphene_core::vector))]
-async fn spline(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
-	let original_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_mut().instance;
+async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
+	let mut result_table = VectorDataTable::empty();
 
-	// Exit early if there are no points to generate splines from.
-	if vector_data.point_domain.positions().is_empty() {
-		return VectorDataTable::new(VectorData::empty());
-	}
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let original_transform = vector_data_instance.transform;
 
-	let mut segment_domain = SegmentDomain::default();
-	for subpath in vector_data.stroke_bezier_paths() {
-		let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
-		let closed = subpath.closed() && positions.len() > 2;
-
-		// Compute control point handles for Bezier spline.
-		let first_handles = if closed {
-			bezier_rs::solve_spline_first_handle_closed(&positions)
-		} else {
-			bezier_rs::solve_spline_first_handle_open(&positions)
-		};
-
-		let stroke_id = StrokeId::ZERO;
-
-		// Create segments with computed Bezier handles and add them to vector data.
-		for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
-			let next_index = (i + 1) % positions.len();
-
-			let start_index = vector_data.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();
-			let end_index = vector_data.point_domain.resolve_id(subpath.manipulator_groups()[next_index].id).unwrap();
-
-			let handle_start = first_handles[i];
-			let handle_end = positions[next_index] * 2. - first_handles[next_index];
-			let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
-
-			segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+		// Exit early if there are no points to generate splines from.
+		if vector_data_instance.instance.point_domain.positions().is_empty() {
+			return VectorDataTable::new(VectorData::empty());
 		}
-	}
-	vector_data.segment_domain = segment_domain;
 
-	let mut result = VectorDataTable::new(vector_data.clone());
-	*result.transform_mut() = original_transform;
-	result
+		let mut segment_domain = SegmentDomain::default();
+		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
+			let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
+			let closed = subpath.closed() && positions.len() > 2;
+
+			// Compute control point handles for Bezier spline.
+			let first_handles = if closed {
+				bezier_rs::solve_spline_first_handle_closed(&positions)
+			} else {
+				bezier_rs::solve_spline_first_handle_open(&positions)
+			};
+
+			let stroke_id = StrokeId::ZERO;
+
+			// Create segments with computed Bezier handles and add them to vector data.
+			for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
+				let next_index = (i + 1) % positions.len();
+
+				let start_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();
+				let end_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[next_index].id).unwrap();
+
+				let handle_start = first_handles[i];
+				let handle_end = positions[next_index] * 2. - first_handles[next_index];
+				let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+
+				segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+			}
+		}
+		vector_data_instance.instance.segment_domain = segment_domain;
+		vector_data_instance.transform = original_transform;
+		result_table.push(vector_data_instance);
+	}
+
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
