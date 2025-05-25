@@ -476,7 +476,14 @@ impl PathToolData {
 			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
 			// Otherwise, select the first point within the threshold.
 			if !(already_selected && extend_selection) {
-				if let Some(updated_selection_info) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, extend_selection) {
+				if let Some(updated_selection_info) = shape_editor.change_point_selection(
+					&document.network_interface,
+					input.mouse.position,
+					SELECTION_THRESHOLD,
+					extend_selection,
+					path_overlay_mode,
+					self.frontier_handles_info.clone(),
+				) {
 					selection_info = updated_selection_info;
 				}
 			}
@@ -1518,7 +1525,14 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
-				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
+				//TODO: Here only visible points should be considered
+				let nearest_point = shape_editor.find_nearest_visible_point_indices(
+					&document.network_interface,
+					input.mouse.position,
+					tool_options.path_overlay_mode,
+					tool_data.frontier_handles_info.clone(),
+					SELECTION_THRESHOLD,
+				);
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if !drag_occurred && extend_selection {

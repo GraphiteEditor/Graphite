@@ -1,6 +1,7 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
+use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
@@ -92,4 +93,61 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	};
 
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
+}
+
+// Function to check whether a point is visible in the current overlay mode
+pub fn is_visible_point(
+	manipulator_point_id: ManipulatorPointId,
+	vector_data: &VectorData,
+	path_overlay_mode: PathOverlayMode,
+	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	selected_segments: Vec<SegmentId>,
+	selected_points: &HashSet<ManipulatorPointId>,
+) -> bool {
+	match manipulator_point_id {
+		ManipulatorPointId::Anchor(_) => {
+			return true;
+		}
+		ManipulatorPointId::EndHandle(segment_id) | ManipulatorPointId::PrimaryHandle(segment_id) => {
+			match path_overlay_mode {
+				PathOverlayMode::AllHandles => {
+					return true;
+				}
+				PathOverlayMode::SelectedPointHandles => {
+					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
+					if let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) {
+						let other_handle = handle_pair[1].to_manipulator_point();
+						let selected_points_contains_other = selected_points.contains(&other_handle);
+						return selected_segments.contains(&segment_id) || selected_points_contains_other;
+					} else {
+						return selected_segments.contains(&segment_id);
+					}
+				}
+				PathOverlayMode::FrontierHandles => {
+					if selected_points.len() == 1 {
+						if let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) {
+							let other_handle = handle_pair[1].to_manipulator_point();
+							let selected_points_contains_other = selected_points.contains(&other_handle);
+							return selected_segments.contains(&segment_id) || selected_points_contains_other;
+						} else {
+							return selected_segments.contains(&segment_id);
+						}
+					} else {
+						let Some(anchor) = manipulator_point_id.get_anchor(&vector_data) else {
+							panic!("No anchor for selected handle")
+						};
+						if let Some(frontier_handles) = &frontier_handles_info {
+							if let Some(anchors) = frontier_handles.get(&segment_id) {
+								return anchors.contains(&anchor);
+							} else {
+								return false;
+							}
+						} else {
+							panic!("No frontier handles info provided")
+						}
+					}
+				}
+			}
+		}
+	}
 }
