@@ -79,7 +79,11 @@ mod test {
 			}
 		};
 
-		println!("{}{}{} {}", prefix, branch, tree.name(), tree.path());
+		if tree.path().is_empty() {
+			println!("{}{}{}", prefix, branch, tree.name());
+		} else {
+			println!("{}{}{} {}", prefix, branch, tree.name(), tree.path());
+		}
 
 		// Print children if any
 		if let Some(variants) = tree.variants() {

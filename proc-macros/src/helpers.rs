@@ -72,6 +72,19 @@ pub fn clean_rust_type_syntax(input: String) -> String {
 					chars.next();
 				}
 			}
+			':' => {
+				if let Some(':') = chars.peek() {
+					while let Some(' ') = result.chars().rev().next() {
+						result.pop();
+					}
+				}
+				result.push(':');
+				chars.next();
+				result.push(':');
+				while let Some(' ') = chars.peek() {
+					chars.next();
+				}
+			}
 			_ => {
 				result.push(c);
 			}
