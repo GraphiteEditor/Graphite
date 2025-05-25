@@ -6,8 +6,8 @@ use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
 use graphene_core::{Color, Ctx, GraphicElement, GraphicGroupTable};
-pub use path_bool as path_bool_lib;
-use path_bool::{FillRule, PathBooleanOperation};
+pub use kurbo;
+use linesweeper::{BinaryOp, FillRule};
 use std::ops::Mul;
 
 #[node_macro::node(category(""))]
@@ -211,36 +211,34 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 	result_vector_data_table
 }
 
-fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {
-	let mut path = Vec::new();
+fn to_path(vector: &VectorData, transform: DAffine2) -> kurbo::BezPath {
+	let mut path = kurbo::BezPath::new();
 	for subpath in vector.stroke_bezier_paths() {
 		to_path_segments(&mut path, &subpath, transform);
 	}
 	path
 }
 
-fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
-	use path_bool::PathSegment;
-	let mut global_start = None;
-	let mut global_end = DVec2::ZERO;
+fn to_path_segments(path: &mut kurbo::BezPath, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
+	let kp = |dv: DVec2| -> kurbo::Point { (dv.x, dv.y).into() };
+	let mut first = true;
 	for bezier in subpath.iter() {
 		const EPS: f64 = 1e-8;
 		let transformed = bezier.apply_transformation(|pos| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS));
 		let start = transformed.start;
 		let end = transformed.end;
-		if global_start.is_none() {
-			global_start = Some(start);
+		if first {
+			first = false;
+			path.move_to(kp(start));
 		}
-		global_end = end;
-		let segment = match transformed.handles {
-			bezier_rs::BezierHandles::Linear => PathSegment::Line(start, end),
-			bezier_rs::BezierHandles::Quadratic { handle } => PathSegment::Quadratic(start, handle, end),
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => PathSegment::Cubic(start, handle_start, handle_end, end),
+		match transformed.handles {
+			bezier_rs::BezierHandles::Linear => path.line_to(kp(end)),
+			bezier_rs::BezierHandles::Quadratic { handle } => path.quad_to(kp(handle), kp(end)),
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path.curve_to(kp(handle_start), kp(handle_end), kp(end)),
 		};
-		path.push(segment);
 	}
-	if let Some(start) = global_start {
-		path.push(PathSegment::Line(global_end, start));
+	if !first {
+		path.close_path();
 	}
 }
 
@@ -254,7 +252,14 @@ fn from_path(path_data: &[Path]) -> VectorData {
 	let mut all_subpaths = Vec::new();
 
 	for path in path_data.iter().filter(|path| !path.is_empty()) {
-		let cubics: Vec<[DVec2; 4]> = path.iter().map(|segment| segment.to_cubic()).collect();
+		let cubics: Vec<[DVec2; 4]> = path
+			.segments()
+			.map(|segment| {
+				let dv = |p: kurbo::Point| -> DVec2 { DVec2::new(p.x, p.y) };
+				let c = segment.to_cubic();
+				[dv(c.p0), dv(c.p1), dv(c.p2), dv(c.p3)]
+			})
+			.collect();
 		let mut groups = Vec::new();
 		let mut current_start = None;
 
@@ -335,28 +340,27 @@ pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	subpaths
 }
 
-type Path = Vec<path_bool::PathSegment>;
+type Path = kurbo::BezPath;
 
 fn boolean_union(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Union)
+	path_bool(a, b, BinaryOp::Union)
 }
 
-fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
-	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
-		Ok(results) => results,
+fn path_bool(a: Path, b: Path, op: BinaryOp) -> Vec<Path> {
+	log::warn!("bool op! {:?} {:?} {op:?}", a.to_svg(), b.to_svg());
+	match linesweeper::binary_op(&a, &b, FillRule::NonZero, op) {
+		Ok(contours) => contours.contours().map(|c| c.path.clone()).collect(),
 		Err(e) => {
-			let a_path = path_bool::path_to_path_data(&a, 0.001);
-			let b_path = path_bool::path_to_path_data(&b, 0.001);
-			log::error!("Boolean error {e:?} encountered while processing {a_path}\n {op:?}\n {b_path}");
+			log::error!("Boolean error {e:?} encountered while processing paths");
 			Vec::new()
 		}
 	}
 }
 
 fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Difference)
+	path_bool(a, b, BinaryOp::Difference)
 }
 
 pub fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Intersection)
+	path_bool(a, b, BinaryOp::Intersection)
 }

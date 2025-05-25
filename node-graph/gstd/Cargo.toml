@@ -43,6 +43,8 @@ node-macro = { workspace = true }
 rustc-hash = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
+kurbo = { workspace = true }
+linesweeper = { workspace = true, features = ["slow-asserts"] }
 futures = { workspace = true }
 wgpu-types = { workspace = true }
 winit = { workspace = true }

@@ -33,7 +33,7 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::vector::style::ViewMode;
 use graphene_std::renderer::{ClickTarget, Quad};
-use graphene_std::vector::{PointId, path_bool_lib};
+use graphene_std::vector::{PointId, kurbo};
 use std::time::Duration;
 
 pub struct DocumentMessageData<'a> {
@@ -2847,7 +2847,7 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 enum XRayTarget {
 	Point(DVec2),
 	Quad(Quad),
-	Path(Vec<path_bool_lib::PathSegment>),
+	Path(kurbo::BezPath),
 	Polygon(Subpath<PointId>),
 }
 
@@ -2865,20 +2865,38 @@ pub struct ClickXRayIter<'a> {
 	parent_targets: Vec<(LayerNodeIdentifier, XRayTarget)>,
 }
 
-fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
-	quad.all_edges().into_iter().map(|[start, end]| path_bool_lib::PathSegment::Line(start, end)).collect()
+fn quad_to_path_lib_segments(quad: Quad) -> kurbo::BezPath {
+	let kp = |dv: DVec2| -> kurbo::Point { (dv.x, dv.y).into() };
+	let mut ret = kurbo::BezPath::new();
+	for [start, end] in quad.all_edges().into_iter() {
+		if ret.is_empty() {
+			ret.move_to(kp(start));
+		}
+		ret.line_to(kp(end));
+	}
+	ret
 }
 
-fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bezier: bezier_rs::Bezier| match bezier.handles {
-		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bezier.start, bezier.end),
-		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bezier.start, handle, bezier.end),
-		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
+fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> kurbo::BezPath {
+	let mut ret = kurbo::BezPath::new();
+	let mut add_segment = |bezier: bezier_rs::Bezier| {
+		let kp = |dv: DVec2| -> kurbo::Point { (dv.x, dv.y).into() };
+		if ret.is_empty() {
+			ret.move_to(kp(bezier.start));
+		}
+		match bezier.handles {
+			bezier_rs::BezierHandles::Linear => ret.line_to(kp(bezier.end)),
+			bezier_rs::BezierHandles::Quadratic { handle } => ret.quad_to(kp(handle), kp(bezier.end)),
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => ret.curve_to(kp(handle_start), kp(handle_end), kp(bezier.end)),
+		}
 	};
-	click_targets
+	for seg in click_targets
 		.flat_map(|target| target.subpath().iter())
-		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
-		.collect()
+		.map(|bezier| bezier.apply_transformation(|x| transform.transform_point2(x)))
+	{
+		add_segment(seg);
+	}
+	ret
 }
 
 impl<'a> ClickXRayIter<'a> {
@@ -2899,15 +2917,15 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
+	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: kurbo::BezPath, transform: DAffine2) -> XRayResult {
 		// Convert back to Bezier-rs types for intersections
-		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
-			path_bool_lib::PathSegment::Line(start, end) => bezier_rs::Bezier::from_linear_dvec2(start, end),
-			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => bezier_rs::Bezier::from_cubic_dvec2(start, h1, h2, end),
-			path_bool_lib::PathSegment::Quadratic(start, h1, end) => bezier_rs::Bezier::from_quadratic_dvec2(start, h1, end),
-			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
+		let dv = |p: kurbo::Point| -> DVec2 { DVec2::new(p.x, p.y) };
+		let segment = |bezier: kurbo::PathSeg| match bezier {
+			kurbo::PathSeg::Line(line) => bezier_rs::Bezier::from_linear_dvec2(dv(line.p0), dv(line.p1)),
+			kurbo::PathSeg::Quad(q) => bezier_rs::Bezier::from_quadratic_dvec2(dv(q.p0), dv(q.p1), dv(q.p2)),
+			kurbo::PathSeg::Cubic(c) => bezier_rs::Bezier::from_cubic_dvec2(dv(c.p0), dv(c.p1), dv(c.p2), dv(c.p3)),
 		};
-		let get_clip = || path.iter().map(segment);
+		let get_clip = || path.segments().map(segment);
 
 		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
 		let clicked = intersects;
@@ -2917,7 +2935,7 @@ impl<'a> ClickXRayIter<'a> {
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
 			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
-			let subtracted = graphene_std::vector::boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
+			let subtracted = graphene_std::vector::boolean_intersect(path, clip_path).into_iter().flatten().collect::<kurbo::BezPath>();
 			if subtracted.is_empty() {
 				use_children = false;
 			} else {
@@ -2953,8 +2971,15 @@ impl<'a> ClickXRayIter<'a> {
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 			XRayTarget::Polygon(polygon) => {
-				let polygon = polygon.iter_closed().map(|line| path_bool_lib::PathSegment::Line(line.start, line.end)).collect();
-				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
+				let mut path = kurbo::BezPath::new();
+				let kp = |dv: DVec2| -> kurbo::Point { (dv.x, dv.y).into() };
+				for line in polygon.iter_closed() {
+					if path.is_empty() {
+						path.move_to(kp(line.start));
+					}
+					path.line_to(kp(line.end));
+				}
+				self.check_layer_area_target(click_targets, clip, layer, path, transform)
 			}
 		}
 	}
