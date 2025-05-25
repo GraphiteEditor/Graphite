@@ -155,7 +155,7 @@
 			&.disabled {
 				background: var(--color-2-mildblack);
 
-				span {
+				.text-label {
 					color: var(--color-8-uppergray);
 				}
 

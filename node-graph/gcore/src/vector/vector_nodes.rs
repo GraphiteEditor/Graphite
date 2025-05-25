@@ -560,9 +560,9 @@ async fn spatial_merge_by_distance(
 ) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for vector_data in vector_data.instance_ref_iter() {
-		let vector_data_transform = *vector_data.transform;
-		let vector_data = vector_data.instance;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let vector_data_transform = vector_data_instance.transform;
+		let vector_data = vector_data_instance.instance;
 
 		let point_count = vector_data.point_domain.positions().len();
 
@@ -676,12 +676,9 @@ async fn spatial_merge_by_distance(
 		result.segment_domain = new_segment_domain;
 
 		// Create and return the result
-		result_table.push(Instance {
-			instance: result,
-			transform: vector_data_transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		vector_data_instance.instance = result;
+		vector_data_instance.source_node_id = None;
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -695,9 +692,9 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 
 	let mut result_table = VectorDataTable::empty();
 
-	for vector_data in vector_data.instance_ref_iter() {
-		let vector_data_transform = *vector_data.transform;
-		let vector_data = vector_data.instance;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let vector_data_transform = vector_data_instance.transform;
+		let vector_data = vector_data_instance.instance;
 
 		// Get the bounding box of the source vector data
 		let source_bbox = vector_data.bounding_box_with_transform(vector_data_transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
@@ -755,12 +752,10 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Add this to the table and reset the transform since we've applied it directly to the points
-		result_table.push(Instance {
-			instance: result,
-			transform: DAffine2::IDENTITY,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		vector_data_instance.instance = result;
+		vector_data_instance.transform = DAffine2::IDENTITY;
+		vector_data_instance.source_node_id = None;
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -787,9 +782,8 @@ async fn remove_handles(
 ) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for vector_data in vector_data.instance_iter() {
-		let vector_data_transform = vector_data.transform;
-		let mut vector_data = vector_data.instance;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let mut vector_data = vector_data_instance.instance;
 
 		for (_, handles, start, end) in vector_data.segment_domain.handles_mut() {
 			// Only convert to linear if handles are within the threshold distance
@@ -821,12 +815,9 @@ async fn remove_handles(
 			}
 		}
 
-		result_table.push(Instance {
-			instance: vector_data,
-			transform: vector_data_transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		vector_data_instance.instance = vector_data;
+		vector_data_instance.source_node_id = None;
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -1039,9 +1030,8 @@ async fn generate_handles(
 async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for vector_data in vector_data.instance_ref_iter() {
-		let vector_data_transform = *vector_data.transform;
-		let vector_data = vector_data.instance;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let vector_data = vector_data_instance.instance;
 
 		let mut result = vector_data
 			.bounding_box_rect()
@@ -1055,12 +1045,9 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 		result.style = vector_data.style.clone();
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 
-		result_table.push(Instance {
-			instance: result,
-			transform: vector_data_transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		vector_data_instance.instance = result;
+		vector_data_instance.source_node_id = None;
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -1080,9 +1067,9 @@ async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for vector_data in vector_data.instance_ref_iter() {
-		let vector_data_transform = *vector_data.transform;
-		let vector_data = vector_data.instance;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let vector_data_transform = vector_data_instance.transform;
+		let vector_data = vector_data_instance.instance;
 
 		let subpaths = vector_data.stroke_bezier_paths();
 		let mut result = VectorData::empty();
@@ -1110,12 +1097,9 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 			result.append_subpath(subpath_out, false);
 		}
 
-		result_table.push(Instance {
-			instance: result,
-			transform: vector_data_transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		vector_data_instance.instance = result;
+		vector_data_instance.source_node_id = None;
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -1125,9 +1109,8 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for vector_data in vector_data.instance_ref_iter() {
-		let vector_data_transform = *vector_data.transform;
-		let vector_data = vector_data.instance;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let vector_data = vector_data_instance.instance;
 
 		let stroke = vector_data.style.stroke().clone().unwrap_or_default();
 		let bezpaths = vector_data.stroke_bezpath_iter();
@@ -1170,12 +1153,9 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 			result.style.set_stroke(Stroke::default());
 		}
 
-		result_table.push(Instance {
-			instance: result,
-			transform: vector_data_transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		vector_data_instance.instance = result;
+		vector_data_instance.source_node_id = None;
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -1232,48 +1212,58 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	// Limit the smallest spacing to something sensible to avoid freezing the application.
 	let spacing = spacing.max(0.01);
 
-	let vector_data_transform = vector_data.transform();
+	let mut result_table = VectorDataTable::empty();
 
-	// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
-	// So we can index into `subpath_segment_lengths` to get the length of the segments.
-	// NOTE: `subpath_segment_lengths` has precalulated lengths with transformation applied.
-	let bezpaths = vector_data.one_instance_ref().instance.stroke_bezpath_iter();
-
-	// Initialize the result VectorData with the same transformation as the input.
-	let mut result = VectorDataTable::default();
-	*result.transform_mut() = vector_data_transform;
-
-	// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
-	let mut next_segment_index = 0;
-
-	for mut bezpath in bezpaths {
-		// Apply the tranformation to the current bezpath to calculate points after transformation.
-		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-
-		let segment_count = bezpath.segments().count();
-
-		// For the current bezpath we get its segment's length by calculating the start index and end index.
-		let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
-
-		// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
-		next_segment_index += segment_count;
-
-		let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
-			continue;
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let mut result = VectorData {
+			point_domain: Default::default(),
+			segment_domain: Default::default(),
+			region_domain: Default::default(),
+			colinear_manipulators: Default::default(),
+			style: std::mem::take(&mut vector_data_instance.instance.style),
+			upstream_graphic_group: std::mem::take(&mut vector_data_instance.instance.upstream_graphic_group),
 		};
 
-		// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
-		sample_bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()).inverse());
+		// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
+		// So we can index into `subpath_segment_lengths` to get the length of the segments.
+		// NOTE: `subpath_segment_lengths` has precalulated lengths with transformation applied.
+		let bezpaths = vector_data_instance.instance.stroke_bezpath_iter();
 
-		// Append the bezpath (subpath) that connects generated points by lines.
-		result.one_instance_mut().instance.append_bezpath(sample_bezpath);
+		// Keeps track of the index of the first segment of the next bezpath in order to get lengths of all segments.
+		let mut next_segment_index = 0;
+
+		for mut bezpath in bezpaths {
+			// Apply the tranformation to the current bezpath to calculate points after transformation.
+			bezpath.apply_affine(Affine::new(vector_data_instance.transform.to_cols_array()));
+
+			let segment_count = bezpath.segments().count();
+
+			// For the current bezpath we get its segment's length by calculating the start index and end index.
+			let current_bezpath_segments_length = &subpath_segment_lengths[next_segment_index..next_segment_index + segment_count];
+
+			// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
+			next_segment_index += segment_count;
+
+			let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
+				continue;
+			};
+
+			// Reverse the transformation applied to the bezpath as the `result` already has the transformation set.
+			sample_bezpath.apply_affine(Affine::new(vector_data_instance.transform.to_cols_array()).inverse());
+
+			// Append the bezpath (subpath) that connects generated points by lines.
+			result.append_bezpath(sample_bezpath);
+		}
+
+		// Transfer the style from the input vector data to the result.
+		result.style = vector_data_instance.instance.style;
+		result.style.set_stroke_transform(vector_data_instance.transform);
+
+		vector_data_instance.instance = result;
+		result_table.push(vector_data_instance);
 	}
-	// Transfer the style from the input vector data to the result.
-	result.one_instance_mut().instance.style = vector_data.one_instance_ref().instance.style.clone();
-	result.one_instance_mut().instance.style.set_stroke_transform(vector_data_transform);
 
-	// Return the resulting vector data with newly generated points and segments.
-	result
+	result_table
 }
 
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
@@ -1292,18 +1282,21 @@ async fn position_on_path(
 ) -> DVec2 {
 	let euclidian = !parameterized_distance;
 
-	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
-
-	let mut bezpaths = vector_data.stroke_bezpath_iter().collect::<Vec<kurbo::BezPath>>();
+	let mut bezpaths = vector_data
+		.instance_iter()
+		.flat_map(|vector_data| {
+			let transform = vector_data.transform;
+			vector_data.instance.stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect::<Vec<_>>()
+		})
+		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
 	let progress = progress.clamp(0., bezpath_count);
 	let progress = if reverse { bezpath_count - progress } else { progress };
 	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	bezpaths.get_mut(index).map_or(DVec2::ZERO, |bezpath| {
+	bezpaths.get_mut(index).map_or(DVec2::ZERO, |(bezpath, transform)| {
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
-		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 
 		point_to_dvec2(position_on_bezpath(bezpath, t, euclidian, None))
 	})
@@ -1325,18 +1318,21 @@ async fn tangent_on_path(
 ) -> f64 {
 	let euclidian = !parameterized_distance;
 
-	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
-
-	let mut bezpaths = vector_data.stroke_bezpath_iter().collect::<Vec<kurbo::BezPath>>();
+	let mut bezpaths = vector_data
+		.instance_iter()
+		.flat_map(|vector_data| {
+			let transform = vector_data.transform;
+			vector_data.instance.stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect::<Vec<_>>()
+		})
+		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
 	let progress = progress.clamp(0., bezpath_count);
 	let progress = if reverse { bezpath_count - progress } else { progress };
 	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	bezpaths.get_mut(index).map_or(0., |bezpath| {
+	bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
-		bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
 
 		let mut tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t, euclidian, None));
 		if tangent == DVec2::ZERO {
@@ -1360,60 +1356,68 @@ async fn poisson_disk_points(
 	separation_disk_diameter: f64,
 	seed: SeedValue,
 ) -> VectorDataTable {
-	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
-
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
-	let mut result = VectorData::empty();
 
-	if separation_disk_diameter <= 0.01 {
-		return VectorDataTable::new(result);
-	}
-	let path_with_bounding_boxes: Vec<_> = vector_data
-		.stroke_bezpath_iter()
-		.map(|mut bezpath| {
-			// TODO: apply transform to points instead of modifying the paths
-			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			bezpath.close_path();
-			let bbox = bezpath.bounding_box();
-			(bezpath, bbox)
-		})
-		.collect();
+	let mut result_table = VectorDataTable::empty();
 
-	for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
-		if subpath.segments().count() < 2 {
-			continue;
-		}
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let mut result = VectorData::empty();
 
-		let mut poisson_disk_bezpath = BezPath::new();
+		let path_with_bounding_boxes: Vec<_> = vector_data_instance
+			.instance
+			.stroke_bezpath_iter()
+			.map(|mut bezpath| {
+				// TODO: apply transform to points instead of modifying the paths
+				bezpath.apply_affine(Affine::new(vector_data_instance.transform.to_cols_array()));
+				bezpath.close_path();
+				let bbox = bezpath.bounding_box();
+				(bezpath, bbox)
+			})
+			.collect();
 
-		for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation_disk_diameter, || rng.random::<f64>()) {
-			if poisson_disk_bezpath.elements().is_empty() {
-				poisson_disk_bezpath.move_to(dvec2_to_point(point));
-			} else {
-				poisson_disk_bezpath.line_to(dvec2_to_point(point));
+		for (i, (subpath, _)) in path_with_bounding_boxes.iter().enumerate() {
+			if subpath.segments().count() < 2 {
+				continue;
 			}
+
+			let mut poisson_disk_bezpath = BezPath::new();
+
+			for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation_disk_diameter, || rng.random::<f64>()) {
+				if poisson_disk_bezpath.elements().is_empty() {
+					poisson_disk_bezpath.move_to(dvec2_to_point(point));
+				} else {
+					poisson_disk_bezpath.line_to(dvec2_to_point(point));
+				}
+			}
+			result.append_bezpath(poisson_disk_bezpath);
 		}
-		result.append_bezpath(poisson_disk_bezpath);
+
+		// Transfer the style from the input vector data to the result.
+		result.style = vector_data_instance.instance.style.clone();
+		result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+		vector_data_instance.instance = result;
+
+		result_table.push(vector_data_instance);
 	}
 
-	// Transfer the style from the input vector data to the result.
-	result.style = vector_data.style.clone();
-	result.style.set_stroke_transform(DAffine2::IDENTITY);
-
-	VectorDataTable::new(result)
+	result_table
 }
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> Vec<f64> {
-	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
-
 	vector_data
-		.stroke_bezpath_iter()
-		.flat_map(|mut bezpath| {
-			bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
-			bezpath.segments().map(|segment| segment.perimeter(kurbo::DEFAULT_ACCURACY)).collect::<Vec<f64>>()
+		.instance_iter()
+		.flat_map(|vector_data| {
+			let transform = vector_data.transform;
+			vector_data
+				.instance
+				.stroke_bezpath_iter()
+				.flat_map(|mut bezpath| {
+					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+					bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>()
+				})
+				.collect::<Vec<f64>>()
 		})
 		.collect()
 }

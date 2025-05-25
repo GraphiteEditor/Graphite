@@ -200,18 +200,11 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 		return Vec::new();
 	}
 
-	let offset = DVec2::new(this_bbox.x0, this_bbox.y0);
-	let (width, height) = (this_bbox.width(), this_bbox.height());
-
-	// TODO: Optimize the following code and make it more robust
-
 	let point_in_shape_checker = |point: DVec2| {
 		// Check against all paths the point is contained in to compute the correct winding number
 		let mut number = 0;
 
 		for (i, (shape, bbox)) in bezpaths.iter().enumerate() {
-			let point = point + offset;
-
 			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
 				continue;
 			}
@@ -227,29 +220,19 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 		number != 0
 	};
 
-	let square_edges_intersect_shape_checker = |position: DVec2, size: f64| {
-		let min = position + offset;
-		let max = min + DVec2::splat(size);
-
-		let top_line = Line::new((min.x, min.y), (max.x, min.y));
-		let right_line = Line::new((max.x, min.y), (max.x, max.y));
-		let bottom_line = Line::new((max.x, max.y), (min.x, max.y));
-		let left_line = Line::new((min.x, max.y), (min.x, min.y));
-
-		for line in [top_line, right_line, bottom_line, left_line] {
-			for segment in this_bezpath.segments() {
-				if !segment.intersect_line(line).is_empty() {
-					return true;
-				}
+	let line_intersect_shape_checker = |p0: (f64, f64), p1: (f64, f64)| {
+		for segment in this_bezpath.segments() {
+			if !segment.intersect_line(Line::new(p0, p1)).is_empty() {
+				return true;
 			}
 		}
 
 		false
 	};
 
-	let mut points = poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
-	for point in &mut points {
-		*point += offset;
-	}
-	points
+	let offset = DVec2::new(this_bbox.x0, this_bbox.y0);
+	let width = this_bbox.width();
+	let height = this_bbox.height();
+
+	poisson_disk_sample(offset, width, height, separation_disk_diameter, point_in_shape_checker, line_intersect_shape_checker, rng)
 }
