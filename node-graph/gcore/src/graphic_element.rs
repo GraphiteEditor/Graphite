@@ -214,13 +214,13 @@ impl GraphicElement {
 			}
 		};
 
-		let is_stroke_opaque = |stroke: &Stroke| -> bool { stroke.color.map_or(true, |ref color_ref| is_color_opaque(color_ref)) };
+		let has_no_stroke = |stroke: &Stroke| -> bool { stroke.weight == 0. || stroke.color.is_none_or(|color| color.a() == 0.) };
 
 		match self {
 			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
 				let style = &instance_data.instance.style;
 				let alpha_blending = &instance_data.alpha_blending;
-				(alpha_blending.opacity > 1. - f32::EPSILON) && is_fill_opaque(&style.fill()) && style.stroke().map_or(true, |s| is_stroke_opaque(&s))
+				(alpha_blending.opacity > 1. - f32::EPSILON) && is_fill_opaque(&style.fill()) && style.stroke().is_none_or(|s| has_no_stroke(&s))
 			}),
 			_ => false,
 		}
