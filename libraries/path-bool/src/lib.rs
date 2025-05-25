@@ -62,9 +62,11 @@ fn from_kurbo_path(a: &linesweeper::topology::Contours) -> Vec<Path> {
 					a_new.push(PathSegment::Quadratic(last, k(p2), k(p3)));
 					last = k(p3)
 				}
-				kurbo::PathEl::LineTo(p) => a_new.push(PathSegment::Cubic(last, last, k(p), k(p))),
+				kurbo::PathEl::LineTo(p) => {
+					a_new.push(PathSegment::Cubic(last, last, k(p), k(p)));
+					last = k(p);
+				}
 				kurbo::PathEl::ClosePath => a_new.push(PathSegment::Cubic(last, last, start, start)),
-				_ => panic!("{:?}", segment),
 			};
 		}
 		output.push(a_new);

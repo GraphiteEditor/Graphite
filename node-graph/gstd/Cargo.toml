@@ -62,7 +62,5 @@ web-sys = { workspace = true, optional = true, features = [
 	"ImageBitmapRenderingContext",
 ] }
 
-linesweeper = "0.0.4"
-
 [dev-dependencies]
 tokio = { workspace = true }

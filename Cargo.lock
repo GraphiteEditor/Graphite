@@ -2240,7 +2240,6 @@ dependencies = [
  "graphene-raster-nodes",
  "graphene-svg-renderer",
  "image",
- "linesweeper 0.0.4",
  "log",
  "node-macro",
  "reqwest",
@@ -3202,12 +3201,12 @@ dependencies = [
 
 [[package]]
 name = "libloading"
-version = "0.8.8"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -3230,8 +3229,7 @@ dependencies = [
 [[package]]
 name = "linesweeper"
 version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cce9ea4ee3d12ddbb8b92e511a40945183962dc9257ec857768b7108986cd4aa"
+source = "git+https://github.com/jneem/linesweeper#3a9c0fd69c1e02d397e2dff7551818041d4a719f"
 dependencies = [
  "arrayvec",
  "kurbo",

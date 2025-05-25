@@ -26,7 +26,7 @@ default = ["parsing"]
 [dependencies]
 glam = "0.29.0"
 kurbo.version = "=0.11"
-linesweeper = "0.0.4"
+linesweeper = {git = "https://github.com/jneem/linesweeper"}
 regex = "1.10.6"
 slotmap = "1.0.7"
 lyon_geom = "1.0"
