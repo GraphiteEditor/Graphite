@@ -68,7 +68,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	Quad::from_box([DVec2::ZERO, far])
 }
 
-pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &VectorData, pen_tool: bool) -> Option<f64> {
+pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data: &VectorData, prefer_handle_direction: bool) -> Option<f64> {
 	let is_start = |point: PointId, segment: SegmentId| vector_data.segment_start_from_id(segment) == Some(point);
 	let anchor_position = vector_data.point_domain.position_from_id(anchor)?;
 	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector_data);
@@ -82,12 +82,12 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 
 	let required_handle = if is_start(anchor, segment) {
 		start_handle
-			.filter(|&handle| pen_tool && handle != anchor_position)
+			.filter(|&handle| prefer_handle_direction && handle != anchor_position)
 			.or(end_handle.filter(|&handle| Some(handle) != start_point))
 			.or(start_point)
 	} else {
 		end_handle
-			.filter(|&handle| pen_tool && handle != anchor_position)
+			.filter(|&handle| prefer_handle_direction && handle != anchor_position)
 			.or(start_handle.filter(|&handle| Some(handle) != start_point))
 			.or(start_point)
 	};
