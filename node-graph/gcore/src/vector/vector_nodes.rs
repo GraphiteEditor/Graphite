@@ -226,21 +226,41 @@ where
 	};
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
+	let exact_size = (bounding_box[1] - bounding_box[0]).abs();
 
 	for index in 0..instances {
 		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let pitch = DAffine2::from_translation(translation) * DAffine2::from_angle(angle);
+		let mut translation = index as f64 * direction / total;
+		let mut size = index as f64 * exact_size / total;
+
 		let transform = match spacing {
-			Spacing::Span => DAffine2::from_translation(center) * pitch * DAffine2::from_translation(-center),
+			Spacing::Span => DAffine2::from_translation(center) * DAffine2::from_translation(translation) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center),
 			Spacing::Envelope => {
-				let width = (bounding_box[1].x - bounding_box[0].x).abs() * index as f64;
-				DAffine2::from_translation(center) * DAffine2::from_translation(DVec2::new(width, 0.)) * pitch * DAffine2::from_translation(-center)
+				if direction.x < -exact_size.x {
+					size.x -= size.x * 2.;
+				} else if direction.x <= exact_size.x {
+					size.x = 0.;
+					translation.x = 0.;
+				}
+				if direction.y < -exact_size.y {
+					size.y -= size.y * 2.;
+				} else if direction.y <= exact_size.y {
+					size.y = 0.;
+					translation.y = 0.;
+				}
+				if size == DVec2::ZERO {
+					DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center)
+				} else {
+					DAffine2::from_translation(size).inverse()
+						* DAffine2::from_translation(center)
+						* DAffine2::from_translation(translation)
+						* DAffine2::from_angle(angle)
+						* DAffine2::from_translation(-center)
+				}
 			}
-			Spacing::Pitch => pitch,
+			Spacing::Pitch => DAffine2::from_translation(center) * DAffine2::from_translation(translation) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center),
 			Spacing::Gap => {
-				let width = (bounding_box[1].x - bounding_box[0].x).abs() * index as f64;
-				pitch * DAffine2::from_translation(DVec2::new(width, 0.))
+				DAffine2::from_translation(center) * DAffine2::from_scale(size).inverse() * DAffine2::from_translation(translation) * DAffine2::from_angle(angle) * DAffine2::from_translation(-center)
 			}
 		};
 
@@ -1809,6 +1829,7 @@ mod test {
 	use super::*;
 	use crate::Node;
 	use bezier_rs::Bezier;
+	use glam::Affine2;
 	use std::pin::Pin;
 
 	#[derive(Clone)]
@@ -1830,7 +1851,7 @@ mod test {
 	async fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances, Spacing::Span).await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 3);
@@ -1842,7 +1863,7 @@ mod test {
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances, Spacing::Span).await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
@@ -1890,6 +1911,11 @@ mod test {
 		for i in 0..4 {
 			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
 		}
+	}
+	#[test]
+	fn test() {
+		let t = DAffine2::from_translation(DVec2::new(0., 1.)).inverse();
+		println!("{t:?}");
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
