@@ -208,6 +208,9 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "as-raw-xcb-connection"
@@ -2118,7 +2121,7 @@ dependencies = [
  "num-traits",
  "parley",
  "petgraph 0.7.1",
- "polycool",
+ "polycool 0.4.0",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "rustc-hash 2.1.1",
@@ -2169,6 +2172,8 @@ dependencies = [
  "dyn-any",
  "glam",
  "graphene-core",
+ "kurbo",
+ "linesweeper 0.1.0",
  "log",
  "node-macro",
  "path-bool",
@@ -2235,6 +2240,7 @@ dependencies = [
  "graphene-raster-nodes",
  "graphene-svg-renderer",
  "image",
+ "linesweeper 0.0.4",
  "log",
  "node-macro",
  "reqwest",
@@ -3222,6 +3228,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "linesweeper"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cce9ea4ee3d12ddbb8b92e511a40945183962dc9257ec857768b7108986cd4aa"
+dependencies = [
+ "arrayvec",
+ "kurbo",
+]
+
+[[package]]
+name = "linesweeper"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21610e4eca7c23b4720aa9f362dccea75f005bad2fe98296a37b504afafe6ebb"
+dependencies = [
+ "arrayvec",
+ "kurbo",
+ "polycool 0.3.3",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3992,6 +4019,8 @@ dependencies = [
  "glam",
  "glob",
  "image",
+ "kurbo",
+ "linesweeper 0.0.4",
  "lyon_geom",
  "regex",
  "resvg",
@@ -4219,6 +4248,15 @@ name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
+
+[[package]]
+name = "polycool"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70e7383348ab3cd2b26ec9454d2571b7c750f697cd615b4d9f79f505e699dacc"
+dependencies = [
+ "arrayvec",
+]
 
 [[package]]
 name = "polycool"

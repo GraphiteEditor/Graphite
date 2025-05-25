@@ -16,6 +16,62 @@ mod path;
 #[cfg(test)]
 mod visual_tests;
 
+pub fn linesweeper_bool(a: &Path, a_fill_rule: FillRule, b: &Path, b_fill_rule: FillRule, op: PathBooleanOperation) -> Result<Vec<Path>, BooleanError> {
+	let a = to_kurbo_path(a);
+	let b = to_kurbo_path(b);
+	let op = match op {
+		PathBooleanOperation::Union => linesweeper::BinaryOp::Union,
+		PathBooleanOperation::Difference => linesweeper::BinaryOp::Difference,
+		PathBooleanOperation::Intersection => linesweeper::BinaryOp::Intersection,
+		_ => panic!(),
+	};
+	let output = linesweeper::binary_op(&a, &b, linesweeper::FillRule::NonZero, op).unwrap();
+	Ok(from_kurbo_path(&output))
+}
+
+fn to_kurbo_path(a: &Vec<PathSegment>) -> kurbo::BezPath {
+	let mut a_new = kurbo::BezPath::new();
+	for segment in a {
+		let PathSegment::Cubic(p1, p2, p3, p4) = segment else { panic!("{:?}", segment) };
+		let k = |x: &glam::DVec2| kurbo::Point::new(x.x, x.y);
+		if a_new.is_empty() {
+			a_new.push(kurbo::PathEl::MoveTo(k(p1)));
+		}
+		a_new.push(kurbo::PathEl::CurveTo(k(p2), k(p3), k(p4)))
+	}
+	a_new
+}
+fn from_kurbo_path(a: &linesweeper::topology::Contours) -> Vec<Path> {
+	let mut output = vec![];
+	for contour in a.contours() {
+		let mut a_new = vec![];
+		let mut start = glam::DVec2::ZERO;
+		let mut last = glam::DVec2::ZERO;
+		for segment in &contour.path {
+			let k = |x: kurbo::Point| glam::DVec2::new(x.x, x.y);
+			match segment {
+				kurbo::PathEl::MoveTo(p1) => {
+					last = k(p1);
+					start = k(p1)
+				}
+				kurbo::PathEl::CurveTo(p2, p3, p4) => {
+					a_new.push(PathSegment::Cubic(last, k(p2), k(p3), k(p4)));
+					last = k(p4)
+				}
+				kurbo::PathEl::QuadTo(p2, p3) => {
+					a_new.push(PathSegment::Quadratic(last, k(p2), k(p3)));
+					last = k(p3)
+				}
+				kurbo::PathEl::LineTo(p) => a_new.push(PathSegment::Cubic(last, last, k(p), k(p))),
+				kurbo::PathEl::ClosePath => a_new.push(PathSegment::Cubic(last, last, start, start)),
+				_ => panic!("{:?}", segment),
+			};
+		}
+		output.push(a_new);
+	}
+	output
+}
+
 #[cfg(feature = "parsing")]
 pub(crate) use parsing::*;
 pub(crate) use path::*;
