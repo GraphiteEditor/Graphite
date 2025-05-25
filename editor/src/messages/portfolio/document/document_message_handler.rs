@@ -361,13 +361,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
+					let min = bounds[0].min(bounds[1]);
+					let max = bounds[0].max(bounds[1]);
 
 					let name = self.network_interface.display_name(&layer.to_node(), &[]);
 
+					// Calculate position of the text
+					let corner_pos = if !self.document_ptz.flip {
+						// Use the top-left corner
+						min
+					} else {
+						// Use the top-right corner, which appears to be the top-left due to being flipped
+						DVec2::new(max.x, min.y)
+					};
+
+					// When the canvas is flipped, mirror the text so it appears correctly
+					let scale = if !self.document_ptz.flip { DVec2::ONE } else { DVec2::new(-1., 1.) };
+
+					// Create a transform that puts the text at the true top-left regardless of flip
 					let transform = self.metadata().document_to_viewport
-						* DAffine2::from_translation(bounds[0].min(bounds[1]))
+						* DAffine2::from_translation(corner_pos)
 						* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
-						* DAffine2::from_translation(-DVec2::Y * 4.);
+						* DAffine2::from_translation(-DVec2::Y * 4.)
+						* DAffine2::from_scale(scale);
 
 					overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
 				}
@@ -1479,6 +1495,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.network_interface.document_bounds_document_space(true)
 				};
 				if let Some(bounds) = bounds {
+					if self.document_ptz.flip {
+						responses.add(NavigationMessage::CanvasFlip);
+					}
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				} else {
@@ -2367,7 +2386,7 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
 
-		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, "Canvas"));
+		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false));
 
 		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
@@ -2819,8 +2838,8 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 5] {
-	[
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool) -> Vec<WidgetHolder> {
+	let mut list = vec![
 		IconButton::new("ZoomIn", 24)
 			.tooltip("Zoom In")
 			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
@@ -2837,40 +2856,23 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
-		// PopoverButton::new()
-		// 	.popover_layout(vec![
-		// 		LayoutGroup::Row {
-		// 			widgets: vec![TextLabel::new(format!("{tooltip_name} Navigation")).bold(true).widget_holder()],
-		// 		},
-		// 		LayoutGroup::Row {
-		// 			widgets: vec![TextLabel::new({
-		// 				let tilt = if tooltip_name == "Canvas" { "Tilt:\n• Alt + Middle Click Drag\n\n" } else { "" };
-		// 				format!(
-		// 					"
-		// 					Interactive controls in this\n\
-		// 					menu are coming soon.\n\
-		// 					\n\
-		// 					Pan:\n\
-		// 					• Middle Click Drag\n\
-		// 					\n\
-		// 					{tilt}Zoom:\n\
-		// 					• Shift + Middle Click Drag\n\
-		// 					• Ctrl + Scroll Wheel Roll
-		// 					"
-		// 				)
-		// 				.trim()
-		// 			})
-		// 			.multiline(true)
-		// 			.widget_holder()],
-		// 		},
-		// 	])
-		// 	.widget_holder(),
+	];
+	if ptz.flip && !node_graph {
+		list.push(
+			IconButton::new("Reverse", 24)
+				.tooltip("Flip the canvas back to its standard orientation")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
+				.on_update(|_| NavigationMessage::CanvasFlip.into())
+				.widget_holder(),
+		);
+	}
+	list.extend([
 		Separator::new(SeparatorType::Related).widget_holder(),
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
 			.min(0.000001)
 			.max(1000000.)
-			.tooltip(format!("{tooltip_name} Zoom"))
+			.tooltip(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,
@@ -2881,7 +2883,8 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 			.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 			.widget_holder(),
-	]
+	]);
+	list
 }
 
 impl Iterator for ClickXRayIter<'_> {

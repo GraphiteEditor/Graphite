@@ -16,7 +16,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlue, RedGreenBlueAlpha};
+use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorDataTable;
@@ -94,22 +94,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	let mut custom = vec![
-		DocumentNodeDefinition {
-			identifier: "Default Network",
-			category: "General",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork::default()),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					network_metadata: Some(NodeNetworkMetadata::default()),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("A default node network you can use to create your own custom nodes."),
-			properties: None,
-		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Identity",
@@ -128,6 +112,43 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
 			properties: Some("identity_properties"),
+		},
+		// TODO: Auto-generate this from its proto node macro
+		DocumentNodeDefinition {
+			identifier: "Monitor",
+			category: "Debug",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
+					inputs: vec![NodeInput::value(TaggedValue::None, true)],
+					manual_composition: Some(generic!(T)),
+					skip_deduplication: true,
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					input_properties: vec![("In", "TODO").into()],
+					output_names: vec!["Out".to_string()],
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
+			properties: Some("monitor_properties"),
+		},
+		DocumentNodeDefinition {
+			identifier: "Default Network",
+			category: "General",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					implementation: DocumentNodeImplementation::Network(NodeNetwork::default()),
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata::default()),
+					..Default::default()
+				},
+			},
+			description: Cow::Borrowed("A default node network you can use to create your own custom nodes."),
+			properties: None,
 		},
 		DocumentNodeDefinition {
 			identifier: "Cache",
@@ -209,27 +230,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			},
 			description: Cow::Borrowed("TODO"),
 			properties: None,
-		},
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Monitor",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-					inputs: vec![NodeInput::value(TaggedValue::None, true)],
-					manual_composition: Some(generic!(T)),
-					skip_deduplication: true,
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
-					output_names: vec!["Out".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("The Monitor node is used by the editor to access the data flowing through it."),
-			properties: Some("monitor_properties"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
@@ -835,92 +835,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed("Generates different noise patterns."),
-			properties: None,
-		},
-		// TODO: This needs to work with resolution-aware data.
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Mask",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::raster::MaskImageNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-					],
-					manual_composition: Some(generic!(T)),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						("Image", "TODO").into(),
-						PropertiesRow::with_override("Stencil", "TODO", WidgetOverride::Custom("mask_stencil".to_string())),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		// TODO: This needs to work with resolution-aware data.
-		// TODO: Auto-generate this from its proto node macro
-		DocumentNodeDefinition {
-			identifier: "Insert Channel",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::raster::InsertChannelNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						("Image", "TODO").into(),
-						PropertiesRow::with_override("Insertion", "TODO", WidgetOverride::Hidden),
-						("Into", "TODO").into(),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		// TODO: This needs to work with resolution-aware data.
-		DocumentNodeDefinition {
-			identifier: "Combine Channels",
-			category: "Raster",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						("None", "TODO").into(),
-						("Red", "TODO").into(),
-						("Green", "TODO").into(),
-						("Blue", "TODO").into(),
-						("Alpha", "TODO").into(),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -1937,28 +1851,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "GPU Image",
-			category: "Debug: GPU",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::DocumentNode(DocumentNode::default()), true),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Image", "TODO").into(), ("Node", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "Debug",
@@ -1977,40 +1869,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			// Aims for interoperable compatibility with:
-			// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27brit%27%20%3D%20Brightness/Contrast
-			// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Padding-,Brightness%20and%20Contrast,-Key%20is%20%27brit
-			identifier: "Brightness/Contrast",
-			category: "Raster: Adjustment",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::raster::BrightnessContrastNode"),
-					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						("Image", "TODO").into(),
-						PropertiesRow::with_override("Brightness", "TODO", WidgetOverride::Custom("brightness".to_string())),
-						PropertiesRow::with_override("Brightness", "TODO", WidgetOverride::Custom("contrast".to_string())),
-						("Use Classic", "TODO").into(),
-					],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		// Aims for interoperable compatibility with:
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=levl%27%20%3D%20Levels-,%27curv%27%20%3D%20Curves,-%27expA%27%20%3D%20Exposure
 		// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Max%20input%20range-,Curves,-Curves%20settings%20files
+		//
+		// Some further analysis available at:
+		// https://geraldbakker.nl/psnumbers/curves.html
 		// TODO: Fix this, it's currently broken
 		// DocumentNodeDefinition {
 		// 	identifier: "Curves",
@@ -2034,51 +1898,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 	properties: None,
 		// },
 		// (*IMAGINATE_NODE).clone(),
-		DocumentNodeDefinition {
-			identifier: "Line",
-			category: "Vector: Shape",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::LineNode"),
-					manual_composition: Some(concrete!(Context)),
-					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::DVec2(DVec2::new(0., -50.)), false),
-						NodeInput::value(TaggedValue::DVec2(DVec2::new(0., 50.)), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![
-						("None", "TODO").into(),
-						PropertiesRow::with_override(
-							"Start",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: " px".to_string(),
-								..Default::default()
-							}),
-						),
-						PropertiesRow::with_override(
-							"End",
-							"TODO",
-							WidgetOverride::Vec2(Vec2InputSettings {
-								x: "X".to_string(),
-								y: "Y".to_string(),
-								unit: " px".to_string(),
-								..Default::default()
-							}),
-						),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
@@ -2948,6 +2767,7 @@ pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sy
 /// Defines the logic for inputs to display a custom properties panel widget.
 fn static_node_properties() -> NodeProperties {
 	let mut map: NodeProperties = HashMap::new();
+	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
