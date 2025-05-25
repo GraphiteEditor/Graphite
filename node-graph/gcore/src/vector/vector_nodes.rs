@@ -16,7 +16,7 @@ use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1044,9 +1044,14 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 		let vector_data = vector_data.instance;
 
 		let mut result = vector_data
-			.bounding_box()
-			.map(|bounding_box| VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1])))
+			.bounding_box_rect()
+			.map(|bbox| {
+				let mut vector_data = VectorData::default();
+				vector_data.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
+				vector_data
+			})
 			.unwrap_or_default();
+
 		result.style = vector_data.style.clone();
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 

@@ -12,6 +12,7 @@ use core::borrow::Borrow;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
+use kurbo::{Affine, Rect, Shape};
 pub use modification::*;
 use std::collections::HashMap;
 
@@ -193,29 +194,32 @@ impl VectorData {
 		vector_data
 	}
 
+	/// Compute the bounding boxes of the bezpaths without any transform
+	pub fn bounding_box_rect(&self) -> Option<Rect> {
+		self.bounding_box_with_transform_rect(DAffine2::IDENTITY)
+	}
+
 	/// Compute the bounding boxes of the subpaths without any transform
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.bounding_box_with_transform(DAffine2::IDENTITY)
+		self.bounding_box_with_transform_rect(DAffine2::IDENTITY)
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
 	}
 
 	/// Compute the bounding boxes of the subpaths with the specified transform
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let combine = |[a_min, a_max]: [DVec2; 2], [b_min, b_max]: [DVec2; 2]| [a_min.min(b_min), a_max.max(b_max)];
+		self.bounding_box_with_transform_rect(transform)
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+	}
 
-		let anchor_bounds = self
-			.point_domain
-			.positions()
-			.iter()
-			.map(|&point| transform.transform_point2(point))
-			.map(|point| [point, point])
-			.reduce(combine);
-
-		let segment_bounds = self
-			.segment_bezier_iter()
-			.map(|(_, bezier, _, _)| bezier.apply_transformation(|point| transform.transform_point2(point)).bounding_box())
-			.reduce(combine);
-
-		anchor_bounds.iter().chain(segment_bounds.iter()).copied().reduce(combine)
+	/// Compute the bounding boxes of the bezpaths with the specified transform
+	pub fn bounding_box_with_transform_rect(&self, transform: DAffine2) -> Option<Rect> {
+		let combine = |r1: Rect, r2: Rect| r1.union(r2);
+		self.stroke_bezpath_iter()
+			.map(|mut bezpath| {
+				bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+				bezpath.bounding_box()
+			})
+			.reduce(combine)
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
