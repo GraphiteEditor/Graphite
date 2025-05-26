@@ -1844,7 +1844,6 @@ mod test {
 	use super::*;
 	use crate::Node;
 	use bezier_rs::Bezier;
-	use glam::Affine2;
 	use std::pin::Pin;
 
 	#[derive(Clone)]
