@@ -46,6 +46,10 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 					println!("{} at line {}", field, line);
 				}
 			}
+
+			pub fn path() -> &'static str {
+				file!()
+			}
 		}
 	};
 

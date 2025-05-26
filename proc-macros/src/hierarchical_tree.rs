@@ -61,7 +61,7 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 					message_tree.add_message_handler_data_field(message_handler_data_str);
 				}
 
-				message_tree.add_path(#input_type::path());
+				message_tree.set_path(file!());
 
 				message_tree
 			}

@@ -52,11 +52,8 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 												custom_data()
 											}
 											pub fn message_handler_str() -> MessageData {
-												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 
-											}
-											pub fn path() -> &'static str {
-												file!()
 											}
 										}
 									}
@@ -66,15 +63,12 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 										impl #message_type {
 											pub fn message_handler_data_str() -> MessageData
 											 {
-												MessageData::new(format!("{}",stringify!(#type_name)), #type_name::field_types())
+												MessageData::new(format!("{}",stringify!(#type_name)), #type_name::field_types(), #type_name::path())
 
 											}
 											pub fn message_handler_str() -> MessageData {
-												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+												MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 
-											}
-											pub fn path() -> &'static str {
-												file!()
 											}
 										}
 									}
@@ -84,11 +78,8 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 								#input_item
 								impl #message_type {
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 										}
-										pub fn path() -> &'static str {
-												file!()
-											}
 									}
 							},
 							syn::Type::Reference(type_reference) => {
@@ -102,15 +93,12 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									#input_item
 									impl #message_type {
 										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}", #tr),#type_ident::field_types())
+											MessageData::new(format!("{}", #tr),#type_ident::field_types(), #type_ident::path())
 										}
 
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types())
+											MessageData::new(format!("{}",stringify!(#input_type)), #input_type::field_types(), #input_type::path())
 
-										}
-										pub fn path() -> &'static str {
-											file!()
 										}
 									}
 								}
@@ -121,11 +109,6 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 
 					_ => quote! {
 						#input_item
-						impl #message_type {
-								pub fn path() -> &'static str {
-										file!()
-									}
-						}
 					},
 				};
 				return Ok(impl_item);

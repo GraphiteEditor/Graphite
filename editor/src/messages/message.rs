@@ -51,11 +51,6 @@ mod test {
 	use super::*;
 
 	#[test]
-	fn print_tool_message_handler() {
-		ToolMessageHandler::print_field_types();
-	}
-
-	#[test]
 	fn generate_message_tree() {
 		let res = Message::build_message_tree();
 		println!("{} {}", res.name(), res.path());
@@ -102,10 +97,15 @@ mod test {
 			} else {
 				("└── ", format!("{}    ", prefix))
 			};
-			println!("{}{}{}", prefix, branch, data.name());
+			if data.path().is_empty() {
+				println!("{}{}{}", prefix, branch, data.name());
+			} else {
+				println!("{}{}{} {}", prefix, branch, data.name(), data.path());
+			}
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
+
 				println!("{}{}{}", child_prefix, branch, field.0);
 			}
 		}
@@ -113,7 +113,11 @@ mod test {
 		// Print data field if any
 		if let Some(data) = tree.message_handler_data_fields() {
 			let len = data.fields().len();
-			println!("{}{}{}", prefix, "└── ", data.name());
+			if data.path().is_empty() {
+				println!("{}{}{}", prefix, "└── ", data.name());
+			} else {
+				println!("{}{}{} {}", prefix, "└── ", data.name(), data.path());
+			}
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };

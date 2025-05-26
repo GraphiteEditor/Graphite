@@ -144,6 +144,7 @@ pub fn custom_data() -> MessageData {
 			(String::from("&'a ToolData"), 136),
 			(String::from("&'a mut ShapeState"), 136),
 		],
+		file!(),
 	)
 }
 
