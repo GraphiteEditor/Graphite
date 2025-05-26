@@ -15,9 +15,7 @@ use graphene_core::{Ctx, GraphicElement, Node};
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
-	let vector_data = vector_data.one_instance_ref().instance;
-
-	vector_data.point_domain.positions().to_vec()
+	vector_data.instance_iter().flat_map(|element| element.instance.point_domain.positions().to_vec()).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
