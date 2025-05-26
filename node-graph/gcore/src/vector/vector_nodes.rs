@@ -7,11 +7,11 @@ use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
-use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
+use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
-use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::{AlphaBlending, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
@@ -1708,12 +1708,18 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
-	let source_transform = source.transform();
-	let source = source.one_instance_ref().instance;
+	let mut result_table = VectorDataTable::empty();
 
-	let mut result = VectorDataTable::new(bevel_algorithm(source.clone(), source_transform, distance));
-	*result.transform_mut() = source_transform;
-	result
+	for source_instance in source.instance_iter() {
+		let mut vector_data_instance = source_instance.clone();
+		vector_data_instance.transform = DAffine2::IDENTITY;
+		vector_data_instance.alpha_blending = AlphaBlending::default();
+		vector_data_instance.source_node_id = None;
+		vector_data_instance.instance = bevel_algorithm(source_instance.instance, source_instance.transform, distance);
+		result_table.push(vector_data_instance);
+	}
+
+	result_table
 }
 
 #[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
