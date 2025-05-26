@@ -1,7 +1,7 @@
 use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
-use super::style::{CircularSpacing, Fill, Gradient, GradientStops, Stroke};
+use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster::image::ImageFrameTable;
@@ -10,7 +10,7 @@ use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::style::{LineCap, LineJoin, Spacing};
+use crate::vector::style::{CircularSpacing, LineCap, LineJoin, Spacing};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
