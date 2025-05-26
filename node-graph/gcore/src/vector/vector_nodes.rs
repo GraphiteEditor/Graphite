@@ -1455,6 +1455,7 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 				segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
 			}
 		}
+
 		vector_data_instance.instance.segment_domain = segment_domain;
 		result_table.push(vector_data_instance);
 	}
@@ -1463,14 +1464,17 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	if result_table.is_empty() {
 		return VectorDataTable::new(VectorData::empty());
 	}
+
 	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
+
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+
 		let vector_data_transform = vector_data_instance.transform;
 		let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
 
@@ -1511,7 +1515,7 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 		}
 
 		vector_data_instance.instance.style.set_stroke_transform(DAffine2::IDENTITY);
-		result_table.push(vector_data_instance)
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -1522,8 +1526,10 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 	let time = time.clamp(0., 1.);
 
 	let mut result_table = VectorDataTable::empty();
+
 	for (source_instance, target_instance) in source.instance_iter().zip(target.instance_iter()) {
 		let mut vector_data_instance = source_instance.clone();
+
 		// Lerp styles
 		let source_alpha_blending = source_instance.alpha_blending;
 		let target_alpha_blending = target_instance.alpha_blending;
@@ -1593,7 +1599,8 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			}
 			vector_data_instance.instance.append_subpath(target_path, true);
 		}
-		result_table.push(vector_data_instance)
+
+		result_table.push(vector_data_instance);
 	}
 
 	result_table
@@ -1639,7 +1646,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			point_domain.push(next_id.next_id(), pos);
 
 			// Add a new segment to be created later
-			new_segments.push([new_index, original_index])
+			new_segments.push([new_index, original_index]);
 		}
 	}
 
@@ -1725,10 +1732,12 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 #[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
 fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
+
 	for mut source_instance in source.instance_iter() {
 		source_instance.instance.merge_by_distance(distance);
 		result_table.push(source_instance);
 	}
+
 	result_table
 }
 
@@ -1741,7 +1750,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 		.instance_ref_iter()
 		.map(|vector_data_instance| {
 			let scale = vector_data_instance.transform.decompose_scale();
-			vector_data_instance.instance.stroke_bezier_paths().map(|subpath| subpath.area(Some(1e-3), Some(1e-3))).sum::<f64>() * scale[0] * scale[1]
+			vector_data_instance.instance.stroke_bezier_paths().map(|subpath| subpath.area(Some(1e-3), Some(1e-3))).sum::<f64>() * scale.x * scale.y
 		})
 		.sum()
 }
@@ -1750,6 +1759,10 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorDataTable>, centroid_type: CentroidType) -> DVec2 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
+
+	if vector_data.is_empty() {
+		return DVec2::ZERO;
+	}
 
 	let centroid = |vector_data_instance: Instance<VectorData>| -> DVec2 {
 		let vector_data_transform = vector_data_instance.transform;
@@ -1795,10 +1808,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 		DVec2::ZERO
 	};
 
-	if vector_data.is_empty() {
-		return DVec2::ZERO;
-	}
-	(vector_data.len() as f64).recip() * vector_data.instance_iter().map(|vector_data_instance| centroid(vector_data_instance)).sum::<DVec2>()
+	(vector_data.len() as f64).recip() * vector_data.instance_iter().map(centroid).sum::<DVec2>()
 }
 
 #[cfg(test)]
