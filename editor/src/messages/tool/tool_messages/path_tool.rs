@@ -6,7 +6,7 @@ use crate::consts::{
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
@@ -393,13 +393,13 @@ impl PathToolData {
 		self.saved_points_before_anchor_select_toggle.clear();
 	}
 
-	pub fn selection_quad(&self) -> Quad {
-		let bbox = self.selection_box();
+	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
+		let bbox = self.selection_box(metadata);
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_selection_mode_from_direction(&mut self) -> SelectionMode {
-		let bbox = self.selection_box();
+	pub fn calculate_selection_mode_from_direction(&mut self, metadata: &DocumentMetadata) -> SelectionMode {
+		let bbox = self.selection_box(metadata);
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
 		if self.selection_mode.is_none() && above_threshold {
@@ -415,12 +415,15 @@ impl PathToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
-	pub fn selection_box(&self) -> [DVec2; 2] {
-		if self.previous_mouse_position == self.drag_start_pos {
+	pub fn selection_box(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
+		// Convert previous mouse position to viewport space first
+		let document_to_viewport = metadata.document_to_viewport;
+		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
+		if previous_mouse == self.drag_start_pos {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 			[self.drag_start_pos - tolerance, self.drag_start_pos + tolerance]
 		} else {
-			[self.drag_start_pos, self.previous_mouse_position]
+			[self.drag_start_pos, previous_mouse]
 		}
 	}
 
@@ -1152,11 +1155,11 @@ impl Fsm for PathToolFsmState {
 						let fill_color = Some(fill_color.as_str());
 
 						let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
 							selection_mode => selection_mode,
 						};
 
-						let quad = tool_data.selection_quad();
+						let quad = tool_data.selection_quad(document.metadata());
 						let polygon = &tool_data.lasso_polygon;
 
 						match (selection_shape, selection_mode) {
@@ -1240,7 +1243,7 @@ impl Fsm for PathToolFsmState {
 					delete_segment,
 				},
 			) => {
-				tool_data.previous_mouse_position = input.mouse.position;
+				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 				if selection_shape == SelectionShapeType::Lasso {
 					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
@@ -1475,12 +1478,14 @@ impl Fsm for PathToolFsmState {
 					SelectionChange::Clear
 				};
 
-				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let previous_mouse = document_to_viewport.transform_point2(tool_data.previous_mouse_position);
+				if tool_data.drag_start_pos == previous_mouse {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
+							let bbox = [tool_data.drag_start_pos, previous_mouse];
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
 								SelectionShape::Box(bbox),
@@ -1533,12 +1538,14 @@ impl Fsm for PathToolFsmState {
 					SelectionChange::Clear
 				};
 
-				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let previous_mouse = document_to_viewport.transform_point2(tool_data.previous_mouse_position);
+				if tool_data.drag_start_pos == previous_mouse {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
-							let bbox = [tool_data.drag_start_pos, tool_data.previous_mouse_position];
+							let bbox = [tool_data.drag_start_pos, previous_mouse];
 							shape_editor.select_all_in_shape(
 								&document.network_interface,
 								SelectionShape::Box(bbox),
