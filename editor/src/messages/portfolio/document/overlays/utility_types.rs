@@ -597,7 +597,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -667,7 +667,7 @@ impl OverlayContext {
 
 	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	pub fn fill_path_pattern(&mut self, color: &Color) {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -698,46 +698,44 @@ impl OverlayContext {
 		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
 		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 
-		self.push_path(subpaths, transform);
-
 		self.render_context.set_fill_style_canvas_pattern(&pattern);
 		self.render_context.fill();
 	}
 
-	// fn fill_stroke_pattern(&mut self, color: &Color) {
-	// 	const PATTERN_WIDTH: usize = 4;
-	// 	const PATTERN_HEIGHT: usize = 4;
+	pub fn fill_stroke_pattern(&mut self, color: &Color) {
+		const PATTERN_WIDTH: usize = 4;
+		const PATTERN_HEIGHT: usize = 4;
 
-	// 	let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-	// 	let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
-	// 		.get_context("2d")
-	// 		.ok()
-	// 		.flatten()
-	// 		.expect("Failed to get canvas context")
-	// 		.dyn_into()
-	// 		.expect("Context should be a canvas 2d context");
+		let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
+			.get_context("2d")
+			.ok()
+			.flatten()
+			.expect("Failed to get canvas context")
+			.dyn_into()
+			.expect("Context should be a canvas 2d context");
 
-	// 	// 4x4 pixels, 4 components (RGBA) per pixel
-	// 	let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
+		// 4x4 pixels, 4 components (RGBA) per pixel
+		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-	// 	// ┌▄▄┬──┬──┬──┐
-	// 	// ├▀▀┼──┼──┼──┤
-	// 	// ├──┼──┼▄▄┼──┤
-	// 	// ├──┼──┼▀▀┼──┤
-	// 	// └──┴──┴──┴──┘
-	// 	let pixels = [(0, 0), (2, 2)];
-	// 	for &(x, y) in &pixels {
-	// 		let index = (x + y * PATTERN_WIDTH as usize) * 4;
-	// 		data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
-	// 	}
+		// ┌▄▄┬──┬──┬──┐
+		// ├▀▀┼──┼──┼──┤
+		// ├──┼──┼▄▄┼──┤
+		// ├──┼──┼▀▀┼──┤
+		// └──┴──┴──┴──┘
+		let pixels = [(0, 0), (2, 2)];
+		for &(x, y) in &pixels {
+			let index = (x + y * PATTERN_WIDTH as usize) * 4;
+			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
+		}
 
-	// 	let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-	// 	pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
-	// 	let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
+		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
 
-	// 	self.render_context.set_stroke_style_canvas_pattern(&pattern);
-	// 	self.render_context.stroke();
-	// }
+		self.render_context.set_stroke_style_canvas_pattern(&pattern);
+		self.render_context.stroke();
+	}
 
 	pub fn get_width(&self, text: &str) -> f64 {
 		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()

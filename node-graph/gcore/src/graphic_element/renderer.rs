@@ -38,6 +38,10 @@ impl ClickTarget {
 		&self.subpath
 	}
 
+	pub fn stroke_width(&self) -> f64 {
+		self.stroke_width
+	}
+
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.bounding_box
 	}

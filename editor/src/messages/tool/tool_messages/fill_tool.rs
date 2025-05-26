@@ -1,7 +1,9 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use graphene_core::vector::PointId;
 use graphene_core::vector::style::Fill;
+use graphene_std::renderer::ClickTarget;
 
 #[derive(Default)]
 pub struct FillTool {
@@ -98,7 +100,12 @@ impl Fsm for FillToolFsmState {
 
 				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input) {
-					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
+					overlay_context.push_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					overlay_context.fill_path_pattern(&preview_color);
+
+					document.metadata().layer_outline(layer).any(|subpath| subpath.contains_point_autoclose(input.mouse.position)).then(|| {
+						overlay_context.fill_stroke_pattern(&preview_color);
+					});
 				}
 
 				self
@@ -127,12 +134,30 @@ impl Fsm for FillToolFsmState {
 					_ => return self,
 				};
 
+				let close_to_stroke = |mouse_pos: DVec2, click_target: &ClickTarget, to_document_transform: DAffine2| {
+					let mut subpath = click_target.subpath().clone();
+					let lut = subpath.compute_lookup_table(Some(15), None);
+					// const RANGE: f64 = 100.0;
+					subpath.apply_transform(to_document_transform);
+					lut.iter().any(|&point| (mouse_pos - point).perp().length() <= click_target.stroke_width())
+				};
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
-				responses.add(GraphOperationMessage::StrokeColorSet {
-					layer: layer_identifier,
-					stroke_color,
-				});
+				document
+					.metadata()
+					.click_targets(layer_identifier)
+					.unwrap()
+					.into_iter()
+					.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_document(layer_identifier)))
+					.then(|| {
+						responses.add(GraphOperationMessage::StrokeColorSet {
+							layer: layer_identifier,
+							stroke_color,
+						});
+					})
+					.or_else(|| {
+						responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+						Some(())
+					});
 
 				FillToolFsmState::Filling
 			}
