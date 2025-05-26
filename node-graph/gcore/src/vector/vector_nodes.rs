@@ -285,7 +285,7 @@ async fn circular_repeat<I: 'n + Send>(
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	angle_offset: Angle,
-	#[default(360.)] max_angle: f64,
+	#[default(360.)] angle_pitch: f64,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
 	spacing: CircularSpacing,
@@ -303,14 +303,18 @@ where
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 	let base_transform = DVec2::new(0., radius) - center;
-	let circle = max_angle.to_radians();
+	let circle = angle_pitch.to_radians();
 
 	for index in 0..instances {
-		let rotation = DAffine2::from_angle((circle / instances as f64) * index as f64 + angle_offset.to_radians());
-
 		let transform = match spacing {
-			CircularSpacing::Span => DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform),
-			CircularSpacing::Pitch => todo!(),
+			CircularSpacing::Span => {
+				let rotation = DAffine2::from_angle((circle / instances as f64) * index as f64 + angle_offset.to_radians());
+				DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform)
+			}
+			CircularSpacing::Pitch => {
+				let rotation = DAffine2::from_angle(circle * index as f64 + angle_offset.to_radians());
+				DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform)
+			}
 		};
 
 		result_table.push(Instance {
