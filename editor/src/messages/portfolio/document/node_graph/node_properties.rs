@@ -28,7 +28,7 @@ use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, Spacing};
+use graphene_std::vector::style::{CircularSpacing, Fill, FillChoice, FillType, GradientStops, Spacing};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterFrame};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -227,6 +227,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<Spacing>() => enum_choice::<Spacing>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<CircularSpacing>() => enum_choice::<CircularSpacing>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
 						// =====

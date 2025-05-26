@@ -1,7 +1,7 @@
 use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
-use super::style::{Fill, Gradient, GradientStops, Stroke};
+use super::style::{CircularSpacing, Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster::image::ImageFrameTable;
@@ -285,8 +285,10 @@ async fn circular_repeat<I: 'n + Send>(
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	angle_offset: Angle,
+	#[default(360.)] max_angle: f64,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
+	spacing: CircularSpacing,
 ) -> GraphicGroupTable
 where
 	Instances<I>: GraphicElementRendered,
@@ -301,10 +303,15 @@ where
 
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 	let base_transform = DVec2::new(0., radius) - center;
+	let circle = max_angle.to_radians();
 
 	for index in 0..instances {
-		let rotation = DAffine2::from_angle((std::f64::consts::TAU / instances as f64) * index as f64 + angle_offset.to_radians());
-		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+		let rotation = DAffine2::from_angle((circle / instances as f64) * index as f64 + angle_offset.to_radians());
+
+		let transform = match spacing {
+			CircularSpacing::Span => DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform),
+			CircularSpacing::Pitch => todo!(),
+		};
 
 		result_table.push(Instance {
 			instance: instance.to_graphic_element().clone(),
