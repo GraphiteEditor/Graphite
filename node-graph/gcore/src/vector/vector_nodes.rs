@@ -1745,49 +1745,54 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
 
-	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
-
-	if centroid_type == CentroidType::Area {
-		let mut area = 0.;
-		let mut centroid = DVec2::ZERO;
-		for subpath in vector_data.stroke_bezier_paths() {
-			if let Some((subpath_centroid, subpath_area)) = subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)) {
-				if subpath_area == 0. {
-					continue;
+	let centroid = |vector_data_instance: Instance<VectorData>| -> DVec2 {
+		let vector_data_transform = vector_data_instance.transform;
+		if centroid_type == CentroidType::Area {
+			let mut area = 0.;
+			let mut centroid = DVec2::ZERO;
+			for subpath in vector_data_instance.instance.stroke_bezier_paths() {
+				if let Some((subpath_centroid, subpath_area)) = subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)) {
+					if subpath_area == 0. {
+						continue;
+					}
+					area += subpath_area;
+					centroid += subpath_area * subpath_centroid;
 				}
-				area += subpath_area;
-				centroid += subpath_area * subpath_centroid;
+			}
+
+			if area != 0. {
+				centroid /= area;
+				return vector_data_transform.transform_point2(centroid);
 			}
 		}
 
-		if area != 0. {
-			centroid /= area;
+		let mut length = 0.;
+		let mut centroid = DVec2::ZERO;
+		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
+			if let Some((subpath_centroid, subpath_length)) = subpath.length_centroid_and_length(None, true) {
+				length += subpath_length;
+				centroid += subpath_length * subpath_centroid;
+			}
+		}
+
+		if length != 0. {
+			centroid /= length;
 			return vector_data_transform.transform_point2(centroid);
 		}
-	}
 
-	let mut length = 0.;
-	let mut centroid = DVec2::ZERO;
-	for subpath in vector_data.stroke_bezier_paths() {
-		if let Some((subpath_centroid, subpath_length)) = subpath.length_centroid_and_length(None, true) {
-			length += subpath_length;
-			centroid += subpath_length * subpath_centroid;
+		let positions = vector_data_instance.instance.point_domain.positions();
+		if !positions.is_empty() {
+			let centroid = positions.iter().sum::<DVec2>() / (positions.len() as f64);
+			return vector_data_transform.transform_point2(centroid);
 		}
-	}
 
-	if length != 0. {
-		centroid /= length;
-		return vector_data_transform.transform_point2(centroid);
-	}
+		DVec2::ZERO
+	};
 
-	let positions = vector_data.point_domain.positions();
-	if !positions.is_empty() {
-		let centroid = positions.iter().sum::<DVec2>() / (positions.len() as f64);
-		return vector_data_transform.transform_point2(centroid);
+	if vector_data.is_empty() {
+		return DVec2::ZERO;
 	}
-
-	DVec2::ZERO
+	(vector_data.len() as f64).recip() * vector_data.instance_iter().map(|vector_data_instance| centroid(vector_data_instance)).sum::<DVec2>()
 }
 
 #[cfg(test)]
