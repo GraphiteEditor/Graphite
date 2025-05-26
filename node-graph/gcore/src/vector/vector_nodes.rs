@@ -312,7 +312,7 @@ async fn copy_to_points<I: 'n + Send>(
 where
 	Instances<I>: GraphicElementRendered,
 {
-	let points_transform = points.transform();
+	let points_transform_list = points.instance_ref_iter().map(|element| element.transform);
 	let points_list = points.instance_ref_iter().flat_map(|element| element.instance.point_domain.positions());
 
 	let random_scale_difference = random_scale_max - random_scale_min;
@@ -328,7 +328,7 @@ where
 
 	let mut result_table = GraphicGroupTable::default();
 
-	for &point in points_list.into_iter() {
+	for (&point, points_transform) in points_list.into_iter().zip(points_transform_list) {
 		let center_transform = DAffine2::from_translation(instance_center);
 
 		let translation = points_transform.transform_point2(point);
@@ -445,12 +445,10 @@ async fn round_corners(
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> VectorDataTable {
-	let source_transform = source.transform();
-	let source_transform_inverse = source_transform.inverse();
-
 	let mut result_table = VectorDataTable::empty();
 
 	for source in source.instance_ref_iter() {
+		let source_transform = *source.transform;
 		let source = source.instance;
 
 		let upstream_graphic_group = source.upstream_graphic_group.clone();
@@ -533,7 +531,7 @@ async fn round_corners(
 
 			// One subpath for each shape
 			let mut rounded_subpath = Subpath::new(new_groups, is_closed);
-			rounded_subpath.apply_transform(source_transform_inverse);
+			rounded_subpath.apply_transform(source_transform.inverse());
 			result.append_subpath(rounded_subpath, false);
 		}
 
@@ -1885,7 +1883,7 @@ mod test {
 		// Test a VectorData with non-zero rotation
 		let square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
 		let mut square = VectorDataTable::new(square);
-		*square.get_mut(0).expect("Table was pre-initialised with one row").transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
+		*square.get_mut(0).unwrap().transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
 		let bounding_box = BoundingBoxNode {
 			vector_data: FutureWrapperNode(square),
 		}
@@ -2044,7 +2042,7 @@ mod test {
 		let vector_data = VectorData::from_subpath(source);
 		let mut vector_data_table = VectorDataTable::new(vector_data.clone());
 
-		*vector_data_table.get_mut(0).expect("Table was pre-initialised with one row").transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
+		*vector_data_table.get_mut(0).unwrap().transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 
 		let beveled = super::bevel((), VectorDataTable::new(vector_data), 5.);
 		let beveled = beveled.instance_ref_iter().next().unwrap().instance;

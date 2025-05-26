@@ -27,66 +27,71 @@ impl From<std::io::Error> for Error {
 
 #[node_macro::node(category("Debug: Raster"))]
 fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
-	let image_frame_transform = image_frame.transform();
-	let image_frame_alpha_blending = image_frame.one_instance_ref().alpha_blending;
+	let mut result_table = ImageFrameTable::empty();
 
-	let image = image_frame.one_instance_ref().instance;
+	for mut image_frame_instance in image_frame.instance_iter() {
+		let image_frame_transform = image_frame_instance.transform;
+		let image = image_frame_instance.instance;
 
-	// Resize the image using the image crate
-	let data = bytemuck::cast_vec(image.data.clone());
+		// Resize the image using the image crate
+		let data = bytemuck::cast_vec(image.data.clone());
 
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-	let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
-	let intersection = viewport_bounds.intersect(&image_bounds);
-	let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
-	let size = intersection.size();
-	let size_px = image_size.transform_vector2(size).as_uvec2();
+		let footprint = ctx.footprint();
+		let viewport_bounds = footprint.viewport_bounds_in_local_space();
+		let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
+		let intersection = viewport_bounds.intersect(&image_bounds);
+		let image_size = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64));
+		let size = intersection.size();
+		let size_px = image_size.transform_vector2(size).as_uvec2();
 
-	// If the image would not be visible, return an empty image
-	if size.x <= 0. || size.y <= 0. {
+		// If the image would not be visible, add nothing.
+		if size.x <= 0. || size.y <= 0. {
+			continue;
+		}
+
+		let image_buffer = ::image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
+
+		let dynamic_image: ::image::DynamicImage = image_buffer.into();
+		let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
+		let offset_px = image_size.transform_vector2(offset).as_uvec2();
+		let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
+
+		let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
+		let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
+		let mut new_width = size_px.x;
+		let mut new_height = size_px.y;
+
+		// Only downscale the image for now
+		let resized = if new_width < image.width || new_height < image.height {
+			new_width = viewport_resolution_x as u32;
+			new_height = viewport_resolution_y as u32;
+			// TODO: choose filter based on quality requirements
+			cropped.resize_exact(new_width, new_height, ::image::imageops::Triangle)
+		} else {
+			cropped
+		};
+		let buffer = resized.to_rgba32f();
+		let buffer = buffer.into_raw();
+		let vec = bytemuck::cast_vec(buffer);
+		let image = Image {
+			width: new_width,
+			height: new_height,
+			data: vec,
+			base64_string: None,
+		};
+		// we need to adjust the offset if we truncate the offset calculation
+
+		let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
+
+		image_frame_instance.transform = new_transform;
+		image_frame_instance.source_node_id = None;
+		image_frame_instance.instance = image;
+		result_table.push(image_frame_instance)
+	}
+	if result_table.is_empty() {
 		return ImageFrameTable::one_empty_image();
 	}
-
-	let image_buffer = ::image::Rgba32FImage::from_raw(image.width, image.height, data).expect("Failed to convert internal image format into image-rs data type.");
-
-	let dynamic_image: ::image::DynamicImage = image_buffer.into();
-	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-	let offset_px = image_size.transform_vector2(offset).as_uvec2();
-	let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
-
-	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
-	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
-	let mut new_width = size_px.x;
-	let mut new_height = size_px.y;
-
-	// Only downscale the image for now
-	let resized = if new_width < image.width || new_height < image.height {
-		new_width = viewport_resolution_x as u32;
-		new_height = viewport_resolution_y as u32;
-		// TODO: choose filter based on quality requirements
-		cropped.resize_exact(new_width, new_height, ::image::imageops::Triangle)
-	} else {
-		cropped
-	};
-	let buffer = resized.to_rgba32f();
-	let buffer = buffer.into_raw();
-	let vec = bytemuck::cast_vec(buffer);
-	let image = Image {
-		width: new_width,
-		height: new_height,
-		data: vec,
-		base64_string: None,
-	};
-	// we need to adjust the offset if we truncate the offset calculation
-
-	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-
-	let mut result = ImageFrameTable::new(image);
-	*result.transform_mut() = new_transform;
-	*result.one_instance_mut().alpha_blending = *image_frame_alpha_blending;
-
-	result
+	result_table
 }
 
 #[node_macro::node(category("Raster"))]
@@ -251,45 +256,53 @@ where
 
 #[node_macro::node(category(""))]
 fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
-	let image_aabb = Bbox::unit().affine_transform(image.transform()).to_axis_aligned_bbox();
-	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
-	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
-		return image;
+	let mut result_table = ImageFrameTable::empty();
+	for mut image_instance in image.instance_iter() {
+		let image_aabb = Bbox::unit().affine_transform(image_instance.transform).to_axis_aligned_bbox();
+		let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
+		if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
+			result_table.push(image_instance);
+			continue;
+		}
+
+		let image_data = image_instance.instance.data;
+		let (image_width, image_height) = (image_instance.instance.width, image_instance.instance.height);
+		if image_width == 0 || image_height == 0 {
+			for image_instance in empty_image((), bounds, Color::TRANSPARENT).instance_iter() {
+				result_table.push(image_instance);
+			}
+			continue;
+		}
+
+		let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
+		let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image_instance.transform.inverse();
+		let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
+
+		let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
+		let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
+		let new_scale = new_end - new_start;
+
+		// Copy over original image into enlarged image.
+		let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
+		let offset_in_new_image = (-new_start).as_uvec2();
+		for y in 0..image_height {
+			let old_start = y * image_width;
+			let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
+			let old_row = &image_data[old_start as usize..(old_start + image_width) as usize];
+			let new_row = &mut new_img.data[new_start as usize..(new_start + image_width) as usize];
+			new_row.copy_from_slice(old_row);
+		}
+
+		// Compute new transform.
+		// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
+		let new_texture_to_layer_space = image_instance.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+
+		image_instance.instance = new_img;
+		image_instance.transform = new_texture_to_layer_space;
+		image_instance.source_node_id = None;
+		result_table.push(image_instance);
 	}
-
-	let image_instance = image.one_instance_ref().instance;
-	if image_instance.width == 0 || image_instance.height == 0 {
-		return empty_image((), bounds, Color::TRANSPARENT);
-	}
-
-	let orig_image_scale = DVec2::new(image_instance.width as f64, image_instance.height as f64);
-	let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image.transform().inverse();
-	let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
-
-	let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
-	let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
-	let new_scale = new_end - new_start;
-
-	// Copy over original image into enlarged image.
-	let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
-	let offset_in_new_image = (-new_start).as_uvec2();
-	for y in 0..image_instance.height {
-		let old_start = y * image_instance.width;
-		let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
-		let old_row = &image_instance.data[old_start as usize..(old_start + image_instance.width) as usize];
-		let new_row = &mut new_img.data[new_start as usize..(new_start + image_instance.width) as usize];
-		new_row.copy_from_slice(old_row);
-	}
-
-	// Compute new transform.
-	// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
-	let new_texture_to_layer_space = image.transform() * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
-
-	let mut result = ImageFrameTable::new(new_img);
-	*result.transform_mut() = new_texture_to_layer_space;
-	*result.one_instance_mut().alpha_blending = *image.one_instance_ref().alpha_blending;
-
-	result
+	result_table
 }
 
 #[node_macro::node(category("Debug: Raster"))]
@@ -299,11 +312,13 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> ImageFrameTabl
 
 	let image = Image::new(width, height, color);
 
-	let mut result = ImageFrameTable::new(image);
-	*result.transform_mut() = transform;
-	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
+	let mut result_table = ImageFrameTable::new(image);
+	let image_instance = result_table.get_mut(0).unwrap();
+	*image_instance.transform = transform;
+	*image_instance.alpha_blending = AlphaBlending::default();
 
-	result
+	// Callers of empty_image can safely unwrap on returned table
+	result_table
 }
 
 /// Constructs a raster image.
