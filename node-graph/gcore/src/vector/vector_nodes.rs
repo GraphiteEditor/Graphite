@@ -1936,11 +1936,6 @@ mod test {
 			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
 		}
 	}
-	#[test]
-	fn test() {
-		let t = DAffine2::from_translation(DVec2::new(0., 1.)).inverse();
-		println!("{t:?}");
-	}
 	#[tokio::test]
 	async fn copy_to_points() {
 		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
