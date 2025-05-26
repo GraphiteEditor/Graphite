@@ -1718,15 +1718,12 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 
 #[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
 fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
-	let source_transform = source.transform();
-	let mut source = source.one_instance_ref().instance.clone();
-
-	source.merge_by_distance(distance);
-
-	let mut result = VectorDataTable::new(source);
-	*result.transform_mut() = source_transform;
-
-	result
+	let mut result_table = VectorDataTable::empty();
+	for mut source_instance in source.instance_iter() {
+		source_instance.instance.merge_by_distance(distance);
+		result_table.push(source_instance);
+	}
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
