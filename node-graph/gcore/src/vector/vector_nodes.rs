@@ -1422,11 +1422,9 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
-		let original_transform = vector_data_instance.transform;
-
 		// Exit early if there are no points to generate splines from.
 		if vector_data_instance.instance.point_domain.positions().is_empty() {
-			return VectorDataTable::new(VectorData::empty());
+			continue;
 		}
 
 		let mut segment_domain = SegmentDomain::default();
@@ -1458,63 +1456,65 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 			}
 		}
 		vector_data_instance.instance.segment_domain = segment_domain;
-		vector_data_instance.transform = original_transform;
 		result_table.push(vector_data_instance);
 	}
 
+	// TODO: remove after pt6 of instance table refactor
+	if result_table.is_empty() {
+		return VectorDataTable::new(VectorData::empty());
+	}
 	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
-	let vector_data_transform = vector_data.transform();
-	let mut vector_data = vector_data.one_instance_ref().instance.clone();
+	let mut result_table = VectorDataTable::empty();
+	for mut vector_data_instance in vector_data.instance_iter() {
+		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+		let vector_data_transform = vector_data_instance.transform;
+		let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
 
-	let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
+		let deltas = (0..vector_data_instance.instance.point_domain.positions().len())
+			.map(|_| {
+				let angle = rng.random::<f64>() * std::f64::consts::TAU;
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+				inverse_transform.transform_vector2(DVec2::from_angle(angle) * rng.random::<f64>() * amount)
+			})
+			.collect::<Vec<_>>();
+		let mut already_applied = vec![false; vector_data_instance.instance.point_domain.positions().len()];
 
-	let deltas = (0..vector_data.point_domain.positions().len())
-		.map(|_| {
-			let angle = rng.random::<f64>() * std::f64::consts::TAU;
+		for (handles, start, end) in vector_data_instance.instance.segment_domain.handles_and_points_mut() {
+			let start_delta = deltas[*start];
+			let end_delta = deltas[*end];
 
-			inverse_transform.transform_vector2(DVec2::from_angle(angle) * rng.random::<f64>() * amount)
-		})
-		.collect::<Vec<_>>();
-	let mut already_applied = vec![false; vector_data.point_domain.positions().len()];
-
-	for (handles, start, end) in vector_data.segment_domain.handles_and_points_mut() {
-		let start_delta = deltas[*start];
-		let end_delta = deltas[*end];
-
-		if !already_applied[*start] {
-			let start_position = vector_data.point_domain.positions()[*start];
-			vector_data.point_domain.set_position(*start, start_position + start_delta);
-			already_applied[*start] = true;
-		}
-		if !already_applied[*end] {
-			let end_position = vector_data.point_domain.positions()[*end];
-			vector_data.point_domain.set_position(*end, end_position + end_delta);
-			already_applied[*end] = true;
-		}
-
-		match handles {
-			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-				*handle_start += start_delta;
-				*handle_end += end_delta;
+			if !already_applied[*start] {
+				let start_position = vector_data_instance.instance.point_domain.positions()[*start];
+				vector_data_instance.instance.point_domain.set_position(*start, start_position + start_delta);
+				already_applied[*start] = true;
 			}
-			bezier_rs::BezierHandles::Quadratic { handle } => {
-				*handle = vector_data_transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+			if !already_applied[*end] {
+				let end_position = vector_data_instance.instance.point_domain.positions()[*end];
+				vector_data_instance.instance.point_domain.set_position(*end, end_position + end_delta);
+				already_applied[*end] = true;
 			}
-			bezier_rs::BezierHandles::Linear => {}
+
+			match handles {
+				bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					*handle_start += start_delta;
+					*handle_end += end_delta;
+				}
+				bezier_rs::BezierHandles::Quadratic { handle } => {
+					*handle = vector_data_instance.transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
+				}
+				bezier_rs::BezierHandles::Linear => {}
+			}
 		}
+
+		vector_data_instance.instance.style.set_stroke_transform(DAffine2::IDENTITY);
+		result_table.push(vector_data_instance)
 	}
 
-	vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
-
-	let mut result = VectorDataTable::new(vector_data.clone());
-	*result.transform_mut() = vector_data_transform;
-	result
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
