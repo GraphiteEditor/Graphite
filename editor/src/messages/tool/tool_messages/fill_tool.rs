@@ -1,7 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use graphene_core::vector::PointId;
 use graphene_core::vector::style::Fill;
 use graphene_std::renderer::ClickTarget;
 
