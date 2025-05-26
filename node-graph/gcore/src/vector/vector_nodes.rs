@@ -1731,16 +1731,13 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
 
-	let vector_data_transform = vector_data.transform();
-	let vector_data = vector_data.one_instance_ref().instance;
-
-	let mut area = 0.;
-	let scale = vector_data_transform.decompose_scale();
-	for subpath in vector_data.stroke_bezier_paths() {
-		area += subpath.area(Some(1e-3), Some(1e-3));
-	}
-
-	area * scale[0] * scale[1]
+	vector_data
+		.instance_ref_iter()
+		.map(|vector_data_instance| {
+			let scale = vector_data_instance.transform.decompose_scale();
+			vector_data_instance.instance.stroke_bezier_paths().map(|subpath| subpath.area(Some(1e-3), Some(1e-3))).sum::<f64>() * scale[0] * scale[1]
+		})
+		.sum()
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
