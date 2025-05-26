@@ -1527,21 +1527,20 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 
 	let mut result_table = VectorDataTable::empty();
 
-	for (source_instance, target_instance) in source.instance_iter().zip(target.instance_iter()) {
-		let mut vector_data_instance = source_instance.clone();
-
+	for (mut source_instance, target_instance) in source.instance_iter().zip(target.instance_iter()) {
+		let mut vector_data_instance = VectorData::default();
 		// Lerp styles
-		let source_alpha_blending = source_instance.alpha_blending;
-		let target_alpha_blending = target_instance.alpha_blending;
-		vector_data_instance.alpha_blending = if time < 0.5 { source_alpha_blending } else { target_alpha_blending };
-		vector_data_instance.instance.style = source_instance.instance.style.lerp(&target_instance.instance.style, time);
+		source_instance.alpha_blending = if time < 0.5 { source_instance.alpha_blending } else { target_instance.alpha_blending };
+		vector_data_instance.style = source_instance.instance.style.lerp(&target_instance.instance.style, time);
 
 		// Before and after transforms
 		let source_transform = source_instance.transform;
 		let target_transform = target_instance.transform;
 
 		// Before and after paths
-		for (mut source_path, mut target_path) in source_instance.instance.stroke_bezier_paths().zip(target_instance.instance.stroke_bezier_paths()) {
+		let source_paths = source_instance.instance.stroke_bezier_paths();
+		let target_paths = target_instance.instance.stroke_bezier_paths();
+		for (mut source_path, mut target_path) in source_paths.zip(target_paths) {
 			source_path.apply_transform(source_transform);
 			target_path.apply_transform(target_transform);
 
@@ -1570,7 +1569,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 				source_manipulators.out_handle = Some(source_out_handle.lerp(target_out_handle, time));
 			}
 
-			vector_data_instance.instance.append_subpath(source_path.clone(), true);
+			vector_data_instance.append_subpath(source_path.clone(), true);
 		}
 
 		// Deal with unmatched extra paths by collapsing them
@@ -1587,7 +1586,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 				group.in_handle = group.in_handle.map(|handle| handle.lerp(end, time));
 				group.out_handle = group.out_handle.map(|handle| handle.lerp(end, time));
 			}
-			vector_data_instance.instance.append_subpath(source_path, true);
+			vector_data_instance.append_subpath(source_path, true);
 		}
 		for mut target_path in target_paths {
 			target_path.apply_transform(target_transform);
@@ -1597,10 +1596,13 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 				group.in_handle = group.in_handle.map(|handle| start.lerp(handle, time));
 				group.out_handle = group.out_handle.map(|handle| start.lerp(handle, time));
 			}
-			vector_data_instance.instance.append_subpath(target_path, true);
+			vector_data_instance.append_subpath(target_path, true);
 		}
 
-		result_table.push(vector_data_instance);
+		source_instance.instance = vector_data_instance;
+		source_instance.source_node_id = None;
+		source_instance.transform = DAffine2::IDENTITY;
+		result_table.push(source_instance);
 	}
 
 	result_table
@@ -1717,13 +1719,12 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for source_instance in source.instance_iter() {
-		let mut vector_data_instance = source_instance.clone();
-		vector_data_instance.transform = DAffine2::IDENTITY;
-		vector_data_instance.alpha_blending = AlphaBlending::default();
-		vector_data_instance.source_node_id = None;
-		vector_data_instance.instance = bevel_algorithm(source_instance.instance, source_instance.transform, distance);
-		result_table.push(vector_data_instance);
+	for mut source_instance in source.instance_iter() {
+		source_instance.instance = bevel_algorithm(source_instance.instance, source_instance.transform, distance);
+		source_instance.transform = DAffine2::IDENTITY;
+		source_instance.alpha_blending = AlphaBlending::default();
+		source_instance.source_node_id = None;
+		result_table.push(source_instance);
 	}
 
 	result_table
