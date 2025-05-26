@@ -1888,7 +1888,16 @@ mod test {
 	}
 	#[tokio::test]
 	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
+		let repeated = super::circular_repeat(
+			Footprint::default(),
+			vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)),
+			45.,
+			360.,
+			4.,
+			8,
+			CircularSpacing::Span,
+		)
+		.await;
 		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
