@@ -1715,27 +1715,21 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 	result
 }
 
-#[node_macro::node(name("Close Path"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
 	let mut new_table = VectorDataTable::empty();
+
 	for mut source_instance in source.instance_iter() {
 		source_instance.instance.close_subpaths();
-		new_table.push(Instance {
-			instance: source_instance.instance,
-			transform: source_instance.transform,
-			alpha_blending: source_instance.alpha_blending,
-			source_node_id: source_instance.source_node_id,
-		})
+		new_table.push(source_instance);
 	}
+
 	new_table
 }
 
-#[node_macro::node(name("Point Inside Shape"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
-	source.instance_iter().any(|instance| {
-		let tranform = instance.transform;
-		instance.instance.check_point_inside_shape(tranform, point)
-	})
+	source.instance_iter().any(|instance| instance.instance.check_point_inside_shape(instance.transform, point))
 }
 
 #[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
