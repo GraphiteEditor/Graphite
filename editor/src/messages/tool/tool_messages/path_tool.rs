@@ -1347,19 +1347,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
-			(
-				PathToolFsmState::MoldingSegment,
-				PathToolMessage::PointerMove {
-					// equidistant,
-					// toggle_colinear,
-					// move_anchor_with_handles,
-					// snap_angle,
-					// lock_angle,
-					// delete_segment,
-					..
-				},
-			) => {
-
+			(PathToolFsmState::MoldingSegment, PathToolMessage::PointerMove { .. }) => {
 				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					tool_data.molding_segment = true;
 				}
@@ -1367,14 +1355,7 @@ impl Fsm for PathToolFsmState {
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment {
 					if let Some(molding_segment_handles) = tool_data.molding_info {
-						segment.mold_handle_positions(
-							&document,
-							responses,
-							molding_segment_handles.0,
-							molding_segment_handles.1,
-							input.mouse.position,
-							MOLDING_FALLOFF,
-						);
+						segment.mold_handle_positions(document, responses, molding_segment_handles.0, molding_segment_handles.1, input.mouse.position, MOLDING_FALLOFF);
 					}
 				}
 
@@ -1564,9 +1545,11 @@ impl Fsm for PathToolFsmState {
 					} else {
 						responses.add(DocumentMessage::EndTransaction);
 					}
+
 					tool_data.segment = None;
 					tool_data.molding_info = None;
 					tool_data.molding_segment = false;
+
 					return PathToolFsmState::Ready;
 				}
 
@@ -1836,7 +1819,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 				]),
 			]),
-			PathToolFsmState::MoldingSegment => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold segment")])]),
+			PathToolFsmState::MoldingSegment => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment")])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

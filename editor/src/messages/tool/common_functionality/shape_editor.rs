@@ -275,7 +275,7 @@ impl ClosestSegment {
 		tangent.perp()
 	}
 
-	// Molding the bezier curve
+	/// Molding the bezier curve
 	pub fn mold_handle_positions(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, c1: DVec2, c2: DVec2, new_b: DVec2, falloff: f64) {
 		let t = self.t;
 

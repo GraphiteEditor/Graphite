@@ -3,7 +3,6 @@ use crate::polynomial::Polynomial;
 use crate::utils::{TValue, compute_abc_for_cubic_through_points, solve_cubic, solve_quadratic};
 use crate::{SymmetricalBasis, to_symmetrical_basis_pair};
 use glam::DMat2;
-use std::f64::consts::PI;
 use std::ops::Range;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
@@ -701,8 +700,8 @@ impl Bezier {
 			.sum()
 	}
 
-	// Returns two control points for new molded cubic bezier curve
-	// Implementation of molding the segment, as described in https://pomax.github.io/bezierinfo/#molding
+	/// Returns two control points for new molded cubic bezier curve.
+	/// Implementation of molding the segment, as described in <https://pomax.github.io/bezierinfo/#molding>.
 	pub fn molded_control_points(&self, t: f64, falloff: f64, new_b: DVec2, c1: DVec2, c2: DVec2) -> (DVec2, DVec2) {
 		let start = self.start;
 		let end = self.end;
@@ -719,15 +718,15 @@ impl Bezier {
 		let ne2 = new_b + d2;
 
 		// Calculating new points A and C (C stays the same)
-		let point_c_ratio = (1.0 - t).powi(3) / (t.powi(3) + (1.0 - t).powi(3));
-		let ab_bc_ratio = ((t.powi(3) + (1.0 - t).powi(3) - 1.0) / (t.powi(3) + (1.0 - t).powi(3))).abs();
+		let point_c_ratio = (1. - t).powi(3) / (t.powi(3) + (1. - t).powi(3));
+		let ab_bc_ratio = ((t.powi(3) + (1. - t).powi(3) - 1.) / (t.powi(3) + (1. - t).powi(3))).abs();
 		let c = point_c_ratio * start + (1. - point_c_ratio) * end;
 		let new_a = new_b + (new_b - c) / ab_bc_ratio;
 
 		// Derive the new control points c1, c2
 		let (nc1, nc2) = Self::derive_control_points(t, new_a, ne1, ne2, start, end);
 
-		// Calculating idealised curve
+		// Calculating idealized curve
 		if let Some((ideal_c1, ideal_c2)) = Self::get_idealised_cubic_curve(start, new_b, end) {
 			let d = (b - new_b).length();
 			let interpolation_ratio = d.min(falloff) / falloff;
@@ -739,44 +738,41 @@ impl Bezier {
 		}
 	}
 
-	// Returns the control points for cubic bezier curve passing through three given points
-	// Implementation from https://pomax.github.io/bezierinfo/#pointcurves
+	/// Returns the control points for cubic bezier curve passing through three given points.
+	/// Implementation from <https://pomax.github.io/bezierinfo/#pointcurves>.
 	pub fn get_idealised_cubic_curve(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<(DVec2, DVec2)> {
-		if let Some(centre) = Self::calculate_ccentre(p1, p2, p3) {
-			let d1 = (p1 - p2).length();
-			let d2 = (p2 - p3).length();
-			let t = d1 / (d1 + d2);
+		use std::f64::consts::{PI, TAU};
 
-			let start = p1;
-			let end = p3;
-			let [a, b, _c] = compute_abc_for_cubic_through_points(p1, p2, p3, t);
+		let center = Self::calculate_center(p1, p2, p3)?;
 
-			let tau = 2. * PI;
-			let angle = ((end.y - start.y).atan2(end.x - start.x) - (b.y - start.y).atan2(b.x - start.x) + tau) % tau;
-			let factor = if angle < 0. || angle > PI { -1. } else { 1. };
-			let bc = factor * (start - end).length() / 3.;
-			let de1 = t * bc;
-			let de2 = (1. - t) * bc;
-			let tangent = [
-				DVec2::new(b.x - 10. * (b.y - centre.y), b.y + 10. * (b.x - centre.x)),
-				DVec2::new(b.x + 10. * (b.y - centre.y), b.y - 10. * (b.x - centre.x)),
-			];
-			if let Some(normalized_tangent) = (tangent[1] - tangent[0]).try_normalize() {
-				let e1 = DVec2::new(b.x + de1 * normalized_tangent.x, b.y + de1 * normalized_tangent.y);
-				let e2 = DVec2::new(b.x - de2 * normalized_tangent.x, b.y - de2 * normalized_tangent.y);
+		let d1 = (p1 - p2).length();
+		let d2 = (p2 - p3).length();
+		let t = d1 / (d1 + d2);
 
-				// Deriving control points
-				let (c1, c2) = Self::derive_control_points(t, a, e1, e2, start, end);
-				Some((c1, c2))
-			} else {
-				None
-			}
-		} else {
-			None
-		}
+		let start = p1;
+		let end = p3;
+		let [a, b, _c] = compute_abc_for_cubic_through_points(p1, p2, p3, t);
+
+		let angle = ((end.y - start.y).atan2(end.x - start.x) - (b.y - start.y).atan2(b.x - start.x) + TAU) % TAU;
+		let factor = if !(0.0..=PI).contains(&angle) { -1. } else { 1. };
+		let bc = factor * (start - end).length() / 3.;
+		let de1 = t * bc;
+		let de2 = (1. - t) * bc;
+		let tangent = [
+			DVec2::new(b.x - 10. * (b.y - center.y), b.y + 10. * (b.x - center.x)),
+			DVec2::new(b.x + 10. * (b.y - center.y), b.y - 10. * (b.x - center.x)),
+		];
+
+		let normalized_tangent = (tangent[1] - tangent[0]).try_normalize()?;
+
+		let e1 = DVec2::new(b.x + de1 * normalized_tangent.x, b.y + de1 * normalized_tangent.y);
+		let e2 = DVec2::new(b.x - de2 * normalized_tangent.x, b.y - de2 * normalized_tangent.y);
+
+		// Deriving control points
+		Some(Self::derive_control_points(t, a, e1, e2, start, end))
 	}
 
-	// Deriving the control points given a, e1, e2, start and end positions
+	/// Deriving the control points given `a`, `e1`, `e2`, `start`, and `end` positions.
 	fn derive_control_points(t: f64, a: DVec2, e1: DVec2, e2: DVec2, start: DVec2, end: DVec2) -> (DVec2, DVec2) {
 		let v1 = (e1 - t * a) / (1. - t);
 		let v2 = (e2 - (1. - t) * a) / t;
@@ -785,10 +781,10 @@ impl Bezier {
 		(c1, c2)
 	}
 
-	fn calculate_ccentre(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<DVec2> {
+	fn calculate_center(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<DVec2> {
 		// Calculate midpoints of two sides
-		let mid1 = (p1 + p2) / 2.0;
-		let mid2 = (p2 + p3) / 2.0;
+		let mid1 = (p1 + p2) / 2.;
+		let mid2 = (p2 + p3) / 2.;
 
 		// Calculate perpendicular bisectors
 		let dir1 = p2 - p1;
@@ -805,14 +801,10 @@ impl Bezier {
 	}
 
 	fn line_line_intersection(a1: DVec2, a2: DVec2, b1: DVec2, b2: DVec2) -> Option<DVec2> {
-		let x1 = a1.x;
-		let y1 = a1.y;
-		let x2 = a2.x;
-		let y2 = a2.y;
-		let x3 = b1.x;
-		let y3 = b1.y;
-		let x4 = b2.x;
-		let y4 = b2.y;
+		let (x1, y1) = (a1.x, a1.y);
+		let (x2, y2) = (a2.x, a2.y);
+		let (x3, y3) = (b1.x, b1.y);
+		let (x4, y4) = (b2.x, b2.y);
 
 		// Calculate numerator components
 		let nx = (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
