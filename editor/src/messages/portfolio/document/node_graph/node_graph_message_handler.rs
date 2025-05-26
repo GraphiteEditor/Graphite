@@ -1214,11 +1214,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
 								}
 
-								// // Auto convert node to layer when inserting on a single stack wire
-								// if stack_wires.len() == 1 && node_wires.is_empty() {
-								// 	network_interface.set_to_node_or_layer(&selected_node_id, selection_network_path, true)
-								// }
-
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
 									if stack_wires.len() == 1 {
 										stack_wires.first()
