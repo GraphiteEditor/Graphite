@@ -1755,8 +1755,8 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 
 	let mut area = 0.;
 	let scale = vector_data_transform.decompose_scale();
-	for subpath in vector_data.stroke_bezier_paths() {
-		area += subpath.area(Some(1e-3), Some(1e-3));
+	for subpath in vector_data.stroke_bezpath_iter() {
+		area += subpath.area();
 	}
 
 	area * scale[0] * scale[1]
