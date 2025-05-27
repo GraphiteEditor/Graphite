@@ -312,58 +312,57 @@ async fn copy_to_points<I: 'n + Send>(
 where
 	Instances<I>: GraphicElementRendered,
 {
-	let points_transform_list = points.instance_ref_iter().map(|element| element.transform);
-	let points_list = points.instance_ref_iter().flat_map(|element| element.instance.point_domain.positions());
+	let mut result_table = GraphicGroupTable::default();
 
 	let random_scale_difference = random_scale_max - random_scale_min;
 
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY, false).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
-	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+	for point_instance in points.instance_iter() {
+		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
 
-	let do_scale = random_scale_difference.abs() > 1e-6;
-	let do_rotation = random_rotation.abs() > 1e-6;
+		let do_scale = random_scale_difference.abs() > 1e-6;
+		let do_rotation = random_rotation.abs() > 1e-6;
 
-	let mut result_table = GraphicGroupTable::default();
+		let points_transform = point_instance.transform;
+		for &point in point_instance.instance.point_domain.positions() {
+			let center_transform = DAffine2::from_translation(instance_center);
 
-	for (&point, points_transform) in points_list.into_iter().zip(points_transform_list) {
-		let center_transform = DAffine2::from_translation(instance_center);
+			let translation = points_transform.transform_point2(point);
 
-		let translation = points_transform.transform_point2(point);
-
-		let rotation = if do_rotation {
-			let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
-			degrees / 360. * std::f64::consts::TAU
-		} else {
-			0.
-		};
-
-		let scale = if do_scale {
-			if random_scale_bias.abs() < 1e-6 {
-				// Linear
-				random_scale_min + scale_rng.random::<f64>() * random_scale_difference
+			let rotation = if do_rotation {
+				let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
+				degrees / 360. * std::f64::consts::TAU
 			} else {
-				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-				let scale_factor = (1. - scale_rng.random::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
-				random_scale_min + scale_factor * random_scale_difference
-			}
-		} else {
-			random_scale_min
-		};
+				0.
+			};
 
-		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
+			let scale = if do_scale {
+				if random_scale_bias.abs() < 1e-6 {
+					// Linear
+					random_scale_min + scale_rng.random::<f64>() * random_scale_difference
+				} else {
+					// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
+					let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
+					let scale_factor = (1. - scale_rng.random::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+					random_scale_min + scale_factor * random_scale_difference
+				}
+			} else {
+				random_scale_min
+			};
 
-		result_table.push(Instance {
-			instance: instance.to_graphic_element().clone(),
-			transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
+
+			result_table.push(Instance {
+				instance: instance.to_graphic_element().clone(),
+				transform,
+				alpha_blending: Default::default(),
+				source_node_id: None,
+			});
+		}
 	}
-
 	result_table
 }
 
