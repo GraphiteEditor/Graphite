@@ -203,6 +203,17 @@ impl GraphicElement {
 		}
 	}
 
+	pub fn should_clip(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::GraphicGroup(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterFrame(data) => match data {
+				RasterFrame::ImageFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+				RasterFrame::TextureFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			},
+		}
+	}
+
 	pub fn can_use_clip(&self) -> bool {
 		let is_color_opaque = |color: &Color| -> bool { color.a() == 1.0f32 };
 

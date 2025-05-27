@@ -346,15 +346,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
 					}
 
-					let next_clips = iter.peek().map_or(false, |next_instance| {
-						let instance = next_instance.instance;
-						instance.as_vector_data().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
-							|| instance.as_group().is_some_and(|data| data.instance_ref_iter().all(|instance| instance.alpha_blending.clip))
-							|| instance.as_raster().is_some_and(|data| match data {
-								RasterFrame::ImageFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
-								RasterFrame::TextureFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
-							})
-					});
+					let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.should_clip());
 
 					if next_clips && mask_state.is_none() {
 						let uuid = generate_uuid();
@@ -386,7 +378,9 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for instance in self.instance_ref_iter() {
+		let mut iter = self.instance_ref_iter().peekable();
+		let mut mask_instance_state = None;
+		while let Some(instance) = iter.next() {
 			let transform = transform * *instance.transform;
 			let alpha_blending = *instance.alpha_blending;
 
@@ -401,10 +395,12 @@ impl GraphicElementRendered for GraphicGroupTable {
 					_ => alpha_blending.blend_mode.into(),
 				};
 
-				if alpha_blending.opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
+				let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
+				let opacity = alpha_blending.opacity * factor;
+				if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 					scene.push_layer(
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-						alpha_blending.opacity,
+						opacity,
 						kurbo::Affine::IDENTITY,
 						&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 					);
@@ -412,7 +408,37 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			}
 
-			instance.instance.render_to_vello(scene, transform, context, render_params);
+			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.should_clip());
+			if next_clips && mask_instance_state.is_none() {
+				mask_instance_state = Some((instance.instance, transform));
+				instance.instance.render_to_vello(scene, transform, context, render_params);
+			} else if let Some((instance_mask, transform_mask)) = mask_instance_state {
+				if !next_clips {
+					mask_instance_state = None;
+				}
+
+				let mut mask = false;
+				if let Some(bounds) = self
+					.instance_ref_iter()
+					.filter_map(|element| element.instance.bounding_box(transform, true))
+					.reduce(Quad::combine_bounds)
+				{
+					mask = true;
+					let render_params_for_mask = RenderParams { for_mask: true, ..*render_params };
+					let rect = &vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1.0, kurbo::Affine::IDENTITY, &rect);
+					instance_mask.render_to_vello(scene, transform_mask, context, &render_params_for_mask);
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+				instance.instance.render_to_vello(scene, transform, context, render_params);
+				if mask {
+					scene.pop_layer();
+					scene.pop_layer();
+				}
+			} else {
+				instance.instance.render_to_vello(scene, transform, context, render_params);
+			}
 
 			if layer {
 				scene.pop_layer();
@@ -557,11 +583,13 @@ impl GraphicElementRendered for VectorDataTable {
 				_ => instance.alpha_blending.blend_mode.into(),
 			};
 			let mut layer = false;
-			if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
+			let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+			let opacity = instance.alpha_blending.opacity * factor;
+			if opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
 				scene.push_layer(
 					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-					instance.alpha_blending.opacity,
+					opacity,
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
 					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
 				);
