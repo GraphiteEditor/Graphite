@@ -5,7 +5,7 @@ use crate::uuid::generate_uuid;
 use bezier_rs::BezierHandles;
 use core::hash::BuildHasher;
 use dyn_any::DynAny;
-use kurbo::{BezPath, PathEl, PathSeg, Point};
+use kurbo::{BezPath, PathEl, Point};
 use std::collections::{HashMap, HashSet};
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
@@ -555,7 +555,8 @@ where
 }
 
 pub struct AppendBezpath<'a> {
-	first_point: Option<kurbo::Point>,
+	first_point: Option<Point>,
+	last_point: Option<Point>,
 	first_point_index: Option<usize>,
 	last_point_index: Option<usize>,
 	first_segment_id: Option<SegmentId>,
@@ -569,6 +570,7 @@ impl<'a> AppendBezpath<'a> {
 	fn new(vector_data: &'a mut VectorData) -> Self {
 		Self {
 			first_point: None,
+			last_point: None,
 			first_point_index: None,
 			last_point_index: None,
 			first_segment_id: None,
@@ -579,72 +581,105 @@ impl<'a> AppendBezpath<'a> {
 		}
 	}
 
-	fn append_segment(&mut self, start_point: Point, end_point: Point, handle: BezierHandles, close_path: bool) {
-		if self.first_point.is_none() {
-			self.append_first_point(start_point);
-		}
-
-		let next_point_index = if let (Some(first_point_index), true) = (self.first_point_index, close_path) {
-			first_point_index
+	fn append_segment_and_close_path(&mut self, point: Point, handle: BezierHandles) {
+		let handle = if self.first_point.unwrap() != point {
+			// If the first point is not same as the last point of the path then we append the segment
+			// with given handle and point and then close the path with linear handle.
+			self.append_segment(point, handle);
+			BezierHandles::Linear
 		} else {
-			let next_point_index = self.vector_data.point_domain.ids().len();
-			self.vector_data.point_domain.push(self.point_id.next_id(), point_to_dvec2(end_point));
-			next_point_index
+			// if the endpoints are the same then we close the path with given handle.
+			handle
 		};
 
+		// Create a new segment.
 		let next_segment_id = self.segment_id.next_id();
 		self.vector_data
 			.segment_domain
-			.push(self.segment_id.next_id(), self.last_point_index.unwrap(), next_point_index, handle, StrokeId::ZERO);
+			.push(next_segment_id, self.last_point_index.unwrap(), self.first_point_index.unwrap(), handle, StrokeId::ZERO);
 
+		// Create a new region.
+		let next_region_id = self.vector_data.region_domain.next_id();
+		let first_segment_id = self.first_segment_id.unwrap_or(next_segment_id);
+		let last_segment_id = next_segment_id;
+
+		self.vector_data.region_domain.push(next_region_id, first_segment_id..=last_segment_id, FillId::ZERO);
+	}
+
+	fn append_segment(&mut self, end_point: Point, handle: BezierHandles) {
+		// Append the point.
+		let next_point_index = self.vector_data.point_domain.ids().len();
+		let next_point_id = self.point_id.next_id();
+
+		self.vector_data.point_domain.push(next_point_id, point_to_dvec2(end_point));
+
+		// Append the segment.
+		let next_segment_id = self.segment_id.next_id();
+		self.vector_data
+			.segment_domain
+			.push(next_segment_id, self.last_point_index.unwrap(), next_point_index, handle, StrokeId::ZERO);
+
+		// Update the states.
+		self.last_point = Some(end_point);
 		self.last_point_index = Some(next_point_index);
+
 		self.first_segment_id = Some(self.first_segment_id.unwrap_or(next_segment_id));
 		self.last_segment_id = Some(next_segment_id);
 	}
 
 	fn append_first_point(&mut self, point: Point) {
 		self.first_point = Some(point);
+		self.last_point = Some(point);
+
+		// Append the first point.
 		let next_point_index = self.vector_data.point_domain.ids().len();
 		self.vector_data.point_domain.push(self.point_id.next_id(), point_to_dvec2(point));
+
+		// Update the state.
 		self.first_point_index = Some(next_point_index);
 		self.last_point_index = Some(next_point_index);
 	}
 
 	pub fn append_bezpath(vector_data: &'a mut VectorData, bezpath: BezPath) {
 		let mut this = Self::new(vector_data);
+		let mut elements = bezpath.elements().iter().peekable();
 
-		let is_closed = bezpath.elements().last().is_some_and(|elm| *elm == PathEl::ClosePath);
-		let segments = bezpath.segments().collect::<Vec<PathSeg>>();
+		while let Some(element) = elements.next() {
+			let close_path = elements.peek().is_some_and(|elm| **elm == PathEl::ClosePath);
 
-		for i in 0..segments.len() {
-			let is_last_segment = i + 1 == segments.len();
-			let close_bezpath = is_closed && is_last_segment;
-
-			match segments[i] {
-				kurbo::PathSeg::Line(line) => {
-					let start_point = line.p0;
-					let end_point = line.p1;
+			match *element {
+				PathEl::MoveTo(point) => this.append_first_point(point),
+				PathEl::LineTo(point) => {
 					let handle = BezierHandles::Linear;
-					this.append_segment(start_point, end_point, handle, close_bezpath);
+					if close_path {
+						this.append_segment_and_close_path(point, handle);
+					} else {
+						this.append_segment(point, handle);
+					}
 				}
-				kurbo::PathSeg::Quad(quad_bez) => {
-					let start_point = quad_bez.p0;
-					let end_point = quad_bez.p2;
-
-					let handle = BezierHandles::Quadratic { handle: point_to_dvec2(quad_bez.p1) };
-
-					this.append_segment(start_point, end_point, handle, close_bezpath);
+				PathEl::QuadTo(point, point1) => {
+					let handle = BezierHandles::Quadratic { handle: point_to_dvec2(point) };
+					if close_path {
+						this.append_segment_and_close_path(point1, handle);
+					} else {
+						this.append_segment(point1, handle);
+					}
 				}
-				kurbo::PathSeg::Cubic(cubic_bez) => {
-					let start_point = cubic_bez.p0;
-					let end_point = cubic_bez.p3;
-
+				PathEl::CurveTo(point, point1, point2) => {
 					let handle = BezierHandles::Cubic {
-						handle_start: point_to_dvec2(cubic_bez.p1),
-						handle_end: point_to_dvec2(cubic_bez.p2),
+						handle_start: point_to_dvec2(point),
+						handle_end: point_to_dvec2(point1),
 					};
 
-					this.append_segment(start_point, end_point, handle, close_bezpath);
+					if close_path {
+						this.append_segment_and_close_path(point2, handle);
+					} else {
+						this.append_segment(point2, handle);
+					}
+				}
+				PathEl::ClosePath => {
+					// Already handled using `append_segment_and_close_path()`;
+					break;
 				}
 			}
 		}
