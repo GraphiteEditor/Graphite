@@ -583,7 +583,7 @@ impl<'a> AppendBezpath<'a> {
 
 	fn append_segment_and_close_path(&mut self, point: Point, handle: BezierHandles) {
 		let handle = if self.first_point.unwrap() != point {
-			// If the first point is not same as the last point of the path then we append the segment
+			// If the first point is not the same as the last point of the path then we append the segment
 			// with given handle and point and then close the path with linear handle.
 			self.append_segment(point, handle);
 			BezierHandles::Linear
