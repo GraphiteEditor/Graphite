@@ -133,31 +133,29 @@ impl Fsm for FillToolFsmState {
 					_ => return self,
 				};
 
-				let close_to_stroke = |mouse_pos: DVec2, click_target: &ClickTarget, to_document_transform: DAffine2| {
+				responses.add(DocumentMessage::AddTransaction);
+				let close_to_stroke = |mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2| {
 					let mut subpath = click_target.subpath().clone();
 					let lut = subpath.compute_lookup_table(Some(15), None);
-					// const RANGE: f64 = 100.0;
-					subpath.apply_transform(to_document_transform);
+					subpath.apply_transform(to_viewport_transform);
 					lut.iter().any(|&point| (mouse_pos - point).perp().length() <= click_target.stroke_width())
 				};
-				responses.add(DocumentMessage::AddTransaction);
-				document
-					.metadata()
-					.click_targets(layer_identifier)
-					.unwrap()
-					.into_iter()
-					.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_document(layer_identifier)))
-					.then(|| {
-						responses.add(GraphOperationMessage::StrokeColorSet {
-							layer: layer_identifier,
-							stroke_color,
+				let _ = document.metadata().click_targets(layer_identifier).is_some_and(|target| {
+					target
+						.iter()
+						.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer_identifier)))
+						.then(|| {
+							responses.add(GraphOperationMessage::StrokeColorSet {
+								layer: layer_identifier,
+								stroke_color,
+							});
+						})
+						.or_else(|| {
+							responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+							Some(())
 						});
-					})
-					.or_else(|| {
-						responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
-						Some(())
-					});
-
+					true
+				});
 				FillToolFsmState::Filling
 			}
 			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
