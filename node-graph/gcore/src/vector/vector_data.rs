@@ -2,7 +2,7 @@ mod attributes;
 mod indexed;
 mod modification;
 
-use super::misc::point_to_dvec2;
+use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
 use crate::instances::Instances;
 use crate::{AlphaBlending, Color, GraphicGroupTable};
@@ -199,6 +199,23 @@ impl VectorData {
 		self.bounding_box_with_transform_rect(DAffine2::IDENTITY)
 	}
 
+	pub fn close_subpaths(&mut self) {
+		let segments_to_add: Vec<_> = self
+			.stroke_bezier_paths()
+			.filter(|subpath| !subpath.closed)
+			.filter_map(|subpath| {
+				let (first, last) = subpath.manipulator_groups().first().zip(subpath.manipulator_groups().last())?;
+				let (start, end) = self.point_domain.resolve_id(first.id).zip(self.point_domain.resolve_id(last.id))?;
+				Some((start, end))
+			})
+			.collect();
+
+		for (start, end) in segments_to_add {
+			let segment_id = self.segment_domain.next_id().next_id();
+			self.segment_domain.push(segment_id, start, end, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+		}
+	}
+
 	/// Compute the bounding boxes of the subpaths without any transform
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform_rect(DAffine2::IDENTITY)
@@ -318,6 +335,34 @@ impl VectorData {
 	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
 	pub fn connected_count(&self, point: PointId) -> usize {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
+	}
+
+	pub fn check_point_inside_shape(&self, vector_data_transform: DAffine2, point: DVec2) -> bool {
+		let bez_paths: Vec<_> = self
+			.stroke_bezpath_iter()
+			.map(|mut bezpath| {
+				// TODO: apply transform to points instead of modifying the paths
+				bezpath.apply_affine(Affine::new(vector_data_transform.to_cols_array()));
+				bezpath.close_path();
+				let bbox = bezpath.bounding_box();
+				(bezpath, bbox)
+			})
+			.collect();
+
+		// Check against all paths the point is contained in to compute the correct winding number
+		let mut number = 0;
+
+		for (shape, bbox) in bez_paths {
+			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
+				continue;
+			}
+
+			let winding = shape.winding(dvec2_to_point(point));
+			number += winding;
+		}
+
+		// Non-zero fill rule
+		number != 0
 	}
 
 	/// Points that can be extended from.
