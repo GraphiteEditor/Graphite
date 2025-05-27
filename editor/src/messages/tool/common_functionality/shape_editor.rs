@@ -276,7 +276,7 @@ impl ClosestSegment {
 	}
 
 	/// Molding the bezier curve
-	/// Returns adjacent handles' HandleId if temporarily colinearity is broken
+	/// Returns adjacent handles' HandleId if colinearity is broken temporarily
 	pub fn mold_handle_positions(
 		&self,
 		document: &DocumentMessageHandler,
