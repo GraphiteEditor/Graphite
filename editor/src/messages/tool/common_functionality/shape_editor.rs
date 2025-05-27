@@ -1,6 +1,6 @@
 use super::graph_modification_utils::{self, merge_layers};
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::calculate_segment_angle;
+use super::utility_functions::{calculate_segment_angle, molded_control_points};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
@@ -276,16 +276,27 @@ impl ClosestSegment {
 	}
 
 	/// Molding the bezier curve
-	pub fn mold_handle_positions(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, c1: DVec2, c2: DVec2, new_b: DVec2, falloff: f64) {
+	/// Returns adjacent handles' HandleId if temporarily colinearity is broken
+	pub fn mold_handle_positions(
+		&self,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+		c1: DVec2,
+		c2: DVec2,
+		new_b: DVec2,
+		falloff: f64,
+		permanent_toggle_colinear: bool,
+		temporary_toggle_colinear: bool,
+		temporary_adjacent_handles: Option<[Option<HandleId>; 2]>,
+	) -> Option<[Option<HandleId>; 2]> {
 		let t = self.t;
 
 		let transform = document.metadata().transform_to_viewport(self.layer);
 		let new_b = transform.inverse().transform_point2(new_b);
 
-		let (nc1, nc2) = self.bezier.molded_control_points(t, falloff, new_b, c1, c2);
-
 		let start = self.bezier.start;
 		let end = self.bezier.end;
+		let (nc1, nc2) = molded_control_points(start, end, t, falloff, new_b, c1, c2);
 
 		let handle1 = HandleId::primary(self.segment);
 		let handle2 = HandleId::end(self.segment);
@@ -301,7 +312,6 @@ impl ClosestSegment {
 		// TODO: Find something which is more appropriate
 		if let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) {
 			if let Some(other_handle1) = vector_data.other_colinear_handle(handle1) {
-				// Now we need to direct this so that colinearity is maintained
 				let handle_position = other_handle1.to_manipulator_point().get_position(&vector_data).unwrap();
 				if let Some(other_direction) = (start - nc1).try_normalize() {
 					let new_relative_position = (handle_position - start).length() * other_direction;
@@ -310,7 +320,6 @@ impl ClosestSegment {
 				}
 			};
 			if let Some(other_handle2) = vector_data.other_colinear_handle(handle2) {
-				// Now we need to direct this so that colinearity is maintained
 				let handle_position = other_handle2.to_manipulator_point().get_position(&vector_data).unwrap();
 				if let Some(other_direction) = (end - nc2).try_normalize() {
 					let new_relative_position = (handle_position - end).length() * other_direction;
@@ -319,6 +328,112 @@ impl ClosestSegment {
 				}
 			};
 		}
+
+		let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) else {
+			return None;
+		};
+		if permanent_toggle_colinear {
+			// Disable G1 continuity
+			if let Some(other_handle1) = vector_data.other_colinear_handle(handle1) {
+				let handles = [handle1, other_handle1];
+				let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			};
+
+			if let Some(other_handle2) = vector_data.other_colinear_handle(handle2) {
+				let handles = [handle2, other_handle2];
+				let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			};
+		} else if temporary_toggle_colinear {
+			// Disable G1 continuity
+			let mut other_handles = [None, None];
+
+			// Move the handles back to their positions when drag started
+			if let Some(other_handle1) = vector_data.other_colinear_handle(handle1) {
+				other_handles[0] = Some(other_handle1);
+				let handle_position = other_handle1.to_manipulator_point().get_position(&vector_data).unwrap();
+				if let Some(other_direction) = (start - c1).try_normalize() {
+					let old_relative_position = (handle_position - start).length() * other_direction;
+					let modification_type = other_handle1.set_relative_position(old_relative_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+
+				let handles = [handle1, other_handle1];
+				let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			};
+			if let Some(other_handle2) = vector_data.other_colinear_handle(handle2) {
+				other_handles[1] = Some(other_handle2);
+				let handle_position = other_handle2.to_manipulator_point().get_position(&vector_data).unwrap();
+				if let Some(other_direction) = (end - c2).try_normalize() {
+					let old_relative_position = (handle_position - end).length() * other_direction;
+					let modification_type = other_handle2.set_relative_position(old_relative_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+
+				let handles = [handle2, other_handle2];
+				let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			};
+
+			// Store other HandleId in tool data to regain colinearity later
+			if temporary_adjacent_handles.is_some() {
+				return temporary_adjacent_handles;
+			} else {
+				return Some(other_handles);
+			}
+		} else {
+			// Move the colinear handles so that colinearity is maintained
+			if let Some(other_handle1) = vector_data.other_colinear_handle(handle1) {
+				let handle_position = other_handle1.to_manipulator_point().get_position(&vector_data).unwrap();
+				if let Some(other_direction) = (start - nc1).try_normalize() {
+					let new_relative_position = (handle_position - start).length() * other_direction;
+					let modification_type = other_handle1.set_relative_position(new_relative_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			};
+			if let Some(other_handle2) = vector_data.other_colinear_handle(handle2) {
+				let handle_position = other_handle2.to_manipulator_point().get_position(&vector_data).unwrap();
+				if let Some(other_direction) = (end - nc2).try_normalize() {
+					let new_relative_position = (handle_position - end).length() * other_direction;
+					let modification_type = other_handle2.set_relative_position(new_relative_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			};
+
+			if let Some(adj_handles) = temporary_adjacent_handles {
+				if let Some(other_handle1) = adj_handles[0] {
+					// Move the other handle colinear to current handle direction
+					let handle_position = other_handle1.to_manipulator_point().get_position(&vector_data).unwrap();
+					if let Some(other_direction) = (start - nc1).try_normalize() {
+						let new_relative_position = (handle_position - start).length() * other_direction;
+						let modification_type = other_handle1.set_relative_position(new_relative_position);
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
+					// Enable G1 continuity
+					let handles = [handle1, other_handle1];
+					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+
+				if let Some(other_handle2) = adj_handles[1] {
+					// Move the other handle colinear to current handle direction
+					let handle_position = other_handle2.to_manipulator_point().get_position(&vector_data).unwrap();
+					if let Some(other_direction) = (end - nc2).try_normalize() {
+						let new_relative_position = (handle_position - end).length() * other_direction;
+						let modification_type = other_handle2.set_relative_position(new_relative_position);
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					}
+
+					// Enable G1 continuity
+					let handles = [handle2, other_handle2];
+					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
+		}
+		None
 	}
 }
 
