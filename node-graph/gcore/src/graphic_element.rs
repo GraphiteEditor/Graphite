@@ -203,7 +203,7 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn should_clip(&self) -> bool {
+	pub fn had_clip_enabled(&self) -> bool {
 		match self {
 			GraphicElement::VectorData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
 			GraphicElement::GraphicGroup(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
@@ -214,8 +214,8 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn can_use_clip(&self) -> bool {
-		let is_color_opaque = |color: &Color| -> bool { color.a() == 1.0f32 };
+	pub fn can_reduce_to_clip_path(&self) -> bool {
+		let is_color_opaque = |color: &Color| -> bool { color.a() > 1. - f32::EPSILON };
 
 		let is_fill_opaque = |fill: &Fill| -> bool {
 			match fill {
@@ -225,7 +225,7 @@ impl GraphicElement {
 			}
 		};
 
-		let has_no_stroke = |stroke: &Stroke| -> bool { stroke.weight == 0. || stroke.color.is_none_or(|color| color.a() == 0.) };
+		let has_no_stroke = |stroke: &Stroke| -> bool { !(stroke.weight > 0.) || stroke.color.is_none_or(|color| color.a() == 0.) };
 
 		match self {
 			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {

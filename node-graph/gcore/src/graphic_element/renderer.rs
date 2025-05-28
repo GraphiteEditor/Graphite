@@ -264,6 +264,9 @@ impl RenderParams {
 			for_mask,
 		}
 	}
+	pub fn for_clipper(&self) -> Self {
+		Self { for_mask: true, ..*self }
+	}
 }
 
 pub fn format_transform_matrix(transform: DAffine2) -> String {
@@ -346,15 +349,14 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
 					}
 
-					let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.should_clip());
+					let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
 
 					if next_clips && mask_state.is_none() {
 						let uuid = generate_uuid();
-						let mask_type = if instance.instance.can_use_clip() { MaskType::Clip } else { MaskType::Mask };
+						let mask_type = if instance.instance.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 						mask_state = Some((uuid, mask_type));
 						let mut svg = SvgRender::new();
-						let render_params = RenderParams { for_mask: true, ..*render_params };
-						instance.instance.render_svg(&mut svg, &render_params);
+						instance.instance.render_svg(&mut svg, &render_params.for_clipper());
 
 						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
 						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
@@ -385,11 +387,12 @@ impl GraphicElementRendered for GraphicGroupTable {
 			let alpha_blending = *instance.alpha_blending;
 
 			let mut layer = false;
-			if let Some(bounds) = self
+
+			let bounds = self
 				.instance_ref_iter()
 				.filter_map(|element| element.instance.bounding_box(transform, true))
-				.reduce(Quad::combine_bounds)
-			{
+				.reduce(Quad::combine_bounds);
+			if let Some(bounds) = bounds {
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
 					_ => alpha_blending.blend_mode.into(),
@@ -408,7 +411,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			}
 
-			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.should_clip());
+			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
 			if next_clips && mask_instance_state.is_none() {
 				mask_instance_state = Some((instance.instance, transform));
 				instance.instance.render_to_vello(scene, transform, context, render_params);
@@ -417,22 +420,15 @@ impl GraphicElementRendered for GraphicGroupTable {
 					mask_instance_state = None;
 				}
 
-				let mut mask = false;
-				if let Some(bounds) = self
-					.instance_ref_iter()
-					.filter_map(|element| element.instance.bounding_box(transform, true))
-					.reduce(Quad::combine_bounds)
-				{
-					mask = true;
-					let render_params_for_mask = RenderParams { for_mask: true, ..*render_params };
-					let rect = &vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+				if let Some(bounds) = bounds {
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-					scene.push_layer(peniko::Mix::Normal, 1.0, kurbo::Affine::IDENTITY, &rect);
-					instance_mask.render_to_vello(scene, transform_mask, context, &render_params_for_mask);
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					instance_mask.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
 					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 				instance.instance.render_to_vello(scene, transform, context, render_params);
-				if mask {
+				if bounds.is_some() {
 					scene.pop_layer();
 					scene.pop_layer();
 				}
