@@ -13,6 +13,7 @@
 	export let minWidth = 0;
 	export let multiline = false;
 	export let tooltip: string | undefined = undefined;
+	export let checkboxId: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -22,7 +23,7 @@
 		.join(" ");
 </script>
 
-<span
+<label
 	class={`text-label ${className} ${extraClasses}`.trim()}
 	class:disabled
 	class:bold
@@ -30,12 +31,13 @@
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidth > 0 ? `${minWidth}px` : ""}
+	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	title={tooltip}
+	for={checkboxId !== undefined ? `checkbox-input-${checkboxId}` : undefined}
 >
 	<slot />
-</span>
+</label>
 
 <style lang="scss" global>
 	.text-label {

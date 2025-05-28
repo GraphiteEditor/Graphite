@@ -1,5 +1,4 @@
 <script lang="ts" context="module">
-	export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
 
 	/// Prevents the escape key from closing the parent floating menu of the given element.
@@ -22,6 +21,7 @@
 <script lang="ts">
 	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
 
+	import type { MenuDirection } from "@graphite/messages";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -184,6 +184,7 @@
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
+		const viewportBounds = document.documentElement.getBoundingClientRect();
 		workspaceBounds = workspace.getBoundingClientRect();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
@@ -195,17 +196,17 @@
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			const tailOffset = type === "Popover" ? 10 : 0;
-			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.top}px`;
-			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
-			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.left}px`;
-			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + floatingMenuBounds.right}px`;
+			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
+			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (viewportBounds.height - floatingMenuBounds.y)}px`;
+			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
+			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (viewportBounds.width - floatingMenuBounds.x)}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.top}px`;
-			if (tail && direction === "Top") tail.style.bottom = `${floatingMenuBounds.bottom}px`;
-			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.left}px`;
-			if (tail && direction === "Left") tail.style.right = `${floatingMenuBounds.right}px`;
+			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
+			if (tail && direction === "Top") tail.style.bottom = `${viewportBounds.height - floatingMenuBounds.y}px`;
+			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
+			if (tail && direction === "Left") tail.style.right = `${viewportBounds.width - floatingMenuBounds.x}px`;
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";

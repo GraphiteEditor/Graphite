@@ -240,7 +240,17 @@ pub enum FrontendMessage {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
 	},
-	UpdateLayersPanelControlBarLayout {
+	UpdateLayersPanelControlBarLeftLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateLayersPanelControlBarRightLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateLayersPanelBottomBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

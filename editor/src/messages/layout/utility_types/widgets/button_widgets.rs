@@ -42,6 +42,9 @@ pub struct IconButton {
 pub struct PopoverButton {
 	pub style: Option<String>,
 
+	#[serde(rename = "menuDirection")]
+	pub menu_direction: Option<MenuDirection>,
+
 	pub icon: Option<String>,
 
 	pub disabled: bool,
@@ -56,6 +59,20 @@ pub struct PopoverButton {
 
 	#[serde(rename = "popoverMinWidth")]
 	pub popover_min_width: Option<u32>,
+}
+
+#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum MenuDirection {
+	Top,
+	#[default]
+	Bottom,
+	Left,
+	Right,
+	TopLeft,
+	TopRight,
+	BottomLeft,
+	BottomRight,
+	Center,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
