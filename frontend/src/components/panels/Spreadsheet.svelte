@@ -42,7 +42,7 @@
 			width: calc(100% + 2 * 4px);
 			margin-top: 8px;
 
-			span {
+			.text-label {
 				white-space: wrap;
 			}
 		}
