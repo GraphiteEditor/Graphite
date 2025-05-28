@@ -903,6 +903,8 @@ impl PathToolData {
 		equidistant: bool,
 		lock_angle: bool,
 		snap_angle: bool,
+		snap_axis: bool,
+		slide_segment: bool,
 		shape_editor: &mut ShapeState,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
@@ -915,9 +917,10 @@ impl PathToolData {
 				.selected_points()
 				.any(|point| matches!(point, ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_)));
 
-		if snap_angle && self.snapping_axis.is_none() && !single_handle_selected {
+		// This is where it starts snapping along axis
+		if snap_axis && self.snapping_axis.is_none() && !single_handle_selected {
 			self.start_snap_along_axis(shape_editor, document, input, responses);
-		} else if !snap_angle && self.snapping_axis.is_some() {
+		} else if !snap_axis && self.snapping_axis.is_some() {
 			self.stop_snap_along_axis(shape_editor, document, input, responses);
 		}
 
@@ -1027,7 +1030,8 @@ impl PathToolData {
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 
-		if snap_angle && self.snapping_axis.is_some() {
+		// Constantly chechking and changing the snapping axis based on current mouse position
+		if snap_axis && self.snapping_axis.is_some() {
 			let Some(current_axis) = self.snapping_axis else { return };
 			let total_delta = self.drag_start_pos - input.mouse.position;
 
@@ -1340,6 +1344,8 @@ impl Fsm for PathToolFsmState {
 						equidistant_state,
 						lock_angle_state,
 						snap_angle_state,
+						snap_angle_state && !lock_angle_state, //snap axis only when not sliding segment
+						snap_angle_state && lock_angle_state,
 						tool_action_data.shape_editor,
 						tool_action_data.document,
 						input,
