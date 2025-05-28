@@ -1108,7 +1108,7 @@ impl Fsm for PathToolFsmState {
 									if attached_segments.len() == 1 {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 									}
-									// This is for the edge case of a loop where a point rather not selected can be part of two segments
+									// Handle the edge case where a point, although not explicitly selected, is shared by two segments.
 									else if !selected_anchors.contains(&point) {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 										segment_endpoints.entry(attached_segments[1]).or_default().push(point);
