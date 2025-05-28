@@ -73,6 +73,14 @@ impl ToolTransition for FillTool {
 	}
 }
 
+pub fn close_to_stroke(mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2) -> bool {
+	let subpath = click_target.subpath().clone();
+	let lut = subpath.compute_lookup_table(Some(25), None);
+
+	lut.iter()
+		.any(|&point| (to_viewport_transform.inverse().transform_point2(mouse_pos) - point).length() <= click_target.stroke_width())
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum FillToolFsmState {
 	#[default]
@@ -100,13 +108,6 @@ impl Fsm for FillToolFsmState {
 				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input) {
 					overlay_context.push_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-
-					let close_to_stroke = |mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2| {
-						let mut subpath = click_target.subpath().clone();
-						subpath.apply_transform(to_viewport_transform);
-						let lut = subpath.compute_lookup_table(Some(15), None);
-						lut.iter().any(|&point| (mouse_pos - point).perp().length() <= click_target.stroke_width() * 1.5)
-					};
 					let _ = document.metadata().click_targets(layer).is_some_and(|target| {
 						target
 							.iter()
@@ -149,12 +150,6 @@ impl Fsm for FillToolFsmState {
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
-				let close_to_stroke = |mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2| {
-					let mut subpath = click_target.subpath().clone();
-					subpath.apply_transform(to_viewport_transform);
-					let lut = subpath.compute_lookup_table(Some(15), None);
-					lut.iter().any(|&point| (mouse_pos - point).perp().length() <= click_target.stroke_width() * 1.5)
-				};
 				let _ = document.metadata().click_targets(layer_identifier).is_some_and(|target| {
 					target
 						.iter()
