@@ -281,7 +281,8 @@ pub fn restore_g1_continuity(
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 	}
-  
+}
+
 /// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
