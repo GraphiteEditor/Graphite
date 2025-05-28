@@ -43,7 +43,7 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
 // 	surface_handle: Arc<WasmSurfaceHandle>,
 // ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-// 	let image = image.one_instance().instance;
+// 	let image = image.one_instance_ref().instance;
 // 	let image_data = image.image.data;
 // 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 // 	if image.image.width > 0 && image.image.height > 0 {
@@ -83,7 +83,10 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
-		data: image.chunks(4).map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
+		data: image
+			.chunks(4)
+			.map(|pixel| Color::from_unassociated_alpha(pixel[0], pixel[1], pixel[2], pixel[3]).to_linear_srgb())
+			.collect(),
 		width: image.width(),
 		height: image.height(),
 		..Default::default()

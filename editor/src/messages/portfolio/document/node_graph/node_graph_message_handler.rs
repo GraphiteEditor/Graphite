@@ -1214,11 +1214,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
 								}
 
-								// Auto convert node to layer when inserting on a single stack wire
-								if stack_wires.len() == 1 && node_wires.is_empty() {
-									network_interface.set_to_node_or_layer(&selected_node_id, selection_network_path, true)
-								}
-
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
 									if stack_wires.len() == 1 {
 										stack_wires.first()
@@ -1851,11 +1846,6 @@ impl NodeGraphMessageHandler {
 			//
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			//
-			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
 			IconButton::new("Folder", 24)
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
@@ -1864,6 +1854,11 @@ impl NodeGraphMessageHandler {
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip("Delete Selected")
@@ -1969,7 +1964,7 @@ impl NodeGraphMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
-		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, "Node Graph"));
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true));
 		widgets.extend([
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
@@ -2009,12 +2004,38 @@ impl NodeGraphMessageHandler {
 		}
 
 		// Next, we decide what to display based on the number of layers and nodes selected
-		match layers.len() {
+		match *layers.as_slice() {
 			// If no layers are selected, show properties for all selected nodes
-			0 => {
+			[] => {
 				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
-					return selected_nodes;
+					let mut properties = Vec::new();
+
+					if let [node_id] = *nodes.as_slice() {
+						properties.push(LayoutGroup::Row {
+							widgets: vec![
+								Separator::new(SeparatorType::Related).widget_holder(),
+								IconLabel::new("Node").tooltip("Name of the selected node").widget_holder(),
+								Separator::new(SeparatorType::Related).widget_holder(),
+								TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
+									.tooltip("Name of the selected node")
+									.on_update(move |text_input| {
+										NodeGraphMessage::SetDisplayName {
+											node_id,
+											alias: text_input.value.clone(),
+											skip_adding_history_step: false,
+										}
+										.into()
+									})
+									.widget_holder(),
+								Separator::new(SeparatorType::Related).widget_holder(),
+							],
+						});
+					}
+
+					properties.extend(selected_nodes);
+
+					return properties;
 				}
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
@@ -2056,8 +2077,7 @@ impl NodeGraphMessageHandler {
 				properties
 			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
-			1 => {
-				let layer = layers[0];
+			[layer] => {
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
 					!context
 						.network_interface
@@ -2234,7 +2254,7 @@ impl NodeGraphMessageHandler {
 			let mut inputs = inputs.into_iter().map(|input| {
 				input.map(|input| FrontendGraphInput {
 					data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
-					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
+					resolved_type: Some(format!("{:?}", &input.ty)),
 					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
 					name: input.input_name.unwrap_or_else(|| input.ty.nested_type().to_string()),
 					description: input.input_description.unwrap_or_default(),
@@ -2258,7 +2278,7 @@ impl NodeGraphMessageHandler {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
 					description: String::new(),
-					resolved_type: primary_output_type.map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
+					resolved_type: primary_output_type.map(|(input, _)| format!("{input:?}")),
 					connected_to,
 				})
 			} else {
@@ -2292,7 +2312,7 @@ impl NodeGraphMessageHandler {
 					data_type: frontend_data_type,
 					name: output_name,
 					description: String::new(),
-					resolved_type: exposed_output.clone().map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
+					resolved_type: exposed_output.clone().map(|(input, _)| format!("{input:?}")),
 					connected_to,
 				});
 			}

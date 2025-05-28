@@ -299,7 +299,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// Clear the control bar
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(Default::default()),
-					layout_target: LayoutTarget::LayersPanelControlBar,
+					layout_target: LayoutTarget::LayersPanelControlLeftBar,
+				});
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(Default::default()),
+					layout_target: LayoutTarget::LayersPanelControlRightBar,
+				});
+
+				// Clear the bottom bar
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(Default::default()),
+					layout_target: LayoutTarget::LayersPanelBottomBar,
 				});
 			}
 			DocumentMessage::CreateEmptyFolder => {
@@ -344,6 +354,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(ipp, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_control_bar_widgets(responses);
+				self.update_layers_panel_bottom_bar_widgets(responses);
 
 				self.network_interface.load_structure();
 				let data_buffer: RawBuffer = self.serialize_root();
@@ -359,13 +370,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 					let Some(bounds) = self.metadata().bounding_box_document(layer) else { continue };
+					let min = bounds[0].min(bounds[1]);
+					let max = bounds[0].max(bounds[1]);
 
 					let name = self.network_interface.display_name(&layer.to_node(), &[]);
 
+					// Calculate position of the text
+					let corner_pos = if !self.document_ptz.flip {
+						// Use the top-left corner
+						min
+					} else {
+						// Use the top-right corner, which appears to be the top-left due to being flipped
+						DVec2::new(max.x, min.y)
+					};
+
+					// When the canvas is flipped, mirror the text so it appears correctly
+					let scale = if !self.document_ptz.flip { DVec2::ONE } else { DVec2::new(-1., 1.) };
+
+					// Create a transform that puts the text at the true top-left regardless of flip
 					let transform = self.metadata().document_to_viewport
-						* DAffine2::from_translation(bounds[0].min(bounds[1]))
+						* DAffine2::from_translation(corner_pos)
 						* DAffine2::from_scale(DVec2::splat(self.document_ptz.zoom().recip()))
-						* DAffine2::from_translation(-DVec2::Y * 4.);
+						* DAffine2::from_translation(-DVec2::Y * 4.)
+						* DAffine2::from_scale(scale);
 
 					overlay_context.text(&name, COLOR_OVERLAY_GRAY, None, transform, 0., [Pivot::Start, Pivot::End]);
 				}
@@ -1477,6 +1504,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.network_interface.document_bounds_document_space(true)
 				};
 				if let Some(bounds) = bounds {
+					if self.document_ptz.flip {
+						responses.add(NavigationMessage::CanvasFlip);
+					}
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				} else {
@@ -2111,165 +2141,212 @@ impl DocumentMessageHandler {
 						widgets: vec![TextLabel::new("General").widget_holder()],
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::ArtboardName),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Artboard Name".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::ArtboardName),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Artboard Name".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::TransformMeasurement),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("G/R/S Measurement".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::TransformMeasurement),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
 						widgets: vec![TextLabel::new("Select Tool").widget_holder()],
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::QuickMeasurement),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Quick Measurement".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::QuickMeasurement),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Quick Measurement".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::TransformCage),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Transform Cage".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::TransformCage),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Transform Cage".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::CompassRose),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Transform Dial".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::CompassRose),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Transform Dial".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.pivot)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Pivot),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Transform Pivot".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.pivot)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Pivot),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::HoverOutline),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Hover Outline".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::HoverOutline),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Hover Outline".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::SelectionOutline),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Selection Outline".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::SelectionOutline),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Selection Outline".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
 						widgets: vec![TextLabel::new("Pen & Path Tools").widget_holder()],
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.path)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Path),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Path".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.path)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Path),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Path".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.anchors)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Anchors),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Anchors".to_string()).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.anchors)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Anchors),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Anchors".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					},
 					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.overlays_visibility_settings.handles)
-								.disabled(!self.overlays_visibility_settings.anchors)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Handles),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new("Handles".to_string()).disabled(!self.overlays_visibility_settings.anchors).widget_holder(),
-						],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.handles)
+									.disabled(!self.overlays_visibility_settings.anchors)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::Handles),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Handles".to_string())
+									.disabled(!self.overlays_visibility_settings.anchors)
+									.for_checkbox(&mut checkbox_id)
+									.widget_holder(),
+							]
+						},
 					},
 				])
 				.widget_holder(),
@@ -2298,25 +2375,45 @@ impl DocumentMessageHandler {
 					]
 					.into_iter()
 					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
-						widgets: vec![
-									CheckboxInput::new(*closure(&mut snapping_state))
-										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
-										.tooltip(tooltip)
-										.widget_holder(),
-									TextLabel::new(name).tooltip(tooltip).widget_holder(),
-								],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(*closure(&mut snapping_state))
+									.on_update(move |input: &CheckboxInput| {
+										DocumentMessage::SetSnapping {
+											closure: Some(closure),
+											snapping_state: input.checked,
+										}
+										.into()
+									})
+									.tooltip(tooltip)
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new(name).tooltip(tooltip).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					}))
 					.chain([LayoutGroup::Row {
 						widgets: vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_holder()],
 					}])
 					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
-						widgets: vec![
-									CheckboxInput::new(*closure(&mut snapping_state2))
-										.on_update(move |input: &CheckboxInput| DocumentMessage::SetSnapping { closure: Some(closure), snapping_state: input.checked }.into())
-										.tooltip(tooltip)
-										.widget_holder(),
-									TextLabel::new(name).tooltip(tooltip).widget_holder(),
-								],
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(*closure(&mut snapping_state2))
+									.on_update(move |input: &CheckboxInput| {
+										DocumentMessage::SetSnapping {
+											closure: Some(closure),
+											snapping_state: input.checked,
+										}
+										.into()
+									})
+									.tooltip(tooltip)
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new(name).tooltip(tooltip).for_checkbox(&mut checkbox_id).widget_holder(),
+							]
+						},
 					}))
 					.collect(),
 				)
@@ -2365,7 +2462,7 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
 
-		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, "Canvas"));
+		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false));
 
 		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
@@ -2490,12 +2587,14 @@ impl DocumentMessageHandler {
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 				.disabled(disabled)
 				.draw_icon(false)
+				.max_width(100)
+				.tooltip("Blend Mode")
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(opacity)
 				.label("Opacity")
 				.unit("%")
-				.display_decimal_places(2)
+				.display_decimal_places(0)
 				.disabled(disabled)
 				.min(0.)
 				.max(100.)
@@ -2510,33 +2609,13 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.max_width(100)
+				.tooltip("Opacity")
 				.widget_holder(),
-			//
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			//
-			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
-			IconButton::new("Folder", 24)
-				.tooltip("Group Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-				.on_update(|_| {
-					let group_folder_type = GroupFolderType::Layer;
-					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-				})
-				.disabled(!has_selection)
-				.widget_holder(),
-			IconButton::new("Trash", 24)
-				.tooltip("Delete Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
-				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-				.disabled(!has_selection)
-				.widget_holder(),
-			//
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			//
+		];
+		let layers_panel_control_bar_left = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+
+		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
@@ -2552,11 +2631,75 @@ impl DocumentMessageHandler {
 				.disabled(!has_selection)
 				.widget_holder(),
 		];
-		let layers_panel_control_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_right = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layers_panel_control_bar),
-			layout_target: LayoutTarget::LayersPanelControlBar,
+			layout: Layout::WidgetLayout(layers_panel_control_bar_left),
+			layout_target: LayoutTarget::LayersPanelControlLeftBar,
+		});
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layers_panel_control_bar_right),
+			layout_target: LayoutTarget::LayersPanelControlRightBar,
+		});
+	}
+
+	pub fn update_layers_panel_bottom_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+		let selected_nodes = self.network_interface.selected_nodes();
+		let mut selected_layers = selected_nodes.selected_layers(self.metadata());
+		let selected_layer = selected_layers.next();
+		let has_selection = selected_layer.is_some();
+		let has_multiple_selection = selected_layers.next().is_some();
+
+		let widgets = vec![
+			PopoverButton::new()
+				.icon(Some("Node".to_string()))
+				.menu_direction(Some(MenuDirection::Top))
+				.tooltip("Add an operation to the end of this layer's chain of nodes")
+				.disabled(!has_selection || has_multiple_selection)
+				.popover_layout({
+					let node_chooser = NodeCatalog::new()
+						.on_update(move |node_type| {
+							if let Some(layer) = selected_layer {
+								NodeGraphMessage::CreateNodeInLayerWithTransaction {
+									node_type: node_type.clone(),
+									layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
+								}
+								.into()
+							} else {
+								Message::NoOp
+							}
+						})
+						.widget_holder();
+					vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
+				})
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
+				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+				.widget_holder(),
+			IconButton::new("Trash", 24)
+				.tooltip("Delete Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+				.disabled(!has_selection)
+				.widget_holder(),
+		];
+		let layers_panel_bottom_bar = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
+
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(layers_panel_bottom_bar),
+			layout_target: LayoutTarget::LayersPanelBottomBar,
 		});
 	}
 
@@ -2817,8 +2960,8 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, tooltip_name: &str) -> [WidgetHolder; 5] {
-	[
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool) -> Vec<WidgetHolder> {
+	let mut list = vec![
 		IconButton::new("ZoomIn", 24)
 			.tooltip("Zoom In")
 			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
@@ -2835,40 +2978,23 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
-		// PopoverButton::new()
-		// 	.popover_layout(vec![
-		// 		LayoutGroup::Row {
-		// 			widgets: vec![TextLabel::new(format!("{tooltip_name} Navigation")).bold(true).widget_holder()],
-		// 		},
-		// 		LayoutGroup::Row {
-		// 			widgets: vec![TextLabel::new({
-		// 				let tilt = if tooltip_name == "Canvas" { "Tilt:\n• Alt + Middle Click Drag\n\n" } else { "" };
-		// 				format!(
-		// 					"
-		// 					Interactive controls in this\n\
-		// 					menu are coming soon.\n\
-		// 					\n\
-		// 					Pan:\n\
-		// 					• Middle Click Drag\n\
-		// 					\n\
-		// 					{tilt}Zoom:\n\
-		// 					• Shift + Middle Click Drag\n\
-		// 					• Ctrl + Scroll Wheel Roll
-		// 					"
-		// 				)
-		// 				.trim()
-		// 			})
-		// 			.multiline(true)
-		// 			.widget_holder()],
-		// 		},
-		// 	])
-		// 	.widget_holder(),
+	];
+	if ptz.flip && !node_graph {
+		list.push(
+			IconButton::new("Reverse", 24)
+				.tooltip("Flip the canvas back to its standard orientation")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
+				.on_update(|_| NavigationMessage::CanvasFlip.into())
+				.widget_holder(),
+		);
+	}
+	list.extend([
 		Separator::new(SeparatorType::Related).widget_holder(),
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
 			.min(0.000001)
 			.max(1000000.)
-			.tooltip(format!("{tooltip_name} Zoom"))
+			.tooltip(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,
@@ -2879,7 +3005,8 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 			.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 			.widget_holder(),
-	]
+	]);
+	list
 }
 
 impl Iterator for ClickXRayIter<'_> {

@@ -67,7 +67,7 @@ impl Rect {
 		Self::from_box([self[0] - delta, self[1] + delta])
 	}
 
-	/// Expand a rect by a certain amount on top/bottom and on left/right
+	/// Checks if two rects intersect
 	#[must_use]
 	pub fn intersects(&self, other: Self) -> bool {
 		let [mina, maxa] = [self[0].min(self[1]), self[0].max(self[1])];
