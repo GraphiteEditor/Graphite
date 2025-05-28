@@ -95,7 +95,7 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
 }
 
-// Function to check whether a point is visible in the current overlay mode
+/// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
 	vector_data: &VectorData,
@@ -105,47 +105,33 @@ pub fn is_visible_point(
 	selected_points: &HashSet<ManipulatorPointId>,
 ) -> bool {
 	match manipulator_point_id {
-		ManipulatorPointId::Anchor(_) => {
-			return true;
-		}
+		ManipulatorPointId::Anchor(_) => true,
 		ManipulatorPointId::EndHandle(segment_id) | ManipulatorPointId::PrimaryHandle(segment_id) => {
-			match path_overlay_mode {
-				PathOverlayMode::AllHandles => {
-					return true;
-				}
-				PathOverlayMode::SelectedPointHandles => {
+			match (path_overlay_mode, selected_points.len() == 1) {
+				(PathOverlayMode::AllHandles, _) => true,
+				(PathOverlayMode::SelectedPointHandles, _) | (PathOverlayMode::FrontierHandles, true) => {
+					if selected_segments.contains(&segment_id) {
+						return true;
+					}
+
 					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
-					if let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) {
-						let other_handle = handle_pair[1].to_manipulator_point();
-						let selected_points_contains_other = selected_points.contains(&other_handle);
-						return selected_segments.contains(&segment_id) || selected_points_contains_other;
-					} else {
-						return selected_segments.contains(&segment_id);
-					}
+					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) else { return false };
+					let other_handle = handle_pair[1].to_manipulator_point();
+
+					// Return whether the list of selected points contain the other handle
+					selected_points.contains(&other_handle)
 				}
-				PathOverlayMode::FrontierHandles => {
-					if selected_points.len() == 1 {
-						if let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) {
-							let other_handle = handle_pair[1].to_manipulator_point();
-							let selected_points_contains_other = selected_points.contains(&other_handle);
-							return selected_segments.contains(&segment_id) || selected_points_contains_other;
-						} else {
-							return selected_segments.contains(&segment_id);
-						}
-					} else {
-						let Some(anchor) = manipulator_point_id.get_anchor(&vector_data) else {
-							panic!("No anchor for selected handle")
-						};
-						if let Some(frontier_handles) = &frontier_handles_info {
-							if let Some(anchors) = frontier_handles.get(&segment_id) {
-								return anchors.contains(&anchor);
-							} else {
-								return false;
-							}
-						} else {
-							panic!("No frontier handles info provided")
-						}
-					}
+				(PathOverlayMode::FrontierHandles, false) => {
+					let Some(anchor) = manipulator_point_id.get_anchor(vector_data) else {
+						warn!("No anchor for selected handle");
+						return false;
+					};
+					let Some(frontier_handles) = &frontier_handles_info else {
+						warn!("No frontier handles info provided");
+						return false;
+					};
+
+					frontier_handles.get(&segment_id).map(|anchors| anchors.contains(&anchor)).unwrap_or_default()
 				}
 			}
 		}

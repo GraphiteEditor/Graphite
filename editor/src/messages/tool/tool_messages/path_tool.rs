@@ -472,9 +472,9 @@ impl PathToolData {
 		if let Some((already_selected, mut selection_info)) = shape_editor.get_point_selection_state(
 			&document.network_interface,
 			input.mouse.position,
+			SELECTION_THRESHOLD,
 			path_overlay_mode,
 			self.frontier_handles_info.clone(),
-			SELECTION_THRESHOLD,
 		) {
 			responses.add(DocumentMessage::StartTransaction);
 
@@ -1108,7 +1108,7 @@ impl Fsm for PathToolFsmState {
 									if attached_segments.len() == 1 {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 									}
-									// This is for edge case of a loop where a point rather not selected can be part of two segments
+									// This is for the edge case of a loop where a point rather not selected can be part of two segments
 									else if !selected_anchors.contains(&point) {
 										segment_endpoints.entry(attached_segments[0]).or_default().push(point);
 										segment_endpoints.entry(attached_segments[1]).or_default().push(point);
@@ -1384,14 +1384,13 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// If there is a point nearby, then remove the overlay
-
 				if shape_editor
 					.find_nearest_visible_point_indices(
 						&document.network_interface,
 						input.mouse.position,
+						SELECTION_THRESHOLD,
 						tool_options.path_overlay_mode,
 						tool_data.frontier_handles_info.clone(),
-						SELECTION_THRESHOLD,
 					)
 					.is_some()
 				{
@@ -1571,13 +1570,13 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
-				//TODO: Here only visible points should be considered
+				// TODO: Here we want only visible points to be considered
 				let nearest_point = shape_editor.find_nearest_visible_point_indices(
 					&document.network_interface,
 					input.mouse.position,
+					SELECTION_THRESHOLD,
 					tool_options.path_overlay_mode,
 					tool_data.frontier_handles_info.clone(),
-					SELECTION_THRESHOLD,
 				);
 
 				if let Some((layer, nearest_point)) = nearest_point {
