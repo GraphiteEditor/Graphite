@@ -1,0 +1,1110 @@
+Message `editor\src\messages\message.rs`
+├── NoOp
+├── Init
+├── Batched
+├── StartBuffer
+├── EndBuffer
+├── Animation
+│   ├── AnimationMessage `editor\src\messages\animation\animation_message.rs`
+│   │   ├── ToggleLivePreview
+│   │   ├── EnableLivePreview
+│   │   ├── DisableLivePreview
+│   │   ├── RestartAnimation
+│   │   ├── SetFrameIndex
+│   │   ├── SetTime
+│   │   ├── UpdateTime
+│   │   ├── IncrementFrameCounter
+│   │   └── SetAnimationTimeMode
+│   └── AnimationMessageHandler `editor\src\messages\animation\animation_message_handler.rs`
+│       ├── live_preview_recently_zero: bool
+│       ├── timestamp: f64
+│       ├── frame_index: f64
+│       ├── animation_state: AnimationState
+│       ├── fps: f64
+│       └── animation_time_mode: AnimationTimeMode
+├── Broadcast
+│   ├── BroadcastMessage `editor\src\messages\broadcast\broadcast_message.rs`
+│   │   ├── TriggerEvent
+│   │   ├── SubscribeEvent
+│   │   └── UnsubscribeEvent
+│   └── BroadcastMessageHandler `editor\src\messages\broadcast\broadcast_message_handler.rs`
+│       └── listeners: HashMap<BroadcastEvent, Vec<Message>>
+├── Debug
+│   ├── DebugMessage `editor\src\messages\debug\debug_message.rs`
+│   │   ├── ToggleTraceLogs
+│   │   ├── MessageOff
+│   │   ├── MessageNames
+│   │   └── MessageContents
+│   └── DebugMessageHandler `editor\src\messages\debug\debug_message_handler.rs`
+│       └── message_logging_verbosity: MessageLoggingVerbosity
+├── Dialog
+│   ├── DialogMessage `editor\src\messages\dialog\dialog_message.rs`
+│   │   ├── ExportDialog
+│   │   │   ├── ExportDialogMessage `editor\src\messages\dialog\export_dialog\export_dialog_message.rs`
+│   │   │   │   ├── FileType
+│   │   │   │   ├── ScaleFactor
+│   │   │   │   ├── TransparentBackground
+│   │   │   │   ├── ExportBounds
+│   │   │   │   └── Submit
+│   │   │   ├── ExportDialogMessageHandler `editor\src\messages\dialog\export_dialog\export_dialog_message_handler.rs`
+│   │   │   │   ├── file_type: FileType
+│   │   │   │   ├── scale_factor: f64
+│   │   │   │   ├── bounds: ExportBounds
+│   │   │   │   ├── transparent_background: bool
+│   │   │   │   ├── artboards: HashMap<LayerNodeIdentifier, String>
+│   │   │   │   └── has_selection: bool
+│   │   │   └── ExportDialogMessageData `editor\src\messages\dialog\export_dialog\export_dialog_message_handler.rs`
+│   │   │       └── portfolio: &'a PortfolioMessageHandler
+│   │   ├── NewDocumentDialog
+│   │   │   ├── NewDocumentDialogMessage `editor\src\messages\dialog\new_document_dialog\new_document_dialog_message.rs`
+│   │   │   │   ├── Name
+│   │   │   │   ├── Infinite
+│   │   │   │   ├── DimensionsX
+│   │   │   │   ├── DimensionsY
+│   │   │   │   └── Submit
+│   │   │   └── NewDocumentDialogMessageHandler `editor\src\messages\dialog\new_document_dialog\new_document_dialog_message_handler.rs`
+│   │   │       ├── name: String
+│   │   │       ├── infinite: bool
+│   │   │       └── dimensions: UVec2
+│   │   ├── PreferencesDialog
+│   │   │   ├── PreferencesDialogMessage `editor\src\messages\dialog\preferences_dialog\preferences_dialog_message.rs`
+│   │   │   │   └── Confirm
+│   │   │   └── PreferencesDialogMessageData `editor\src\messages\dialog\preferences_dialog\preferences_dialog_message_handler.rs`
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── CloseAllDocumentsWithConfirmation
+│   │   ├── CloseDialogAndThen
+│   │   ├── DisplayDialogError
+│   │   ├── RequestAboutGraphiteDialog
+│   │   ├── RequestAboutGraphiteDialogWithLocalizedCommitDate
+│   │   ├── RequestComingSoonDialog
+│   │   ├── RequestDemoArtworkDialog
+│   │   ├── RequestExportDialog
+│   │   ├── RequestLicensesDialogWithLocalizedCommitDate
+│   │   ├── RequestNewDocumentDialog
+│   │   └── RequestPreferencesDialog
+│   ├── DialogMessageHandler `editor\src\messages\dialog\dialog_message_handler.rs`
+│   │   ├── export_dialog: ExportDialogMessageHandler
+│   │   ├── new_document_dialog: NewDocumentDialogMessageHandler
+│   │   └── preferences_dialog: PreferencesDialogMessageHandler
+│   └── DialogMessageData `editor\src\messages\dialog\dialog_message_handler.rs`
+│       ├── portfolio: &'a PortfolioMessageHandler
+│       └── preferences: &'a PreferencesMessageHandler
+├── Frontend
+│   └── FrontendMessage `editor\src\messages\frontend\frontend_message.rs`
+│       ├── DisplayDialog
+│       ├── DisplayDialogDismiss
+│       ├── DisplayDialogPanic
+│       ├── DisplayEditableTextbox
+│       ├── DisplayEditableTextboxTransform
+│       ├── DisplayRemoveEditableTextbox
+│       ├── SendUIMetadata
+│       ├── TriggerAboutGraphiteLocalizedCommitDate
+│       ├── TriggerDelayedZoomCanvasToFitAll
+│       ├── TriggerDownloadImage
+│       ├── TriggerDownloadTextFile
+│       ├── TriggerFetchAndOpenDocument
+│       ├── TriggerFontLoad
+│       ├── TriggerImport
+│       ├── TriggerIndexedDbRemoveDocument
+│       ├── TriggerIndexedDbWriteDocument
+│       ├── TriggerLoadFirstAutoSaveDocument
+│       ├── TriggerLoadRestAutoSaveDocuments
+│       ├── TriggerLoadPreferences
+│       ├── TriggerOpenDocument
+│       ├── TriggerPaste
+│       ├── TriggerSavePreferences
+│       ├── TriggerSaveActiveDocument
+│       ├── TriggerTextCommit
+│       ├── TriggerTextCopy
+│       ├── TriggerUpgradeDocumentToVectorManipulationFormat
+│       ├── TriggerVisitLink
+│       ├── UpdateActiveDocument
+│       ├── UpdateImportsExports
+│       ├── UpdateInSelectedNetwork
+│       ├── UpdateBox
+│       ├── UpdateContextMenuInformation
+│       ├── UpdateClickTargets
+│       ├── UpdateGraphViewOverlay
+│       ├── UpdateSpreadsheetState
+│       ├── UpdateSpreadsheetLayout
+│       ├── UpdateImportReorderIndex
+│       ├── UpdateExportReorderIndex
+│       ├── UpdateLayerWidths
+│       ├── UpdateDialogButtons
+│       ├── UpdateDialogColumn1
+│       ├── UpdateDialogColumn2
+│       ├── UpdateDocumentArtwork
+│       ├── UpdateDocumentBarLayout
+│       ├── UpdateDocumentLayerDetails
+│       ├── UpdateDocumentLayerStructure
+│       ├── UpdateDocumentLayerStructureJs
+│       ├── UpdateDocumentModeLayout
+│       ├── UpdateDocumentRulers
+│       ├── UpdateDocumentScrollbars
+│       ├── UpdateEyedropperSamplingState
+│       ├── UpdateGraphFadeArtwork
+│       ├── UpdateInputHints
+│       ├── UpdateLayersPanelControlBarLayout
+│       ├── UpdateMenuBarLayout
+│       ├── UpdateMouseCursor
+│       ├── UpdateNodeGraph
+│       ├── UpdateNodeGraphControlBarLayout
+│       ├── UpdateNodeGraphSelection
+│       ├── UpdateNodeGraphTransform
+│       ├── UpdateNodeThumbnail
+│       ├── UpdateOpenDocumentsList
+│       ├── UpdatePropertyPanelSectionsLayout
+│       ├── UpdateToolOptionsLayout
+│       ├── UpdateToolShelfLayout
+│       ├── UpdateWirePathInProgress
+│       └── UpdateWorkingColorsLayout
+├── Globals
+│   └── GlobalsMessage `editor\src\messages\globals\globals_message.rs`
+│       └── SetPlatform
+├── InputPreprocessor
+│   ├── InputPreprocessorMessage `editor\src\messages\input_preprocessor\input_preprocessor_message.rs`
+│   │   ├── BoundsOfViewports
+│   │   ├── DoubleClick
+│   │   ├── KeyDown
+│   │   ├── KeyUp
+│   │   ├── PointerDown
+│   │   ├── PointerMove
+│   │   ├── PointerUp
+│   │   ├── CurrentTime
+│   │   └── WheelScroll
+│   ├── InputPreprocessorMessageHandler `editor\src\messages\input_preprocessor\input_preprocessor_message_handler.rs`
+│   │   ├── frame_time: FrameTimeInfo
+│   │   ├── time: u64
+│   │   ├── keyboard: KeyStates
+│   │   ├── mouse: MouseState
+│   │   └── viewport_bounds: ViewportBounds
+│   └── InputPreprocessorMessageData `editor\src\messages\input_preprocessor\input_preprocessor_message_handler.rs`
+│       └── keyboard_platform: KeyboardPlatformLayout
+├── KeyMapping
+│   ├── KeyMappingMessage `editor\src\messages\input_mapper\key_mapping\key_mapping_message.rs`
+│   │   ├── Lookup
+│   │   │   ├── InputMapperMessage `editor\src\messages\input_mapper\input_mapper_message.rs`
+│   │   │   │   ├── KeyDown
+│   │   │   │   ├── KeyUp
+│   │   │   │   ├── KeyDownNoRepeat
+│   │   │   │   ├── KeyUpNoRepeat
+│   │   │   │   ├── DoubleClick
+│   │   │   │   ├── PointerMove
+│   │   │   │   └── WheelScroll
+│   │   │   ├── InputMapperMessageHandler `editor\src\messages\input_mapper\input_mapper_message_handler.rs`
+│   │   │   │   └── mapping: Mapping
+│   │   │   └── InputMapperMessageData `editor\src\messages\input_mapper\input_mapper_message_handler.rs`
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       └── actions: ActionList
+│   │   └── ModifyMapping
+│   ├── KeyMappingMessageHandler `editor\src\messages\input_mapper\key_mapping\key_mapping_message_handler.rs`
+│   │   └── mapping_handler: InputMapperMessageHandler
+│   └── KeyMappingMessageData `editor\src\messages\input_mapper\key_mapping\key_mapping_message_handler.rs`
+│       ├── input: &'a InputPreprocessorMessageHandler
+│       └── actions: ActionList
+├── Layout
+│   ├── LayoutMessage `editor\src\messages\layout\layout_message.rs`
+│   │   ├── ResendActiveWidget
+│   │   ├── SendLayout
+│   │   ├── WidgetValueCommit
+│   │   └── WidgetValueUpdate
+│   ├── LayoutMessageHandler `editor\src\messages\layout\layout_message_handler.rs`
+│   │   └── layouts: [Layout; LayoutTarget::LayoutTargetLength as usize]
+│   └── Function `editor\src\messages\layout\layout_message_handler.rs`
+│       └── Fn(&MessageDiscriminant) -> Vec<KeysGroup>
+├── Portfolio
+│   ├── PortfolioMessage `editor\src\messages\portfolio\portfolio_message.rs`
+│   │   ├── MenuBar
+│   │   │   ├── MenuBarMessage `editor\src\messages\portfolio\menu_bar\menu_bar_message.rs`
+│   │   │   │   └── SendLayout
+│   │   │   └── MenuBarMessageHandler `editor\src\messages\portfolio\menu_bar\menu_bar_message_handler.rs`
+│   │   │       ├── has_active_document: bool
+│   │   │       ├── canvas_tilted: bool
+│   │   │       ├── canvas_flipped: bool
+│   │   │       ├── rulers_visible: bool
+│   │   │       ├── node_graph_open: bool
+│   │   │       ├── has_selected_nodes: bool
+│   │   │       ├── has_selected_layers: bool
+│   │   │       ├── has_selection_history: (bool, bool)
+│   │   │       ├── spreadsheet_view_open: bool
+│   │   │       ├── message_logging_verbosity: MessageLoggingVerbosity
+│   │   │       └── reset_node_definitions_on_open: bool
+│   │   ├── Document
+│   │   │   ├── DocumentMessage `editor\src\messages\portfolio\document\document_message.rs`
+│   │   │   │   ├── Noop
+│   │   │   │   ├── GraphOperation
+│   │   │   │   │   ├── GraphOperationMessage `editor\src\messages\portfolio\document\graph_operation\graph_operation_message.rs`
+│   │   │   │   │   │   ├── FillSet
+│   │   │   │   │   │   ├── OpacitySet
+│   │   │   │   │   │   ├── BlendModeSet
+│   │   │   │   │   │   ├── StrokeSet
+│   │   │   │   │   │   ├── TransformChange
+│   │   │   │   │   │   ├── TransformSet
+│   │   │   │   │   │   ├── TransformSetPivot
+│   │   │   │   │   │   ├── Vector
+│   │   │   │   │   │   ├── Brush
+│   │   │   │   │   │   ├── SetUpstreamToChain
+│   │   │   │   │   │   ├── NewArtboard
+│   │   │   │   │   │   ├── NewBitmapLayer
+│   │   │   │   │   │   ├── NewBooleanOperationLayer
+│   │   │   │   │   │   ├── NewCustomLayer
+│   │   │   │   │   │   ├── NewVectorLayer
+│   │   │   │   │   │   ├── NewTextLayer
+│   │   │   │   │   │   ├── ResizeArtboard
+│   │   │   │   │   │   ├── RemoveArtboards
+│   │   │   │   │   │   └── NewSvg
+│   │   │   │   │   └── GraphOperationMessageData `editor\src\messages\portfolio\document\graph_operation\graph_operation_message_handler.rs`
+│   │   │   │   │       ├── network_interface: &'a mut NodeNetworkInterface
+│   │   │   │   │       ├── collapsed: &'a mut CollapsedLayers
+│   │   │   │   │       └── node_graph: &'a mut NodeGraphMessageHandler
+│   │   │   │   ├── Navigation
+│   │   │   │   │   ├── NavigationMessage `editor\src\messages\portfolio\document\navigation\navigation_message.rs`
+│   │   │   │   │   │   ├── BeginCanvasPan
+│   │   │   │   │   │   ├── BeginCanvasTilt
+│   │   │   │   │   │   ├── BeginCanvasZoom
+│   │   │   │   │   │   ├── CanvasPan
+│   │   │   │   │   │   ├── CanvasPanAbortPrepare
+│   │   │   │   │   │   ├── CanvasPanAbort
+│   │   │   │   │   │   ├── CanvasPanByViewportFraction
+│   │   │   │   │   │   ├── CanvasPanMouseWheel
+│   │   │   │   │   │   ├── CanvasTiltResetAndZoomTo100Percent
+│   │   │   │   │   │   ├── CanvasTiltSet
+│   │   │   │   │   │   ├── CanvasZoomDecrease
+│   │   │   │   │   │   ├── CanvasZoomIncrease
+│   │   │   │   │   │   ├── CanvasZoomMouseWheel
+│   │   │   │   │   │   ├── CanvasZoomSet
+│   │   │   │   │   │   ├── CanvasFlip
+│   │   │   │   │   │   ├── EndCanvasPTZ
+│   │   │   │   │   │   ├── EndCanvasPTZWithClick
+│   │   │   │   │   │   ├── FitViewportToBounds
+│   │   │   │   │   │   ├── FitViewportToSelection
+│   │   │   │   │   │   └── PointerMove
+│   │   │   │   │   ├── NavigationMessageHandler `editor\src\messages\portfolio\document\navigation\navigation_message_handler.rs`
+│   │   │   │   │   │   ├── navigation_operation: NavigationOperation
+│   │   │   │   │   │   ├── mouse_position: ViewportPosition
+│   │   │   │   │   │   ├── finish_operation_with_click: bool
+│   │   │   │   │   │   └── abortable_pan_start: Option<f64>
+│   │   │   │   │   └── NavigationMessageData `editor\src\messages\portfolio\document\navigation\navigation_message_handler.rs`
+│   │   │   │   │       ├── network_interface: &'a mut NodeNetworkInterface
+│   │   │   │   │       ├── breadcrumb_network_path: &'a [NodeId]
+│   │   │   │   │       ├── ipp: &'a InputPreprocessorMessageHandler
+│   │   │   │   │       ├── selection_bounds: Option<[DVec2; 2]>
+│   │   │   │   │       ├── document_ptz: &'a mut PTZ
+│   │   │   │   │       ├── graph_view_overlay_open: bool
+│   │   │   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   │   │   ├── NodeGraph
+│   │   │   │   │   ├── NodeGraphMessage `editor\src\messages\portfolio\document\node_graph\node_graph_message.rs`
+│   │   │   │   │   │   ├── AddNodes
+│   │   │   │   │   │   ├── AddImport
+│   │   │   │   │   │   ├── AddExport
+│   │   │   │   │   │   ├── Init
+│   │   │   │   │   │   ├── SelectedNodesUpdated
+│   │   │   │   │   │   ├── Copy
+│   │   │   │   │   │   ├── CreateNodeInLayerNoTransaction
+│   │   │   │   │   │   ├── CreateNodeInLayerWithTransaction
+│   │   │   │   │   │   ├── CreateNodeFromContextMenu
+│   │   │   │   │   │   ├── CreateWire
+│   │   │   │   │   │   ├── ConnectUpstreamOutputToInput
+│   │   │   │   │   │   ├── Cut
+│   │   │   │   │   │   ├── DeleteNodes
+│   │   │   │   │   │   ├── DeleteSelectedNodes
+│   │   │   │   │   │   ├── DisconnectInput
+│   │   │   │   │   │   ├── DisconnectRootNode
+│   │   │   │   │   │   ├── EnterNestedNetwork
+│   │   │   │   │   │   ├── DuplicateSelectedNodes
+│   │   │   │   │   │   ├── ExposeInput
+│   │   │   │   │   │   ├── InsertNode
+│   │   │   │   │   │   ├── InsertNodeBetween
+│   │   │   │   │   │   ├── MergeSelectedNodes
+│   │   │   │   │   │   ├── MoveLayerToStack
+│   │   │   │   │   │   ├── MoveNodeToChainStart
+│   │   │   │   │   │   ├── PasteNodes
+│   │   │   │   │   │   ├── PointerDown
+│   │   │   │   │   │   ├── PointerMove
+│   │   │   │   │   │   ├── PointerUp
+│   │   │   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   │   │   ├── RemoveImport
+│   │   │   │   │   │   ├── RemoveExport
+│   │   │   │   │   │   ├── ReorderImport
+│   │   │   │   │   │   ├── ReorderExport
+│   │   │   │   │   │   ├── RunDocumentGraph
+│   │   │   │   │   │   ├── ForceRunDocumentGraph
+│   │   │   │   │   │   ├── SelectedNodesAdd
+│   │   │   │   │   │   ├── SelectedNodesRemove
+│   │   │   │   │   │   ├── SelectedNodesSet
+│   │   │   │   │   │   ├── SendClickTargets
+│   │   │   │   │   │   ├── EndSendClickTargets
+│   │   │   │   │   │   ├── SendGraph
+│   │   │   │   │   │   ├── SetGridAlignedEdges
+│   │   │   │   │   │   ├── SetInputValue
+│   │   │   │   │   │   ├── SetInput
+│   │   │   │   │   │   ├── SetDisplayName
+│   │   │   │   │   │   ├── SetDisplayNameImpl
+│   │   │   │   │   │   ├── SetToNodeOrLayer
+│   │   │   │   │   │   ├── ShiftNodePosition
+│   │   │   │   │   │   ├── ShiftSelectedNodes
+│   │   │   │   │   │   ├── ShiftSelectedNodesByAmount
+│   │   │   │   │   │   ├── TogglePreview
+│   │   │   │   │   │   ├── TogglePreviewImpl
+│   │   │   │   │   │   ├── SetImportExportName
+│   │   │   │   │   │   ├── SetImportExportNameImpl
+│   │   │   │   │   │   ├── ToggleSelectedAsLayersOrNodes
+│   │   │   │   │   │   ├── ToggleSelectedLocked
+│   │   │   │   │   │   ├── ToggleLocked
+│   │   │   │   │   │   ├── SetLocked
+│   │   │   │   │   │   ├── ToggleSelectedIsPinned
+│   │   │   │   │   │   ├── ToggleSelectedVisibility
+│   │   │   │   │   │   ├── ToggleVisibility
+│   │   │   │   │   │   ├── SetPinned
+│   │   │   │   │   │   ├── SetVisibility
+│   │   │   │   │   │   ├── SetLockedOrVisibilitySideEffects
+│   │   │   │   │   │   ├── UpdateEdges
+│   │   │   │   │   │   ├── UpdateBoxSelection
+│   │   │   │   │   │   ├── UpdateImportsExports
+│   │   │   │   │   │   ├── UpdateLayerPanel
+│   │   │   │   │   │   ├── UpdateNewNodeGraph
+│   │   │   │   │   │   ├── UpdateTypes
+│   │   │   │   │   │   ├── UpdateActionButtons
+│   │   │   │   │   │   ├── UpdateGraphBarRight
+│   │   │   │   │   │   ├── UpdateInSelectedNetwork
+│   │   │   │   │   │   ├── UpdateHints
+│   │   │   │   │   │   └── SendSelectedNodes
+│   │   │   │   │   ├── NodeGraphMessageHandler `editor\src\messages\portfolio\document\node_graph\node_graph_message_handler.rs`
+│   │   │   │   │   │   ├── network: Vec<NodeId>
+│   │   │   │   │   │   ├── node_graph_errors: GraphErrors
+│   │   │   │   │   │   ├── has_selection: bool
+│   │   │   │   │   │   ├── widgets: [LayoutGroup; 2]
+│   │   │   │   │   │   ├── begin_dragging: bool
+│   │   │   │   │   │   ├── node_has_moved_in_drag: bool
+│   │   │   │   │   │   ├── drag_start: Option<(DragStart, bool)>
+│   │   │   │   │   │   ├── box_selection_start: Option<(DVec2, bool)>
+│   │   │   │   │   │   ├── selection_before_pointer_down: Vec<NodeId>
+│   │   │   │   │   │   ├── shift_without_push: bool
+│   │   │   │   │   │   ├── disconnecting: Option<InputConnector>
+│   │   │   │   │   │   ├── initial_disconnecting: bool
+│   │   │   │   │   │   ├── select_if_not_dragged: Option<NodeId>
+│   │   │   │   │   │   ├── wire_in_progress_from_connector: Option<DVec2>
+│   │   │   │   │   │   ├── wire_in_progress_to_connector: Option<DVec2>
+│   │   │   │   │   │   ├── context_menu: Option<ContextMenuInformation>
+│   │   │   │   │   │   ├── deselect_on_pointer_up: Option<usize>
+│   │   │   │   │   │   ├── auto_panning: AutoPanning
+│   │   │   │   │   │   ├── preview_on_mouse_up: Option<NodeId>
+│   │   │   │   │   │   ├── reordering_import: Option<usize>
+│   │   │   │   │   │   ├── reordering_export: Option<usize>
+│   │   │   │   │   │   └── end_index: Option<usize>
+│   │   │   │   │   └── NodeGraphHandlerData `editor\src\messages\portfolio\document\node_graph\node_graph_message_handler.rs`
+│   │   │   │   │       ├── network_interface: &'a mut NodeNetworkInterface
+│   │   │   │   │       ├── selection_network_path: &'a [NodeId]
+│   │   │   │   │       ├── breadcrumb_network_path: &'a [NodeId]
+│   │   │   │   │       ├── document_id: DocumentId
+│   │   │   │   │       ├── collapsed: &'a mut CollapsedLayers
+│   │   │   │   │       ├── ipp: &'a InputPreprocessorMessageHandler
+│   │   │   │   │       ├── graph_view_overlay_open: bool
+│   │   │   │   │       ├── graph_fade_artwork_percentage: f64
+│   │   │   │   │       ├── navigation_handler: &'a NavigationMessageHandler
+│   │   │   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   │   │   ├── Overlays
+│   │   │   │   │   ├── OverlaysMessage `editor\src\messages\portfolio\document\overlays\overlays_message.rs`
+│   │   │   │   │   │   ├── Draw
+│   │   │   │   │   │   ├── AddProvider
+│   │   │   │   │   │   └── RemoveProvider
+│   │   │   │   │   ├── OverlaysMessageHandler `editor\src\messages\portfolio\document\overlays\overlays_message_handler.rs`
+│   │   │   │   │   │   └── overlay_providers: HashSet<OverlayProvider>
+│   │   │   │   │   └── OverlaysMessageData `editor\src\messages\portfolio\document\overlays\overlays_message_handler.rs`
+│   │   │   │   │       ├── visibility_settings: OverlaysVisibilitySettings
+│   │   │   │   │       ├── ipp: &'a InputPreprocessorMessageHandler
+│   │   │   │   │       └── device_pixel_ratio: f64
+│   │   │   │   ├── PropertiesPanel
+│   │   │   │   │   └── PropertiesPanelMessage `editor\src\messages\portfolio\document\properties_panel\properties_panel_message.rs`
+│   │   │   │   │       ├── Clear
+│   │   │   │   │       └── Refresh
+│   │   │   │   ├── AlignSelectedLayers
+│   │   │   │   ├── RemoveArtboards
+│   │   │   │   ├── ClearLayersPanel
+│   │   │   │   ├── CreateEmptyFolder
+│   │   │   │   ├── DeleteNode
+│   │   │   │   ├── DeleteSelectedLayers
+│   │   │   │   ├── DeselectAllLayers
+│   │   │   │   ├── DocumentHistoryBackward
+│   │   │   │   ├── DocumentHistoryForward
+│   │   │   │   ├── DocumentStructureChanged
+│   │   │   │   ├── DrawArtboardOverlays
+│   │   │   │   ├── DuplicateSelectedLayers
+│   │   │   │   ├── EnterNestedNetwork
+│   │   │   │   ├── Escape
+│   │   │   │   ├── ExitNestedNetwork
+│   │   │   │   ├── FlipSelectedLayers
+│   │   │   │   ├── RotateSelectedLayers
+│   │   │   │   ├── GraphViewOverlay
+│   │   │   │   ├── GraphViewOverlayToggle
+│   │   │   │   ├── GridOptions
+│   │   │   │   ├── GridOverlays
+│   │   │   │   ├── GridVisibility
+│   │   │   │   ├── GroupSelectedLayers
+│   │   │   │   ├── MoveSelectedLayersTo
+│   │   │   │   ├── MoveSelectedLayersToGroup
+│   │   │   │   ├── NudgeSelectedLayers
+│   │   │   │   ├── PasteImage
+│   │   │   │   ├── PasteSvg
+│   │   │   │   ├── Redo
+│   │   │   │   ├── RenameDocument
+│   │   │   │   ├── RenderRulers
+│   │   │   │   ├── RenderScrollbars
+│   │   │   │   ├── SaveDocument
+│   │   │   │   ├── SelectParentLayer
+│   │   │   │   ├── SelectAllLayers
+│   │   │   │   ├── SelectedLayersLower
+│   │   │   │   ├── SelectedLayersLowerToBack
+│   │   │   │   ├── SelectedLayersRaise
+│   │   │   │   ├── SelectedLayersRaiseToFront
+│   │   │   │   ├── SelectedLayersReverse
+│   │   │   │   ├── SelectedLayersReorder
+│   │   │   │   ├── SelectLayer
+│   │   │   │   ├── SetActivePanel
+│   │   │   │   ├── SetBlendModeForSelectedLayers
+│   │   │   │   ├── SetGraphFadeArtwork
+│   │   │   │   ├── SetNodePinned
+│   │   │   │   ├── SetOpacityForSelectedLayers
+│   │   │   │   ├── SetOverlaysVisibility
+│   │   │   │   ├── SetRangeSelectionLayer
+│   │   │   │   ├── SetSnapping
+│   │   │   │   ├── SetToNodeOrLayer
+│   │   │   │   ├── SetViewMode
+│   │   │   │   ├── AddTransaction
+│   │   │   │   ├── StartTransaction
+│   │   │   │   ├── EndTransaction
+│   │   │   │   ├── CommitTransaction
+│   │   │   │   ├── AbortTransaction
+│   │   │   │   ├── RepeatedAbortTransaction
+│   │   │   │   ├── ToggleLayerExpansion
+│   │   │   │   ├── ToggleSelectedVisibility
+│   │   │   │   ├── ToggleSelectedLocked
+│   │   │   │   ├── ToggleGridVisibility
+│   │   │   │   ├── ToggleOverlaysVisibility
+│   │   │   │   ├── ToggleSnapping
+│   │   │   │   ├── UpdateUpstreamTransforms
+│   │   │   │   ├── UpdateClickTargets
+│   │   │   │   ├── UpdateClipTargets
+│   │   │   │   ├── Undo
+│   │   │   │   ├── UngroupSelectedLayers
+│   │   │   │   ├── UngroupLayer
+│   │   │   │   ├── PTZUpdate
+│   │   │   │   ├── SelectionStepBack
+│   │   │   │   ├── SelectionStepForward
+│   │   │   │   ├── WrapContentInArtboard
+│   │   │   │   ├── ZoomCanvasTo100Percent
+│   │   │   │   ├── ZoomCanvasTo200Percent
+│   │   │   │   └── ZoomCanvasToFitAll
+│   │   │   ├── DocumentMessageHandler `editor\src\messages\portfolio\document\document_message_handler.rs`
+│   │   │   │   ├── navigation_handler: NavigationMessageHandler
+│   │   │   │   ├── node_graph_handler: NodeGraphMessageHandler
+│   │   │   │   ├── overlays_message_handler: OverlaysMessageHandler
+│   │   │   │   ├── properties_panel_message_handler: PropertiesPanelMessageHandler
+│   │   │   │   ├── network_interface: NodeNetworkInterface
+│   │   │   │   ├── collapsed: CollapsedLayers
+│   │   │   │   ├── name: String
+│   │   │   │   ├── commit_hash: String
+│   │   │   │   ├── document_ptz: PTZ
+│   │   │   │   ├── document_mode: DocumentMode
+│   │   │   │   ├── view_mode: ViewMode
+│   │   │   │   ├── overlays_visibility_settings: OverlaysVisibilitySettings
+│   │   │   │   ├── rulers_visible: bool
+│   │   │   │   ├── snapping_state: SnappingState
+│   │   │   │   ├── graph_view_overlay_open: bool
+│   │   │   │   ├── graph_fade_artwork_percentage: f64
+│   │   │   │   ├── breadcrumb_network_path: Vec<NodeId>
+│   │   │   │   ├── selection_network_path: Vec<NodeId>
+│   │   │   │   ├── document_undo_history: VecDeque<NodeNetworkInterface>
+│   │   │   │   ├── document_redo_history: VecDeque<NodeNetworkInterface>
+│   │   │   │   ├── saved_hash: Option<u64>
+│   │   │   │   ├── auto_saved_hash: Option<u64>
+│   │   │   │   ├── layer_range_selection_reference: Option<LayerNodeIdentifier>
+│   │   │   │   └── is_loaded: bool
+│   │   │   └── DocumentMessageData `editor\src\messages\portfolio\document\document_message_handler.rs`
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── ipp: &'a InputPreprocessorMessageHandler
+│   │   │       ├── persistent_data: &'a PersistentData
+│   │   │       ├── executor: &'a mut NodeGraphExecutor
+│   │   │       ├── current_tool: &'a ToolType
+│   │   │       ├── preferences: &'a PreferencesMessageHandler
+│   │   │       └── device_pixel_ratio: f64
+│   │   ├── Spreadsheet
+│   │   │   ├── SpreadsheetMessage `editor\src\messages\portfolio\spreadsheet\spreadsheet_message.rs`
+│   │   │   │   ├── ToggleOpen
+│   │   │   │   ├── UpdateLayout
+│   │   │   │   ├── PushToInstancePath
+│   │   │   │   ├── TruncateInstancePath
+│   │   │   │   └── ViewVectorDataDomain
+│   │   │   └── SpreadsheetMessageHandler `editor\src\messages\portfolio\spreadsheet\spreadsheet_message_handler.rs`
+│   │   │       ├── spreadsheet_view_open: bool
+│   │   │       ├── inspect_node: Option<NodeId>
+│   │   │       ├── introspected_data: Option<Arc<dyn Any + Send + Sync>>
+│   │   │       ├── instances_path: Vec<usize>
+│   │   │       └── viewing_vector_data_domain: VectorDataDomain
+│   │   ├── DocumentPassMessage
+│   │   ├── AutoSaveActiveDocument
+│   │   ├── AutoSaveAllDocuments
+│   │   ├── AutoSaveDocument
+│   │   ├── CloseActiveDocumentWithConfirmation
+│   │   ├── CloseAllDocuments
+│   │   ├── CloseAllDocumentsWithConfirmation
+│   │   ├── CloseDocument
+│   │   ├── CloseDocumentWithConfirmation
+│   │   ├── Copy
+│   │   ├── Cut
+│   │   ├── DeleteDocument
+│   │   ├── DestroyAllDocuments
+│   │   ├── EditorPreferences
+│   │   ├── FontLoaded
+│   │   ├── Import
+│   │   ├── LoadDocumentResources
+│   │   ├── LoadFont
+│   │   ├── NewDocumentWithName
+│   │   ├── NextDocument
+│   │   ├── OpenDocument
+│   │   ├── OpenDocumentFile
+│   │   ├── ToggleResetNodesToDefinitionsOnOpen
+│   │   ├── OpenDocumentFileWithId
+│   │   ├── PasteIntoFolder
+│   │   ├── PasteSerializedData
+│   │   ├── PasteImage
+│   │   ├── PasteSvg
+│   │   ├── PrevDocument
+│   │   ├── SetActivePanel
+│   │   ├── SetDevicePixelRatio
+│   │   ├── SelectDocument
+│   │   ├── SubmitDocumentExport
+│   │   ├── SubmitActiveGraphRender
+│   │   ├── SubmitGraphRender
+│   │   ├── ToggleRulers
+│   │   ├── UpdateDocumentWidgets
+│   │   ├── UpdateOpenDocumentsList
+│   │   └── UpdateVelloPreference
+│   ├── PortfolioMessageHandler `editor\src\messages\portfolio\portfolio_message_handler.rs`
+│   │   ├── menu_bar_message_handler: MenuBarMessageHandler
+│   │   ├── documents: HashMap<DocumentId, DocumentMessageHandler>
+│   │   ├── document_ids: VecDeque<DocumentId>
+│   │   ├── active_panel: PanelType
+│   │   ├── active_document_id: Option<DocumentId>
+│   │   ├── copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize]
+│   │   ├── persistent_data: PersistentData
+│   │   ├── executor: NodeGraphExecutor
+│   │   ├── selection_mode: SelectionMode
+│   │   ├── spreadsheet: SpreadsheetMessageHandler
+│   │   ├── device_pixel_ratio: Option<f64>
+│   │   └── reset_node_definitions_on_open: bool
+│   └── PortfolioMessageData `editor\src\messages\portfolio\portfolio_message_handler.rs`
+│       ├── ipp: &'a InputPreprocessorMessageHandler
+│       ├── preferences: &'a PreferencesMessageHandler
+│       ├── current_tool: &'a ToolType
+│       ├── message_logging_verbosity: MessageLoggingVerbosity
+│       ├── reset_node_definitions_on_open: bool
+│       ├── timing_information: TimingInformation
+│       └── animation: &'a AnimationMessageHandler
+├── Preferences
+│   ├── PreferencesMessage `editor\src\messages\preferences\preferences_message.rs`
+│   │   ├── Load
+│   │   ├── ResetToDefaults
+│   │   ├── UseVello
+│   │   ├── SelectionMode
+│   │   ├── VectorMeshes
+│   │   ├── ModifyLayout
+│   │   ├── GraphWireStyle
+│   │   └── ViewportZoomWheelRate
+│   └── PreferencesMessageHandler `editor\src\messages\preferences\preferences_message_handler.rs`
+│       ├── selection_mode: SelectionMode
+│       ├── zoom_with_scroll: bool
+│       ├── use_vello: bool
+│       ├── vector_meshes: bool
+│       ├── graph_wire_style: GraphWireStyle
+│       └── viewport_zoom_wheel_rate: f64
+├── Tool
+│   ├── ToolMessage `editor\src\messages\tool\tool_message.rs`
+│   │   ├── TransformLayer
+│   │   │   ├── TransformLayerMessage `editor\src\messages\tool\transform_layer\transform_layer_message.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── ApplyTransformOperation
+│   │   │   │   ├── BeginGrab
+│   │   │   │   ├── BeginRotate
+│   │   │   │   ├── BeginScale
+│   │   │   │   ├── BeginGRS
+│   │   │   │   ├── BeginGrabPen
+│   │   │   │   ├── BeginRotatePen
+│   │   │   │   ├── BeginScalePen
+│   │   │   │   ├── CancelTransformOperation
+│   │   │   │   ├── ConstrainX
+│   │   │   │   ├── ConstrainY
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── SelectionChanged
+│   │   │   │   ├── TypeBackspace
+│   │   │   │   ├── TypeDecimalPoint
+│   │   │   │   ├── TypeDigit
+│   │   │   │   └── TypeNegate
+│   │   │   ├── TransformLayerMessageHandler `editor\src\messages\tool\transform_layer\transform_layer_message_handler.rs`
+│   │   │   │   ├── transform_operation: TransformOperation
+│   │   │   │   ├── slow: bool
+│   │   │   │   ├── increments: bool
+│   │   │   │   ├── local: bool
+│   │   │   │   ├── layer_bounding_box: Quad
+│   │   │   │   ├── typing: Typing
+│   │   │   │   ├── mouse_position: ViewportPosition
+│   │   │   │   ├── start_mouse: ViewportPosition
+│   │   │   │   ├── original_transforms: OriginalTransforms
+│   │   │   │   ├── pivot: ViewportPosition
+│   │   │   │   ├── local_pivot: DocumentPosition
+│   │   │   │   ├── local_mouse_start: DocumentPosition
+│   │   │   │   ├── grab_target: DocumentPosition
+│   │   │   │   ├── ptz: PTZ
+│   │   │   │   ├── initial_transform: DAffine2
+│   │   │   │   ├── operation_count: usize
+│   │   │   │   ├── handle: DVec2
+│   │   │   │   ├── last_point: DVec2
+│   │   │   │   └── grs_pen_handle: bool
+│   │   │   └── TransformData<'a> `editor\src\messages\tool\transform_layer\transform_layer_message_handler.rs`
+│   │   │       ├── &'a DocumentMessageHandler
+│   │   │       ├── &'a InputPreprocessorMessageHandler
+│   │   │       ├── &'a ToolData
+│   │   │       └── &'a mut ShapeState
+│   │   ├── Select
+│   │   │   ├── SelectToolMessage `editor\src\messages\tool\tool_messages\select_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── EditLayer
+│   │   │   │   ├── Enter
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   ├── SelectOptions
+│   │   │   │   └── SetPivot
+│   │   │   ├── SelectTool `editor\src\messages\tool\tool_messages\select_tool.rs`
+│   │   │   │   ├── fsm_state: SelectToolFsmState
+│   │   │   │   └── tool_data: SelectToolData
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Artboard
+│   │   │   ├── ArtboardToolMessage `editor\src\messages\tool\tool_messages\artboard_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── UpdateSelectedArtboard
+│   │   │   │   ├── DeleteSelected
+│   │   │   │   ├── NudgeSelected
+│   │   │   │   ├── PointerDown
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   └── PointerUp
+│   │   │   ├── ArtboardTool `editor\src\messages\tool\tool_messages\artboard_tool.rs`
+│   │   │   │   ├── fsm_state: ArtboardToolFsmState
+│   │   │   │   └── data: ArtboardToolData
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Navigate
+│   │   │   ├── NavigateToolMessage `editor\src\messages\tool\tool_messages\navigate_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── PointerUp
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── TiltCanvasBegin
+│   │   │   │   ├── ZoomCanvasBegin
+│   │   │   │   └── End
+│   │   │   ├── NavigateTool `editor\src\messages\tool\tool_messages\navigate_tool.rs`
+│   │   │   │   ├── fsm_state: NavigateToolFsmState
+│   │   │   │   └── tool_data: NavigateToolData
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Eyedropper
+│   │   │   ├── EyedropperToolMessage `editor\src\messages\tool\tool_messages\eyedropper_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── SamplePrimaryColorBegin
+│   │   │   │   ├── SamplePrimaryColorEnd
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── SampleSecondaryColorBegin
+│   │   │   │   └── SampleSecondaryColorEnd
+│   │   │   ├── EyedropperTool `editor\src\messages\tool\tool_messages\eyedropper_tool.rs`
+│   │   │   │   ├── fsm_state: EyedropperToolFsmState
+│   │   │   │   └── data: EyedropperToolData
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Fill
+│   │   │   ├── FillToolMessage `editor\src\messages\tool\tool_messages\fill_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerUp
+│   │   │   │   ├── FillPrimaryColor
+│   │   │   │   └── FillSecondaryColor
+│   │   │   ├── FillTool `editor\src\messages\tool\tool_messages\fill_tool.rs`
+│   │   │   │   └── fsm_state: FillToolFsmState
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Gradient
+│   │   │   ├── GradientToolMessage `editor\src\messages\tool\tool_messages\gradient_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── DeleteStop
+│   │   │   │   ├── InsertStop
+│   │   │   │   ├── PointerDown
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   ├── PointerUp
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── GradientTool `editor\src\messages\tool\tool_messages\gradient_tool.rs`
+│   │   │   │   ├── fsm_state: GradientToolFsmState
+│   │   │   │   ├── data: GradientToolData
+│   │   │   │   └── options: GradientOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Path
+│   │   │   ├── PathToolMessage `editor\src\messages\tool\tool_messages\path_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── SelectionChanged
+│   │   │   │   ├── BreakPath
+│   │   │   │   ├── DeselectAllPoints
+│   │   │   │   ├── Delete
+│   │   │   │   ├── DeleteAndBreakPath
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── Enter
+│   │   │   │   ├── Escape
+│   │   │   │   ├── ClosePath
+│   │   │   │   ├── FlipSmoothSharp
+│   │   │   │   ├── GRS
+│   │   │   │   ├── ManipulatorMakeHandlesFree
+│   │   │   │   ├── ManipulatorMakeHandlesColinear
+│   │   │   │   ├── MouseDown
+│   │   │   │   ├── NudgeSelectedPoints
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   ├── RightClick
+│   │   │   │   ├── SelectAllAnchors
+│   │   │   │   ├── SelectedPointUpdated
+│   │   │   │   ├── SelectedPointXChanged
+│   │   │   │   ├── SelectedPointYChanged
+│   │   │   │   ├── SwapSelectedHandles
+│   │   │   │   ├── UpdateOptions
+│   │   │   │   └── UpdateSelectedPointsStatus
+│   │   │   ├── PathTool `editor\src\messages\tool\tool_messages\path_tool.rs`
+│   │   │   │   ├── fsm_state: PathToolFsmState
+│   │   │   │   ├── tool_data: PathToolData
+│   │   │   │   └── options: PathToolOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Pen
+│   │   │   ├── PenToolMessage `editor\src\messages\tool\tool_messages\pen_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── SelectionChanged
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── AddPointLayerPosition
+│   │   │   │   ├── Confirm
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   ├── Redo
+│   │   │   │   ├── Undo
+│   │   │   │   ├── UpdateOptions
+│   │   │   │   ├── RecalculateLatestPointsPosition
+│   │   │   │   ├── RemovePreviousHandle
+│   │   │   │   ├── GRS
+│   │   │   │   ├── FinalPosition
+│   │   │   │   └── SwapHandles
+│   │   │   ├── PenTool `editor\src\messages\tool\tool_messages\pen_tool.rs`
+│   │   │   │   ├── fsm_state: PenToolFsmState
+│   │   │   │   ├── tool_data: PenToolData
+│   │   │   │   └── options: PenOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Freehand
+│   │   │   ├── FreehandToolMessage `editor\src\messages\tool\tool_messages\freehand_tool.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── FreehandTool `editor\src\messages\tool\tool_messages\freehand_tool.rs`
+│   │   │   │   ├── fsm_state: FreehandToolFsmState
+│   │   │   │   ├── data: FreehandToolData
+│   │   │   │   └── options: FreehandOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Spline
+│   │   │   ├── SplineToolMessage `editor\src\messages\tool\tool_messages\spline_tool.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── CanvasTransformed
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── Confirm
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── MergeEndpoints
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   ├── Undo
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── SplineTool `editor\src\messages\tool\tool_messages\spline_tool.rs`
+│   │   │   │   ├── fsm_state: SplineToolFsmState
+│   │   │   │   ├── tool_data: SplineToolData
+│   │   │   │   └── options: SplineOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Line
+│   │   │   ├── LineToolMessage `editor\src\messages\tool\tool_messages\line_tool.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── LineTool `editor\src\messages\tool\tool_messages\line_tool.rs`
+│   │   │   │   ├── fsm_state: LineToolFsmState
+│   │   │   │   ├── tool_data: LineToolData
+│   │   │   │   └── options: LineOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Rectangle
+│   │   │   ├── RectangleToolMessage `editor\src\messages\tool\tool_messages\rectangle_tool.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── RectangleTool `editor\src\messages\tool\tool_messages\rectangle_tool.rs`
+│   │   │   │   ├── fsm_state: RectangleToolFsmState
+│   │   │   │   ├── tool_data: RectangleToolData
+│   │   │   │   └── options: RectangleToolOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Ellipse
+│   │   │   ├── EllipseToolMessage `editor\src\messages\tool\tool_messages\ellipse_tool.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── EllipseTool `editor\src\messages\tool\tool_messages\ellipse_tool.rs`
+│   │   │   │   ├── fsm_state: EllipseToolFsmState
+│   │   │   │   ├── data: EllipseToolData
+│   │   │   │   └── options: EllipseToolOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Polygon
+│   │   │   ├── PolygonToolMessage `editor\src\messages\tool\tool_messages\polygon_tool.rs`
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── PolygonTool `editor\src\messages\tool\tool_messages\polygon_tool.rs`
+│   │   │   │   ├── fsm_state: PolygonToolFsmState
+│   │   │   │   ├── tool_data: PolygonToolData
+│   │   │   │   └── options: PolygonOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Text
+│   │   │   ├── TextToolMessage `editor\src\messages\tool\tool_messages\text_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── Overlays
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── EditSelected
+│   │   │   │   ├── Interact
+│   │   │   │   ├── PointerMove
+│   │   │   │   ├── PointerOutsideViewport
+│   │   │   │   ├── TextChange
+│   │   │   │   ├── UpdateBounds
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── TextTool `editor\src\messages\tool\tool_messages\text_tool.rs`
+│   │   │   │   ├── fsm_state: TextToolFsmState
+│   │   │   │   ├── tool_data: TextToolData
+│   │   │   │   └── options: TextOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── Brush
+│   │   │   ├── BrushToolMessage `editor\src\messages\tool\tool_messages\brush_tool.rs`
+│   │   │   │   ├── Abort
+│   │   │   │   ├── WorkingColorChanged
+│   │   │   │   ├── DragStart
+│   │   │   │   ├── DragStop
+│   │   │   │   ├── PointerMove
+│   │   │   │   └── UpdateOptions
+│   │   │   ├── BrushTool `editor\src\messages\tool\tool_messages\brush_tool.rs`
+│   │   │   │   ├── fsm_state: BrushToolFsmState
+│   │   │   │   ├── data: BrushToolData
+│   │   │   │   └── options: BrushOptions
+│   │   │   └── &mut ToolActionHandlerData<'a> `editor\src\messages\tool\utility_types.rs`
+│   │   │       ├── document: &'a mut DocumentMessageHandler
+│   │   │       ├── document_id: DocumentId
+│   │   │       ├── global_tool_data: &'a DocumentToolData
+│   │   │       ├── input: &'a InputPreprocessorMessageHandler
+│   │   │       ├── font_cache: &'a FontCache
+│   │   │       ├── shape_editor: &'a mut ShapeState
+│   │   │       ├── node_graph: &'a NodeGraphExecutor
+│   │   │       └── preferences: &'a PreferencesMessageHandler
+│   │   ├── ActivateToolSelect
+│   │   ├── ActivateToolArtboard
+│   │   ├── ActivateToolNavigate
+│   │   ├── ActivateToolEyedropper
+│   │   ├── ActivateToolText
+│   │   ├── ActivateToolFill
+│   │   ├── ActivateToolGradient
+│   │   ├── ActivateToolPath
+│   │   ├── ActivateToolPen
+│   │   ├── ActivateToolFreehand
+│   │   ├── ActivateToolSpline
+│   │   ├── ActivateToolLine
+│   │   ├── ActivateToolRectangle
+│   │   ├── ActivateToolEllipse
+│   │   ├── ActivateToolPolygon
+│   │   ├── ActivateToolBrush
+│   │   ├── ActivateTool
+│   │   ├── DeactivateTools
+│   │   ├── InitTools
+│   │   ├── PreUndo
+│   │   ├── Redo
+│   │   ├── RefreshToolOptions
+│   │   ├── ResetColors
+│   │   ├── SelectPrimaryColor
+│   │   ├── SelectRandomPrimaryColor
+│   │   ├── SelectSecondaryColor
+│   │   ├── SwapColors
+│   │   ├── Undo
+│   │   ├── UpdateCursor
+│   │   ├── UpdateHints
+│   │   └── UpdateSelectionMode
+│   ├── ToolMessageHandler `editor\src\messages\tool\tool_message_handler.rs`
+│   │   ├── tool_state: ToolFsmState
+│   │   ├── transform_layer_handler: TransformLayerMessageHandler
+│   │   ├── shape_editor: ShapeState
+│   │   └── tool_is_active: bool
+│   └── ToolMessageData `editor\src\messages\tool\tool_message_handler.rs`
+│       ├── document_id: DocumentId
+│       ├── document: &'a mut DocumentMessageHandler
+│       ├── input: &'a InputPreprocessorMessageHandler
+│       ├── persistent_data: &'a PersistentData
+│       ├── node_graph: &'a NodeGraphExecutor
+│       └── preferences: &'a PreferencesMessageHandler
+└── Workspace
+    ├── WorkspaceMessage `editor\src\messages\workspace\workspace_message.rs`
+    │   └── NodeGraphToggleVisibility
+    └── WorkspaceMessageHandler `editor\src\messages\workspace\workspace_message_handler.rs`
+        └── node_graph_visible: bool

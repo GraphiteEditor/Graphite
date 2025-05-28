@@ -49,20 +49,22 @@ impl specta::Type for MessageDiscriminant {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use std::io::Write;
 
 	#[test]
 	fn generate_message_tree() {
 		let res = Message::build_message_tree();
-		println!("{} {}", res.name(), res.path());
+		let mut file = std::fs::File::create("../hierarchical_message_system_tree.txt").unwrap();
+		file.write_all(format!("{} `{}`\n", res.name(), res.path()).as_bytes()).unwrap();
 		if let Some(variants) = res.variants() {
 			for (i, variant) in variants.iter().enumerate() {
 				let is_last = i == variants.len() - 1;
-				print_tree_node(variant, "", is_last);
+				print_tree_node(variant, "", is_last, &mut file);
 			}
 		}
 	}
 
-	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool) {
+	fn print_tree_node(tree: &DebugMessageTree, prefix: &str, is_last: bool, file: &mut std::fs::File) {
 		// Print the current node
 		let (branch, child_prefix) = if tree.has_message_handler_data_fields() || tree.has_message_handler_fields() {
 			("├── ", format!("{}│   ", prefix))
@@ -75,9 +77,9 @@ mod test {
 		};
 
 		if tree.path().is_empty() {
-			println!("{}{}{}", prefix, branch, tree.name());
+			file.write_all(format!("{}{}{}\n", prefix, branch, tree.name()).as_bytes()).unwrap();
 		} else {
-			println!("{}{}{} {}", prefix, branch, tree.name(), tree.path());
+			file.write_all(format!("{}{}{} `{}`\n", prefix, branch, tree.name(), tree.path()).as_bytes()).unwrap();
 		}
 
 		// Print children if any
@@ -85,7 +87,7 @@ mod test {
 			let len = variants.len();
 			for (i, variant) in variants.iter().enumerate() {
 				let is_last_child = i == len - 1;
-				print_tree_node(variant, &child_prefix, is_last_child);
+				print_tree_node(variant, &child_prefix, is_last_child, file);
 			}
 		}
 
@@ -98,15 +100,15 @@ mod test {
 				("└── ", format!("{}    ", prefix))
 			};
 			if data.path().is_empty() {
-				println!("{}{}{}", prefix, branch, data.name());
+				file.write_all(format!("{}{}{}\n", prefix, branch, data.name()).as_bytes()).unwrap();
 			} else {
-				println!("{}{}{} {}", prefix, branch, data.name(), data.path());
+				file.write_all(format!("{}{}{} `{}`\n", prefix, branch, data.name(), data.path()).as_bytes()).unwrap();
 			}
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
 
-				println!("{}{}{}", child_prefix, branch, field.0);
+				file.write_all(format!("{}{}{}\n", child_prefix, branch, field.0).as_bytes()).unwrap();
 			}
 		}
 
@@ -114,14 +116,14 @@ mod test {
 		if let Some(data) = tree.message_handler_data_fields() {
 			let len = data.fields().len();
 			if data.path().is_empty() {
-				println!("{}{}{}", prefix, "└── ", data.name());
+				file.write_all(format!("{}{}{}\n", prefix, "└── ", data.name()).as_bytes()).unwrap();
 			} else {
-				println!("{}{}{} {}", prefix, "└── ", data.name(), data.path());
+				file.write_all(format!("{}{}{} `{}`\n", prefix, "└── ", data.name(), data.path()).as_bytes()).unwrap();
 			}
 			for (i, field) in data.fields().iter().enumerate() {
 				let is_last_field = i == len - 1;
 				let branch = if is_last_field { "└── " } else { "├── " };
-				println!("{}{}{}", format!("{}    ", prefix), branch, field.0);
+				file.write_all(format!("{}{}{}\n", format!("{}    ", prefix), branch, field.0).as_bytes()).unwrap();
 			}
 		}
 	}
