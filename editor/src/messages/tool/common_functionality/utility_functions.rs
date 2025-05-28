@@ -1,6 +1,7 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
+use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
@@ -278,6 +279,48 @@ pub fn restore_g1_continuity(
 			let handles = [handle, other_handle];
 			let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+	}
+  
+/// Check whether a point is visible in the current overlay mode.
+pub fn is_visible_point(
+	manipulator_point_id: ManipulatorPointId,
+	vector_data: &VectorData,
+	path_overlay_mode: PathOverlayMode,
+	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	selected_segments: Vec<SegmentId>,
+	selected_points: &HashSet<ManipulatorPointId>,
+) -> bool {
+	match manipulator_point_id {
+		ManipulatorPointId::Anchor(_) => true,
+		ManipulatorPointId::EndHandle(segment_id) | ManipulatorPointId::PrimaryHandle(segment_id) => {
+			match (path_overlay_mode, selected_points.len() == 1) {
+				(PathOverlayMode::AllHandles, _) => true,
+				(PathOverlayMode::SelectedPointHandles, _) | (PathOverlayMode::FrontierHandles, true) => {
+					if selected_segments.contains(&segment_id) {
+						return true;
+					}
+
+					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
+					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector_data) else { return false };
+					let other_handle = handle_pair[1].to_manipulator_point();
+
+					// Return whether the list of selected points contain the other handle
+					selected_points.contains(&other_handle)
+				}
+				(PathOverlayMode::FrontierHandles, false) => {
+					let Some(anchor) = manipulator_point_id.get_anchor(vector_data) else {
+						warn!("No anchor for selected handle");
+						return false;
+					};
+					let Some(frontier_handles) = &frontier_handles_info else {
+						warn!("No frontier handles info provided");
+						return false;
+					};
+
+					frontier_handles.get(&segment_id).map(|anchors| anchors.contains(&anchor)).unwrap_or_default()
+				}
+			}
 		}
 	}
 }
