@@ -11,7 +11,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
+use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineAlignment, LineCap, LineJoin, Stroke};
 use graphene_std::vector::convert_usvg_path;
 
 #[derive(Debug, Clone)]
@@ -400,6 +400,7 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 				usvg::LineJoin::Bevel => LineJoin::Bevel,
 			},
 			line_join_miter_limit: stroke.miterlimit().get() as f64,
+			line_alignment: LineAlignment::Center,
 			transform,
 			non_scaling: false,
 		})

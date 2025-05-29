@@ -10,7 +10,7 @@ use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::style::{LineCap, LineJoin};
+use crate::vector::style::{LineAlignment, LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
@@ -170,12 +170,14 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	/// The offset distance from the starting point of the dash pattern.
 	dash_offset: f64,
 	/// The shape of the stroke at open endpoints.
-	line_cap: crate::vector::style::LineCap,
+	line_cap: LineCap,
 	/// The curvature of the bent stroke at sharp corners.
 	line_join: LineJoin,
 	#[default(4.)]
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	miter_limit: f64,
+	/// The alignment of stroke.
+	line_alignment: LineAlignment,
 ) -> Instances<V>
 where
 	Instances<V>: VectorDataTableIterMut + 'n + Send,
@@ -188,6 +190,7 @@ where
 		line_cap,
 		line_join,
 		line_join_miter_limit: miter_limit,
+		line_alignment,
 		transform: DAffine2::IDENTITY,
 		non_scaling: false,
 	};

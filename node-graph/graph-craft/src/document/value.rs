@@ -237,6 +237,7 @@ tagged_value! {
 	ArcType(graphene_core::vector::misc::ArcType),
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
+	LineAlignment(graphene_core::vector::style::LineAlignment),
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),

@@ -4,7 +4,6 @@ use crate::raster::BlendMode;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
-use crate::vector::style::{Fill, Stroke};
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
@@ -215,23 +214,11 @@ impl GraphicElement {
 	}
 
 	pub fn can_reduce_to_clip_path(&self) -> bool {
-		let is_color_opaque = |color: &Color| -> bool { color.a() > 1. - f32::EPSILON };
-
-		let is_fill_opaque = |fill: &Fill| -> bool {
-			match fill {
-				Fill::Solid(color) => is_color_opaque(color),
-				Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| is_color_opaque(color)),
-				Fill::None => true,
-			}
-		};
-
-		let has_no_stroke = |stroke: &Stroke| -> bool { !(stroke.weight > 0.) || stroke.color.is_none_or(|color| color.a() == 0.) };
-
 		match self {
 			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
 				let style = &instance_data.instance.style;
 				let alpha_blending = &instance_data.alpha_blending;
-				(alpha_blending.opacity > 1. - f32::EPSILON) && is_fill_opaque(&style.fill()) && style.stroke().is_none_or(|s| has_no_stroke(&s))
+				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
 			}),
 			_ => false,
 		}

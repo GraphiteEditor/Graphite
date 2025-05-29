@@ -5,7 +5,7 @@ use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::style::{Fill, Stroke, ViewMode};
+use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 use base64::Engine;
@@ -532,10 +532,57 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let defs = &mut attributes.0.svg_defs;
 
-				let fill_and_stroke = instance
+				let can_draw_aligned_stroke = instance
 					.instance
 					.style
-					.render(defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds, render_params);
+					.stroke()
+					.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.line_alignment.is_not_centered())
+					&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
+				let mut push_id = None;
+				if can_draw_aligned_stroke {
+					let id = format!("alignment-{}", generate_uuid());
+					let selector = format!("url(#{id})");
+					let mask_type = if instance.instance.style.stroke().unwrap().line_alignment == LineAlignment::Inside {
+						MaskType::Clip
+					} else {
+						MaskType::Mask
+					};
+					push_id = Some((selector, mask_type));
+
+					let mut svg = SvgRender::new();
+					let mut vector_data = VectorDataTable::default();
+					let fill_instance = vector_data.one_instance_mut();
+					*fill_instance.instance = instance.instance.clone();
+					*fill_instance.alpha_blending = *instance.alpha_blending;
+					fill_instance.instance.style.clear_stroke();
+					fill_instance.instance.style.set_fill(Fill::solid(Color::BLACK));
+					vector_data.render_svg(&mut svg, render_params);
+
+					let weight = instance.instance.style.stroke().unwrap().weight;
+					let quad = Quad::from_box(transformed_bounds).inflate(2. * weight);
+					let (x, y) = quad.top_left().into();
+					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
+					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white"/>"##);
+					match mask_type {
+						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
+						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
+					}
+				}
+
+				let fill_and_stroke = instance.instance.style.render(
+					defs,
+					element_transform,
+					applied_stroke_transform,
+					layer_bounds,
+					transformed_bounds,
+					can_draw_aligned_stroke,
+					render_params,
+				);
+
+				if let Some((selector, mask_type)) = push_id {
+					attributes.push(mask_type.to_attribute(), selector);
+				}
 				attributes.push_val(fill_and_stroke);
 
 				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
