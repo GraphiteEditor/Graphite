@@ -559,11 +559,11 @@ impl GraphicElementRendered for VectorDataTable {
 					vector_data.render_svg(&mut svg, render_params);
 
 					let weight = instance.instance.style.stroke().unwrap().weight;
-					let quad = Quad::from_box(transformed_bounds).inflate(2. * weight);
+					let quad = Quad::from_box(transformed_bounds).inflate(weight * element_transform.matrix2.determinant());
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
 					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white"/>"##);
+					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white"/>"##, x, y);
 					match mask_type {
 						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
 						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
