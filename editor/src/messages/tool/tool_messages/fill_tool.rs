@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use graphene_core::vector::style::Fill;
+use graphene_std::renderer::ClickTarget;
 
 #[derive(Default)]
 pub struct FillTool {
@@ -72,6 +73,14 @@ impl ToolTransition for FillTool {
 	}
 }
 
+pub fn close_to_stroke(mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2) -> bool {
+	let subpath = click_target.subpath().clone();
+	let lut = subpath.compute_lookup_table(Some(25), None);
+
+	lut.iter()
+		.any(|&point| (to_viewport_transform.inverse().transform_point2(mouse_pos) - point).length() <= click_target.stroke_width())
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum FillToolFsmState {
 	#[default]
@@ -98,7 +107,20 @@ impl Fsm for FillToolFsmState {
 
 				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input) {
-					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
+					overlay_context.push_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					let _ = document.metadata().click_targets(layer).is_some_and(|target| {
+						target
+							.iter()
+							.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)))
+							.then(|| {
+								overlay_context.fill_stroke_pattern(&preview_color);
+							})
+							.or_else(|| {
+								overlay_context.fill_path_pattern(&preview_color);
+								Some(())
+							});
+						true
+					});
 				}
 
 				self
@@ -121,10 +143,29 @@ impl Fsm for FillToolFsmState {
 					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color.to_gamma_srgb()),
 					_ => return self,
 				};
+				let stroke_color = match color_event {
+					FillToolMessage::FillPrimaryColor => global_tool_data.primary_color.to_gamma_srgb(),
+					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color.to_gamma_srgb(),
+					_ => return self,
+				};
 
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
-
+				let _ = document.metadata().click_targets(layer_identifier).is_some_and(|target| {
+					target
+						.iter()
+						.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer_identifier)))
+						.then(|| {
+							responses.add(GraphOperationMessage::StrokeColorSet {
+								layer: layer_identifier,
+								stroke_color,
+							});
+						})
+						.or_else(|| {
+							responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+							Some(())
+						});
+					true
+				});
 				FillToolFsmState::Filling
 			}
 			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
