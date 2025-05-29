@@ -88,9 +88,12 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 		image_frame_instance.instance = image;
 		result_table.push(image_frame_instance)
 	}
+
+	// TODO: Remove when we've completed part 6 of the instance tables refactor
 	if result_table.is_empty() {
 		return ImageFrameTable::one_empty_image();
 	}
+
 	result_table
 }
 
@@ -257,6 +260,7 @@ where
 #[node_macro::node(category(""))]
 fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
 	let mut result_table = ImageFrameTable::empty();
+
 	for mut image_instance in image.instance_iter() {
 		let image_aabb = Bbox::unit().affine_transform(image_instance.transform).to_axis_aligned_bbox();
 		let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
@@ -283,13 +287,13 @@ fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DA
 		let new_scale = new_end - new_start;
 
 		// Copy over original image into enlarged image.
-		let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
+		let mut new_image = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
 		let offset_in_new_image = (-new_start).as_uvec2();
 		for y in 0..image_height {
 			let old_start = y * image_width;
-			let new_start = (y + offset_in_new_image.y) * new_img.width + offset_in_new_image.x;
+			let new_start = (y + offset_in_new_image.y) * new_image.width + offset_in_new_image.x;
 			let old_row = &image_data[old_start as usize..(old_start + image_width) as usize];
-			let new_row = &mut new_img.data[new_start as usize..(new_start + image_width) as usize];
+			let new_row = &mut new_image.data[new_start as usize..(new_start + image_width) as usize];
 			new_row.copy_from_slice(old_row);
 		}
 
@@ -297,11 +301,12 @@ fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DA
 		// let layer_to_new_texture_space = (DAffine2::from_scale(1. / new_scale) * DAffine2::from_translation(new_start) * layer_to_image_space).inverse();
 		let new_texture_to_layer_space = image_instance.transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
-		image_instance.instance = new_img;
+		image_instance.instance = new_image;
 		image_instance.transform = new_texture_to_layer_space;
 		image_instance.source_node_id = None;
 		result_table.push(image_instance);
 	}
+
 	result_table
 }
 

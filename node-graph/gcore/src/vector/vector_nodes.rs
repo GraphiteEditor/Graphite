@@ -11,7 +11,7 @@ use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
-use crate::{AlphaBlending, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
@@ -363,6 +363,7 @@ where
 			});
 		}
 	}
+
 	result_table
 }
 
@@ -448,6 +449,7 @@ async fn round_corners(
 
 	for source in source.instance_ref_iter() {
 		let source_transform = *source.transform;
+		let source_transform_inverse = source_transform.inverse();
 		let source = source.instance;
 
 		let upstream_graphic_group = source.upstream_graphic_group.clone();
@@ -530,7 +532,7 @@ async fn round_corners(
 
 			// One subpath for each shape
 			let mut rounded_subpath = Subpath::new(new_groups, is_closed);
-			rounded_subpath.apply_transform(source_transform.inverse());
+			rounded_subpath.apply_transform(source_transform_inverse);
 			result.append_subpath(rounded_subpath, false);
 		}
 
@@ -1524,10 +1526,11 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 
 	let mut result_table = VectorDataTable::empty();
 
-	for (mut source_instance, target_instance) in source.instance_iter().zip(target.instance_iter()) {
+	for (source_instance, target_instance) in source.instance_iter().zip(target.instance_iter()) {
 		let mut vector_data_instance = VectorData::default();
+
 		// Lerp styles
-		source_instance.alpha_blending = if time < 0.5 { source_instance.alpha_blending } else { target_instance.alpha_blending };
+		let vector_data_alpha_blending = source_instance.alpha_blending.lerp(&target_instance.alpha_blending, time as f32);
 		vector_data_instance.style = source_instance.instance.style.lerp(&target_instance.instance.style, time);
 
 		// Before and after transforms
@@ -1596,10 +1599,11 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			vector_data_instance.append_subpath(target_path, true);
 		}
 
-		source_instance.instance = vector_data_instance;
-		source_instance.source_node_id = None;
-		source_instance.transform = DAffine2::IDENTITY;
-		result_table.push(source_instance);
+		result_table.push(Instance {
+			instance: vector_data_instance,
+			alpha_blending: vector_data_alpha_blending,
+			..Default::default()
+		});
 	}
 
 	result_table
@@ -1716,12 +1720,11 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for mut source_instance in source.instance_iter() {
-		source_instance.instance = bevel_algorithm(source_instance.instance, source_instance.transform, distance);
-		source_instance.transform = DAffine2::IDENTITY;
-		source_instance.alpha_blending = AlphaBlending::default();
-		source_instance.source_node_id = None;
-		result_table.push(source_instance);
+	for source_instance in source.instance_iter() {
+		result_table.push(Instance {
+			instance: bevel_algorithm(source_instance.instance, source_instance.transform, distance),
+			..Default::default()
+		});
 	}
 
 	result_table
@@ -1779,51 +1782,48 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 		return DVec2::ZERO;
 	}
 
-	let centroid = |vector_data_instance: Instance<VectorData>| -> DVec2 {
-		let vector_data_transform = vector_data_instance.transform;
-		if centroid_type == CentroidType::Area {
-			let mut area = 0.;
-			let mut centroid = DVec2::ZERO;
-			for subpath in vector_data_instance.instance.stroke_bezier_paths() {
-				if let Some((subpath_centroid, subpath_area)) = subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)) {
-					if subpath_area == 0. {
-						continue;
-					}
-					area += subpath_area;
-					centroid += subpath_area * subpath_centroid;
-				}
-			}
+	// All subpath centroid positions added together as if they were vectors from the origin.
+	let mut centroid = DVec2::ZERO;
+	// Cumulative area or length of all subpaths
+	let mut sum = 0.;
 
-			if area != 0. {
-				centroid /= area;
-				return vector_data_transform.transform_point2(centroid);
-			}
-		}
-
-		let mut length = 0.;
-		let mut centroid = DVec2::ZERO;
+	for vector_data_instance in vector_data.instance_ref_iter() {
 		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
-			if let Some((subpath_centroid, subpath_length)) = subpath.length_centroid_and_length(None, true) {
-				length += subpath_length;
-				centroid += subpath_length * subpath_centroid;
+			let partial = match centroid_type {
+				CentroidType::Area => subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)).filter(|(_, area)| *area > 0.),
+				CentroidType::Length => subpath.length_centroid_and_length(None, true),
+			};
+			if let Some((subpath_centroid, area_or_length)) = partial {
+				let subpath_centroid = vector_data_instance.transform.transform_point2(subpath_centroid);
+
+				sum += area_or_length;
+				centroid += area_or_length * subpath_centroid;
 			}
 		}
+	}
 
-		if length != 0. {
-			centroid /= length;
-			return vector_data_transform.transform_point2(centroid);
-		}
+	if sum > 0. {
+		centroid / sum
+	}
+	// Without a summed denominator, return the average of all positions instead
+	else {
+		let mut count: usize = 0;
 
-		let positions = vector_data_instance.instance.point_domain.positions();
-		if !positions.is_empty() {
-			let centroid = positions.iter().sum::<DVec2>() / (positions.len() as f64);
-			return vector_data_transform.transform_point2(centroid);
-		}
+		let summed_positions = vector_data
+			.instance_ref_iter()
+			.flat_map(|vector_data_instance| {
+				vector_data_instance
+					.instance
+					.point_domain
+					.positions()
+					.iter()
+					.map(|&p| vector_data_instance.transform.transform_point2(p))
+			})
+			.inspect(|_| count += 1)
+			.sum::<DVec2>();
 
-		DVec2::ZERO
-	};
-
-	(vector_data.len() as f64).recip() * vector_data.instance_iter().map(centroid).sum::<DVec2>()
+		if count != 0 { summed_positions / (count as f64) } else { DVec2::ZERO }
+	}
 }
 
 #[cfg(test)]
