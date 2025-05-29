@@ -164,6 +164,17 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
+	let unit_suffix: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { unit: Some(unit), .. } | ParsedField::Node { unit: Some(unit), .. } => {
+				let unit = unit.display_value();
+				quote!(Some(#unit))
+			}
+			_ => quote!(None),
+		})
+		.collect();
+
 	let exposed: Vec<_> = fields
 		.iter()
 		.map(|field| match field {
@@ -375,6 +386,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 								number_min: #number_min_values,
 								number_max: #number_max_values,
 								number_mode_range: #number_mode_range_values,
+								unit: #unit_suffix,
 							},
 						)*
 					],
