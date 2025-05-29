@@ -13,6 +13,7 @@ pub mod pen_tool;
 pub mod polygon_tool;
 pub mod rectangle_tool;
 pub mod select_tool;
+pub mod shape_tool;
 pub mod spline_tool;
 pub mod text_tool;
 

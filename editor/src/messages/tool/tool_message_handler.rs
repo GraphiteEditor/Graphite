@@ -1,4 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
+use super::shapes::shape_utility::ShapeType::{Ellipse, Line, Rectangle};
 use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -58,20 +59,51 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
 			ToolMessage::ActivateToolFreehand => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
 			ToolMessage::ActivateToolSpline => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }),
-			ToolMessage::ActivateToolLine => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Line }),
-			ToolMessage::ActivateToolRectangle => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }),
-			ToolMessage::ActivateToolEllipse => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
+			ToolMessage::ActivateToolShape => {
+				if self.tool_state.tool_data.active_shape_type.is_some() {
+					self.tool_state.tool_data.active_shape_type = None;
+					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
+				}
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
+			}
 			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
+			ToolMessage::ActivateShapeRectangle | ToolMessage::ActivateShapeEllipse | ToolMessage::ActivateShapeLine => {
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+				let shape = match message {
+					ToolMessage::ActivateShapeLine => Line,
+					ToolMessage::ActivateShapeEllipse => Ellipse,
+					ToolMessage::ActivateShapeRectangle => Rectangle,
+					_ => unreachable!(),
+				};
+				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
+				responses.add(ToolMessage::RefreshToolOptions);
+				self.tool_state.tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
+				responses.add(ShapeToolMessage::SetShape(shape));
+			}
 			// ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let old_tool = tool_data.active_tool_type;
 
+				// let shape = tool_type;
+				let tool_type = tool_type.get_tool();
+				let old_tool = old_tool.get_tool();
+
+				// tool_data.active_shape_type = if tool_type != ToolType::Shape { None } else { old_shape };
+
+				responses.add(ToolMessage::RefreshToolOptions);
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
 				// Do nothing if switching to the same tool
 				if self.tool_is_active && tool_type == old_tool {
 					return;
+				}
+
+				if tool_type != ToolType::Shape {
+					tool_data.active_shape_type = None;
 				}
 				self.tool_is_active = true;
 
@@ -307,13 +339,16 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolPen,
 			ActivateToolFreehand,
 			ActivateToolSpline,
-			ActivateToolLine,
-			ActivateToolRectangle,
-			ActivateToolEllipse,
+				ActivateToolShape,
+
 			ActivateToolPolygon,
 
 			ActivateToolBrush,
 			// ActivateToolImaginate,
+
+				ActivateShapeRectangle,
+			ActivateShapeEllipse,
+			ActivateShapeLine,
 
 			SelectRandomPrimaryColor,
 			ResetColors,
