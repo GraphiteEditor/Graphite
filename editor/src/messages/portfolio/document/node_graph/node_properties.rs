@@ -123,6 +123,8 @@ pub(crate) fn property_from_type(
 	ty: &Type,
 	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
 	unit: Option<&str>,
+	display_decimal_places: Option<u32>,
+	step: Option<f64>,
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
 	let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
@@ -141,6 +143,12 @@ pub(crate) fn property_from_type(
 	let mut number_input = NumberInput::default();
 	if let Some(unit) = unit {
 		number_input = number_input.unit(unit);
+	}
+	if let Some(display_decimal_places) = display_decimal_places {
+		number_input = number_input.display_decimal_places(display_decimal_places);
+	}
+	if let Some(step) = step {
+		number_input = number_input.step(step);
 	}
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
@@ -256,8 +264,8 @@ pub(crate) fn property_from_type(
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
-		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, context),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -1393,6 +1401,8 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				};
 
 				let mut number_options = (None, None, None);
+				let mut display_decimal_places = None;
+				let mut step = None;
 				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
@@ -1402,17 +1412,9 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.get(&proto_node_identifier.name.clone().into_owned())
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
+							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
-							if let Some(ref default) = field.default_type {
-								break 'early_return default.clone();
-							}
-						}
-						if let Some(field) = graphene_core::registry::NODE_METADATA
-							.lock()
-							.unwrap()
-							.get(&proto_node_identifier.name.clone().into_owned())
-							.and_then(|metadata| metadata.fields.get(input_index))
-						{
+							step = field.number_step;
 							number_options = (field.number_min, field.number_max, field.number_mode_range);
 							if let Some(ref default) = field.default_type {
 								break 'early_return default.clone();
@@ -1427,7 +1429,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						let mut input_types = implementations
 							.keys()
 							.filter_map(|item| item.inputs.get(input_index))
-							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, unit_suffix, context).is_ok())
+							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, unit_suffix, display_decimal_places, step, context).is_ok())
 							.collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
@@ -1441,7 +1443,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
 				};
 
-				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, context).unwrap_or_else(|value| value)
+				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
 			});
 
 			layout.extend(row);

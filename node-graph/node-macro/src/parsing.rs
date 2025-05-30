@@ -7,7 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause,
+	parse_quote,
 };
 
 use crate::codegen::generate_node_code;
@@ -110,6 +111,8 @@ pub(crate) enum ParsedField {
 		number_hard_min: Option<LitFloat>,
 		number_hard_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
+		number_display_decimal_places: Option<LitInt>,
+		number_step: Option<LitFloat>,
 		implementations: Punctuated<Type, Comma>,
 		unit: Option<LitStr>,
 	},
@@ -120,6 +123,8 @@ pub(crate) enum ParsedField {
 		widget_override: ParsedWidgetOverride,
 		input_type: Type,
 		output_type: Type,
+		number_display_decimal_places: Option<LitInt>,
+		number_step: Option<LitFloat>,
 		implementations: Punctuated<Implementation, Comma>,
 		unit: Option<LitStr>,
 	},
@@ -472,6 +477,31 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.map(|attr| attr.parse_args::<LitStr>().map_err(|e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
 		.transpose()?;
 
+	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
+		.map(|attr| {
+			attr.parse_args::<LitInt>().map_err(|e| {
+				Error::new_spanned(
+					attr,
+					format!("Invalid `integer` for number of decimals for argument '{}': {}\nUSAGE EXAMPLE: #[display_decimal_places(2)]", ident, e),
+				)
+			})
+		})
+		.transpose()?
+		.map(|f| {
+			if let Err(e) = f.base10_parse::<u32>() {
+				Err(Error::new_spanned(f, format!("Expected a `u32` for `display_decimal_places` for '{}': {}", ident, e)))
+			} else {
+				Ok(f)
+			}
+		})
+		.transpose()?;
+	let number_step = extract_attribute(attrs, "step")
+		.map(|attr| {
+			attr.parse_args::<LitFloat>()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{}': {}\nUSAGE EXAMPLE: #[step(2.)]", ident, e)))
+		})
+		.transpose()?;
+
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
 		.iter()
@@ -508,6 +538,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			widget_override,
 			input_type,
 			output_type,
+			number_display_decimal_places,
+			number_step,
 			implementations,
 			unit,
 		})
@@ -527,6 +559,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_hard_min,
 			number_hard_max,
 			number_mode_range,
+			number_display_decimal_places,
+			number_step,
 			ty,
 			value_source,
 			implementations,
