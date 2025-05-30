@@ -681,6 +681,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let document_node = node_definition.default_node_template().document_node;
 						let node_input = NodeInput::value(TaggedValue::LineAlignment(LineAlignment::Center), false);
 						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document.network_interface.insert_input_properties_row(node_id, 8, &network_path);
 
 						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
