@@ -1,6 +1,6 @@
 use super::graph_modification_utils::{self, merge_layers};
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::calculate_segment_angle;
+use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, disable_g1_continuity, molded_control_points, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -275,6 +275,79 @@ impl ClosestSegment {
 		}
 		.unwrap_or(DVec2::ZERO);
 		tangent.perp()
+	}
+
+	/// Molding the bezier curve
+	/// Returns adjacent handles' HandleId if colinearity is broken temporarily
+	pub fn mold_handle_positions(
+		&self,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+		c1: DVec2,
+		c2: DVec2,
+		new_b: DVec2,
+		falloff: f64,
+		permanent_toggle_colinear: bool,
+		temporary_toggle_colinear: bool,
+		temporary_adjacent_handles: Option<[Option<HandleId>; 2]>,
+	) -> Option<[Option<HandleId>; 2]> {
+		let t = self.t;
+
+		let transform = document.metadata().transform_to_viewport(self.layer);
+		let new_b = transform.inverse().transform_point2(new_b);
+
+		let start = self.bezier.start;
+		let end = self.bezier.end;
+		let (nc1, nc2) = molded_control_points(start, end, t, falloff, new_b, c1, c2);
+
+		let handle1 = HandleId::primary(self.segment);
+		let handle2 = HandleId::end(self.segment);
+		let layer = self.layer;
+
+		let modification_type = handle1.set_relative_position(nc1 - start);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		let modification_type = handle2.set_relative_position(nc2 - end);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// If adjacent segments have colinear handles, their direction is changed but their handle lengths is preserved
+		// TODO: Find something which is more appropriate
+		let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) else {
+			return None;
+		};
+
+		if permanent_toggle_colinear {
+			// Disable G1 continuity
+			disable_g1_continuity(handle1, &vector_data, layer, responses);
+			disable_g1_continuity(handle2, &vector_data, layer, responses);
+		} else if temporary_toggle_colinear {
+			// Disable G1 continuity
+			let mut other_handles = [None, None];
+			other_handles[0] = restore_previous_handle_position(handle1, c1, start, &vector_data, layer, responses);
+			other_handles[1] = restore_previous_handle_position(handle2, c2, end, &vector_data, layer, responses);
+
+			// Store other HandleId in tool data to regain colinearity later
+			if temporary_adjacent_handles.is_some() {
+				return temporary_adjacent_handles;
+			} else {
+				return Some(other_handles);
+			}
+		} else {
+			// Move the colinear handles so that colinearity is maintained
+			adjust_handle_colinearity(handle1, start, nc1, &vector_data, layer, responses);
+			adjust_handle_colinearity(handle2, end, nc2, &vector_data, layer, responses);
+
+			if let Some(adj_handles) = temporary_adjacent_handles {
+				if let Some(other_handle1) = adj_handles[0] {
+					restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
+				}
+
+				if let Some(other_handle2) = adj_handles[1] {
+					restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
+				}
+			}
+		}
+		None
 	}
 }
 

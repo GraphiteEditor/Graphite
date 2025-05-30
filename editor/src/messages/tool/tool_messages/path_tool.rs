@@ -1,7 +1,7 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, MOLDING_FALLOFF, SEGMENT_INSERTION_DISTANCE,
 	SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -80,6 +80,8 @@ pub enum PathToolMessage {
 		snap_angle: Key,
 		lock_angle: Key,
 		delete_segment: Key,
+		temporary_toggle_colinear_molding: Key,
+		permanent_toggle_colinear_molding: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
@@ -88,6 +90,8 @@ pub enum PathToolMessage {
 		snap_angle: Key,
 		lock_angle: Key,
 		delete_segment: Key,
+		temporary_toggle_colinear_molding: Key,
+		permanent_toggle_colinear_molding: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -306,6 +310,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick,
 			),
+			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
+				PointerMove,
+				DragStop,
+				RightClick,
+				Escape,
+			),
 		}
 	}
 }
@@ -342,6 +352,7 @@ enum PathToolFsmState {
 	Drawing {
 		selection_shape: SelectionShapeType,
 	},
+	MoldingSegment,
 }
 
 #[derive(Default)]
@@ -379,8 +390,11 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
+	molding_info: Option<(DVec2, DVec2)>,
+	molding_segment: bool,
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
+	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 }
 
 impl PathToolData {
@@ -562,19 +576,17 @@ impl PathToolData {
 		else if let Some(closed_segment) = &mut self.segment {
 			responses.add(DocumentMessage::StartTransaction);
 
-			if self.delete_segment_pressed {
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
-					shape_editor.dissolve_segment(responses, closed_segment.layer(), &vector_data, closed_segment.segment(), closed_segment.points());
-					responses.add(DocumentMessage::EndTransaction);
+			// Calculating and storing handle positions
+			let handle1 = ManipulatorPointId::PrimaryHandle(closed_segment.segment());
+			let handle2 = ManipulatorPointId::EndHandle(closed_segment.segment());
+
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
+				if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
+					self.molding_info = Some((pos1, pos2))
 				}
-			} else {
-				closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
-				responses.add(DocumentMessage::EndTransaction);
 			}
 
-			self.segment = None;
-
-			PathToolFsmState::Ready
+			PathToolFsmState::MoldingSegment
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
@@ -1195,6 +1207,7 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 					}
+					Self::MoldingSegment => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -1241,6 +1254,8 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
+					temporary_toggle_colinear_molding,
+					permanent_toggle_colinear_molding,
 				},
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
@@ -1260,6 +1275,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						temporary_toggle_colinear_molding,
+						permanent_toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1269,6 +1286,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						temporary_toggle_colinear_molding,
+						permanent_toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1285,6 +1304,8 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
+					temporary_toggle_colinear_molding,
+					permanent_toggle_colinear_molding,
 				},
 			) => {
 				let mut selected_only_handles = true;
@@ -1356,6 +1377,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						temporary_toggle_colinear_molding,
+						permanent_toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1365,12 +1388,48 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						temporary_toggle_colinear_molding,
+						permanent_toggle_colinear_molding,
 					}
 					.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
+			}
+			(
+				PathToolFsmState::MoldingSegment,
+				PathToolMessage::PointerMove {
+					temporary_toggle_colinear_molding,
+					permanent_toggle_colinear_molding,
+					..
+				},
+			) => {
+				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					tool_data.molding_segment = true;
+				}
+
+				let temporary_toggle_colinear_molding = input.keyboard.get(temporary_toggle_colinear_molding as usize);
+				let permanent_toggle_colinear_molding = input.keyboard.get(permanent_toggle_colinear_molding as usize);
+
+				// Logic for molding segment
+				if let Some(segment) = &mut tool_data.segment {
+					if let Some(molding_segment_handles) = tool_data.molding_info {
+						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
+							document,
+							responses,
+							molding_segment_handles.0,
+							molding_segment_handles.1,
+							input.mouse.position,
+							MOLDING_FALLOFF,
+							permanent_toggle_colinear_molding,
+							temporary_toggle_colinear_molding,
+							tool_data.temporary_adjacent_handles_while_molding,
+						);
+					}
+				}
+
+				PathToolFsmState::MoldingSegment
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
@@ -1438,6 +1497,8 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
+					temporary_toggle_colinear_molding,
+					permanent_toggle_colinear_molding,
 				},
 			) => {
 				// Auto-panning
@@ -1449,6 +1510,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						temporary_toggle_colinear_molding,
+						permanent_toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1458,6 +1521,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						temporary_toggle_colinear_molding,
+						permanent_toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1524,6 +1589,15 @@ impl Fsm for PathToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
+			(PathToolFsmState::MoldingSegment, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				// Undo the moulding and go back to the state before
+				tool_data.molding_info = None;
+				tool_data.molding_segment = false;
+				tool_data.temporary_adjacent_handles_while_molding = None;
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
+				PathToolFsmState::Ready
+			}
 			// Mouse up
 			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
@@ -1578,6 +1652,29 @@ impl Fsm for PathToolFsmState {
 					tool_options.path_overlay_mode,
 					tool_data.frontier_handles_info.clone(),
 				);
+
+				if let Some(segment) = &mut tool_data.segment {
+					if !drag_occurred && !tool_data.molding_segment {
+						if tool_data.delete_segment_pressed {
+							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
+								responses.add(DocumentMessage::EndTransaction);
+							}
+						} else {
+							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
+							responses.add(DocumentMessage::EndTransaction);
+						}
+					} else {
+						responses.add(DocumentMessage::EndTransaction);
+					}
+
+					tool_data.segment = None;
+					tool_data.molding_info = None;
+					tool_data.molding_segment = false;
+					tool_data.temporary_adjacent_handles_while_molding = None;
+
+					return PathToolFsmState::Ready;
+				}
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if !drag_occurred && extend_selection {
@@ -1843,6 +1940,15 @@ impl Fsm for PathToolFsmState {
 					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 					HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
 					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+				]),
+			]),
+			PathToolFsmState::MoldingSegment => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment"),
+					HintInfo::keys([Key::KeyC], "Permament Disable Colinear Molding").prepend_plus(),
+					HintInfo::keys([Key::Alt], "Temporary Disable Colinear Molding").prepend_plus(),
 				]),
 			]),
 		};
