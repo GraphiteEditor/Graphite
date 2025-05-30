@@ -170,14 +170,14 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	/// The offset distance from the starting point of the dash pattern.
 	dash_offset: f64,
 	/// The shape of the stroke at open endpoints.
-	line_cap: LineCap,
+	cap: LineCap,
 	/// The curvature of the bent stroke at sharp corners.
-	line_join: LineJoin,
+	join: LineJoin,
 	#[default(4.)]
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	miter_limit: f64,
 	/// The alignment of stroke.
-	line_alignment: LineAlignment,
+	alignment: LineAlignment,
 ) -> Instances<V>
 where
 	Instances<V>: VectorDataTableIterMut + 'n + Send,
@@ -187,10 +187,10 @@ where
 		weight,
 		dash_lengths,
 		dash_offset,
-		line_cap,
-		line_join,
+		line_cap: cap,
+		line_join: join,
 		line_join_miter_limit: miter_limit,
-		line_alignment,
+		line_alignment: alignment,
 		transform: DAffine2::IDENTITY,
 		non_scaling: false,
 	};
