@@ -111,7 +111,7 @@ pub(crate) enum ParsedField {
 		number_hard_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
 		implementations: Punctuated<Type, Comma>,
-		unit: Option<Unit>,
+		unit: Option<LitStr>,
 	},
 	Node {
 		pat_ident: PatIdent,
@@ -121,37 +121,9 @@ pub(crate) enum ParsedField {
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<Implementation, Comma>,
-		unit: Option<Unit>,
+		unit: Option<LitStr>,
 	},
 }
-#[derive(Debug)]
-pub(crate) enum Unit {
-	Angle,
-}
-impl Unit {
-	pub fn display_value(&self) -> &str {
-		match self {
-			Unit::Angle => "°",
-		}
-	}
-}
-impl std::str::FromStr for Unit {
-	type Err = UnitParseError;
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		match s {
-			"angle" => Ok(Unit::Angle),
-			_ => Err(UnitParseError(s.to_string())),
-		}
-	}
-}
-#[derive(Debug)]
-pub struct UnitParseError(String);
-impl std::fmt::Display for UnitParseError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "failed to parse {} to a unit type", self.0)
-	}
-}
-impl std::error::Error for UnitParseError {}
 #[derive(Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
@@ -497,11 +469,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let unit = extract_attribute(attrs, "unit")
-		.map(|attr| attr.parse_args::<Ident>().map_err(|e| Error::new_spanned(attr, format!("Expected a unit type, ex. angle"))))
-		.transpose()?
-		.map(|f| std::str::FromStr::from_str(&f.to_string()))
-		.transpose()
-		.map_err(|e| Error::new(proc_macro2::Span::call_site(), e))?;
+		.map(|attr| attr.parse_args::<LitStr>().map_err(|e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
+		.transpose()?;
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs

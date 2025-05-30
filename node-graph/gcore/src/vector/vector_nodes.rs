@@ -286,7 +286,7 @@ async fn circular_repeat<I: 'n + Send>(
 	#[implementations(GraphicGroupTable, VectorDataTable, ImageFrameTable<Color>)] instance: Instances<I>,
 	angle_offset: Angle,
 	#[default(180.)]
-	#[unit(angle)]
+	#[unit("°")]
 	angle_pitch: f64,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
@@ -341,12 +341,12 @@ async fn copy_to_points<I: 'n + Send>(
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
 	#[range((0., 2.))]
-	//#[unit("x")]
+	#[unit("x")]
 	random_scale_min: Multiplier,
 	/// Maximum range of randomized sizes given to each instance.
 	#[default(1)]
 	#[range((0., 2.))]
-	//#[unit("x")]
+	#[unit("x")]
 	random_scale_max: Multiplier,
 	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
 	#[range((-50., 50.))]

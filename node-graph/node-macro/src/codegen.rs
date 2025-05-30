@@ -168,7 +168,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match field {
 			ParsedField::Regular { unit: Some(unit), .. } | ParsedField::Node { unit: Some(unit), .. } => {
-				let unit = unit.display_value();
 				quote!(Some(#unit))
 			}
 			_ => quote!(None),
