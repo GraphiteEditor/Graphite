@@ -599,7 +599,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 		use crate::vector::style::{GradientType, LineCap, LineJoin};
 		use vello::kurbo::{Cap, Join};
@@ -636,6 +636,31 @@ impl GraphicElementRendered for VectorDataTable {
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
 					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
 				);
+			}
+
+			let can_draw_aligned_stroke = instance
+				.instance
+				.style
+				.stroke()
+				.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.line_alignment.is_not_centered())
+				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
+			if can_draw_aligned_stroke {
+				let mut vector_data = VectorDataTable::default();
+				let fill_instance = vector_data.one_instance_mut();
+				*fill_instance.instance = instance.instance.clone();
+				*fill_instance.alpha_blending = *instance.alpha_blending;
+				fill_instance.instance.style.clear_stroke();
+				fill_instance.instance.style.set_fill(Fill::solid(Color::BLACK));
+
+				let weight = instance.instance.style.stroke().unwrap().weight;
+				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
+				let rect = vello::kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
+
+				let inside = instance.instance.style.stroke().unwrap().line_alignment == LineAlignment::Inside;
+				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
+				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+				vector_data.render_to_vello(scene, element_transform, context, render_params);
+				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
 			}
 
 			// Render the path
@@ -727,7 +752,7 @@ impl GraphicElementRendered for VectorDataTable {
 							LineJoin::Round => Join::Round,
 						};
 						let stroke = kurbo::Stroke {
-							width: stroke.weight,
+							width: stroke.weight * if can_draw_aligned_stroke { 2. } else { 1. },
 							miter_limit: stroke.line_join_miter_limit,
 							join,
 							start_cap: cap,
@@ -742,6 +767,11 @@ impl GraphicElementRendered for VectorDataTable {
 						}
 					}
 				}
+			}
+
+			if can_draw_aligned_stroke {
+				scene.pop_layer();
+				scene.pop_layer();
 			}
 
 			// If we pushed a layer for opacity or a blend mode, we need to pop it
