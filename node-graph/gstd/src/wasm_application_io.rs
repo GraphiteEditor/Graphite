@@ -30,9 +30,10 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	return Arc::new(editor.application_io.as_ref().unwrap().create_window());
+	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
+// TODO: Fix and reenable in order to get the 'Draw Canvas' node working again.
 // #[cfg(target_arch = "wasm32")]
 // use wasm_bindgen::Clamped;
 //
