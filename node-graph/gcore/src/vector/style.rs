@@ -537,6 +537,21 @@ impl LineAlignment {
 	}
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum PaintOrder {
+	#[default]
+	StrokeAbove,
+	StrokeBelow,
+}
+
+impl PaintOrder {
+	pub fn is_default(self) -> bool {
+		self == Self::default()
+	}
+}
+
 fn daffine2_identity() -> DAffine2 {
 	DAffine2::IDENTITY
 }
@@ -559,6 +574,8 @@ pub struct Stroke {
 	pub transform: DAffine2,
 	#[serde(default)]
 	pub non_scaling: bool,
+	#[serde(default)]
+	pub paint_order: PaintOrder,
 }
 
 impl core::hash::Hash for Stroke {
@@ -572,6 +589,7 @@ impl core::hash::Hash for Stroke {
 		self.line_join.hash(state);
 		self.line_join_miter_limit.to_bits().hash(state);
 		self.non_scaling.hash(state);
+		self.paint_order.hash(state);
 	}
 }
 
@@ -599,6 +617,7 @@ impl Stroke {
 			line_alignment: LineAlignment::Center,
 			transform: DAffine2::IDENTITY,
 			non_scaling: false,
+			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
 
@@ -617,6 +636,7 @@ impl Stroke {
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
 			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
+			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
 
@@ -670,6 +690,7 @@ impl Stroke {
 		let line_join = (self.line_join != LineJoin::Miter).then_some(self.line_join);
 		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
 		let line_alignment = (self.line_alignment != LineAlignment::Center).then_some(self.line_alignment);
+		let paint_order = (self.paint_order != PaintOrder::StrokeAbove).then_some(self.paint_order);
 
 		// Render the needed stroke attributes
 		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
@@ -700,6 +721,9 @@ impl Stroke {
 		// Add vector-effect attribute to make strokes non-scaling
 		if self.non_scaling {
 			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
+		}
+		if paint_order.is_some() {
+			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
 		}
 		attributes
 	}
@@ -777,6 +801,7 @@ impl Default for Stroke {
 			line_alignment: LineAlignment::Center,
 			transform: DAffine2::IDENTITY,
 			non_scaling: false,
+			paint_order: PaintOrder::default(),
 		}
 	}
 }

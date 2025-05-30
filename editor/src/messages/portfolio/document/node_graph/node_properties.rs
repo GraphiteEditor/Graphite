@@ -20,7 +20,7 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
-use graphene_core::vector::style::{GradientType, LineAlignment, LineCap, LineJoin};
+use graphene_core::vector::style::{GradientType, LineAlignment, LineCap, LineJoin, PaintOrder};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::application_io::TextureFrameTable;
 use graphene_std::ops::XY;
@@ -225,6 +225,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<LineCap>() => enum_choice::<LineCap>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LineJoin>() => enum_choice::<LineJoin>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LineAlignment>() => enum_choice::<LineAlignment>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
@@ -1662,6 +1663,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_join_index = 6;
 	let miter_limit_index = 7;
 	let line_alignment_index = 8;
+	let paint_order_index = 9;
 
 	let color = color_widget(ParameterWidgetsInfo::from_index(document_node, node_id, color_index, true, context), ColorInput::default());
 	let weight = number_widget(
@@ -1696,6 +1698,9 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_alignment = enum_choice::<LineAlignment>()
 		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_alignment_index, true, context))
 		.property_row();
+	let paint_order = enum_choice::<PaintOrder>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, paint_order_index, true, context))
+		.property_row();
 
 	vec![
 		color,
@@ -1706,6 +1711,7 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		line_cap,
 		line_join,
 		LayoutGroup::Row { widgets: miter_limit },
+		paint_order,
 	]
 }
 

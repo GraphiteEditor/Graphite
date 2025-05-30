@@ -10,7 +10,7 @@ use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform, TransformMut};
 use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::style::{LineAlignment, LineCap, LineJoin};
+use crate::vector::style::{LineAlignment, LineCap, LineJoin, PaintOrder};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
@@ -178,6 +178,8 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	miter_limit: f64,
 	/// The alignment of stroke.
 	alignment: LineAlignment,
+	/// The paint-order of stroke.<https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
+	paint_order: PaintOrder,
 ) -> Instances<V>
 where
 	Instances<V>: VectorDataTableIterMut + 'n + Send,
@@ -193,6 +195,7 @@ where
 		line_alignment: alignment,
 		transform: DAffine2::IDENTITY,
 		non_scaling: false,
+		paint_order,
 	};
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();

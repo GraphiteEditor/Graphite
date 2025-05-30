@@ -24,7 +24,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, FillType, Gradient, LineAlignment};
+use graphene_std::vector::style::{Fill, FillType, Gradient, LineAlignment, PaintOrder};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::vec;
 
@@ -679,13 +679,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if reference == "Stroke" && inputs_count == 8 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
-						let node_input = NodeInput::value(TaggedValue::LineAlignment(LineAlignment::Center), false);
+						let alignment_input = NodeInput::value(TaggedValue::LineAlignment(LineAlignment::Center), false);
+						let paint_order_input = NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeAbove), false);
 						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
 						document.network_interface.insert_input_properties_row(node_id, 8, &network_path);
+						document.network_interface.insert_input_properties_row(node_id, 9, &network_path);
 
 						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-						document.network_interface.set_input(&InputConnector::node(*node_id, 8), node_input, network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 8), alignment_input, network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 9), paint_order_input, network_path);
 					}
 
 					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node

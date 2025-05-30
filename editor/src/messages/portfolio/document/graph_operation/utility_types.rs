@@ -377,6 +377,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, 8);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::LineAlignment(stroke.line_alignment), false), false);
+		let input_connector = InputConnector::node(stroke_node_id, 9);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
 	}
 
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.

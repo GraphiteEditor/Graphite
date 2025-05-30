@@ -9,7 +9,7 @@ use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
-use graphene_core::vector::style::Fill;
+use graphene_core::vector::style::{Fill, PaintOrder};
 use graphene_core::{Color, MemoHash, Node, Type};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -238,6 +238,7 @@ tagged_value! {
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	LineAlignment(graphene_core::vector::style::LineAlignment),
+	PaintOrder(graphene_core::vector::style::PaintOrder),
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),

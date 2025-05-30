@@ -5,7 +5,7 @@ use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode};
+use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode, PaintOrder};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 use base64::Engine;
