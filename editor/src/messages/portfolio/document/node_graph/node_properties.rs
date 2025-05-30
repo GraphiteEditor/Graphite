@@ -1702,10 +1702,10 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		LayoutGroup::Row { widgets: weight },
 		LayoutGroup::Row { widgets: dash_lengths },
 		LayoutGroup::Row { widgets: dash_offset },
+		line_alignment,
 		line_cap,
 		line_join,
 		LayoutGroup::Row { widgets: miter_limit },
-		line_alignment,
 	]
 }
 
