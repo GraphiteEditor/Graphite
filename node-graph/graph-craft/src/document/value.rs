@@ -9,7 +9,7 @@ use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
-use graphene_core::vector::style::{Fill, PaintOrder};
+use graphene_core::vector::style::Fill;
 use graphene_core::{Color, MemoHash, Node, Type};
 use std::fmt::Display;
 use std::hash::Hash;

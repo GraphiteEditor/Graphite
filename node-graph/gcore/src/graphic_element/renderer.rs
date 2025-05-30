@@ -5,7 +5,7 @@ use crate::raster::image::ImageFrameTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode, PaintOrder};
+use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
 use base64::Engine;
@@ -662,6 +662,10 @@ impl GraphicElementRendered for VectorDataTable {
 				vector_data.render_to_vello(scene, element_transform, context, render_params);
 				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
 			}
+			enum Op {
+				Fill,
+				Stroke,
+			}
 
 			// Render the path
 			match render_params.view_mode {
@@ -685,85 +689,97 @@ impl GraphicElementRendered for VectorDataTable {
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
 				_ => {
-					match instance.instance.style.fill() {
-						Fill::Solid(color) => {
-							let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
-						}
-						Fill::Gradient(gradient) => {
-							let mut stops = peniko::ColorStops::new();
-							for &(offset, color) in &gradient.stops {
-								stops.push(peniko::ColorStop {
-									offset: offset as f32,
-									color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
-								});
-							}
-							// Compute bounding box of the shape to determine the gradient start and end points
-							let bounds = instance.instance.nonzero_bounding_box();
-							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-							let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
-							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
-
-							let start = mod_points.transform_point2(gradient.start);
-							let end = mod_points.transform_point2(gradient.end);
-
-							let fill = peniko::Brush::Gradient(peniko::Gradient {
-								kind: match gradient.gradient_type {
-									GradientType::Linear => peniko::GradientKind::Linear {
-										start: to_point(start),
-										end: to_point(end),
-									},
-									GradientType::Radial => {
-										let radius = start.distance(end);
-										peniko::GradientKind::Radial {
-											start_center: to_point(start),
-											start_radius: 0.,
-											end_center: to_point(start),
-											end_radius: radius as f32,
-										}
-									}
-								},
-								stops,
-								..Default::default()
-							});
-							// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
-							// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
-							let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
-							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
-						}
-						Fill::None => {}
+					let order = if instance.instance.style.stroke().is_none_or(|stroke| stroke.paint_order.is_default()) {
+						[Op::Fill, Op::Stroke]
+					} else {
+						[Op::Stroke, Op::Fill]
 					};
+					for operation in order {
+						match operation {
+							Op::Fill => {
+								match instance.instance.style.fill() {
+									Fill::Solid(color) => {
+										let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
+										scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
+									}
+									Fill::Gradient(gradient) => {
+										let mut stops = peniko::ColorStops::new();
+										for &(offset, color) in &gradient.stops {
+											stops.push(peniko::ColorStop {
+												offset: offset as f32,
+												color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+											});
+										}
+										// Compute bounding box of the shape to determine the gradient start and end points
+										let bounds = instance.instance.nonzero_bounding_box();
+										let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-					if let Some(stroke) = instance.instance.style.stroke() {
-						let color = match stroke.color {
-							Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-							None => peniko::Color::TRANSPARENT,
-						};
-						let cap = match stroke.line_cap {
-							LineCap::Butt => Cap::Butt,
-							LineCap::Round => Cap::Round,
-							LineCap::Square => Cap::Square,
-						};
-						let join = match stroke.line_join {
-							LineJoin::Miter => Join::Miter,
-							LineJoin::Bevel => Join::Bevel,
-							LineJoin::Round => Join::Round,
-						};
-						let stroke = kurbo::Stroke {
-							width: stroke.weight * if can_draw_aligned_stroke { 2. } else { 1. },
-							miter_limit: stroke.line_join_miter_limit,
-							join,
-							start_cap: cap,
-							end_cap: cap,
-							dash_pattern: stroke.dash_lengths.into(),
-							dash_offset: stroke.dash_offset,
-						};
+										let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
+										let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
 
-						// Draw the stroke if it's visible
-						if stroke.width > 0. {
-							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+										let start = mod_points.transform_point2(gradient.start);
+										let end = mod_points.transform_point2(gradient.end);
+
+										let fill = peniko::Brush::Gradient(peniko::Gradient {
+											kind: match gradient.gradient_type {
+												GradientType::Linear => peniko::GradientKind::Linear {
+													start: to_point(start),
+													end: to_point(end),
+												},
+												GradientType::Radial => {
+													let radius = start.distance(end);
+													peniko::GradientKind::Radial {
+														start_center: to_point(start),
+														start_radius: 0.,
+														end_center: to_point(start),
+														end_radius: radius as f32,
+													}
+												}
+											},
+											stops,
+											..Default::default()
+										});
+										// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
+										// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
+										let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
+										let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+										scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+									}
+									Fill::None => {}
+								};
+							}
+							Op::Stroke => {
+								if let Some(stroke) = instance.instance.style.stroke() {
+									let color = match stroke.color {
+										Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
+										None => peniko::Color::TRANSPARENT,
+									};
+									let cap = match stroke.line_cap {
+										LineCap::Butt => Cap::Butt,
+										LineCap::Round => Cap::Round,
+										LineCap::Square => Cap::Square,
+									};
+									let join = match stroke.line_join {
+										LineJoin::Miter => Join::Miter,
+										LineJoin::Bevel => Join::Bevel,
+										LineJoin::Round => Join::Round,
+									};
+									let stroke = kurbo::Stroke {
+										width: stroke.weight * if can_draw_aligned_stroke { 2. } else { 1. },
+										miter_limit: stroke.line_join_miter_limit,
+										join,
+										start_cap: cap,
+										end_cap: cap,
+										dash_pattern: stroke.dash_lengths.into(),
+										dash_offset: stroke.dash_offset,
+									};
+
+									// Draw the stroke if it's visible
+									if stroke.width > 0. {
+										scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+									}
+								}
+							}
 						}
 					}
 				}
