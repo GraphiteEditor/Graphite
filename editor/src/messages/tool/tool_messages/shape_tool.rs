@@ -78,8 +78,8 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 	NumberInput::new(Some(vertices as f64))
 		.label("Sides")
 		.int()
-		.min(3.)
-		.max(1000.)
+		.min(3.0)
+		.max(1000.0)
 		.mode(NumberInputMode::Increment)
 		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
 		.widget_holder()
@@ -110,7 +110,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
-		.min(0.)
+		.min(0.0)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
@@ -167,13 +167,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
 			}
-			ShapeOptionsUpdate::FillColorType(color_type) => self.options.fill.color_type = color_type,
-			ShapeOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
+			ShapeOptionsUpdate::FillColorType(color_type) => {
+				self.options.fill.color_type = color_type;
+			}
+			ShapeOptionsUpdate::LineWeight(line_weight) => {
+				self.options.line_weight = line_weight;
+			}
 			ShapeOptionsUpdate::StrokeColor(color) => {
 				self.options.stroke.custom_color = color;
 				self.options.stroke.color_type = ToolColorType::Custom;
 			}
-			ShapeOptionsUpdate::StrokeColorType(color_type) => self.options.stroke.color_type = color_type,
+			ShapeOptionsUpdate::StrokeColorType(color_type) => {
+				self.options.stroke.color_type = color_type;
+			}
 			ShapeOptionsUpdate::WorkingColors(primary, secondary) => {
 				self.options.stroke.primary_working_color = primary;
 				self.options.stroke.secondary_working_color = secondary;
@@ -188,19 +194,20 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 			}
 		}
 
+		self.fsm_state.update_hints(responses);
 		self.send_layout(responses, LayoutTarget::ToolOptions);
 	}
 
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
-			ShapeToolFsmState::Ready => actions!(ShapeToolMessageDiscriminant;
+			ShapeToolFsmState::Ready(_) => actions!(ShapeToolMessageDiscriminant;
 				DragStart,
 				PointerMove,
 				SetShape,
 				Abort,
 				HideShapeTypeWidget
 			),
-			ShapeToolFsmState::Drawing => actions!(ShapeToolMessageDiscriminant;
+			ShapeToolFsmState::Drawing(_) => actions!(ShapeToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,
@@ -234,11 +241,16 @@ impl ToolTransition for ShapeTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ShapeToolFsmState {
-	#[default]
-	Ready,
-	Drawing,
+	Ready(ShapeType),
+	Drawing(ShapeType),
+}
+
+impl Default for ShapeToolFsmState {
+	fn default() -> Self {
+		ShapeToolFsmState::Ready(ShapeType::default())
+	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -269,13 +281,15 @@ impl Fsm for ShapeToolFsmState {
 	) -> Self {
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Shape(event) = event else { return self };
+		let ToolMessage::Shape(event) = event else {
+			return self;
+		};
 		match (self, event) {
 			(_, ShapeToolMessage::Overlays(mut overlay_context)) => {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
-			(ShapeToolFsmState::Ready, ShapeToolMessage::DragStart) => {
+			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
 				match tool_options.shape_type {
 					ShapeType::Convex | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle => shape_data.start(document, input),
 					ShapeType::Line => {
@@ -304,7 +318,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Convex | ShapeType::Star => {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0.0, input.mouse.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
@@ -312,25 +326,27 @@ impl Fsm for ShapeToolFsmState {
 						tool_options.fill.apply_fill(layer, responses);
 					}
 					ShapeType::Line => {
-						tool_data.angle = 0.;
+						tool_data.angle = 0.0;
 						tool_data.weight = tool_options.line_weight;
 					}
 				}
 
 				shape_data.layer = Some(layer);
 
-				ShapeToolFsmState::Drawing
+				ShapeToolFsmState::Drawing(tool_options.shape_type)
 			}
-			(ShapeToolFsmState::Drawing, ShapeToolMessage::PointerMove(modifier)) => {
-				let Some(layer) = shape_data.layer else { return ShapeToolFsmState::Ready };
-				if match tool_options.shape_type {
+			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::PointerMove(modifier)) => {
+				let Some(layer) = shape_data.layer else {
+					return ShapeToolFsmState::Ready(shape);
+				};
+				if (match tool_options.shape_type {
 					ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, tool_data, modifier, responses),
 					ShapeType::Line => Line::update_shape(&document, &input, layer, tool_data, modifier, responses),
 					ShapeType::Convex => Convex::update_shape(&document, &input, layer, tool_data, modifier, responses),
 					ShapeType::Star => Star::update_shape(&document, &input, layer, tool_data, modifier, responses),
-				} {
-					return if tool_options.shape_type == ShapeType::Line { ShapeToolFsmState::Ready } else { self };
+				}) {
+					return if tool_options.shape_type == ShapeType::Line { ShapeToolFsmState::Ready(shape) } else { self };
 				}
 
 				// Auto-panning
@@ -344,11 +360,11 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(ShapeToolFsmState::Drawing, ShapeToolMessage::PointerOutsideViewport { .. }) => {
+			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
-				ShapeToolFsmState::Drawing
+				ShapeToolFsmState::Drawing(shape)
 			}
 			(state, ShapeToolMessage::PointerOutsideViewport(modifier)) => {
 				// Auto-panning
@@ -357,17 +373,17 @@ impl Fsm for ShapeToolFsmState {
 
 				state
 			}
-			(ShapeToolFsmState::Drawing, ShapeToolMessage::DragStop) => {
+			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 				shape_data.cleanup(responses);
 
-				ShapeToolFsmState::Ready
+				ShapeToolFsmState::Ready(shape)
 			}
-			(ShapeToolFsmState::Drawing, ShapeToolMessage::Abort) => {
+			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				shape_data.cleanup(responses);
 
-				ShapeToolFsmState::Ready
+				ShapeToolFsmState::Ready(shape)
 			}
 			(_, ShapeToolMessage::WorkingColorChanged) => {
 				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::WorkingColors(
@@ -381,7 +397,7 @@ impl Fsm for ShapeToolFsmState {
 				shape_data.cleanup(responses);
 				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::ShapeType(shape)));
 
-				ShapeToolFsmState::Ready
+				ShapeToolFsmState::Ready(shape)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget(hide)) => {
 				tool_data.hide_shape_option_widget = hide;
@@ -394,15 +410,48 @@ impl Fsm for ShapeToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			ShapeToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Shape"),
-				HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
-				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
-			])]),
-			ShapeToolFsmState::Drawing => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
-			]),
+			ShapeToolFsmState::Ready(shape) => {
+				let hint_infos = match shape {
+					ShapeType::Convex | ShapeType::Star => vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
+						HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(), // HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					],
+					ShapeType::Ellipse => vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
+						HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(), // HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					],
+					ShapeType::Line => vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
+						HintInfo::keys([Key::Shift], "15 Regular").prepend_plus(),
+						HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+						HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
+					],
+					ShapeType::Rectangle => vec![
+						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Rectangle"),
+						HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+					],
+				};
+				HintData(vec![HintGroup(hint_infos)])
+			}
+			ShapeToolFsmState::Drawing(shape) => {
+				let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+				let tool_hint_group = match shape {
+					ShapeType::Convex | ShapeType::Star => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+					ShapeType::Line => HintGroup(vec![
+						HintInfo::keys([Key::Shift], "15° Increments"),
+						HintInfo::keys([Key::Alt], "From Center"),
+						HintInfo::keys([Key::Control], "Lock Angle"),
+					]),
+				};
+				common_hint_group.push(tool_hint_group);
+				HintData(common_hint_group)
+			}
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
