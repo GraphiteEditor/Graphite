@@ -15,9 +15,7 @@ use graphene_core::{Ctx, GraphicElement, Node};
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
-	let vector_data = vector_data.one_instance_ref().instance;
-
-	vector_data.point_domain.positions().to_vec()
+	vector_data.instance_iter().flat_map(|element| element.instance.point_domain.positions().to_vec()).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -96,39 +94,41 @@ where
 		return target;
 	}
 
-	let target_width = target.one_instance_ref().instance.width;
-	let target_height = target.one_instance_ref().instance.height;
-	let target_size = DVec2::new(target_width as f64, target_height as f64);
+	for target_instance in target.instance_mut_iter() {
+		let target_width = target_instance.instance.width;
+		let target_height = target_instance.instance.height;
+		let target_size = DVec2::new(target_width as f64, target_height as f64);
 
-	let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
+		let texture_size = DVec2::new(texture.width as f64, texture.height as f64);
 
-	let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * target.transform().inverse();
+		let document_to_target = DAffine2::from_translation(-texture_size / 2.) * DAffine2::from_scale(target_size) * target_instance.transform.inverse();
 
-	for position in positions {
-		let start = document_to_target.transform_point2(position).round();
-		let stop = start + texture_size;
+		for position in &positions {
+			let start = document_to_target.transform_point2(*position).round();
+			let stop = start + texture_size;
 
-		// Half-open integer ranges [start, stop).
-		let clamp_start = start.clamp(DVec2::ZERO, target_size).as_uvec2();
-		let clamp_stop = stop.clamp(DVec2::ZERO, target_size).as_uvec2();
+			// Half-open integer ranges [start, stop).
+			let clamp_start = start.clamp(DVec2::ZERO, target_size).as_uvec2();
+			let clamp_stop = stop.clamp(DVec2::ZERO, target_size).as_uvec2();
 
-		let blit_area_offset = (clamp_start.as_dvec2() - start).as_uvec2().min(texture_size.as_uvec2());
-		let blit_area_dimensions = (clamp_stop - clamp_start).min(texture_size.as_uvec2() - blit_area_offset);
+			let blit_area_offset = (clamp_start.as_dvec2() - start).as_uvec2().min(texture_size.as_uvec2());
+			let blit_area_dimensions = (clamp_stop - clamp_start).min(texture_size.as_uvec2() - blit_area_offset);
 
-		// Tight blitting loop. Eagerly assert bounds to hopefully eliminate bounds check inside loop.
-		let texture_index = |x: u32, y: u32| -> usize { (y as usize * texture.width as usize) + (x as usize) };
-		let target_index = |x: u32, y: u32| -> usize { (y as usize * target_width as usize) + (x as usize) };
+			// Tight blitting loop. Eagerly assert bounds to hopefully eliminate bounds check inside loop.
+			let texture_index = |x: u32, y: u32| -> usize { (y as usize * texture.width as usize) + (x as usize) };
+			let target_index = |x: u32, y: u32| -> usize { (y as usize * target_width as usize) + (x as usize) };
 
-		let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
-		let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
-		assert!(texture_index(max_x, max_y) < texture.data.len());
-		assert!(target_index(max_x, max_y) < target.one_instance_ref().instance.data.len());
+			let max_y = (blit_area_offset.y + blit_area_dimensions.y).saturating_sub(1);
+			let max_x = (blit_area_offset.x + blit_area_dimensions.x).saturating_sub(1);
+			assert!(texture_index(max_x, max_y) < texture.data.len());
+			assert!(target_index(max_x, max_y) < target_instance.instance.data.len());
 
-		for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
-			for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
-				let src_pixel = texture.data[texture_index(x, y)];
-				let dst_pixel = &mut target.one_instance_mut().instance.data[target_index(x + clamp_start.x, y + clamp_start.y)];
-				*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
+			for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
+				for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
+					let src_pixel = texture.data[texture_index(x, y)];
+					let dst_pixel = &mut target_instance.instance.data[target_index(x + clamp_start.x, y + clamp_start.y)];
+					*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
+				}
 			}
 		}
 	}
