@@ -276,6 +276,12 @@ impl LayerNodeIdentifier {
 		child.ancestors(metadata).any(|ancestor| ancestor == self)
 	}
 
+	/// Is the layer last child of parent group? Used for clipping
+	pub fn can_be_clipped(self, metadata: &DocumentMetadata) -> bool {
+		self.parent(metadata)
+			.map_or(false, |layer| layer.last_child(metadata).expect("Parent accessed via child should have children") != self)
+	}
+
 	/// Iterator over all direct children (excluding self and recursive children)
 	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {

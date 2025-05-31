@@ -14,9 +14,12 @@ pub mod renderer;
 
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[serde(default)]
 pub struct AlphaBlending {
-	pub opacity: f32,
 	pub blend_mode: BlendMode,
+	pub opacity: f32,
+	pub fill: f32,
+	pub clip: bool,
 }
 impl Default for AlphaBlending {
 	fn default() -> Self {
@@ -26,14 +29,18 @@ impl Default for AlphaBlending {
 impl core::hash::Hash for AlphaBlending {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
+		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
+		self.clip.hash(state);
 	}
 }
 impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
 			opacity: 1.,
+			fill: 1.,
 			blend_mode: BlendMode::Normal,
+			clip: false,
 		}
 	}
 
@@ -42,7 +49,9 @@ impl AlphaBlending {
 
 		AlphaBlending {
 			opacity: lerp(self.opacity, other.opacity, t),
+			fill: lerp(self.fill, other.fill, t),
 			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
+			clip: if t < 0.5 { self.clip } else { other.clip },
 		}
 	}
 }
@@ -201,6 +210,28 @@ impl GraphicElement {
 		match self {
 			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
+		}
+	}
+
+	pub fn had_clip_enabled(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::GraphicGroup(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterFrame(data) => match data {
+				RasterFrame::ImageFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+				RasterFrame::TextureFrame(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			},
+		}
+	}
+
+	pub fn can_reduce_to_clip_path(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
+				let style = &instance_data.instance.style;
+				let alpha_blending = &instance_data.alpha_blending;
+				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			}),
+			_ => false,
 		}
 	}
 }

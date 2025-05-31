@@ -121,6 +121,9 @@ pub enum DocumentMessage {
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},
+	ClipLayer {
+		id: NodeId,
+	},
 	SelectLayer {
 		id: NodeId,
 		ctrl: bool,
@@ -141,6 +144,9 @@ pub enum DocumentMessage {
 	},
 	SetOpacityForSelectedLayers {
 		opacity: f64,
+	},
+	SetFillForSelectedLayers {
+		fill: f64,
 	},
 	SetOverlaysVisibility {
 		visible: bool,

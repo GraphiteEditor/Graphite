@@ -5,12 +5,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
+use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineAlignment, LineCap, LineJoin, PaintOrder, Stroke};
 use graphene_std::vector::convert_usvg_path;
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.fill_set(fill);
 				}
 			}
+			GraphOperationMessage::BlendingFillSet { layer, fill } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.blending_fill_set(fill);
+				}
+			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_set(opacity);
@@ -49,6 +55,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
+				}
+			}
+			GraphOperationMessage::ClipModeToggle { layer } => {
+				let clip_mode = get_clip_mode(layer, network_interface);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
@@ -388,6 +400,8 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 				usvg::LineJoin::Bevel => LineJoin::Bevel,
 			},
 			line_join_miter_limit: stroke.miterlimit().get() as f64,
+			line_alignment: LineAlignment::Center,
+			paint_order: PaintOrder::StrokeAbove,
 			transform,
 			non_scaling: false,
 		})
