@@ -335,7 +335,7 @@ impl VectorData {
 	}
 
 	pub fn check_point_inside_shape(&self, vector_data_transform: DAffine2, point: DVec2) -> bool {
-		let bez_paths: Vec<_> = self
+		let number = self
 			.stroke_bezpath_iter()
 			.map(|mut bezpath| {
 				// TODO: apply transform to points instead of modifying the paths
@@ -344,19 +344,9 @@ impl VectorData {
 				let bbox = bezpath.bounding_box();
 				(bezpath, bbox)
 			})
-			.collect();
-
-		// Check against all paths the point is contained in to compute the correct winding number
-		let mut number = 0;
-
-		for (shape, bbox) in bez_paths {
-			if bbox.x0 > point.x || bbox.y0 > point.y || bbox.x1 < point.x || bbox.y1 < point.y {
-				continue;
-			}
-
-			let winding = shape.winding(dvec2_to_point(point));
-			number += winding;
-		}
+			.filter(|(_, bbox)| bbox.contains(dvec2_to_point(point)))
+			.map(|(bezpath, _)| bezpath.winding(dvec2_to_point(point)))
+			.sum::<i32>();
 
 		// Non-zero fill rule
 		number != 0
