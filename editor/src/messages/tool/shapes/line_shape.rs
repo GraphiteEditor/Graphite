@@ -1,10 +1,11 @@
-use super::shape_utility::{LineInitData, ShapeToolModifierKey};
-use super::*;
-use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use super::shape_utility::ShapeToolModifierKey;
+use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+pub use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
@@ -13,19 +14,32 @@ use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub enum LineEnd {
 	#[default]
 	Start,
 	End,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct LineToolData {
+	pub drag_begin: DVec2,
+	pub drag_start_shifted: DVec2,
+	pub drag_current_shifted: DVec2,
+	pub drag_start: DVec2,
+	pub drag_current: DVec2,
+	pub angle: f64,
+	pub weight: f64,
+	pub selected_layers_with_position: HashMap<LayerNodeIdentifier, [DVec2; 2]>,
+	pub editing_layer: Option<LayerNodeIdentifier>,
+	pub dragging_endpoint: Option<LineEnd>,
+}
+
 #[derive(Default)]
 pub struct Line;
 
 impl Line {
-	pub fn create_node(document: &DocumentMessageHandler, init_data: LineInitData) -> NodeTemplate {
-		let drag_start = init_data.drag_start;
+	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
 		let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
 		node_type.node_template_input_override([
 			None,
@@ -43,11 +57,15 @@ impl Line {
 		responses: &mut VecDeque<Message>,
 	) -> bool {
 		let (center, snap_angle, lock_angle) = (modifier[0], modifier[3], modifier[2]);
-		shape_tool_data.drag_current = ipp.mouse.position;
+		shape_tool_data.line_data.drag_current = ipp.mouse.position;
 		let keyboard = &ipp.keyboard;
 		let ignore = vec![layer];
 		let snap_data = SnapData::ignore(document, ipp, &ignore);
-		let document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+
+		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
+			document_points.swap(0, 1);
+		}
 
 		let Some(node_id) = graph_modification_utils::get_line_id(layer, &document.network_interface) else {
 			return true;
@@ -64,23 +82,70 @@ impl Line {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 		false
 	}
+
+	pub fn overlays(document: &DocumentMessageHandler, shape_tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
+		shape_tool_data.line_data.selected_layers_with_position = document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.filter_map(|layer| {
+				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line")?;
+
+				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+					return None;
+				};
+
+				let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
+				if !start.abs_diff_eq(end, f64::EPSILON * 1000.) {
+					overlay_context.line(viewport_start, viewport_end, None, None);
+					overlay_context.square(viewport_start, Some(6.), None, None);
+					overlay_context.square(viewport_end, Some(6.), None, None);
+				}
+
+				Some((layer, [start, end]))
+			})
+			.collect::<HashMap<LayerNodeIdentifier, [DVec2; 2]>>();
+	}
+	pub fn dragging_endpoints(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, line_data: &mut LineToolData) -> bool {
+		for (layer, [document_start, document_end]) in line_data.selected_layers_with_position.iter() {
+			let transform = document.metadata().transform_to_viewport(*layer);
+			let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+			let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+			let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
+			let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
+
+			let drag_start = input.mouse.position;
+			let [start, end] = [document_start, document_end].map(|point| transform.transform_point2(*point));
+
+			let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
+			let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
+
+			if start_click || end_click {
+				line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
+				line_data.drag_start = if end_click { *document_start } else { *document_end };
+				line_data.editing_layer = Some(*layer);
+				return true;
+			}
+		}
+		false
+	}
 }
 
 fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
+	let mut document_points = [tool_data.line_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
 
 	if lock_angle {
-		angle = tool_data.angle;
+		angle = tool_data.line_data.angle;
 	} else if snap_angle {
 		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
-	tool_data.angle = angle;
+	tool_data.line_data.angle = angle;
 
 	if lock_angle {
 		let angle_vec = DVec2::new(angle.cos(), angle.sin());
@@ -92,8 +157,8 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.data.snap_manager;
 
-	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.data.drag_start]);
-	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.data.drag_start]);
+	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.line_data.drag_start]);
+	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.line_data.drag_start]);
 	let config = SnapTypeConfiguration::default();
 
 	if constrained {
