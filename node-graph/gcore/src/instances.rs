@@ -204,7 +204,7 @@ pub struct InstanceMut<'a, T> {
 	pub source_node_id: &'a mut Option<NodeId>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub struct Instance<T> {
 	pub instance: T,
 	pub transform: DAffine2,

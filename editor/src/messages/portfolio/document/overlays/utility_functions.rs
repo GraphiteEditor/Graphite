@@ -1,5 +1,6 @@
 use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 use bezier_rs::{Bezier, BezierHandles};
@@ -23,7 +24,7 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 	create_context().expect("Failed to get canvas context")
 }
 
-pub fn selected_segments(document: &DocumentMessageHandler, shape_editor: &mut ShapeState) -> Vec<SegmentId> {
+pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) -> Vec<SegmentId> {
 	let selected_points = shape_editor.selected_points();
 	let selected_anchors = selected_points
 		.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(*p) } else { None })
@@ -40,8 +41,8 @@ pub fn selected_segments(document: &DocumentMessageHandler, shape_editor: &mut S
 
 	// TODO: Currently if there are two duplicate layers, both of their segments get overlays
 	// Adding segments which are are connected to selected anchors
-	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+	for layer in network_interface.selected_nodes().selected_layers(network_interface.document_metadata()) {
+		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { continue };
 
 		for (segment_id, _bezier, start, end) in vector_data.segment_bezier_iter() {
 			if selected_anchors.contains(&start) || selected_anchors.contains(&end) {

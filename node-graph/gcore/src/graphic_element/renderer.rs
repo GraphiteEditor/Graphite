@@ -1107,7 +1107,7 @@ impl GraphicElementRendered for RasterFrame {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			RasterFrame::ImageFrame(image) => image.render_svg(render, render_params),
-			RasterFrame::TextureFrame(_) => unimplemented!(),
+			RasterFrame::TextureFrame(_) => log::warn!("tried to render texture as an svg"),
 		}
 	}
 

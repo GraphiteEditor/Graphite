@@ -964,6 +964,8 @@ export class CheckboxInput extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	forLabel!: bigint | undefined;
 }
 
 export class ColorInput extends WidgetProps {
@@ -1364,6 +1366,8 @@ export class TextLabel extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	checkboxId!: bigint | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";

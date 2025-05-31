@@ -43,6 +43,15 @@ impl AlphaBlending {
 			clip: false,
 		}
 	}
+
+	pub fn lerp(&self, other: &Self, t: f32) -> Self {
+		let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+
+		AlphaBlending {
+			opacity: lerp(self.opacity, other.opacity, t),
+			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
+		}
+	}
 }
 
 // TODO: Eventually remove this migration document upgrade code

@@ -623,8 +623,10 @@
 
 		// Layer hierarchy
 		.list-area {
-			margin: 4px 0;
 			position: relative;
+			margin-top: 4px;
+			// Combine with the bottom bar to avoid a double border
+			margin-bottom: -1px;
 
 			.layer {
 				flex: 0 0 auto;

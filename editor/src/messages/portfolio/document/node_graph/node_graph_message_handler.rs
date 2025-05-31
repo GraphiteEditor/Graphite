@@ -1215,11 +1215,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
 								}
 
-								// Auto convert node to layer when inserting on a single stack wire
-								if stack_wires.len() == 1 && node_wires.is_empty() {
-									network_interface.set_to_node_or_layer(&selected_node_id, selection_network_path, true)
-								}
-
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
 									if stack_wires.len() == 1 {
 										stack_wires.first()
@@ -1852,11 +1847,6 @@ impl NodeGraphMessageHandler {
 			//
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			//
-			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
 			IconButton::new("Folder", 24)
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
@@ -1865,6 +1855,11 @@ impl NodeGraphMessageHandler {
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip("Delete Selected")

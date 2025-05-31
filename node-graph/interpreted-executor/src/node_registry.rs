@@ -13,7 +13,7 @@ use graphene_core::{fn_type_fut, future};
 use graphene_std::Context;
 use graphene_std::GraphicElement;
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, IntoTypeErasedNode};
-use graphene_std::application_io::ImageTexture;
+use graphene_std::application_io::{ImageTexture, TextureFrameTable};
 use graphene_std::wasm_application_io::*;
 use node_registry_macros::{async_node, into_node};
 use once_cell::sync::Lazy;
@@ -21,22 +21,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "gpu")]
 use wgpu_executor::ShaderInputFrame;
-use wgpu_executor::{WgpuSurface, WindowHandle};
+use wgpu_executor::{WgpuExecutor, WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let node_types: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 		into_node!(from: f64, to: f64),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
-		into_node!(from: f64, to: f64),
 		into_node!(from: u32, to: f64),
 		into_node!(from: u8, to: u32),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
-		into_node!(from: VectorDataTable, to: GraphicGroupTable),
+		into_node!(from: VectorDataTable, to: VectorDataTable),
 		into_node!(from: VectorDataTable, to: GraphicElement),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicElement),
-		into_node!(from: GraphicGroupTable, to: GraphicElement),
 		into_node!(from: VectorDataTable, to: GraphicGroupTable),
+		into_node!(from: GraphicGroupTable, to: GraphicGroupTable),
+		into_node!(from: GraphicGroupTable, to: GraphicElement),
+		into_node!(from: ImageFrameTable<Color>, to: ImageFrameTable<Color>),
+		into_node!(from: ImageFrameTable<Color>, to: ImageFrameTable<SRGBA8>),
+		into_node!(from: ImageFrameTable<Color>, to: GraphicElement),
 		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageFrameTable<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
@@ -113,6 +113,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuSurface]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => TextureFrameTable]),
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => TextureFrameTable]),
+		#[cfg(feature = "gpu")]
+		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),

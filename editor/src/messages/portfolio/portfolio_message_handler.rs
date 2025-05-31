@@ -1019,6 +1019,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
+					let mut all_new_ids = Vec::new();
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
 						let mut layers = Vec::new();
@@ -1035,12 +1036,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
+							all_new_ids.extend(new_ids.values().cloned());
+
 							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
 							layers.push(layer);
 						}
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
 						responses.add(Message::StartBuffer);
 						responses.add(PortfolioMessage::CenterPastedLayers { layers });
 					}
