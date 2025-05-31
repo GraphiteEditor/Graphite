@@ -163,6 +163,12 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport
 	}
 
+	pub fn closest_point(&self, document_metadata: &DocumentMetadata) -> DVec2 {
+		let transform = document_metadata.transform_to_viewport(self.layer);
+		let bezier_point = self.bezier.evaluate(TValue::Parametric(self.t));
+		transform.transform_point2(bezier_point)
+	}
+
 	/// Updates this [`ClosestSegment`] with the viewport-space location of the closest point on the segment to the given mouse position.
 	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
 		let transform = document_metadata.transform_to_viewport(self.layer);
