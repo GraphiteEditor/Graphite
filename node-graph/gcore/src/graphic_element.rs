@@ -49,7 +49,9 @@ impl AlphaBlending {
 
 		AlphaBlending {
 			opacity: lerp(self.opacity, other.opacity, t),
+			fill: lerp(self.fill, other.fill, t),
 			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
+			clip: if t < 0.5 { self.clip } else { other.clip },
 		}
 	}
 }
