@@ -9,14 +9,15 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
+use crate::vector::algorithms::bezpath_algorithms::{eval_pathseg_euclidean, is_linear};
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
+use bezier_rs::{BezierHandles, Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, QuadBez, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1611,10 +1612,12 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 
 fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2, distance: f64) -> VectorData {
 	// Splits a bézier curve based on a distance measurement
-	fn split_distance(bezier: bezier_rs::Bezier, distance: f64, length: f64) -> bezier_rs::Bezier {
+	fn split_distance(bezier: PathSeg, distance: f64, length: f64) -> PathSeg {
 		const EUCLIDEAN_ERROR: f64 = 0.001;
-		let parametric = bezier.euclidean_to_parametric_with_total_length((distance / length).clamp(0., 1.), EUCLIDEAN_ERROR, length);
-		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
+		// let parametric = bezier.euclidean_to_parametric_with_total_length((distance / length).clamp(0., 1.), EUCLIDEAN_ERROR, length);
+		let parametric = eval_pathseg_euclidean(bezier, (distance / length).clamp(0., 1.), DEFAULT_ACCURACY);
+		// bezier.split(bezier_rs::TValue::Parametric(parametric))[1];
+		bezier.subsegment(parametric..1.)
 	}
 
 	/// Produces a list that corresponds with the point ID. The value is how many segments are connected.
@@ -1659,19 +1662,23 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 
 		for (handles, start_point_index, end_point_index) in vector_data.segment_domain.handles_and_points_mut() {
 			// Convert the original segment to a bezier
-			let mut bezier = bezier_rs::Bezier {
-				start: vector_data.point_domain.positions()[*start_point_index],
-				end: vector_data.point_domain.positions()[*end_point_index],
-				handles: *handles,
+			let start = vector_data.point_domain.positions()[*start_point_index];
+			let end = vector_data.point_domain.positions()[*end_point_index];
+			let mut bezier = match *handles {
+				bezier_rs::BezierHandles::Linear => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
+				bezier_rs::BezierHandles::Quadratic { handle } => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(handle), dvec2_to_point(end))),
+				bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+					PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(end)))
+				}
 			};
 
-			if bezier.is_linear() {
-				bezier.handles = bezier_rs::BezierHandles::Linear;
+			if is_linear(&bezier) {
+				bezier = PathSeg::Line(Line::new(bezier.start(), bezier.end()));
 			}
-			bezier = bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
+			bezier = Affine::new(vector_data_transform.to_cols_array()) * bezier;
 			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
 
-			let original_length = bezier.length(None);
+			let original_length = bezier.perimeter(DEFAULT_ACCURACY);
 			let mut length = original_length;
 
 			// Only split if the length is big enough to make it worthwhile
@@ -1682,7 +1689,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 				bezier = split_distance(bezier, distance, length);
 				length = (length - distance).max(0.);
 				// Update the start position
-				let pos = inverse_transform.transform_point2(bezier.start);
+				let pos = inverse_transform.transform_point2(point_to_dvec2(bezier.start()));
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
 			}
 
@@ -1691,13 +1698,21 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			if segments_connected[*end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
 				let distance = distance.min(original_length / 2.);
-				bezier = split_distance(bezier.reversed(), distance, length).reversed();
+				bezier = split_distance(bezier.reverse(), distance, length).reverse();
 				// Update the end position
-				let pos = inverse_transform.transform_point2(bezier.end);
+				let pos = inverse_transform.transform_point2(point_to_dvec2(bezier.end()));
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
 			}
+			let handles2 = match bezier {
+				PathSeg::Line(line) => BezierHandles::Linear,
+				PathSeg::Quad(QuadBez { p0, p1, p2 }) => BezierHandles::Quadratic { handle: point_to_dvec2(p1) },
+				PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => BezierHandles::Cubic {
+					handle_start: point_to_dvec2(p1),
+					handle_end: point_to_dvec2(p2),
+				},
+			};
 			// Update the handles
-			*handles = bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
+			*handles = handles2.apply_transformation(|p| inverse_transform.transform_point2(p));
 		}
 		new_segments
 	}
