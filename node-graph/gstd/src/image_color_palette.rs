@@ -16,17 +16,17 @@ async fn image_color_palette(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	let image = image.one_instance_ref().instance;
+	for image_instance in image.instance_ref_iter() {
+		for pixel in image_instance.instance.data.iter() {
+			let r = pixel.r() * GRID;
+			let g = pixel.g() * GRID;
+			let b = pixel.b() * GRID;
 
-	for pixel in image.data.iter() {
-		let r = pixel.r() * GRID;
-		let g = pixel.g() * GRID;
-		let b = pixel.b() * GRID;
+			let bin = (r * GRID + g * GRID + b * GRID) as usize;
 
-		let bin = (r * GRID + g * GRID + b * GRID) as usize;
-
-		histogram[bin] += 1;
-		colors[bin].push(pixel.to_gamma_srgb());
+			histogram[bin] += 1;
+			colors[bin].push(pixel.to_gamma_srgb());
+		}
 	}
 
 	let shorted = histogram.iter().enumerate().filter(|&(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
