@@ -1,6 +1,7 @@
+use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
 use glam::DVec2;
-use kurbo::Point;
+use kurbo::{CubicBez, Line, PathSeg, Point, QuadBez};
 
 /// Represents different ways of calculating the centroid.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
@@ -100,4 +101,34 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
 
 pub fn dvec2_to_point(value: DVec2) -> Point {
 	Point { x: value.x, y: value.y }
+}
+
+pub fn segment_to_handles(segment: &PathSeg) -> BezierHandles {
+	match *segment {
+		PathSeg::Line(_) => BezierHandles::Linear,
+		PathSeg::Quad(QuadBez { p0: _, p1, p2: _ }) => BezierHandles::Quadratic { handle: point_to_dvec2(p1) },
+		PathSeg::Cubic(CubicBez { p0: _, p1, p2, p3: _ }) => BezierHandles::Cubic {
+			handle_start: point_to_dvec2(p1),
+			handle_end: point_to_dvec2(p2),
+		},
+	}
+}
+
+pub fn handles_to_segment(start: DVec2, handles: BezierHandles, end: DVec2) -> PathSeg {
+	match handles {
+		bezier_rs::BezierHandles::Linear => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
+		bezier_rs::BezierHandles::Quadratic { handle } => {
+			let p0 = dvec2_to_point(start);
+			let p1 = dvec2_to_point(handle);
+			let p2 = dvec2_to_point(end);
+			PathSeg::Quad(QuadBez::new(p0, p1, p2))
+		}
+		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+			let p0 = dvec2_to_point(start);
+			let p1 = dvec2_to_point(handle_start);
+			let p2 = dvec2_to_point(handle_end);
+			let p3 = dvec2_to_point(end);
+			PathSeg::Cubic(CubicBez::new(p0, p1, p2, p3))
+		}
+	}
 }
