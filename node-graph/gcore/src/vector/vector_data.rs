@@ -196,10 +196,10 @@ impl VectorData {
 
 	pub fn close_subpaths(&mut self) {
 		let segments_to_add: Vec<_> = self
-			.stroke_bezier_paths()
-			.filter(|subpath| !subpath.closed)
-			.filter_map(|subpath| {
-				let (first, last) = subpath.manipulator_groups().first().zip(subpath.manipulator_groups().last())?;
+			.build_stroke_path_iter()
+			.filter(|(_, closed)| !closed)
+			.filter_map(|(manipulator_groups, _)| {
+				let (first, last) = manipulator_groups.first().zip(manipulator_groups.last())?;
 				let (start, end) = self.point_domain.resolve_id(first.id).zip(self.point_domain.resolve_id(last.id))?;
 				Some((start, end))
 			})
