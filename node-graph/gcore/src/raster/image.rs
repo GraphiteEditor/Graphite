@@ -2,7 +2,7 @@ use super::Color;
 use super::discrete_srgb::float_to_srgb_u8;
 use crate::AlphaBlending;
 use crate::GraphicElement;
-use crate::instances::Instances;
+use crate::instances::{Instance, Instances};
 use crate::transform::TransformMut;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
@@ -390,6 +390,23 @@ impl From<Image<Color>> for Image<SRGBA8> {
 			height: image.height,
 			base64_string: None,
 		}
+	}
+}
+
+impl From<ImageFrameTable<Color>> for ImageFrameTable<SRGBA8> {
+	fn from(image_frame_table: ImageFrameTable<Color>) -> Self {
+		let mut result_table = ImageFrameTable::<SRGBA8>::empty();
+
+		for image_frame_instance in image_frame_table.instance_iter() {
+			result_table.push(Instance {
+				instance: image_frame_instance.instance.into(),
+				transform: image_frame_instance.transform,
+				alpha_blending: image_frame_instance.alpha_blending,
+				source_node_id: image_frame_instance.source_node_id,
+			});
+		}
+
+		result_table
 	}
 }
 

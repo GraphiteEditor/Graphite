@@ -187,8 +187,7 @@ impl ClosestSegment {
 	}
 
 	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
-		let dist_sq = self.distance_squared(mouse_position);
-		(tolerance).powi(2) < dist_sq
+		tolerance.powi(2) < self.distance_squared(mouse_position)
 	}
 
 	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
