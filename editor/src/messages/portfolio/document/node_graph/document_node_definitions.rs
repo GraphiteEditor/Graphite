@@ -24,6 +24,8 @@ use graphene_std::vector::VectorDataTable;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+mod document_node_derive;
+
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub responses: &'a mut VecDeque<Message>,
@@ -91,7 +93,7 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 /// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
-	let mut custom = vec![
+	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Identity",
@@ -2114,6 +2116,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 	];
 
+<<<<<<< HEAD
 	// Remove struct generics
 	for DocumentNodeDefinition { node_template, .. } in custom.iter_mut() {
 		let NodeTemplate {
@@ -2217,6 +2220,113 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		custom.push(node);
 	}
 	custom
+||||||| parent of de38de1c7 (Prototype document network level into node insertion)
+	// Remove struct generics
+	for DocumentNodeDefinition { node_template, .. } in custom.iter_mut() {
+		let NodeTemplate {
+			document_node: DocumentNode { implementation, .. },
+			..
+		} = node_template;
+		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation {
+			if let Some((new_name, _suffix)) = name.rsplit_once("<") {
+				*name = Cow::Owned(new_name.to_string())
+			}
+		};
+	}
+	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
+	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
+		use graphene_core::registry::*;
+		let id = id.clone();
+
+		for node in custom.iter() {
+			let DocumentNodeDefinition {
+				node_template: NodeTemplate {
+					document_node: DocumentNode { implementation, .. },
+					..
+				},
+				..
+			} = node;
+			match implementation {
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
+				_ => (),
+			}
+		}
+
+		let NodeMetadata {
+			display_name,
+			category,
+			fields,
+			description,
+			properties,
+		} = metadata;
+		let Some(implementations) = &node_registry.get(&id) else { continue };
+		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
+		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
+		let mut input_type = &first_node_io.call_argument;
+		if valid_inputs.len() > 1 {
+			input_type = &const { generic!(D) };
+		}
+		let output_type = &first_node_io.return_value;
+
+		let inputs = fields
+			.iter()
+			.zip(first_node_io.inputs.iter())
+			.enumerate()
+			.map(|(index, (field, node_io_ty))| {
+				let ty = field.default_type.as_ref().unwrap_or(node_io_ty);
+				let exposed = if index == 0 { *ty != fn_type_fut!(Context, ()) } else { field.exposed };
+
+				match field.value_source {
+					RegistryValueSource::None => {}
+					RegistryValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+					RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
+				};
+
+				if let Some(type_default) = TaggedValue::from_type(ty) {
+					return NodeInput::value(type_default, exposed);
+				}
+				NodeInput::value(TaggedValue::None, true)
+			})
+			.collect();
+
+		let node = DocumentNodeDefinition {
+			identifier: display_name,
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					inputs,
+					manual_composition: Some(input_type.clone()),
+					implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
+					visible: true,
+					skip_deduplication: false,
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					// TODO: Store information for input overrides in the node macro
+					input_properties: fields
+						.iter()
+						.map(|f| match f.widget_override {
+							RegistryWidgetOverride::None => (f.name, f.description).into(),
+							RegistryWidgetOverride::Hidden => PropertiesRow::with_override(f.name, f.description, WidgetOverride::Hidden),
+							RegistryWidgetOverride::String(str) => PropertiesRow::with_override(f.name, f.description, WidgetOverride::String(str.to_string())),
+							RegistryWidgetOverride::Custom(str) => PropertiesRow::with_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
+						})
+						.collect(),
+					output_names: vec![output_type.to_string()],
+					has_primary_output: true,
+					locked: false,
+					..Default::default()
+				},
+			},
+			category: category.unwrap_or("UNCATEGORIZED"),
+			description: Cow::Borrowed(description),
+			properties: *properties,
+		};
+		custom.push(node);
+	}
+	custom
+=======
+	document_node_derive::post_process_nodes(custom)
+>>>>>>> de38de1c7 (Prototype document network level into node insertion)
 }
 
 // pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentNodeDefinition {
