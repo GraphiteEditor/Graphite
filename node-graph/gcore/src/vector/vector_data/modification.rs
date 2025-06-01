@@ -1,6 +1,5 @@
 use super::*;
 use crate::Ctx;
-use crate::transform::TransformMut;
 use crate::uuid::generate_uuid;
 use bezier_rs::BezierHandles;
 use core::hash::BuildHasher;
@@ -425,14 +424,10 @@ impl core::hash::Hash for VectorModification {
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
-	let vector_data_transform = *vector_data.one_instance_ref().transform;
-	let vector_data = vector_data.one_instance_mut().instance;
-
-	modification.apply(vector_data);
-
-	let mut result = VectorDataTable::new(vector_data.clone());
-	*result.transform_mut() = vector_data_transform;
-	result
+	for mut vector_data_instance in vector_data.instance_mut_iter() {
+		modification.apply(&mut vector_data_instance.instance);
+	}
+	vector_data
 }
 
 #[test]

@@ -5,8 +5,6 @@ use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::image::{Image, ImageFrameTable};
-use graphene_core::transform::Transform;
-use graphene_core::transform::TransformMut;
 use graphene_core::*;
 use std::sync::Arc;
 use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor};
@@ -37,32 +35,32 @@ async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
-	let foreground_transform = foreground.transform();
-	let background_transform = background.transform();
+	let mut result_table = ImageFrameTable::empty();
+	for (foreground_instance, mut background_instance) in foreground.instance_iter().zip(background.instance_iter()) {
+		let foreground_transform = foreground_instance.transform;
+		let background_transform = background_instance.transform;
 
-	let background_alpha_blending = background.one_instance_ref().alpha_blending;
+		let foreground = foreground_instance.instance;
+		let background = background_instance.instance;
 
-	let foreground = foreground.one_instance_ref().instance;
-	let background = background.one_instance_ref().instance;
+		let foreground_size = DVec2::new(foreground.width as f64, foreground.height as f64);
+		let background_size = DVec2::new(background.width as f64, background.height as f64);
 
-	let foreground_size = DVec2::new(foreground.width as f64, foreground.height as f64);
-	let background_size = DVec2::new(background.width as f64, background.height as f64);
+		// Transforms a point from the background image to the foreground image
+		let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground_transform.inverse() * background_transform * DAffine2::from_scale(1. / background_size);
 
-	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = DAffine2::from_scale(foreground_size) * foreground_transform.inverse() * background_transform * DAffine2::from_scale(1. / background_size);
+		let transform_matrix: Mat2 = bg_to_fg.matrix2.as_mat2();
+		let translation: Vec2 = bg_to_fg.translation.as_vec2();
 
-	let transform_matrix: Mat2 = bg_to_fg.matrix2.as_mat2();
-	let translation: Vec2 = bg_to_fg.translation.as_vec2();
+		log::debug!("Executing gpu blend node!");
+		let compiler = graph_craft::graphene_compiler::Compiler {};
 
-	log::debug!("Executing gpu blend node!");
-	let compiler = graph_craft::graphene_compiler::Compiler {};
-
-	let network = NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(0), 0)],
-		nodes: [DocumentNode {
-			inputs: vec![NodeInput::Inline(InlineRust::new(
-				format!(
-					r#"graphene_core::raster::adjustments::BlendNode::new(
+		let network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: [DocumentNode {
+				inputs: vec![NodeInput::Inline(InlineRust::new(
+					format!(
+						r#"graphene_core::raster::adjustments::BlendNode::new(
 							graphene_core::value::CopiedNode::new({}),
 							graphene_core::value::CopiedNode::new({}),
 						).eval((
@@ -78,146 +76,146 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 							}},
 							i1[(_global_index.y * i0 + _global_index.x) as usize],
 						))"#,
-					TaggedValue::BlendMode(blend_mode).to_primitive_string(),
-					TaggedValue::F64(opacity).to_primitive_string(),
-				),
-				concrete![Color],
-			))],
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
+						TaggedValue::BlendMode(blend_mode).to_primitive_string(),
+						TaggedValue::F64(opacity).to_primitive_string(),
+					),
+					concrete![Color],
+				))],
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
+				..Default::default()
+			}]
+			.into_iter()
+			.enumerate()
+			.map(|(id, node)| (NodeId(id as u64), node))
+			.collect(),
 			..Default::default()
-		}]
-		.into_iter()
-		.enumerate()
-		.map(|(id, node)| (NodeId(id as u64), node))
-		.collect(),
-		..Default::default()
-	};
-	log::debug!("compiling network");
-	let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
-	let Ok(proto_networks_result) = proto_networks else {
-		log::error!("Error compiling network in 'blend_gpu_image()");
-		return ImageFrameTable::one_empty_image();
-	};
-	let proto_networks = proto_networks_result;
-	log::debug!("compiling shader");
+		};
+		log::debug!("compiling network");
+		let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
+		let Ok(proto_networks_result) = proto_networks else {
+			log::error!("Error compiling network in 'blend_gpu_image()");
+			return ImageFrameTable::one_empty_image();
+		};
+		let proto_networks = proto_networks_result;
+		log::debug!("compiling shader");
 
-	let shader = compilation_client::compile(
-		proto_networks,
-		vec![
-			concrete!(u32),
-			concrete!(Color),
-			concrete!(Color),
-			concrete!(u32),
-			concrete_with_name!(Mat2, "Mat2"),
-			concrete_with_name!(Vec2, "Vec2"),
-		],
-		vec![concrete!(Color)],
-		ShaderIO {
-			inputs: vec![
-				ShaderInput::UniformBuffer((), concrete!(u32)),                    // width of the output image
-				ShaderInput::StorageBuffer((), concrete!(Color)),                  // background image
-				ShaderInput::StorageBuffer((), concrete!(Color)),                  // foreground image
-				ShaderInput::UniformBuffer((), concrete!(u32)),                    // width of the foreground image
-				ShaderInput::UniformBuffer((), concrete_with_name!(Mat2, "Mat2")), // bg_to_fg.matrix2
-				ShaderInput::UniformBuffer((), concrete_with_name!(Vec2, "Vec2")), // bg_to_fg.translation
-				ShaderInput::OutputBuffer((), concrete!(Color)),
+		let shader = compilation_client::compile(
+			proto_networks,
+			vec![
+				concrete!(u32),
+				concrete!(Color),
+				concrete!(Color),
+				concrete!(u32),
+				concrete_with_name!(Mat2, "Mat2"),
+				concrete_with_name!(Vec2, "Vec2"),
 			],
-			output: ShaderInput::OutputBuffer((), concrete!(Color)),
-		},
-	)
-	.await
-	.unwrap();
-	let len = background.data.len();
-
-	let executor = WgpuExecutor::new()
+			vec![concrete!(Color)],
+			ShaderIO {
+				inputs: vec![
+					ShaderInput::UniformBuffer((), concrete!(u32)),                    // width of the output image
+					ShaderInput::StorageBuffer((), concrete!(Color)),                  // background image
+					ShaderInput::StorageBuffer((), concrete!(Color)),                  // foreground image
+					ShaderInput::UniformBuffer((), concrete!(u32)),                    // width of the foreground image
+					ShaderInput::UniformBuffer((), concrete_with_name!(Mat2, "Mat2")), // bg_to_fg.matrix2
+					ShaderInput::UniformBuffer((), concrete_with_name!(Vec2, "Vec2")), // bg_to_fg.translation
+					ShaderInput::OutputBuffer((), concrete!(Color)),
+				],
+				output: ShaderInput::OutputBuffer((), concrete!(Color)),
+			},
+		)
 		.await
-		.expect("Failed to create wgpu executor. Please make sure that webgpu is enabled for your browser.");
-	log::debug!("creating buffer");
-	let width_uniform = executor.create_uniform_buffer(background.width).unwrap();
-	let bg_storage_buffer = executor
-		.create_storage_buffer(
-			background.data.clone(),
-			StorageBufferOptions {
-				cpu_writable: false,
-				gpu_writable: true,
-				cpu_readable: false,
-				storage: true,
-			},
-		)
 		.unwrap();
-	let fg_storage_buffer = executor
-		.create_storage_buffer(
-			foreground.data.clone(),
-			StorageBufferOptions {
-				cpu_writable: false,
-				gpu_writable: true,
-				cpu_readable: false,
-				storage: true,
-			},
-		)
-		.unwrap();
-	let fg_width_uniform = executor.create_uniform_buffer(foreground.width).unwrap();
-	let transform_uniform = executor.create_uniform_buffer(transform_matrix).unwrap();
-	let translation_uniform = executor.create_uniform_buffer(translation).unwrap();
-	let width_uniform = Arc::new(width_uniform);
-	let bg_storage_buffer = Arc::new(bg_storage_buffer);
-	let fg_storage_buffer = Arc::new(fg_storage_buffer);
-	let fg_width_uniform = Arc::new(fg_width_uniform);
-	let transform_uniform = Arc::new(transform_uniform);
-	let translation_uniform = Arc::new(translation_uniform);
-	let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
-	let output_buffer = Arc::new(output_buffer);
-	let readback_buffer = executor.create_output_buffer(len, concrete!(Color), true).unwrap();
-	let readback_buffer = Arc::new(readback_buffer);
-	log::debug!("created buffer");
-	let bind_group = Bindgroup {
-		buffers: vec![
-			width_uniform.clone(),
-			bg_storage_buffer.clone(),
-			fg_storage_buffer.clone(),
-			fg_width_uniform.clone(),
-			transform_uniform.clone(),
-			translation_uniform.clone(),
-		],
-	};
+		let len = background.data.len();
 
-	let shader = Shader {
-		source: shader.spirv_binary.into(),
-		name: "gpu::eval",
-		io: shader.io,
-	};
-	log::debug!("loading shader");
-	log::debug!("shader: {:?}", shader.source);
-	let shader = executor.load_shader(shader).unwrap();
-	log::debug!("loaded shader");
-	let pipeline = PipelineLayout {
-		shader: shader.into(),
-		entry_point: "eval".to_string(),
-		bind_group: bind_group.into(),
-		output_buffer: output_buffer.clone(),
-	};
-	log::debug!("created pipeline");
-	let compute_pass = executor
-		.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(background.width, background.height))
-		.unwrap();
-	executor.execute_compute_pipeline(compute_pass).unwrap();
-	log::debug!("executed pipeline");
-	log::debug!("reading buffer");
-	let result = executor.read_output_buffer(readback_buffer).await.unwrap();
-	let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
+		let executor = WgpuExecutor::new()
+			.await
+			.expect("Failed to create wgpu executor. Please make sure that webgpu is enabled for your browser.");
+		log::debug!("creating buffer");
+		let width_uniform = executor.create_uniform_buffer(background.width).unwrap();
+		let bg_storage_buffer = executor
+			.create_storage_buffer(
+				background.data.clone(),
+				StorageBufferOptions {
+					cpu_writable: false,
+					gpu_writable: true,
+					cpu_readable: false,
+					storage: true,
+				},
+			)
+			.unwrap();
+		let fg_storage_buffer = executor
+			.create_storage_buffer(
+				foreground.data.clone(),
+				StorageBufferOptions {
+					cpu_writable: false,
+					gpu_writable: true,
+					cpu_readable: false,
+					storage: true,
+				},
+			)
+			.unwrap();
+		let fg_width_uniform = executor.create_uniform_buffer(foreground.width).unwrap();
+		let transform_uniform = executor.create_uniform_buffer(transform_matrix).unwrap();
+		let translation_uniform = executor.create_uniform_buffer(translation).unwrap();
+		let width_uniform = Arc::new(width_uniform);
+		let bg_storage_buffer = Arc::new(bg_storage_buffer);
+		let fg_storage_buffer = Arc::new(fg_storage_buffer);
+		let fg_width_uniform = Arc::new(fg_width_uniform);
+		let transform_uniform = Arc::new(transform_uniform);
+		let translation_uniform = Arc::new(translation_uniform);
+		let output_buffer = executor.create_output_buffer(len, concrete!(Color), false).unwrap();
+		let output_buffer = Arc::new(output_buffer);
+		let readback_buffer = executor.create_output_buffer(len, concrete!(Color), true).unwrap();
+		let readback_buffer = Arc::new(readback_buffer);
+		log::debug!("created buffer");
+		let bind_group = Bindgroup {
+			buffers: vec![
+				width_uniform.clone(),
+				bg_storage_buffer.clone(),
+				fg_storage_buffer.clone(),
+				fg_width_uniform.clone(),
+				transform_uniform.clone(),
+				translation_uniform.clone(),
+			],
+		};
 
-	let created_image = Image {
-		data: colors,
-		width: background.width,
-		height: background.height,
-		..Default::default()
-	};
+		let shader = Shader {
+			source: shader.spirv_binary.into(),
+			name: "gpu::eval",
+			io: shader.io,
+		};
+		log::debug!("loading shader");
+		log::debug!("shader: {:?}", shader.source);
+		let shader = executor.load_shader(shader).unwrap();
+		log::debug!("loaded shader");
+		let pipeline = PipelineLayout {
+			shader: shader.into(),
+			entry_point: "eval".to_string(),
+			bind_group: bind_group.into(),
+			output_buffer: output_buffer.clone(),
+		};
+		log::debug!("created pipeline");
+		let compute_pass = executor
+			.create_compute_pass(&pipeline, Some(readback_buffer.clone()), ComputePassDimensions::XY(background.width, background.height))
+			.unwrap();
+		executor.execute_compute_pipeline(compute_pass).unwrap();
+		log::debug!("executed pipeline");
+		log::debug!("reading buffer");
+		let result = executor.read_output_buffer(readback_buffer).await.unwrap();
+		let colors = bytemuck::pod_collect_to_vec::<u8, Color>(result.as_slice());
 
-	let mut result = ImageFrameTable::new(created_image);
-	*result.transform_mut() = background_transform;
-	*result.one_instance_mut().alpha_blending = *background_alpha_blending;
+		let created_image = Image {
+			data: colors,
+			width: background.width,
+			height: background.height,
+			..Default::default()
+		};
 
-	result
+		background_instance.instance = created_image;
+		background_instance.source_node_id = None;
+		result_table.push(background_instance);
+	}
+	result_table
 }
 
 // struct ComputePass {
