@@ -410,7 +410,6 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::AvailableAsShape(ShapeType::Rectangle),
 			ToolAvailability::AvailableAsShape(ShapeType::Ellipse),
 			ToolAvailability::AvailableAsShape(ShapeType::Line),
-			// ToolAvailability::Available(Box::<polygon_tool::PolygonTool>::default()),
 			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
 		vec![
@@ -444,7 +443,6 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Freehand(_) => ToolType::Freehand,
 		ToolMessage::Spline(_) => ToolType::Spline,
 		ToolMessage::Shape(_) => ToolType::Shape,
-		ToolMessage::Polygon(_) => ToolType::Polygon,
 		ToolMessage::Text(_) => ToolType::Text,
 
 		// Raster tool group
@@ -475,7 +473,6 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Freehand => ToolMessageDiscriminant::ActivateToolFreehand,
 		ToolType::Spline => ToolMessageDiscriminant::ActivateToolSpline,
 		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
-		ToolType::Polygon => ToolMessageDiscriminant::ActivateToolPolygon,
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
 		ToolType::Rectangle => ToolMessageDiscriminant::ActivateShapeRectangle,
 		ToolType::Ellipse => ToolMessageDiscriminant::ActivateShapeEllipse,

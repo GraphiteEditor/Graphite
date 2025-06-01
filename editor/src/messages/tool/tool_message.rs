@@ -34,8 +34,6 @@ pub enum ToolMessage {
 	#[child]
 	Shape(ShapeToolMessage),
 	#[child]
-	Polygon(PolygonToolMessage),
-	#[child]
 	Text(TextToolMessage),
 
 	#[child]
