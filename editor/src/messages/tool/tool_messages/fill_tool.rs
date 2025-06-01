@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
 use graphene_core::vector::style::Fill;
 use graphene_std::renderer::ClickTarget;
 
@@ -107,16 +107,26 @@ impl Fsm for FillToolFsmState {
 
 				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input) {
-					overlay_context.push_path(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-					let _ = document.metadata().click_targets(layer).is_some_and(|target| {
-						target
+					let _ = document.metadata().click_targets(layer).is_some_and(|targets| {
+						targets
 							.iter()
 							.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)))
 							.then(|| {
-								overlay_context.fill_stroke_pattern(&preview_color);
+								overlay_context.fill_stroke(
+									document.metadata().layer_outline(layer),
+									document.metadata().transform_to_viewport(layer),
+									&preview_color,
+									get_stroke_width(layer, &document.network_interface),
+								);
 							})
 							.or_else(|| {
-								overlay_context.fill_path_pattern(&preview_color);
+								overlay_context.fill_path(
+									document.metadata().layer_outline(layer),
+									document.metadata().transform_to_viewport(layer),
+									&preview_color.to_rgba_hex_srgb(),
+									true,
+									get_stroke_width(layer, &document.network_interface),
+								);
 								Some(())
 							});
 						true

@@ -597,7 +597,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn draw_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -611,18 +611,19 @@ impl OverlayContext {
 
 			self.render_context.move_to(transform.transform_point2(first.start()).x, transform.transform_point2(first.start()).y);
 			for curve in curves {
+				let splat_value = 0.5;
 				match curve.handles {
 					bezier_rs::BezierHandles::Linear => {
 						let a = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
+						let a = a.round() - DVec2::splat(splat_value);
 
 						self.render_context.line_to(a.x, a.y)
 					}
 					bezier_rs::BezierHandles::Quadratic { handle } => {
 						let a = transform.transform_point2(handle);
 						let b = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
+						let a = a.round() - DVec2::splat(splat_value);
+						let b = b.round() - DVec2::splat(splat_value);
 
 						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y)
 					}
@@ -630,9 +631,9 @@ impl OverlayContext {
 						let a = transform.transform_point2(handle_start);
 						let b = transform.transform_point2(handle_end);
 						let c = transform.transform_point2(curve.end());
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
-						let c = c.round() - DVec2::splat(0.5);
+						let a = a.round() - DVec2::splat(splat_value);
+						let b = b.round() - DVec2::splat(splat_value);
+						let c = c.round() - DVec2::splat(splat_value);
 
 						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y)
 					}
@@ -649,60 +650,64 @@ impl OverlayContext {
 
 	/// Used by the Select tool to outline a path selected or hovered.
 	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
-		self.push_path(subpaths, transform);
+		self.draw_path(subpaths, transform);
 
 		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 		self.render_context.set_stroke_style_str(color);
 		self.render_context.stroke();
 	}
 
-	/// Fills the area inside the path. Assumes `color` is in gamma space.
-	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.push_path(subpaths, transform);
+	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
+		self.render_context.set_line_width(width_for_inner_boundary.unwrap_or(1.) * self.device_pixel_ratio);
+		self.draw_path(subpaths, transform);
 
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
-	}
+		if with_pattern {
+			const PATTERN_WIDTH: usize = 4;
+			const PATTERN_HEIGHT: usize = 4;
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
-	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, color: &Color) {
-		const PATTERN_WIDTH: usize = 4;
-		const PATTERN_HEIGHT: usize = 4;
+			let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+			let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
+				.get_context("2d")
+				.ok()
+				.flatten()
+				.expect("Failed to get canvas context")
+				.dyn_into()
+				.expect("Context should be a canvas 2d context");
 
-		let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-		let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
-			.get_context("2d")
-			.ok()
-			.flatten()
-			.expect("Failed to get canvas context")
-			.dyn_into()
-			.expect("Context should be a canvas 2d context");
+			// 4x4 pixels, 4 components (RGBA) per pixel
+			let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-		// 4x4 pixels, 4 components (RGBA) per pixel
-		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
+			// ┌▄▄┬──┬──┬──┐
+			// ├▀▀┼──┼──┼──┤
+			// ├──┼──┼▄▄┼──┤
+			// ├──┼──┼▀▀┼──┤
+			// └──┴──┴──┴──┘
+			let pixels = [(0, 0), (2, 2)];
+			for &(x, y) in &pixels {
+				let index = (x + y * PATTERN_WIDTH as usize) * 4;
+				data[index..index + 4].copy_from_slice(&Color::from_rgba_str(color).unwrap().to_rgba8_srgb());
+			}
 
-		// ┌▄▄┬──┬──┬──┐
-		// ├▀▀┼──┼──┼──┤
-		// ├──┼──┼▄▄┼──┤
-		// ├──┼──┼▀▀┼──┤
-		// └──┴──┴──┴──┘
-		let pixels = [(0, 0), (2, 2)];
-		for &(x, y) in &pixels {
-			let index = (x + y * PATTERN_WIDTH as usize) * 4;
-			data[index..index + 4].copy_from_slice(&color.to_rgba8_srgb());
+			let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
+			pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
+			let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+
+			self.render_context.set_fill_style_canvas_pattern(&pattern);
+			self.render_context.fill();
+		} else {
+			self.render_context.set_fill_style_str(color);
+			self.render_context.fill();
 		}
 
-		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
-		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
-
-		self.render_context.set_fill_style_canvas_pattern(&pattern);
-		self.render_context.fill();
+		self.render_context.set_line_width(1.);
 	}
 
-	pub fn fill_stroke_pattern(&mut self, color: &Color) {
+	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, width: Option<f64>) {
+		self.render_context.set_line_width(width.unwrap_or(1.) * self.device_pixel_ratio);
+		self.draw_path(subpaths, transform);
+
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -735,6 +740,8 @@ impl OverlayContext {
 
 		self.render_context.set_stroke_style_canvas_pattern(&pattern);
 		self.render_context.stroke();
+
+		self.render_context.set_line_width(1.);
 	}
 
 	pub fn get_width(&self, text: &str) -> f64 {

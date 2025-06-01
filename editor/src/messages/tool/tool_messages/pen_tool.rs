@@ -1641,7 +1641,7 @@ impl Fsm for PenToolFsmState {
 								.with_alpha(0.05)
 								.to_rgba_hex_srgb();
 							fill_color.insert(0, '#');
-							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
+							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str(), false, None);
 						}
 					}
 				}
