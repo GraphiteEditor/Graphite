@@ -15,7 +15,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	self, ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_functions::calculate_segment_angle;
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, calculate_similarity};
 use bezier_rs::{Bezier, TValue};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
@@ -1012,7 +1012,7 @@ impl PathToolData {
 		let closer_segment_other_point = if anchor == closer_segment.start { closer_segment.bezier.end } else { closer_segment.bezier.start };
 
 		
-		let split_segment = if first.start == closer_segment_other_point { first } else { second };
+		let (split_segment, other_segment) = if first.start == closer_segment_other_point { (first, second) } else { (second, first) };
 
 		// Primary handle maps to primary handle and secondaary maps to secondary
 		let closer_primary_handle = HandleId::primary(closer_segment.segment_id);
@@ -1045,6 +1045,8 @@ impl PathToolData {
 		let l1 = initial_position.distance(farther_other_point);
 
 		let approx_t = l1/ (l1+ l2);
+
+
 		
 
 		// Now do calculations according to which the new bezier passes through the initial position
@@ -1055,8 +1057,8 @@ impl PathToolData {
 		let a = 3. * (1. - t).powi(2) * t;
 		let b = 3. * (1. - t) * t.powi(2);
 
-		let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).pow(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
-		let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).pow(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
+		let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
+		let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
 
 		// Get the direction vectors
 		let Some(d1) = start_handle_direction.try_normalize() else { return };
@@ -1075,6 +1077,34 @@ impl PathToolData {
 		//Okay so we wrap this all into a function which gives value of l2 mertic for a given t value
 
 		// First calculate the metric here
+
+		//make a new bezier and with the new calculated handles and split it along the 
+		let c1: DVec2 = p1 + d1 * start_handle_length;
+		let c2: DVec2 = p3 + d2 * end_handle_length;
+		let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
+
+		//split the curve on new_t value
+		let [new_first, new_second] = new_curve.split(TValue::Parametric(t));
+
+		//here need a function which calculates the distance between points of the two beziers
+		
+		//okay so we need to keep in mind the order of the beziers before sending them to the function
+		let new_first = if !(new_first.start.distance(farther_segment.bezier.start) < f64::EPSILON) {
+			new_first.reverse()
+		} else {
+			new_first
+		};
+
+		let new_second = if !(new_second.start.distance(other_segment.start) < f64::EPSILON) {
+			new_second.reverse()
+		} else {
+			new_second
+		};
+
+		let similarity = calculate_similarity(new_first, farther_segment.bezier, 3) + calculate_similarity(other_segment, new_second, 3);
+
+		log::info!("Similarity score is : {:?}", similarity);
+
 		
 
 		// Now set those handles to these handle lengths keeping the directions d1, d2

@@ -2,6 +2,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
+use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
@@ -137,3 +138,28 @@ pub fn is_visible_point(
 		}
 	}
 }
+
+/// Calculates the similarity between two given bezier curves
+pub fn calculate_similarity(bezier1: Bezier, bezier2: Bezier, num_samples: usize) -> f64 {
+	let points1 = bezier1.compute_lookup_table(Some(num_samples), None).collect::<Vec<_>>();
+	let poinst2 = bezier2.compute_lookup_table(Some(num_samples), None).collect::<Vec<_>>();
+
+	let dist = points1.iter().zip(poinst2.iter()).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
+	dist
+}
+
+// pub fn get_similarity_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2) {
+// 	let a = 3. * (1. - t).powi(2) * t;
+// 	let b = 3. * (1. - t) * t.powi(2);
+
+// 	let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
+// 	let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
+
+// 	let det = a * b * (d1.x * d2.y - d1.y * d2.x);
+
+// 	let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
+// 	let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
+
+// 	let c1: DVec2 = p1 + d1 * start_handle_length;
+// 	let c2: DVec2 = p3 + d2 * end_handle_length;
+// }
