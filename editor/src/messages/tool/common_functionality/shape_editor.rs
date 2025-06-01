@@ -290,6 +290,7 @@ impl ClosestSegment {
 		permanent_toggle_colinear: bool,
 		temporary_toggle_colinear: bool,
 		temporary_adjacent_handles: Option<[Option<HandleId>; 2]>,
+		colinear_toggle_state: bool,
 	) -> Option<[Option<HandleId>; 2]> {
 		let t = self.t;
 
@@ -316,10 +317,21 @@ impl ClosestSegment {
 			return None;
 		};
 
-		if permanent_toggle_colinear {
+		if permanent_toggle_colinear && colinear_toggle_state {
+			let mut other_handles = [None, None];
+
+			other_handles[0] = vector_data.other_colinear_handle(handle1);
+			other_handles[1] = vector_data.other_colinear_handle(handle2);
+
 			// Disable G1 continuity
 			disable_g1_continuity(handle1, &vector_data, layer, responses);
 			disable_g1_continuity(handle2, &vector_data, layer, responses);
+
+			if temporary_adjacent_handles.is_some() {
+				return temporary_adjacent_handles;
+			} else {
+				return Some(other_handles);
+			}
 		} else if temporary_toggle_colinear {
 			// Disable G1 continuity
 			let mut other_handles = [None, None];
@@ -338,16 +350,19 @@ impl ClosestSegment {
 			adjust_handle_colinearity(handle2, end, nc2, &vector_data, layer, responses);
 
 			if let Some(adj_handles) = temporary_adjacent_handles {
-				if let Some(other_handle1) = adj_handles[0] {
-					restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
-				}
+				if !colinear_toggle_state {
+					if let Some(other_handle1) = adj_handles[0] {
+						restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
+					}
 
-				if let Some(other_handle2) = adj_handles[1] {
-					restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
+					if let Some(other_handle2) = adj_handles[1] {
+						restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
+					}
+					return None;
 				}
 			}
+			return temporary_adjacent_handles;
 		}
-		None
 	}
 }
 

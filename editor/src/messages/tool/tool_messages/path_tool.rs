@@ -395,6 +395,8 @@ struct PathToolData {
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
 	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
+	colinear_toggle_state: bool,
+	previous_permanent_toggle_state: bool,
 }
 
 impl PathToolData {
@@ -1415,6 +1417,11 @@ impl Fsm for PathToolFsmState {
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment {
 					if let Some(molding_segment_handles) = tool_data.molding_info {
+						if permanent_toggle_colinear_molding && !tool_data.previous_permanent_toggle_state {
+							tool_data.colinear_toggle_state = !tool_data.colinear_toggle_state;
+						}
+
+						tool_data.previous_permanent_toggle_state = permanent_toggle_colinear_molding;
 						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 							document,
 							responses,
@@ -1425,6 +1432,7 @@ impl Fsm for PathToolFsmState {
 							permanent_toggle_colinear_molding,
 							temporary_toggle_colinear_molding,
 							tool_data.temporary_adjacent_handles_while_molding,
+							tool_data.colinear_toggle_state,
 						);
 					}
 				}
@@ -1947,8 +1955,8 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment"),
-					HintInfo::keys([Key::KeyC], "Permament Disable Colinear Molding").prepend_plus(),
-					HintInfo::keys([Key::Alt], "Temporary Disable Colinear Molding").prepend_plus(),
+					HintInfo::keys([Key::KeyC], "Disable/ Enable Colinear Molding").prepend_plus(), //These should only occur
+					HintInfo::keys([Key::Alt], "Undo Colinear Molding").prepend_plus(),
 				]),
 			]),
 		};
