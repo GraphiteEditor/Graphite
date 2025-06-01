@@ -2,7 +2,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
-use bezier_rs::Bezier;
+use bezier_rs::{Bezier, TValue};
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
@@ -148,18 +148,67 @@ pub fn calculate_similarity(bezier1: Bezier, bezier2: Bezier, num_samples: usize
 	dist
 }
 
-// pub fn get_similarity_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2) {
-// 	let a = 3. * (1. - t).powi(2) * t;
-// 	let b = 3. * (1. - t) * t.powi(2);
+pub fn calculate_similarity_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, farther_segment: Bezier, other_segment: Bezier) -> (f64, f64, f64) {
+	let a = 3. * (1. - t).powi(2) * t;
+	let b = 3. * (1. - t) * t.powi(2);
 
-// 	let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
-// 	let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
+	let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
+	let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
 
-// 	let det = a * b * (d1.x * d2.y - d1.y * d2.x);
+	let det = a * b * (d1.x * d2.y - d1.y * d2.x);
 
-// 	let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
-// 	let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
+	let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
+	let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
 
-// 	let c1: DVec2 = p1 + d1 * start_handle_length;
-// 	let c2: DVec2 = p3 + d2 * end_handle_length;
-// }
+	let c1: DVec2 = p1 + d1 * start_handle_length;
+	let c2: DVec2 = p3 + d2 * end_handle_length;
+
+	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
+	let [new_first, new_second] = new_curve.split(TValue::Parametric(t));
+
+	//here need a function which calculates the distance between points of the two beziers
+
+	//okay so we need to keep in mind the order of the beziers before sending them to the function
+	let new_first = if !(new_first.start.distance(farther_segment.start) < f64::EPSILON) {
+		new_first.reverse()
+	} else {
+		new_first
+	};
+
+	let new_second = if !(new_second.start.distance(other_segment.start) < f64::EPSILON) {
+		new_second.reverse()
+	} else {
+		new_second
+	};
+
+	let similarity = calculate_similarity(new_first, farther_segment, 10) + calculate_similarity(other_segment, new_second, 10);
+	(similarity, start_handle_length, end_handle_length)
+}
+
+// Naive approach: Iterates over all t values from
+pub fn find_best_approximate(p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
+	let l1 = p2.distance(p1);
+	let l2 = p2.distance(p3);
+	let approx_t = l1 / (l1 + l2);
+	let (mut sim, mut len1, mut len2) = calculate_similarity_for_given_t(approx_t, p1, p2, p3, d1, d2, farther_segment, other_segment);
+	let mut valid_segment = len1 > 0. && len2 > 0.;
+
+	for i in 1..100 {
+		let t = i as f64 / 100.;
+		let (s, li1, li2) = calculate_similarity_for_given_t(t, p1, p2, p3, d1, d2, farther_segment, other_segment);
+
+		if li1 > 0. && li2 > 0. {
+			if !valid_segment {
+				sim = s;
+				len1 = li1;
+				len2 = li2;
+				valid_segment = true;
+			} else if s < sim {
+				sim = s;
+				len1 = li1;
+				len2 = li2;
+			}
+		}
+	}
+	(d1 * len1, d2 * len2)
+}
