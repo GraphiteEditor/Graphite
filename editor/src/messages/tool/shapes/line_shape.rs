@@ -23,9 +23,6 @@ pub enum LineEnd {
 
 #[derive(Clone, Debug, Default)]
 pub struct LineToolData {
-	pub drag_begin: DVec2,
-	pub drag_start_shifted: DVec2,
-	pub drag_current_shifted: DVec2,
 	pub drag_start: DVec2,
 	pub drag_current: DVec2,
 	pub angle: f64,
@@ -192,4 +189,34 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 	}
 
 	document_points
+}
+
+pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, line_data: &mut LineToolData) -> bool {
+	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line") else {
+		return false;
+	};
+
+	let (Some(&TaggedValue::DVec2(document_start)), Some(&TaggedValue::DVec2(document_end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+		return false;
+	};
+
+	let transform = document.metadata().transform_to_viewport(layer);
+	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
+	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
+	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
+
+	let drag_start = input.mouse.position;
+	let [start, end] = [document_start, document_end].map(|point| transform.transform_point2(point));
+
+	let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
+	let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
+
+	if start_click || end_click {
+		line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
+		line_data.drag_start = if end_click { document_start } else { document_end };
+		line_data.editing_layer = Some(layer);
+		return true;
+	}
+	false
 }

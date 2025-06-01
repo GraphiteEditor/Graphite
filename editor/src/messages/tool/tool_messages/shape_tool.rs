@@ -1,25 +1,22 @@
-use std::vec;
-
-use super::path_tool::DraggingState;
 use super::tool_prelude::*;
-use crate::consts::{BOUNDS_SELECT_THRESHOLD, DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
+use crate::consts::{DEFAULT_STROKE_WIDTH, SNAP_POINT_TOLERANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, *};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self};
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::common_functionality::utility_functions::closest_point;
 use crate::messages::tool::shapes::convex_shape::Convex;
-use crate::messages::tool::shapes::line_shape::LineToolData;
-use crate::messages::tool::shapes::shape_utility::{ShapeToolModifierKey, ShapeType};
+use crate::messages::tool::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
+use crate::messages::tool::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
 use crate::messages::tool::shapes::star_shape::Star;
-use crate::messages::tool::shapes::{Ellipse, Line, LineEnd, Rectangle};
+use crate::messages::tool::shapes::{Ellipse, Line, Rectangle};
 use graph_craft::document::NodeId;
-use graph_craft::document::value::TaggedValue;
 use graphene_core::Color;
+use std::vec;
 
 #[derive(Default)]
 pub struct ShapeTool {
@@ -218,7 +215,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 				SetShape,
 				HideShapeTypeWidget
 			),
-			ShapeToolFsmState::LineDraggingEndpoints => actions!(ShapeToolMessageDiscriminant;
+			ShapeToolFsmState::DraggingLineEndpoints => actions!(ShapeToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,
@@ -256,7 +253,7 @@ impl ToolTransition for ShapeTool {
 enum ShapeToolFsmState {
 	Ready(ShapeType),
 	Drawing(ShapeType),
-	LineDraggingEndpoints,
+	DraggingLineEndpoints,
 }
 
 impl Default for ShapeToolFsmState {
@@ -271,6 +268,7 @@ pub struct ShapeToolData {
 	auto_panning: AutoPanning,
 	pub hide_shape_option_widget: bool,
 	pub line_data: LineToolData,
+	pub bounding_box_manager: Option<BoundingBoxManager>,
 }
 
 impl Fsm for ShapeToolFsmState {
@@ -302,13 +300,16 @@ impl Fsm for ShapeToolFsmState {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				Line::overlays(document, tool_data, &mut overlay_context);
 
+				if input.keyboard.key(Key::Control) {
+					anchor_overlays(document, &mut overlay_context);
+				} else {
+					transform_cage_overlays(document, tool_data, &mut overlay_context);
+				}
+
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
-				let intersectins = document.click(input);
-
-				log::info!("{:?}", intersectins);
-
+				// If clicked on endpoints of a selected line, drag its endpoints
 				if let Some((layer, _, _)) = closest_point(
 					document,
 					input.mouse.position,
@@ -317,8 +318,8 @@ impl Fsm for ShapeToolFsmState {
 					|_| false,
 					preferences,
 				) {
-					if check_clicked_on_endpoints(layer, document, input, line_data) {
-						return ShapeToolFsmState::LineDraggingEndpoints;
+					if clicked_on_line_endpoints(layer, document, input, line_data) && !input.keyboard.key(Key::Control) {
+						return ShapeToolFsmState::DraggingLineEndpoints;
 					}
 				}
 
@@ -328,15 +329,10 @@ impl Fsm for ShapeToolFsmState {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = shape_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 						line_data.drag_start = snapped.snapped_point_document;
-						line_data.drag_begin = document.metadata().document_to_viewport.transform_point2(line_data.drag_start);
 					}
 				}
 
 				responses.add(DocumentMessage::StartTransaction);
-
-				if tool_options.shape_type == ShapeType::Line && Line::dragging_endpoints(document, input, line_data) {
-					return ShapeToolFsmState::Drawing(tool_options.shape_type);
-				}
 
 				let node = match tool_options.shape_type {
 					ShapeType::Convex => Convex::create_node(tool_options.vertices),
@@ -394,8 +390,7 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-			(ShapeToolFsmState::LineDraggingEndpoints, ShapeToolMessage::PointerMove(modifier)) => {
-				log::info!("reaching here");
+			(ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::PointerMove(modifier)) => {
 				let Some(layer) = line_data.editing_layer else {
 					return ShapeToolFsmState::Ready(tool_options.shape_type);
 				};
@@ -412,30 +407,22 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::LineDraggingEndpoints, ShapeToolMessage::PointerOutsideViewport { .. }) => {
+			(_, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
-
-				ShapeToolFsmState::Drawing(tool_options.shape_type)
+				self
 			}
-			(state, ShapeToolMessage::PointerOutsideViewport(modifier)) => {
-				// Auto-panning
-				let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
-				tool_data.auto_panning.stop(&messages, responses);
-
-				state
-			}
-			(ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::LineDraggingEndpoints, ShapeToolMessage::DragStop) => {
+			(ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 				shape_data.cleanup(responses);
 
 				ShapeToolFsmState::Ready(tool_options.shape_type)
 			}
-			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::Abort) => {
+			(ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				shape_data.cleanup(responses);
 
-				ShapeToolFsmState::Ready(shape)
+				ShapeToolFsmState::Ready(tool_options.shape_type)
 			}
 			(_, ShapeToolMessage::WorkingColorChanged) => {
 				responses.add(ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::WorkingColors(
@@ -467,12 +454,12 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Convex | ShapeType::Star => vec![
 						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
 						HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
-						HintInfo::keys([Key::Alt], "From Center").prepend_plus(), // HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 					],
 					ShapeType::Ellipse => vec![
 						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Ellipse"),
 						HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
-						HintInfo::keys([Key::Alt], "From Center").prepend_plus(), // HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+						HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 					],
 					ShapeType::Line => vec![
 						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Line"),
@@ -503,10 +490,14 @@ impl Fsm for ShapeToolFsmState {
 				common_hint_group.push(tool_hint_group);
 				HintData(common_hint_group)
 			}
-			ShapeToolFsmState::LineDraggingEndpoints => {
-				let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
-				HintData(common_hint_group)
-			}
+			ShapeToolFsmState::DraggingLineEndpoints => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Shift], "15° Increments"),
+					HintInfo::keys([Key::Alt], "From Center"),
+					HintInfo::keys([Key::Control], "Lock Angle"),
+				]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -515,34 +506,4 @@ impl Fsm for ShapeToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
-}
-
-fn check_clicked_on_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, line_data: &mut LineToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line") else {
-		return false;
-	};
-
-	let (Some(&TaggedValue::DVec2(document_start)), Some(&TaggedValue::DVec2(document_end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
-		return false;
-	};
-
-	let transform = document.metadata().transform_to_viewport(layer);
-	let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-	let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
-	let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
-
-	let drag_start = input.mouse.position;
-	let [start, end] = [document_start, document_end].map(|point| transform.transform_point2(point));
-
-	let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
-	let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
-
-	if start_click || end_click {
-		line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-		line_data.drag_start = if end_click { document_start } else { document_end };
-		line_data.editing_layer = Some(layer);
-		return true;
-	}
-	false
 }

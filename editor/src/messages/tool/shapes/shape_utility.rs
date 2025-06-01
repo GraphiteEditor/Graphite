@@ -1,14 +1,18 @@
 use crate::messages::message::Message;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage, Responses};
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
+use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
-use glam::DVec2;
+use glam::{DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+
+use super::ShapeToolData;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ShapeType {
@@ -94,5 +98,60 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 			input_connector: InputConnector::node(star_node_id, 3),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
 		});
+	}
+}
+
+pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
+	let mut transform = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| graph_modification_utils::get_line_id(*layer, &document.network_interface).is_none())
+		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+		.unwrap_or_default();
+
+	// Check if the matrix is not invertible
+	let mut transform_tampered = false;
+	if transform.matrix2.determinant() == 0. {
+		transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
+		transform_tampered = true;
+	}
+
+	let bounds = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| graph_modification_utils::get_line_id(*layer, &document.network_interface).is_none())
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.filter_map(|layer| {
+			document
+				.metadata()
+				.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+		})
+		.reduce(graphene_core::renderer::Quad::combine_bounds);
+
+	if let Some(bounds) = bounds {
+		let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+
+		bounding_box_manager.bounds = bounds;
+		bounding_box_manager.transform = transform;
+		bounding_box_manager.transform_tampered = transform_tampered;
+		bounding_box_manager.render_overlays(overlay_context, true);
+	} else {
+		tool_data.bounding_box_manager.take();
+	}
+}
+
+pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+		let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+		let transform = document.metadata().transform_to_viewport(layer);
+
+		overlay_context.outline_vector(&vector_data, transform);
+
+		for (_, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
+		}
 	}
 }
