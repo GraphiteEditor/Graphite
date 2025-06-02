@@ -277,13 +277,13 @@ pub trait GraphicElementRendered {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]>;
 
-	// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection
+	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	fn add_upstream_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 
 	// TODO: Store all click targets in a vec which contains the AABB, click target, and path
 	// fn add_click_targets(&self, click_targets: &mut Vec<([DVec2; 2], ClickTarget, Vec<NodeId>)>, current_path: Option<NodeId>) {}
 
-	// Recursively iterate over data in the render (including groups upstream from vector data in the case of a boolean operation) to collect the footprints, click targets, and vector modify
+	/// Recursively iterate over data in the render (including groups upstream from vector data in the case of a boolean operation) to collect the footprints, click targets, and vector modify.
 	fn collect_metadata(&self, _metadata: &mut RenderMetadata, _footprint: Footprint, _element_id: Option<NodeId>) {}
 
 	fn contains_artboard(&self) -> bool {
@@ -639,9 +639,10 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
-		let instance_transform = self.transform();
+		for instance in self.instance_ref_iter() {
+			let instance_transform = *instance.transform;
+			let instance = instance.instance;
 
-		for instance in self.instance_ref_iter().map(|instance| instance.instance) {
 			if let Some(element_id) = element_id {
 				let stroke_width = instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 				let filled = instance.style.fill() != &Fill::None;
@@ -1031,11 +1032,27 @@ impl GraphicElementRendered for GraphicElement {
 				}
 				GraphicElement::VectorData(vector_data) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
-					metadata.local_transforms.insert(element_id, vector_data.transform());
+					// TODO: Find a way to handle more than one row of vector data
+					if let Some(vector_data) = vector_data.instance_ref_iter().next() {
+						metadata.local_transforms.insert(element_id, *vector_data.transform);
+					}
 				}
 				GraphicElement::RasterFrame(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
-					metadata.local_transforms.insert(element_id, raster_frame.transform());
+					match raster_frame {
+						RasterFrame::ImageFrame(instances) => {
+							// TODO: Find a way to handle more than one row of images
+							if let Some(image) = instances.instance_ref_iter().next() {
+								metadata.local_transforms.insert(element_id, *image.transform);
+							}
+						}
+						RasterFrame::TextureFrame(instances) => {
+							// TODO: Find a way to handle more than one row of image textures
+							if let Some(image_texture) = instances.instance_ref_iter().next() {
+								metadata.local_transforms.insert(element_id, *image_texture.transform);
+							}
+						}
+					}
 				}
 			}
 		}
