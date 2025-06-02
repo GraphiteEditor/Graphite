@@ -144,6 +144,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			convert_node!(from: u32, to: numbers),
 			convert_node!(from: i64, to: numbers),
 			convert_node!(from: u64, to: numbers),
+			convert_node!(from: isize, to: numbers),
+			convert_node!(from: usize, to: numbers),
+			convert_node!(from: i128, to: numbers),
+			convert_node!(from: u128, to: numbers),
 			convert_node!(from: f32, to: numbers),
 			convert_node!(from: f64, to: numbers),
 		]
@@ -243,6 +247,10 @@ mod node_registry_macros {
 				convert_node!(from: $from, to: u32),
 				convert_node!(from: $from, to: i64),
 				convert_node!(from: $from, to: u64),
+				convert_node!(from: $from, to: isize),
+				convert_node!(from: $from, to: usize),
+				convert_node!(from: $from, to: i128),
+				convert_node!(from: $from, to: u128),
 				convert_node!(from: $from, to: f32),
 				convert_node!(from: $from, to: f64),
 			];
