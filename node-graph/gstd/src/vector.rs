@@ -1,8 +1,7 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
 use graphene_core::RasterFrame;
-use graphene_core::instances::Instance;
-use graphene_core::transform::{Transform, TransformMut};
+use graphene_core::instances::{Instance, InstanceRef};
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;
@@ -18,20 +17,22 @@ use std::ops::Mul;
 #[node_macro::node(category(""))]
 async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
 	// The first index is the bottom of the stack
-	let mut result_vector_data_table = boolean_operation_on_vector_data_table([flatten_vector_data(&group_of_paths)].iter(), operation);
+	let mut result_vector_data_table = boolean_operation_on_vector_data_table(flatten_vector_data(&group_of_paths).instance_ref_iter(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
-	let result_vector_data_table_transform = result_vector_data_table.transform();
-	*result_vector_data_table.transform_mut() = DAffine2::IDENTITY;
-	let result_vector_data = result_vector_data_table.one_instance_mut().instance;
-	VectorData::transform(result_vector_data, result_vector_data_table_transform);
-	result_vector_data.style.set_stroke_transform(DAffine2::IDENTITY);
-	result_vector_data.upstream_graphic_group = Some(group_of_paths.clone());
+	if let Some(result_vector_data) = result_vector_data_table.instance_mut_iter().next() {
+		let transform = *result_vector_data.transform;
+		*result_vector_data.transform = DAffine2::IDENTITY;
+
+		VectorData::transform(result_vector_data.instance, transform);
+		result_vector_data.instance.style.set_stroke_transform(DAffine2::IDENTITY);
+		result_vector_data.instance.upstream_graphic_group = Some(group_of_paths.clone());
+	}
 
 	result_vector_data_table
 }
 
-fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTable> + Clone, boolean_operation: BooleanOperation) -> VectorDataTable {
+fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>> + Clone, boolean_operation: BooleanOperation) -> VectorDataTable {
 	match boolean_operation {
 		BooleanOperation::Union => union(vector_data),
 		BooleanOperation::SubtractFront => subtract(vector_data),
@@ -41,49 +42,62 @@ fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedItera
 	}
 }
 
-fn union<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTable>) -> VectorDataTable {
+fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	// Reverse vector data so that the result style is the style of the first vector data
-	let mut vector_data_table = vector_data.rev();
-	let mut result_vector_data_table = vector_data_table.next().cloned().unwrap_or_default();
+	let mut vector_data_reversed = vector_data.rev();
+
+	let mut result_vector_data_table = VectorDataTable::empty();
+	result_vector_data_table.push(vector_data_reversed.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
+	let mut first_instance = result_vector_data_table
+		.instance_mut_iter()
+		.next()
+		.unwrap_or_else(|| panic!("Expected the one instance we just pushed"));
 
 	// Loop over all vector data and union it with the result
-	let default = VectorDataTable::default();
-	let mut second_vector_data = Some(vector_data_table.next().unwrap_or(&default));
+	let default = Instance::default();
+	let mut second_vector_data = Some(vector_data_reversed.next().unwrap_or(default.to_instance_ref()));
 	while let Some(lower_vector_data) = second_vector_data {
-		let transform_of_lower_into_space_of_upper = result_vector_data_table.transform().inverse() * lower_vector_data.transform();
+		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let result_vector_data = result_vector_data_table.one_instance_mut().instance;
+		let result = &mut first_instance.instance;
 
-		let upper_path_string = to_path(result_vector_data, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
+		let upper_path_string = to_path(result, DAffine2::IDENTITY);
+		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
 		let boolean_operation_result = from_path(&boolean_operation_string);
 
-		result_vector_data.colinear_manipulators = boolean_operation_result.colinear_manipulators;
-		result_vector_data.point_domain = boolean_operation_result.point_domain;
-		result_vector_data.segment_domain = boolean_operation_result.segment_domain;
-		result_vector_data.region_domain = boolean_operation_result.region_domain;
+		result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
+		result.point_domain = boolean_operation_result.point_domain;
+		result.segment_domain = boolean_operation_result.segment_domain;
+		result.region_domain = boolean_operation_result.region_domain;
 
-		second_vector_data = vector_data_table.next();
+		second_vector_data = vector_data_reversed.next();
 	}
 
 	result_vector_data_table
 }
 
-fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorDataTable>) -> VectorDataTable {
+fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.into_iter();
-	let mut result = vector_data.next().cloned().unwrap_or_default();
+
+	let mut result_vector_data_table = VectorDataTable::empty();
+	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
+	let mut first_instance = result_vector_data_table
+		.instance_mut_iter()
+		.next()
+		.unwrap_or_else(|| panic!("Expected the one instance we just pushed"));
+
 	let mut next_vector_data = vector_data.next();
 
 	while let Some(lower_vector_data) = next_vector_data {
-		let transform_of_lower_into_space_of_upper = result.transform().inverse() * lower_vector_data.transform();
+		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let result = result.one_instance_mut().instance;
+		let result = &mut first_instance.instance;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
+		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
@@ -97,23 +111,30 @@ fn subtract<'a>(vector_data: impl Iterator<Item = &'a VectorDataTable>) -> Vecto
 		next_vector_data = vector_data.next();
 	}
 
-	result
+	result_vector_data_table
 }
 
-fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTable>) -> VectorDataTable {
+fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.rev();
-	let mut result = vector_data.next().cloned().unwrap_or_default();
-	let default = VectorDataTable::default();
-	let mut second_vector_data = Some(vector_data.next().unwrap_or(&default));
+
+	let mut result_vector_data_table = VectorDataTable::empty();
+	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
+	let mut first_instance = result_vector_data_table
+		.instance_mut_iter()
+		.next()
+		.unwrap_or_else(|| panic!("Expected the one instance we just pushed"));
+
+	let default = Instance::default();
+	let mut second_vector_data = Some(vector_data.next().unwrap_or(default.to_instance_ref()));
 
 	// For each vector data, set the result to the intersection of that data and the result
 	while let Some(lower_vector_data) = second_vector_data {
-		let transform_of_lower_into_space_of_upper = result.transform().inverse() * lower_vector_data.transform();
+		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let result = result.one_instance_mut().instance;
+		let result = &mut first_instance.instance;
 
 		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
+		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
@@ -126,53 +147,56 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTabl
 		second_vector_data = vector_data.next();
 	}
 
-	result
+	result_vector_data_table
 }
 
-fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTable> + Clone) -> VectorDataTable {
+fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>> + Clone) -> VectorDataTable {
 	let mut vector_data_iter = vector_data.clone().rev();
-	let mut any_intersection = VectorDataTable::default();
-	let default = VectorDataTable::default();
-	let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(&default));
+	let mut any_intersection = Instance::default();
+	let default = Instance::default();
+	let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(default.to_instance_ref()));
 
 	// Find where all vector data intersect at least once
 	while let Some(lower_vector_data) = second_vector_data {
-		let filtered_vector_data = vector_data.clone().filter(|v| v != &lower_vector_data).collect::<Vec<_>>().into_iter();
-		let all_other_vector_data = boolean_operation_on_vector_data_table(filtered_vector_data, BooleanOperation::Union);
-		let all_other_vector_data_instance = all_other_vector_data.one_instance_ref();
+		let filtered_vector_data = vector_data.clone().filter(|v| *v != lower_vector_data).collect::<Vec<_>>().into_iter();
+		let unioned = boolean_operation_on_vector_data_table(filtered_vector_data, BooleanOperation::Union);
+		let first_instance = unioned.instance_ref_iter().next().unwrap_or_else(|| panic!("Expected at least one instance after the boolean union"));
 
-		let transform_of_lower_into_space_of_upper = all_other_vector_data.transform().inverse() * lower_vector_data.transform();
+		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 
-		let upper_path_string = to_path(all_other_vector_data_instance.instance, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector_data.one_instance_ref().instance, transform_of_lower_into_space_of_upper);
+		let upper_path_string = to_path(first_instance.instance, DAffine2::IDENTITY);
+		let lower_path_string = to_path(lower_vector_data.instance, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-		let mut boolean_intersection_result = VectorDataTable::new(from_path(&boolean_intersection_string));
-		*boolean_intersection_result.transform_mut() = *all_other_vector_data_instance.transform;
+		let mut instance = from_path(&boolean_intersection_string);
+		instance.style = first_instance.instance.style.clone();
+		let boolean_intersection_result = Instance {
+			instance,
+			transform: *first_instance.transform,
+			alpha_blending: *first_instance.alpha_blending,
+			source_node_id: *first_instance.source_node_id,
+		};
 
-		boolean_intersection_result.one_instance_mut().instance.style = all_other_vector_data_instance.instance.style.clone();
-		*boolean_intersection_result.one_instance_mut().alpha_blending = *all_other_vector_data_instance.alpha_blending;
+		let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
 
-		let transform_of_lower_into_space_of_upper = boolean_intersection_result.one_instance_mut().transform.inverse() * any_intersection.transform();
-
-		let upper_path_string = to_path(boolean_intersection_result.one_instance_mut().instance, DAffine2::IDENTITY);
-		let lower_path_string = to_path(any_intersection.one_instance_mut().instance, transform_of_lower_into_space_of_upper);
+		let upper_path_string = to_path(&boolean_intersection_result.instance, DAffine2::IDENTITY);
+		let lower_path_string = to_path(&any_intersection.instance, transform_of_lower_into_space_of_upper);
 
 		#[allow(unused_unsafe)]
 		let union_result = from_path(&unsafe { boolean_union(upper_path_string, lower_path_string) });
-		*any_intersection.one_instance_mut().instance = union_result;
+		any_intersection.instance = union_result;
 
-		*any_intersection.transform_mut() = boolean_intersection_result.transform();
-		any_intersection.one_instance_mut().instance.style = boolean_intersection_result.one_instance_mut().instance.style.clone();
-		any_intersection.one_instance_mut().alpha_blending = boolean_intersection_result.one_instance_mut().alpha_blending;
+		any_intersection.transform = boolean_intersection_result.transform;
+		any_intersection.instance.style = boolean_intersection_result.instance.style.clone();
+		any_intersection.alpha_blending = boolean_intersection_result.alpha_blending;
 
 		second_vector_data = vector_data_iter.next();
 	}
 
 	// Subtract the area where they intersect at least once from the union of all vector data
 	let union = boolean_operation_on_vector_data_table(vector_data, BooleanOperation::Union);
-	boolean_operation_on_vector_data_table([union, any_intersection].iter(), BooleanOperation::SubtractFront)
+	boolean_operation_on_vector_data_table(union.instance_ref_iter().chain(std::iter::once(any_intersection.to_instance_ref())), BooleanOperation::SubtractFront)
 }
 
 fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTable {
@@ -222,7 +246,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 				}
 
 				// Recursively flatten the inner group into vector data
-				let unioned = boolean_operation_on_vector_data_table([flatten_vector_data(&graphic_group)].iter(), BooleanOperation::Union);
+				let unioned = boolean_operation_on_vector_data_table(flatten_vector_data(&graphic_group).instance_ref_iter(), BooleanOperation::Union);
 
 				for element in unioned.instance_iter() {
 					result_table.push(element);

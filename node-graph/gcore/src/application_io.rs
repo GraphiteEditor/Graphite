@@ -37,17 +37,6 @@ impl Hash for SurfaceFrame {
 	}
 }
 
-impl Transform for SurfaceFrame {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for SurfaceFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
 #[cfg(feature = "dyn-any")]
 unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;

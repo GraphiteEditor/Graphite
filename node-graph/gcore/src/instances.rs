@@ -1,9 +1,7 @@
-use crate::application_io::TextureFrameTable;
 use crate::raster::Pixel;
 use crate::raster::image::{Image, ImageFrameTable};
 use crate::transform::{Transform, TransformMut};
 use crate::uuid::NodeId;
-use crate::vector::VectorDataTable;
 use crate::{AlphaBlending, GraphicElement, RasterFrame};
 use dyn_any::StaticType;
 use glam::DAffine2;
@@ -81,7 +79,7 @@ impl<T> Instances<T> {
 			})
 	}
 
-	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<T>> {
+	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<T>> + Clone {
 		self.instance
 			.iter()
 			.zip(self.transform.iter())
@@ -188,12 +186,26 @@ fn one_source_node_id_default() -> Vec<Option<NodeId>> {
 	vec![None]
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct InstanceRef<'a, T> {
 	pub instance: &'a T,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
 	pub source_node_id: &'a Option<NodeId>,
+}
+
+impl<T> InstanceRef<'_, T> {
+	pub fn to_instance_cloned(self) -> Instance<T>
+	where
+		T: Clone,
+	{
+		Instance {
+			instance: self.instance.clone(),
+			transform: *self.transform,
+			alpha_blending: *self.alpha_blending,
+			source_node_id: *self.source_node_id,
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -204,7 +216,7 @@ pub struct InstanceMut<'a, T> {
 	pub source_node_id: &'a mut Option<NodeId>,
 }
 
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct Instance<T> {
 	pub instance: T,
 	pub transform: DAffine2,
@@ -224,29 +236,23 @@ impl<T> Instance<T> {
 			source_node_id: self.source_node_id,
 		}
 	}
-}
 
-// VECTOR DATA TABLE
-impl Transform for VectorDataTable {
-	fn transform(&self) -> DAffine2 {
-		*self.one_instance_ref().transform
+	pub fn to_instance_ref(&self) -> InstanceRef<T> {
+		InstanceRef {
+			instance: &self.instance,
+			transform: &self.transform,
+			alpha_blending: &self.alpha_blending,
+			source_node_id: &self.source_node_id,
+		}
 	}
-}
-impl TransformMut for VectorDataTable {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		self.one_instance_mut().transform
-	}
-}
 
-// TEXTURE FRAME TABLE
-impl Transform for TextureFrameTable {
-	fn transform(&self) -> DAffine2 {
-		*self.one_instance_ref().transform
-	}
-}
-impl TransformMut for TextureFrameTable {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		self.one_instance_mut().transform
+	pub fn to_instance_mut(&mut self) -> InstanceMut<T> {
+		InstanceMut {
+			instance: &mut self.instance,
+			transform: &mut self.transform,
+			alpha_blending: &mut self.alpha_blending,
+			source_node_id: &mut self.source_node_id,
+		}
 	}
 }
 
@@ -272,16 +278,8 @@ where
 impl Transform for RasterFrame {
 	fn transform(&self) -> DAffine2 {
 		match self {
-			RasterFrame::ImageFrame(image_frame) => image_frame.transform(),
-			RasterFrame::TextureFrame(texture_frame) => texture_frame.transform(),
-		}
-	}
-}
-impl TransformMut for RasterFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		match self {
-			RasterFrame::ImageFrame(image_frame) => image_frame.transform_mut(),
-			RasterFrame::TextureFrame(texture_frame) => texture_frame.transform_mut(),
+			RasterFrame::ImageFrame(image_frame) => *image_frame.one_instance_ref().transform,
+			RasterFrame::TextureFrame(texture_frame) => *texture_frame.one_instance_ref().transform,
 		}
 	}
 }
