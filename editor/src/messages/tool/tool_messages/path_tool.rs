@@ -1038,7 +1038,8 @@ impl PathToolData {
 		let Some(start_handle_position) = start_handle_pos else { return };
 		let start_handle_direction = start_handle_position - farther_other_point;
 
-		// Get the normalized direction vectors
+		// Get the normalized direction vectors (or case if cubic with only one handle)
+		// TODO: Extend to quadratic segment logic
 		let d1 = start_handle_direction.try_normalize().unwrap_or(farther_segment.bezier.tangent(TValue::Parametric(start_t)));
 		let d2 = end_handle_direction.try_normalize().unwrap_or_default();
 
@@ -1697,6 +1698,12 @@ impl Fsm for PathToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
+			(PathToolFsmState::SlidingPoint, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				tool_data.sliding_point_info = None;
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
+				PathToolFsmState::Ready
+			}
 			// Mouse up
 			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
@@ -2017,14 +2024,7 @@ impl Fsm for PathToolFsmState {
 					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
 				]),
 			]),
-			PathToolFsmState::SlidingPoint { .. } => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-					HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
-					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
-				]),
-			]),
+			PathToolFsmState::SlidingPoint { .. } => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
