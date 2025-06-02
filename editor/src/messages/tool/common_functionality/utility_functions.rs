@@ -166,9 +166,7 @@ pub fn calculate_similarity_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2,
 	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
 	let [new_first, new_second] = new_curve.split(TValue::Parametric(t));
 
-	//here need a function which calculates the distance between points of the two beziers
-
-	//okay so we need to keep in mind the order of the beziers before sending them to the function
+	// Ensuring the orientation of both the curves is same
 	let new_first = if !(new_first.start.distance(farther_segment.start) < f64::EPSILON) {
 		new_first.reverse()
 	} else {
@@ -181,20 +179,35 @@ pub fn calculate_similarity_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2,
 		new_second
 	};
 
-	let similarity = calculate_similarity(new_first, farther_segment, 10) + calculate_similarity(other_segment, new_second, 10);
+	let similarity = calculate_similarity(new_first, farther_segment, 8) + calculate_similarity(other_segment, new_second, 8);
 	(similarity, start_handle_length, end_handle_length)
 }
 
-// Naive approach: Iterates over all t values from
-pub fn find_best_approximate(p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
-	let l1 = p2.distance(p1);
-	let l2 = p2.distance(p3);
+pub fn calculate_curve_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2) -> (f64, f64) {
+	let a = 3. * (1. - t).powi(2) * t;
+	let b = 3. * (1. - t) * t.powi(2);
+
+	let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
+	let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
+
+	let cross_product = d1.x * d2.y - d1.y * d2.x;
+	let det = a * b * cross_product;
+
+	let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
+	let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
+
+	(start_handle_length, end_handle_length)
+}
+
+pub fn find_best_approximate(p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
+	let l1 = farther_segment.length(None);
+	let l2 = other_segment.length(None);
 	let approx_t = l1 / (l1 + l2);
 	let (mut sim, mut len1, mut len2) = calculate_similarity_for_given_t(approx_t, p1, p2, p3, d1, d2, farther_segment, other_segment);
 	let mut valid_segment = len1 > 0. && len2 > 0.;
 
-	for i in 1..100 {
-		let t = i as f64 / 100.;
+	for i in 1..10000 {
+		let t = i as f64 / 10000.;
 		let (s, li1, li2) = calculate_similarity_for_given_t(t, p1, p2, p3, d1, d2, farther_segment, other_segment);
 
 		if li1 > 0. && li2 > 0. {
@@ -210,5 +223,9 @@ pub fn find_best_approximate(p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 			}
 		}
 	}
+
+	len1 = len1.max(min_len1);
+	len2 = len2.max(min_len2);
+
 	(d1 * len1, d2 * len2)
 }

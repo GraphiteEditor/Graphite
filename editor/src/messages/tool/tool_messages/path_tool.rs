@@ -344,7 +344,6 @@ pub struct SlidingSegmentData {
 	segment_id: SegmentId,
 	bezier: Bezier,
 	start: PointId,
-	end: PointId,
 }
 
 #[derive(Clone, Copy)]
@@ -948,7 +947,6 @@ impl PathToolData {
 						segment_id: segment,
 						bezier,
 						start,
-						end
 					});
 				}
 			}
@@ -1000,24 +998,20 @@ impl PathToolData {
 		// Move the anchor to the new position
 		let Some(current_position) = ManipulatorPointId::Anchor(anchor).get_position(&vector_data) else {return};
 		let delta = new_position - current_position;
-		log::info!("Delta is {:?}", delta);
 
 		shape_editor.move_anchor(anchor, &vector_data, delta, layer, None, responses);
 
-		// get the handle positions if there is a split at the closer segment and assign those valuse to the anchor and its handles
+		// Make a split at the t_value
 		let [first, second] = closer_segment.bezier.split(TValue::Parametric(t_value));
-
-		//closer segment should become one of these segments right
 		let closer_segment_other_point = if anchor == closer_segment.start { closer_segment.bezier.end } else { closer_segment.bezier.start };
 
 		
 		let (split_segment, other_segment) = if first.start == closer_segment_other_point { (first, second) } else { (second, first) };
 
-		// Primary handle maps to primary handle and secondaary maps to secondary
+		// Primary handle maps to primary handle and secondary maps to secondary
 		let closer_primary_handle = HandleId::primary(closer_segment.segment_id);
 		let Some(handle_position) = split_segment.handle_start() else { return };
 		let relative_position1 = handle_position - split_segment.start;
-		// let end_handle_direction = -1. * relative_position;
 		let modification_type = closer_primary_handle.set_relative_position(relative_position1);
 		responses.add(GraphOperationMessage::Vector { layer, modification_type});
 
@@ -1029,8 +1023,7 @@ impl PathToolData {
 
 		let end_handle_direction = if anchor == closer_segment.start { -1. * relative_position1 } else { -1. * relative_position2 };
 
-		// Calculate how the farther segment handles will move
-		// First go with a pretty random t value
+
 		let (farther_other_point, start_handle, end_handle, start_handle_pos) = if anchor == farther_segment.start {
 			(farther_segment.bezier.end, HandleId::end(farther_segment.segment_id), HandleId::primary(farther_segment.segment_id), farther_segment.bezier.handle_end())
 		} else {
@@ -1039,86 +1032,21 @@ impl PathToolData {
 		let Some(start_handle_position) = start_handle_pos else {return};
 		let start_handle_direction = start_handle_position - farther_other_point;
 
-
-		// let l2 = initial_position.distance(new_position);
-		// let l1 = initial_position.distance(farther_other_point);
-
-		// let approx_t = l1/ (l1+ l2);
-
-
-		
-
-		// Now do calculations according to which the new bezier passes through the initial position
-		// let t = approx_t;
-		// let p1 = farther_other_point;
-		// let p2 = initial_position;
-		// let p3 = new_position;
-		// let a = 3. * (1. - t).powi(2) * t;
-		// let b = 3. * (1. - t) * t.powi(2);
-
-		// let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
-		// let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
-
-		// Get the direction vectors
+		// Get the normalized direction vectors
 		let Some(d1) = start_handle_direction.try_normalize() else { return };
 		let Some(d2) = end_handle_direction.try_normalize() else  { return };
 
-		// let det = a * b * (d1.x * d2.y - d1.y * d2.x);
+		let min_len1 = start_handle_direction.length() * 0.1;
+		let min_len2 = start_handle_direction.length() * 0.1;
 
-		// if det == 0. {
-		// 	log::info!("determinant zero, please fix");
-		// 	return;
-		// }
-
-		// let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
-		// let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
-
-		//Okay so we wrap this all into a function which gives value of l2 mertic for a given t value
-
-		// First calculate the metric here
-
-		//make a new bezier and with the new calculated handles and split it along the 
-		// let c1: DVec2 = p1 + d1 * start_handle_length;
-		// let c2: DVec2 = p3 + d2 * end_handle_length;
-		// let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
-
-		//split the curve on new_t value
-		// let [new_first, new_second] = new_curve.split(TValue::Parametric(t));
-
-		//here need a function which calculates the distance between points of the two beziers
-		
-		//okay so we need to keep in mind the order of the beziers before sending them to the function
-		// let new_first = if !(new_first.start.distance(farther_segment.bezier.start) < f64::EPSILON) {
-		// 	new_first.reverse()
-		// } else {
-		// 	new_first
-		// };
-
-		// let new_second = if !(new_second.start.distance(other_segment.start) < f64::EPSILON) {
-		// 	new_second.reverse()
-		// } else {
-		// 	new_second
-		// };
-
-		// let similarity = calculate_similarity(new_first, farther_segment.bezier, 3) + calculate_similarity(other_segment, new_second, 3);
-
-		// log::info!("Similarity score is : {:?}", similarity);
-
-		let (relative_pos1, relative_pos2) = find_best_approximate(farther_other_point, initial_position, new_position, d1, d2, farther_segment.bezier, other_segment);
-
-		
+		let (relative_pos1, relative_pos2) = find_best_approximate(farther_other_point, initial_position, new_position, d1, d2, min_len1, min_len2, farther_segment.bezier, other_segment);
 
 		// Now set those handles to these handle lengths keeping the directions d1, d2
-		// let modification_type = closer_primary_handle.set_relative_position(relative_position);
 		let modification_type = start_handle.set_relative_position(relative_pos1);
 		responses.add(GraphOperationMessage::Vector { layer, modification_type});
 
 		let modification_type = end_handle.set_relative_position(relative_pos2);
 		responses.add(GraphOperationMessage::Vector { layer, modification_type});
-
-
-
-
 	}
 
 	#[allow(clippy::too_many_arguments)]
