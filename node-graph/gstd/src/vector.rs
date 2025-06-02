@@ -1,6 +1,7 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
 use graphene_core::RasterFrame;
+use graphene_core::instances::Instance;
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
@@ -10,10 +11,14 @@ pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;
 
+// TODO: Fix boolean ops to work by removing .transform() and .one_instnace_*() calls,
+// TODO: since before we used a Vec of single-row tables and now we use a single table
+// TODO: with multiple rows while still assuming a single row for the boolean operations.
+
 #[node_macro::node(category(""))]
 async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
 	// The first index is the bottom of the stack
-	let mut result_vector_data_table = boolean_operation_on_vector_data_table(&flatten_vector_data(&group_of_paths), operation);
+	let mut result_vector_data_table = boolean_operation_on_vector_data_table([flatten_vector_data(&group_of_paths)].iter(), operation);
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
 	let result_vector_data_table_transform = result_vector_data_table.transform();
@@ -26,13 +31,13 @@ async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, opera
 	result_vector_data_table
 }
 
-fn boolean_operation_on_vector_data_table(vector_data_table: &[VectorDataTable], boolean_operation: BooleanOperation) -> VectorDataTable {
+fn boolean_operation_on_vector_data_table<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTable> + Clone, boolean_operation: BooleanOperation) -> VectorDataTable {
 	match boolean_operation {
-		BooleanOperation::Union => union(vector_data_table.iter()),
-		BooleanOperation::SubtractFront => subtract(vector_data_table.iter()),
-		BooleanOperation::SubtractBack => subtract(vector_data_table.iter().rev()),
-		BooleanOperation::Intersect => intersect(vector_data_table.iter()),
-		BooleanOperation::Difference => difference(vector_data_table),
+		BooleanOperation::Union => union(vector_data),
+		BooleanOperation::SubtractFront => subtract(vector_data),
+		BooleanOperation::SubtractBack => subtract(vector_data.rev()),
+		BooleanOperation::Intersect => intersect(vector_data),
+		BooleanOperation::Difference => difference(vector_data),
 	}
 }
 
@@ -124,15 +129,16 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTabl
 	result
 }
 
-fn difference(vector_data_table: &[VectorDataTable]) -> VectorDataTable {
-	let mut vector_data_iter = vector_data_table.iter().rev();
+fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = &'a VectorDataTable> + Clone) -> VectorDataTable {
+	let mut vector_data_iter = vector_data.clone().rev();
 	let mut any_intersection = VectorDataTable::default();
 	let default = VectorDataTable::default();
 	let mut second_vector_data = Some(vector_data_iter.next().unwrap_or(&default));
 
 	// Find where all vector data intersect at least once
 	while let Some(lower_vector_data) = second_vector_data {
-		let all_other_vector_data = boolean_operation_on_vector_data_table(&vector_data_table.iter().filter(|v| v != &lower_vector_data).cloned().collect::<Vec<_>>(), BooleanOperation::Union);
+		let filtered_vector_data = vector_data.clone().filter(|v| v != &lower_vector_data).collect::<Vec<_>>().into_iter();
+		let all_other_vector_data = boolean_operation_on_vector_data_table(filtered_vector_data, BooleanOperation::Union);
 		let all_other_vector_data_instance = all_other_vector_data.one_instance_ref();
 
 		let transform_of_lower_into_space_of_upper = all_other_vector_data.transform().inverse() * lower_vector_data.transform();
@@ -165,45 +171,49 @@ fn difference(vector_data_table: &[VectorDataTable]) -> VectorDataTable {
 	}
 
 	// Subtract the area where they intersect at least once from the union of all vector data
-	let union = boolean_operation_on_vector_data_table(vector_data_table, BooleanOperation::Union);
-	boolean_operation_on_vector_data_table(&[union, any_intersection], BooleanOperation::SubtractFront)
+	let union = boolean_operation_on_vector_data_table(vector_data, BooleanOperation::Union);
+	boolean_operation_on_vector_data_table([union, any_intersection].iter(), BooleanOperation::SubtractFront)
 }
 
-fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDataTable> {
-	graphic_group_table
-		.instance_ref_iter()
-		.map(|element| match element.instance.clone() {
-			GraphicElement::VectorData(mut vector_data) => {
-				// Apply the parent group's transform to each element of vector data
-				for sub_vector_data in vector_data.instance_mut_iter() {
-					*sub_vector_data.transform = *element.transform * *sub_vector_data.transform;
-				}
+fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTable {
+	let mut result_table = VectorDataTable::empty();
 
-				vector_data
+	for element in graphic_group_table.instance_ref_iter() {
+		match element.instance.clone() {
+			GraphicElement::VectorData(vector_data) => {
+				// Apply the parent group's transform to each element of vector data
+				for mut sub_vector_data in vector_data.instance_iter() {
+					sub_vector_data.transform = *element.transform * sub_vector_data.transform;
+
+					result_table.push(sub_vector_data);
+				}
 			}
-			GraphicElement::RasterFrame(mut image) => {
+			GraphicElement::RasterFrame(image) => {
+				let make_instance = |transform| {
+					// Convert the image frame into a rectangular subpath with the image's transform
+					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+					subpath.apply_transform(transform);
+
+					// Create a vector data table row from the rectangular subpath, with a default black fill
+					let mut instance = VectorData::from_subpath(subpath);
+					instance.style.set_fill(Fill::Solid(Color::BLACK));
+
+					Instance { instance, ..Default::default() }
+				};
+
 				// Apply the parent group's transform to each element of raster data
-				match &mut image {
+				match image {
 					RasterFrame::ImageFrame(image) => {
-						for instance in image.instance_mut_iter() {
-							*instance.transform = *element.transform * *instance.transform;
+						for instance in image.instance_ref_iter() {
+							result_table.push(make_instance(*element.transform * *instance.transform));
 						}
 					}
 					RasterFrame::TextureFrame(image) => {
-						for instance in image.instance_mut_iter() {
-							*instance.transform = *element.transform * *instance.transform;
+						for instance in image.instance_ref_iter() {
+							result_table.push(make_instance(*element.transform * *instance.transform));
 						}
 					}
 				}
-
-				// Convert the image frame into a rectangular subpath with the image's transform
-				let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-				subpath.apply_transform(image.transform());
-
-				// Create a vector data table from the rectangular subpath, with a default black fill
-				let mut vector_data = VectorData::from_subpath(subpath);
-				vector_data.style.set_fill(Fill::Solid(Color::BLACK));
-				VectorDataTable::new(vector_data)
 			}
 			GraphicElement::GraphicGroup(mut graphic_group) => {
 				// Apply the parent group's transform to each element of inner group
@@ -212,10 +222,16 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> Vec<VectorDat
 				}
 
 				// Recursively flatten the inner group into vector data
-				boolean_operation_on_vector_data_table(&flatten_vector_data(&graphic_group), BooleanOperation::Union)
+				let unioned = boolean_operation_on_vector_data_table([flatten_vector_data(&graphic_group)].iter(), BooleanOperation::Union);
+
+				for element in unioned.instance_iter() {
+					result_table.push(element);
+				}
 			}
-		})
-		.collect()
+		}
+	}
+
+	result_table
 }
 
 fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegment> {
