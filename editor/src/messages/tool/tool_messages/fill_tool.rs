@@ -75,9 +75,10 @@ impl ToolTransition for FillTool {
 
 pub fn close_to_stroke(mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2) -> bool {
 	let subpath = click_target.subpath().clone();
-	let lut = subpath.compute_lookup_table(Some(25), None);
+	let lookup = subpath.compute_lookup_table(Some(25), None);
 
-	lut.iter()
+	lookup
+		.iter()
 		.any(|&point| (to_viewport_transform.inverse().transform_point2(mouse_pos) - point).length() <= click_target.stroke_width())
 }
 
@@ -112,8 +113,11 @@ impl Fsm for FillToolFsmState {
 							.iter()
 							.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)))
 							.then(|| {
+								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+									return;
+								};
 								overlay_context.fill_stroke(
-									document.metadata().layer_outline(layer),
+									&vector_data,
 									document.metadata().transform_to_viewport(layer),
 									&preview_color,
 									get_stroke_width(layer, &document.network_interface),
@@ -123,7 +127,7 @@ impl Fsm for FillToolFsmState {
 								overlay_context.fill_path(
 									document.metadata().layer_outline(layer),
 									document.metadata().transform_to_viewport(layer),
-									&preview_color.to_rgba_hex_srgb(),
+									&preview_color,
 									true,
 									get_stroke_width(layer, &document.network_interface),
 								);

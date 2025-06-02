@@ -550,8 +550,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
+	fn draw_path_from_vector_data(&mut self, vector_data: &VectorData, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -563,10 +562,14 @@ impl OverlayContext {
 			self.bezier_command(bezier, transform, move_to);
 		}
 
+		self.end_dpi_aware_transform();
+	}
+
+	/// Used by the Pen and Path tools to outline the path of the shape.
+	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
+		self.draw_path_from_vector_data(vector_data, transform);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
-
-		self.end_dpi_aware_transform();
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
@@ -598,7 +601,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn draw_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -651,65 +654,15 @@ impl OverlayContext {
 
 	/// Used by the Select tool to outline a path selected or hovered.
 	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
-		self.draw_path(subpaths, transform);
+		self.draw_path_from_subpaths(subpaths, transform);
 
 		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 		self.render_context.set_stroke_style_str(color);
 		self.render_context.stroke();
 	}
 
-	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
-	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
-		self.render_context
-			.set_line_width(width_for_inner_boundary.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
-		self.draw_path(subpaths, transform);
-
-		if with_pattern {
-			const PATTERN_WIDTH: usize = 4;
-			const PATTERN_HEIGHT: usize = 4;
-
-			let pattern_canvas = OffscreenCanvas::new(PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-			let pattern_context: OffscreenCanvasRenderingContext2d = pattern_canvas
-				.get_context("2d")
-				.ok()
-				.flatten()
-				.expect("Failed to get canvas context")
-				.dyn_into()
-				.expect("Context should be a canvas 2d context");
-
-			// 4x4 pixels, 4 components (RGBA) per pixel
-			let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
-
-			// ┌▄▄┬──┬──┬──┐
-			// ├▀▀┼──┼──┼──┤
-			// ├──┼──┼▄▄┼──┤
-			// ├──┼──┼▀▀┼──┤
-			// └──┴──┴──┴──┘
-			let pixels = [(0, 0), (2, 2)];
-			for &(x, y) in &pixels {
-				let index = (x + y * PATTERN_WIDTH as usize) * 4;
-				data[index..index + 4].copy_from_slice(&Color::from_rgba_str(color).unwrap().to_rgba8_srgb());
-			}
-
-			let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
-			pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
-			let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
-
-			self.render_context.set_fill_style_canvas_pattern(&pattern);
-			self.render_context.fill();
-		} else {
-			self.render_context.set_fill_style_str(color);
-			self.render_context.fill();
-		}
-
-		self.render_context.set_line_width(1.);
-	}
-
-	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, width: Option<f64>) {
-		self.render_context.set_line_width(width.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
-		self.draw_path(subpaths, transform);
-
+	/// Default canvas pattern used for filling stroke or fill of a path.
+	fn fill_canvas_pattern(&self, color: &Color) -> web_sys::CanvasPattern {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -738,9 +691,32 @@ impl OverlayContext {
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&mut data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
 		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
-		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+		return self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+	}
 
-		self.render_context.set_stroke_style_canvas_pattern(&pattern);
+	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
+		self.render_context
+			.set_line_width(width_for_inner_boundary.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
+		self.draw_path_from_subpaths(subpaths, transform);
+
+		if with_pattern {
+			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+			self.render_context.fill();
+		} else {
+			self.render_context.set_fill_style_str(color.to_rgba_hex_srgb().as_str());
+			self.render_context.fill();
+		}
+
+		self.render_context.set_line_width(1.);
+	}
+
+	pub fn fill_stroke(&mut self, vector_data: &VectorData, transform: DAffine2, color: &Color, width: Option<f64>) {
+		self.render_context.set_line_width(width.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
+		self.draw_path_from_vector_data(vector_data, transform);
+
+		self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
 		self.render_context.stroke();
 
 		self.render_context.set_line_width(1.);
