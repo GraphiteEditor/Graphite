@@ -1018,12 +1018,13 @@ impl PathToolData {
 
 		let end_handle_direction = if anchor == closer_segment.start { -1. * relative_position1 } else { -1. * relative_position2 };
 
-		let (farther_other_point, start_handle, end_handle, start_handle_pos) = if anchor == farther_segment.start {
+		let (farther_other_point, start_handle, end_handle, start_handle_pos, start_t) = if anchor == farther_segment.start {
 			(
 				farther_segment.bezier.end,
 				HandleId::end(farther_segment.segment_id),
 				HandleId::primary(farther_segment.segment_id),
 				farther_segment.bezier.handle_end(),
+				0.99,
 			)
 		} else {
 			(
@@ -1031,14 +1032,15 @@ impl PathToolData {
 				HandleId::primary(farther_segment.segment_id),
 				HandleId::end(farther_segment.segment_id),
 				farther_segment.bezier.handle_start(),
+				0.11,
 			)
 		};
 		let Some(start_handle_position) = start_handle_pos else { return };
 		let start_handle_direction = start_handle_position - farther_other_point;
 
 		// Get the normalized direction vectors
-		let Some(d1) = start_handle_direction.try_normalize() else { return };
-		let Some(d2) = end_handle_direction.try_normalize() else { return };
+		let d1 = start_handle_direction.try_normalize().unwrap_or(farther_segment.bezier.tangent(TValue::Parametric(start_t)));
+		let d2 = end_handle_direction.try_normalize().unwrap_or_default();
 
 		let min_len1 = start_handle_direction.length() * 0.1;
 		let min_len2 = start_handle_direction.length() * 0.1;
