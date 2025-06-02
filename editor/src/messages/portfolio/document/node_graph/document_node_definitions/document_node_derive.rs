@@ -101,13 +101,19 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 							let into_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
 							};
+							let convert_node_identifier = ProtoNodeIdentifier {
+								name: format!("graphene_core::ops::ConvertNode<{}>", input_ty.clone()).into(),
+							};
 							let proto_node = if into_node_registry.iter().any(|(ident, _)| {
 								let ident = ident.name.as_ref();
-								// log::debug!("checking: {} against {}", ident, into_node_identifier.name.as_ref());
 								ident == into_node_identifier.name.as_ref()
 							}) {
-								// log::debug!("placing {}", into_node_identifier.name.as_ref());
 								into_node_identifier
+							} else if into_node_registry.iter().any(|(ident, _)| {
+								let ident = ident.name.as_ref();
+								ident == convert_node_identifier.name.as_ref()
+							}) {
+								convert_node_identifier
 							} else {
 								identity_node.clone()
 							};
@@ -122,7 +128,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 						_ => DocumentNode {
 							inputs: vec![NodeInput::network(generic!(X), i)],
 							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
-							visible: true,
+							visible: false,
 							..Default::default()
 						},
 					},
