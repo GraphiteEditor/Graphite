@@ -1,9 +1,7 @@
-use crate::document::{value, InlineRust};
+use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-
 pub use graphene_core::registry::*;
 use graphene_core::*;
-
 use rustc_hash::FxHashMap;
 #[cfg(feature = "serde")]
 use std::borrow::Cow;
@@ -162,7 +160,7 @@ impl Default for ProtoNode {
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProtoNodeInput {
-	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
+	/// This input will be converted to `()` as the call argument.
 	None,
 	/// A ManualComposition input represents an input that opts out of being resolved through the `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated
 	/// result to this node. Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
@@ -203,6 +201,7 @@ impl ProtoNode {
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
+
 		std::mem::discriminant(&self.input).hash(&mut hasher);
 		match self.input {
 			ProtoNodeInput::None => (),
@@ -212,6 +211,7 @@ impl ProtoNode {
 			ProtoNodeInput::Node(id) => (id, false).hash(&mut hasher),
 			ProtoNodeInput::NodeLambda(id) => (id, true).hash(&mut hasher),
 		};
+
 		Some(NodeId(hasher.finish()))
 	}
 
@@ -224,7 +224,7 @@ impl ProtoNode {
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
-			input: ProtoNodeInput::None,
+			input: ProtoNodeInput::ManualComposition(concrete!(Context)),
 			original_location: OriginalLocation {
 				path: Some(path),
 				inputs_exposed: vec![false; inputs_exposed],
@@ -324,7 +324,7 @@ impl ProtoNetwork {
 		}
 	}
 
-	// TODO: Remsove
+	// TODO: Remove
 	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
@@ -532,7 +532,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 }
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
 	InputNodeNotFound(NodeId),
@@ -552,35 +552,43 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
-				let ordinal = |x: usize| match x.to_string().as_str() {
-					x if x.ends_with('1') && !x.ends_with("11") => format!("{x}st"),
-					x if x.ends_with('2') && !x.ends_with("12") => format!("{x}nd"),
-					x if x.ends_with('3') && !x.ends_with("13") => format!("{x}rd"),
-					x => format!("{x}th"),
+				let format_error = |(index, (found, expected)): &(usize, (Type, Type))| {
+					let index = index + 1;
+					format!(
+						"\
+						• Input {index}:\n\
+						…found:       {found}\n\
+						…expected: {expected}\
+						"
+					)
 				};
-				let format_index = |index: usize| if index == 0 { "primary".to_string() } else { format!("{} secondary", ordinal(index)) };
-				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("• The {} input expected {} but found {}", format_index(*index), expected, real);
 				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
-				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
+				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
+				errors.sort();
+				let errors = errors.join("\n");
+				let incompatibility = if errors.chars().filter(|&c| c == '•').count() == 1 {
+					"This input type is incompatible:"
+				} else {
+					"These input types are incompatible:"
+				};
+
 				write!(
 					f,
-					"Node graph type error! If this just appeared while editing the graph,\n\
-					consider using undo to go back and try another way to connect the nodes.\n\
+					"\
+					{incompatibility}\n\
+					{errors}\n\
 					\n\
-					No node implementation exists for type:\n\
-					({inputs})\n\
-					\n\
-					Caused by{}:\n\
-					{}",
-					if errors.len() > 1 { " one of" } else { "" },
-					errors.join("\n")
+					The node is currently receiving all of the following input types:\n\
+					{inputs}\n\
+					This is not a supported arrangement of types for the node.\
+					"
 				)
 			}
 			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
 		}
 	}
 }
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphError {
 	pub node_path: Vec<NodeId>,
 	pub identifier: Cow<'static, str>,
@@ -659,9 +667,9 @@ impl TypingContext {
 		let inputs = match node.construction_args {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
-				assert!(matches!(node.input, ProtoNodeInput::None));
+				assert!(matches!(node.input, ProtoNodeInput::None) || matches!(node.input, ProtoNodeInput::ManualComposition(ref x) if x == &concrete!(Context)));
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(()), v.ty(), vec![v.ty()]);
+				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -679,7 +687,8 @@ impl TypingContext {
 		};
 
 		// Get the node input type from the proto node declaration
-		let input = match node.input {
+		// TODO: When removing automatic composition, rename this to just `call_argument`
+		let primary_input_or_call_argument = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id) | ProtoNodeInput::NodeLambda(id) => {
@@ -687,6 +696,7 @@ impl TypingContext {
 				input.return_value.clone()
 			}
 		};
+		let using_manual_composition = matches!(node.input, ProtoNodeInput::ManualComposition(_) | ProtoNodeInput::None);
 		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 
 		if let Some(index) = inputs.iter().position(|p| {
@@ -698,11 +708,14 @@ impl TypingContext {
 
 		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
 		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_subtype(from: &Type, to: &Type) -> bool {
+		fn valid_type(from: &Type, to: &Type) -> bool {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Loose comparison of function types, where loose means that functions are considered on a "greater than or equal to" basis of its function type's generality.
+				// Check inner type for futures
+				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
+				// Direct comparison of two function types.
+				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
 				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
 				// This allows us to supply anything to a function that is satisfied with `()`.
@@ -711,8 +724,9 @@ impl TypingContext {
 				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
 				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
 				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
 				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_subtype(out2, out1) && (valid_subtype(in1, in2) || **in1 == concrete!(())),
+				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
 				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
 				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
@@ -724,23 +738,24 @@ impl TypingContext {
 		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| valid_subtype(&node_io.call_argument, &input) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
+			.filter(|node_io| valid_type(&node_io.call_argument, &primary_input_or_call_argument) && inputs.iter().zip(node_io.inputs.iter()).all(|(p1, p2)| valid_type(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
 		let substitution_results = valid_output_types
 			.iter()
 			.map(|node_io| {
-				collect_generics(node_io)
+				let generics_lookup: Result<HashMap<_, _>, _> = collect_generics(node_io)
 					.iter()
-					.try_for_each(|generic| check_generic(node_io, &input, &inputs, generic).map(|_| ()))
-					.map(|_| {
-						if let Type::Generic(out) = &node_io.return_value {
-							((*node_io).clone(), check_generic(node_io, &input, &inputs, out).unwrap())
-						} else {
-							((*node_io).clone(), node_io.return_value.clone())
-						}
-					})
+					.map(|generic| check_generic(node_io, &primary_input_or_call_argument, &inputs, generic).map(|x| (generic.to_string(), x)))
+					.collect();
+
+				generics_lookup.map(|generics_lookup| {
+					let orig_node_io = (*node_io).clone();
+					let mut new_node_io = orig_node_io.clone();
+					replace_generics(&mut new_node_io, &generics_lookup);
+					(new_node_io, orig_node_io)
+				})
 			})
 			.collect::<Vec<_>>();
 
@@ -752,14 +767,18 @@ impl TypingContext {
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
-					let current_errors = [&input]
+					let current_errors = [&primary_input_or_call_argument]
 						.into_iter()
 						.chain(&inputs)
 						.cloned()
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
-						.filter(|(_, (p1, p2))| !valid_subtype(p1, p2))
-						.map(|(index, ty)| (node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index), ty))
+						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
+						.map(|(index, ty)| {
+							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
+							let i = if using_manual_composition { i } else { i + 1 };
+							(i, ty)
+						})
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -769,11 +788,21 @@ impl TypingContext {
 						error_inputs.push(current_errors);
 					}
 				}
-				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&primary_input_or_call_argument]
+					.into_iter()
+					.chain(&inputs)
+					.enumerate()
+					// TODO: Make the following line's if statement conditional on being a call argument or primary input
+					.filter_map(|(i, t)| {
+						let i = if using_manual_composition { i } else { i + 1 };
+						if i == 0 { None } else { Some(format!("• Input {i}: {t}")) }
+					})
+					.collect::<Vec<_>>()
+					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
 			}
-			[(org_nio, _)] => {
-				let node_io = org_nio.clone();
+			[(node_io, org_nio)] => {
+				let node_io = node_io.clone();
 
 				// Save the inferred type
 				self.inferred.insert(node_id, node_io.clone());
@@ -783,24 +812,24 @@ impl TypingContext {
 			// If two types are available and one of them accepts () an input, always choose that one
 			[first, second] => {
 				if first.0.call_argument != second.0.call_argument {
-					for (org_nio, _) in [first, second] {
-						if org_nio.call_argument != concrete!(()) {
+					for (node_io, orig_nio) in [first, second] {
+						if node_io.call_argument != concrete!(()) {
 							continue;
 						}
 
 						// Save the inferred type
-						self.inferred.insert(node_id, org_nio.clone());
-						self.constructor.insert(node_id, impls[org_nio]);
-						return Ok(org_nio.clone());
+						self.inferred.insert(node_id, node_io.clone());
+						self.constructor.insert(node_id, impls[orig_nio]);
+						return Ok(node_io.clone());
 					}
 				}
-				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&primary_input_or_call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
-				let inputs = [&input].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [&primary_input_or_call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
@@ -810,7 +839,7 @@ impl TypingContext {
 
 /// Returns a list of all generic types used in the node
 fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
-	let inputs = [&types.call_argument].into_iter().chain(types.inputs.iter().flat_map(|x| x.fn_output()));
+	let inputs = [&types.call_argument].into_iter().chain(types.inputs.iter().map(|x| x.nested_type()));
 	let mut generics = inputs
 		.filter_map(|t| match t {
 			Type::Generic(out) => Some(out.clone()),
@@ -828,6 +857,7 @@ fn collect_generics(types: &NodeIOTypes) -> Vec<Cow<'static, str>> {
 fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic: &str) -> Result<Type, String> {
 	let inputs = [(Some(&types.call_argument), Some(input))]
 		.into_iter()
+		.chain(types.inputs.iter().map(|x| x.fn_input()).zip(parameters.iter().map(|x| x.fn_input())))
 		.chain(types.inputs.iter().map(|x| x.fn_output()).zip(parameters.iter().map(|x| x.fn_output())));
 	let concrete_inputs = inputs.filter(|(ni, _)| matches!(ni, Some(Type::Generic(input)) if generic == input));
 	let mut outputs = concrete_inputs.flat_map(|(_, out)| out);
@@ -838,6 +868,21 @@ fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic
 		return Err(format!("Generic output type {generic} is dependent on multiple inputs or parameters",));
 	}
 	Ok(out_ty.clone())
+}
+
+/// Returns a list of all generic types used in the node
+fn replace_generics(types: &mut NodeIOTypes, lookup: &HashMap<String, Type>) {
+	let replace = |ty: &Type| {
+		let Type::Generic(ident) = ty else {
+			return None;
+		};
+		lookup.get(ident.as_ref()).cloned()
+	};
+	types.call_argument.replace_nested(replace);
+	types.return_value.replace_nested(replace);
+	for input in &mut types.inputs {
+		input.replace_nested(replace);
+	}
 }
 
 #[cfg(test)]
@@ -910,12 +955,12 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				NodeId(12083027370457564588),
-				NodeId(10127202135369428481),
-				NodeId(3781642984881236270),
-				NodeId(12160249450476233602),
-				NodeId(17962581471057044127),
-				NodeId(7906594012485169109)
+				NodeId(16997244687192517417),
+				NodeId(12226224850522777131),
+				NodeId(9162113827627229771),
+				NodeId(12793582657066318419),
+				NodeId(16945623684036608820),
+				NodeId(2640415155091892458)
 			]
 		);
 	}

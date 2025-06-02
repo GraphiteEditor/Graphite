@@ -1,11 +1,12 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-
-use graphene_core::{raster::curve::Curve, Color};
-use graphite_proc_macros::WidgetBuilder;
-
 use derivative::*;
-use glam::DVec2;
+use graphene_core::Color;
+use graphene_core::raster::curve::Curve;
+use graphene_std::transform::ReferencePoint;
+use graphite_proc_macros::WidgetBuilder;
+use once_cell::sync::OnceCell;
+use std::sync::Arc;
 
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
@@ -18,6 +19,9 @@ pub struct CheckboxInput {
 	pub icon: String,
 
 	pub tooltip: String,
+
+	#[serde(rename = "forLabel", skip_serializing_if = "checkbox_id_is_empty")]
+	pub for_label: CheckboxId,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -40,10 +44,49 @@ impl Default for CheckboxInput {
 			icon: "Checkmark".into(),
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),
+			for_label: CheckboxId::default(),
 			on_update: Default::default(),
 			on_commit: Default::default(),
 		}
 	}
+}
+
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub struct CheckboxId(Arc<OnceCell<u64>>);
+
+impl CheckboxId {
+	pub fn fill(&mut self) {
+		let _ = self.0.set(graphene_core::uuid::generate_uuid());
+	}
+}
+impl specta::Type for CheckboxId {
+	fn inline(_type_map: &mut specta::TypeCollection, _generics: specta::Generics) -> specta::datatype::DataType {
+		// TODO: This might not be right, but it works for now. We just need the type `bigint | undefined`.
+		specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::u64)
+	}
+}
+impl serde::Serialize for CheckboxId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.0.get().copied().serialize(serializer)
+	}
+}
+impl<'a> serde::Deserialize<'a> for CheckboxId {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'a>,
+	{
+		let id = u64::deserialize(deserializer)?;
+		let checkbox_id = CheckboxId(OnceCell::new().into());
+		checkbox_id.0.set(id).map_err(serde::de::Error::custom)?;
+		Ok(checkbox_id)
+	}
+}
+
+fn checkbox_id_is_empty(id: &CheckboxId) -> bool {
+	id.0.get().is_none()
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -68,6 +111,13 @@ pub struct DropdownInput {
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
+
+	// Styling
+	#[serde(rename = "minWidth")]
+	pub min_width: u32,
+
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 	//
 	// Callbacks
 	// `on_update` exists on the `MenuListEntry`, not this parent `DropdownInput`
@@ -208,6 +258,9 @@ pub struct NumberInput {
 	// Styling
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 
 	// Callbacks
 	#[serde(skip)]
@@ -412,100 +465,18 @@ pub struct CurveInput {
 
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-pub struct PivotInput {
+pub struct ReferencePointInput {
 	#[widget_builder(constructor)]
-	pub position: PivotPosition,
+	pub value: ReferencePoint,
 
 	pub disabled: bool,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<PivotInput>,
+	pub on_update: WidgetCallback<ReferencePointInput>,
 
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
-}
-
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
-pub enum PivotPosition {
-	#[default]
-	None,
-	TopLeft,
-	TopCenter,
-	TopRight,
-	CenterLeft,
-	Center,
-	CenterRight,
-	BottomLeft,
-	BottomCenter,
-	BottomRight,
-}
-
-impl From<&str> for PivotPosition {
-	fn from(input: &str) -> Self {
-		match input {
-			"None" => PivotPosition::None,
-			"TopLeft" => PivotPosition::TopLeft,
-			"TopCenter" => PivotPosition::TopCenter,
-			"TopRight" => PivotPosition::TopRight,
-			"CenterLeft" => PivotPosition::CenterLeft,
-			"Center" => PivotPosition::Center,
-			"CenterRight" => PivotPosition::CenterRight,
-			"BottomLeft" => PivotPosition::BottomLeft,
-			"BottomCenter" => PivotPosition::BottomCenter,
-			"BottomRight" => PivotPosition::BottomRight,
-			_ => panic!("Failed parsing unrecognized PivotPosition enum value '{input}'"),
-		}
-	}
-}
-
-impl From<PivotPosition> for Option<DVec2> {
-	fn from(input: PivotPosition) -> Self {
-		match input {
-			PivotPosition::None => None,
-			PivotPosition::TopLeft => Some(DVec2::new(0., 0.)),
-			PivotPosition::TopCenter => Some(DVec2::new(0.5, 0.)),
-			PivotPosition::TopRight => Some(DVec2::new(1., 0.)),
-			PivotPosition::CenterLeft => Some(DVec2::new(0., 0.5)),
-			PivotPosition::Center => Some(DVec2::new(0.5, 0.5)),
-			PivotPosition::CenterRight => Some(DVec2::new(1., 0.5)),
-			PivotPosition::BottomLeft => Some(DVec2::new(0., 1.)),
-			PivotPosition::BottomCenter => Some(DVec2::new(0.5, 1.)),
-			PivotPosition::BottomRight => Some(DVec2::new(1., 1.)),
-		}
-	}
-}
-
-impl From<DVec2> for PivotPosition {
-	fn from(input: DVec2) -> Self {
-		const TOLERANCE: f64 = 1e-5_f64;
-		if input.y.abs() < TOLERANCE {
-			if input.x.abs() < TOLERANCE {
-				return PivotPosition::TopLeft;
-			} else if (input.x - 0.5).abs() < TOLERANCE {
-				return PivotPosition::TopCenter;
-			} else if (input.x - 1.).abs() < TOLERANCE {
-				return PivotPosition::TopRight;
-			}
-		} else if (input.y - 0.5).abs() < TOLERANCE {
-			if input.x.abs() < TOLERANCE {
-				return PivotPosition::CenterLeft;
-			} else if (input.x - 0.5).abs() < TOLERANCE {
-				return PivotPosition::Center;
-			} else if (input.x - 1.).abs() < TOLERANCE {
-				return PivotPosition::CenterRight;
-			}
-		} else if (input.y - 1.).abs() < TOLERANCE {
-			if input.x.abs() < TOLERANCE {
-				return PivotPosition::BottomLeft;
-			} else if (input.x - 0.5).abs() < TOLERANCE {
-				return PivotPosition::BottomCenter;
-			} else if (input.x - 1.).abs() < TOLERANCE {
-				return PivotPosition::BottomRight;
-			}
-		}
-		PivotPosition::None
-	}
 }

@@ -1,3 +1,4 @@
+use super::input_widgets::CheckboxId;
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 
@@ -7,18 +8,6 @@ pub struct IconLabel {
 	pub icon: String,
 
 	pub disabled: bool,
-
-	pub tooltip: String,
-}
-
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
-pub struct ImageLabel {
-	#[widget_builder(constructor)]
-	pub image: String,
-
-	pub width: Option<String>,
-
-	pub height: Option<String>,
 
 	pub tooltip: String,
 }
@@ -55,6 +44,9 @@ pub struct TextLabel {
 
 	pub italic: bool,
 
+	#[serde(rename = "centerAlign")]
+	pub center_align: bool,
+
 	#[serde(rename = "tableAlign")]
 	pub table_align: bool,
 
@@ -65,9 +57,21 @@ pub struct TextLabel {
 
 	pub tooltip: String,
 
+	#[serde(rename = "checkboxId")]
+	#[widget_builder(skip)]
+	pub checkbox_id: CheckboxId,
+
 	// Body
 	#[widget_builder(constructor)]
 	pub value: String,
+}
+
+impl TextLabel {
+	pub fn for_checkbox(mut self, id: &mut CheckboxId) -> Self {
+		id.fill();
+		self.checkbox_id = id.clone();
+		self
+	}
 }
 
 // TODO: Add UserInputLabel

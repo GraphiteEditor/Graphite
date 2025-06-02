@@ -89,7 +89,7 @@ jobs:
 
       - name: 🧪 Run Rust tests
         run: |
-          mold -run cargo test --all-features
+          mold -run cargo test --all-features --workspace
 
   # miri:
   #   runs-on: self-hosted
@@ -107,17 +107,6 @@ jobs:
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
-
-      - name: 🔒 Check crate security advisories for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check advisories
-
-      - name: 🔒 Check crate security advisories for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check advisories
-          manifest-path: libraries/rawkit/Cargo.toml
 
       - name: 📜 Check crate license compatibility for root workspace
         uses: EmbarkStudios/cargo-deny-action@v2

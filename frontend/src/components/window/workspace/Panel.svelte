@@ -2,11 +2,13 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
+	import Spreadsheet from "@graphite/components/panels/Spreadsheet.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
 		Layers,
 		Properties,
+		Spreadsheet,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>
@@ -14,11 +16,11 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
 	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
 
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -27,6 +29,8 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+
+	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
 
@@ -100,7 +104,7 @@
 					}}
 					on:auxclick={(e) => {
 						// Middle mouse button click
-						if (e.button === 1) {
+						if (e.button === BUTTON_MIDDLE) {
 							e.stopPropagation();
 							closeAction?.(tabIndex);
 						}
@@ -110,7 +114,7 @@
 						// https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event#browser_compatibility
 						// The downside of using mouseup is that the mousedown didn't have to originate in the same element.
 						// A possible future improvement could save the target element during mousedown and check if it's the same here.
-						if (!isEventSupported("auxclick") && e.button === 1) {
+						if (!isEventSupported("auxclick") && e.button === BUTTON_MIDDLE) {
 							e.stopPropagation();
 							closeAction?.(tabIndex);
 						}
@@ -166,6 +170,11 @@
 							<tr>
 								<td colspan="2">
 									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+								</td>
+							</tr>
+							<tr>
+								<td colspan="2">
+									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
 								</td>
 							</tr>
 						</table>
@@ -239,7 +248,7 @@
 						}
 					}
 
-					span {
+					.text-label {
 						flex: 1 1 100%;
 						overflow-x: hidden;
 						white-space: nowrap;

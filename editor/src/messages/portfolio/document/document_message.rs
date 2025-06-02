@@ -1,21 +1,19 @@
-use super::utility_types::misc::SnappingState;
+use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlaysType;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
-
+use glam::DAffine2;
 use graph_craft::document::NodeId;
+use graphene_core::Color;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::Color;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::VectorData;
-
-use glam::DAffine2;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -38,13 +36,9 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
-	ClearArtboards,
+	RemoveArtboards,
 	ClearLayersPanel,
-	InsertBooleanOperation {
-		operation: graphene_core::vector::misc::BooleanOperation,
-	},
 	CreateEmptyFolder,
-	DebugPrintDocument,
 	DeleteNode {
 		node_id: NodeId,
 	},
@@ -65,6 +59,9 @@ pub enum DocumentMessage {
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
+	RotateSelectedLayers {
+		degrees: f64,
+	},
 	GraphViewOverlay {
 		open: bool,
 	},
@@ -72,14 +69,16 @@ pub enum DocumentMessage {
 	GridOptions(GridSnapping),
 	GridOverlays(OverlayContext),
 	GridVisibility(bool),
-	GroupSelectedLayers,
-	ImaginateGenerate {
-		imaginate_node: Vec<NodeId>,
+	GroupSelectedLayers {
+		group_folder_type: GroupFolderType,
 	},
-	ImaginateRandom {
-		imaginate_node: Vec<NodeId>,
-		then_generate: bool,
-	},
+	// ImaginateGenerate {
+	// 	imaginate_node: Vec<NodeId>,
+	// },
+	// ImaginateRandom {
+	// 	imaginate_node: Vec<NodeId>,
+	// 	then_generate: bool,
+	// },
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
@@ -112,11 +111,13 @@ pub enum DocumentMessage {
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,
+	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
 	SelectedLayersLowerToBack,
 	SelectedLayersRaise,
 	SelectedLayersRaiseToFront,
+	SelectedLayersReverse,
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},
@@ -143,6 +144,7 @@ pub enum DocumentMessage {
 	},
 	SetOverlaysVisibility {
 		visible: bool,
+		overlays_type: Option<OverlaysType>,
 	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
@@ -159,13 +161,17 @@ pub enum DocumentMessage {
 	SetViewMode {
 		view_mode: ViewMode,
 	},
+	AddTransaction,
 	StartTransaction,
 	EndTransaction,
 	CommitTransaction,
 	AbortTransaction,
-	AddTransaction,
+	RepeatedAbortTransaction {
+		undo_count: usize,
+	},
 	ToggleLayerExpansion {
 		id: NodeId,
+		recursive: bool,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
@@ -173,16 +179,14 @@ pub enum DocumentMessage {
 	ToggleOverlaysVisibility,
 	ToggleSnapping,
 	UpdateUpstreamTransforms {
-		upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+		upstream_footprints: HashMap<NodeId, Footprint>,
+		local_transforms: HashMap<NodeId, DAffine2>,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
-	},
-	UpdateVectorModify {
-		vector_modify: HashMap<NodeId, VectorData>,
 	},
 	Undo,
 	UngroupSelectedLayers,

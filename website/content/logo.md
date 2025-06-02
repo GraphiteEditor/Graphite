@@ -2,7 +2,7 @@
 title = "Graphite logo"
 
 [extra]
-css = ["logo.css"]
+css = ["/page/logo.css", "/component/feature-box.css", "/layout/reading-material.css"]
 +++
 
 <section class="reading-material">
@@ -39,8 +39,6 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 
 </div>
 </section>
-
-<br />
 
 <section class="feature-box-outer logo-view color">
 	<div class="feature-box-inner">

@@ -1,8 +1,6 @@
 use crate::svg_drawing::*;
 use crate::utils::{parse_cap, parse_point};
-
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, TValue, TValueType};
-
 use glam::DVec2;
 use js_sys::Array;
 use wasm_bindgen::prelude::*;

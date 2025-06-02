@@ -1,20 +1,14 @@
-use std::num::{ParseFloatError, ParseIntError};
-
+use crate::ast::{BinaryOp, Literal, Node, UnaryOp, Unit};
+use crate::context::EvalContext;
+use crate::value::{Complex, Number, Value};
 use lazy_static::lazy_static;
 use num_complex::ComplexFloat;
-use pest::{
-	iterators::{Pair, Pairs},
-	pratt_parser::{Assoc, Op, PrattParser},
-	Parser,
-};
+use pest::Parser;
+use pest::iterators::{Pair, Pairs};
+use pest::pratt_parser::{Assoc, Op, PrattParser};
 use pest_derive::Parser;
+use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
-
-use crate::{
-	ast::{BinaryOp, Literal, Node, UnaryOp, Unit},
-	context::EvalContext,
-	value::{Complex, Number, Value},
-};
 
 #[derive(Parser)]
 #[grammar = "./grammer.pest"]
@@ -339,7 +333,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 mod tests {
 	use super::*;
 	macro_rules! test_parser {
-		($($name:ident: $input:expr => $expected:expr),* $(,)?) => {
+		($($name:ident: $input:expr_2021 => $expected:expr_2021),* $(,)?) => {
 			$(
 				#[test]
 				fn $name() {

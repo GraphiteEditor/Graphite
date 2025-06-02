@@ -1,5 +1,8 @@
 +++
 title = "Contact the team"
+
+[extra]
+css = ["/layout/reading-material.css"]
 +++
 
 <section class="reading-material">

@@ -1,5 +1,8 @@
 +++
 title = "Graphite license"
+
+[extra]
+css = ["/layout/reading-material.css"]
 +++
 
 <section class="reading-material">

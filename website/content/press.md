@@ -1,5 +1,8 @@
 +++
 title = "Press resources"
+
+[extra]
+css = ["/layout/reading-material.css"]
 +++
 
 <section class="reading-material">

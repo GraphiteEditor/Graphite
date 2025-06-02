@@ -3,27 +3,29 @@ mod distribution_snapper;
 mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
-pub use {alignment_snapper::*, distribution_snapper::*, grid_snapper::*, layer_snapper::*, snap_results::*};
 
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_SNAP_BACKGROUND, COLOR_OVERLAY_WHITE};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
-
-use bezier_rs::{Subpath, TValue};
+pub use alignment_snapper::*;
+use bezier_rs::TValue;
+pub use distribution_snapper::*;
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
 use graphene_std::renderer::Rect;
-
-use glam::{DAffine2, DVec2};
 use graphene_std::vector::NoHashBuilder;
+pub use grid_snapper::*;
+pub use layer_snapper::*;
+pub use snap_results::*;
 use std::cmp::Ordering;
 
 /// Configuration for the relevant snap type
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SnapTypeConfiguration {
-	pub only_geometry: bool,
+	pub only_path: bool,
 	pub use_existing_candidates: bool,
 	pub accept_distribution: bool,
 	pub bbox: Option<Rect>,
@@ -111,14 +113,14 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 		(None, None) => None,
 		(Some(result), None) | (None, Some(result)) => Some(result),
 		(Some(mut result), Some(align)) => {
-			let SnapTarget::Distribution(distribution) = result.target else { return Some(result) };
-			if distribution.is_x() && align.alignment_target_x.is_some() {
+			let SnapTarget::DistributeEvenly(distribution) = result.target else { return Some(result) };
+			if distribution.is_x() && align.alignment_target_horizontal.is_some() {
 				result.snapped_point_document.y = align.snapped_point_document.y;
-				result.alignment_target_x = align.alignment_target_x;
+				result.alignment_target_horizontal = align.alignment_target_horizontal;
 			}
-			if distribution.is_y() && align.alignment_target_y.is_some() {
+			if distribution.is_y() && align.alignment_target_vertical.is_some() {
 				result.snapped_point_document.x = align.snapped_point_document.x;
-				result.alignment_target_y = align.alignment_target_y;
+				result.alignment_target_vertical = align.alignment_target_vertical;
 			}
 
 			Some(result)
@@ -126,7 +128,7 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 	}
 }
 fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
-	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Geometry(GeometrySnapTarget::Path);
+	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Path(PathSnapTarget::AlongPath);
 	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
 }
 fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
@@ -135,14 +137,7 @@ fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for curve_i in curves {
-		if curve_i.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge) {
-			continue;
-		}
-
 		for curve_j in curves {
-			if curve_j.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge) {
-				continue;
-			}
 			if curve_i.start == curve_j.start && curve_i.layer == curve_j.layer {
 				continue;
 			}
@@ -156,9 +151,9 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 					best = Some(SnappedPoint {
 						snapped_point_document,
 						distance,
-						target: SnapTarget::Geometry(GeometrySnapTarget::Intersection),
+						target: SnapTarget::Path(PathSnapTarget::IntersectionPoint),
 						tolerance: close.point.tolerance,
-						curves: [Some(close.document_curve), Some(far.document_curve)],
+						outline_layers: [Some(close.layer), Some(far.layer)],
 						source: close.point.source,
 						at_intersection: true,
 						constrained: true,
@@ -194,7 +189,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 	best
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct SnapCache {
 	pub manipulators: HashMap<LayerNodeIdentifier, HashSet<PointId, NoHashBuilder>, NoHashBuilder>,
 	pub unselected: Vec<SnapCandidatePoint>,
@@ -262,7 +257,7 @@ impl SnapManager {
 		if let Some(closest_point) = get_closest_point(snap_results.points) {
 			snapped_points.push(closest_point);
 		}
-		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path));
+		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::AlongPath));
 		if let Some(closest_curve) = get_closest_curve(&snap_results.curves, exclude_paths) {
 			snapped_points.push(closest_curve.clone());
 		}
@@ -274,7 +269,7 @@ impl SnapManager {
 		}
 
 		if !constrained {
-			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) {
+			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) {
 				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
 					snapped_points.push(closest_curves_intersection);
 				}
@@ -287,7 +282,7 @@ impl SnapManager {
 		}
 
 		if to_path {
-			snapped_points.retain(|i| matches!(i.target, SnapTarget::Geometry(_)));
+			snapped_points.retain(|i| matches!(i.target, SnapTarget::Path(_)));
 		}
 
 		let mut best_point = None;
@@ -331,10 +326,10 @@ impl SnapManager {
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
 		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
 		if screen_bounds.intersects(layer_bounds) {
-			if !self.alignment_candidates.as_ref().is_some_and(|candidates| candidates.len() > 100) {
+			if self.alignment_candidates.as_ref().is_none_or(|candidates| candidates.len() <= 100) {
 				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);
 			}
-			if quad.intersects(layer_bounds) && !self.candidates.as_ref().is_some_and(|candidates| candidates.len() > 10) {
+			if quad.intersects(layer_bounds) && self.candidates.as_ref().is_none_or(|candidates| candidates.len() <= 10) {
 				self.candidates.get_or_insert_with(Vec::new).push(layer);
 			}
 		}
@@ -382,7 +377,7 @@ impl SnapManager {
 		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 
-		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, config.only_geometry)
+		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, config.only_path)
 	}
 
 	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, config: SnapTypeConfiguration) -> SnappedPoint {
@@ -408,7 +403,7 @@ impl SnapManager {
 		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 
-		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, config.only_geometry)
+		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, config.only_path)
 	}
 
 	fn alignment_x_overlay(boxes: &VecDeque<Rect>, transform: DAffine2, overlay_context: &mut OverlayContext) {
@@ -419,11 +414,12 @@ impl SnapManager {
 			let start = DVec2::new(first.max().x, y);
 			let end = DVec2::new(second.min().x, y);
 			let signed_size = if bottom { y_size } else { -y_size };
-			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size), None);
-			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size), None);
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::Y * signed_size), None, None);
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::Y * signed_size), None, None);
 			overlay_context.line(
 				transform.transform_point2(start + DVec2::Y * signed_size / 2.),
 				transform.transform_point2(end + DVec2::Y * signed_size / 2.),
+				None,
 				None,
 			);
 		}
@@ -437,11 +433,12 @@ impl SnapManager {
 			let start = DVec2::new(x, first.max().y);
 			let end = DVec2::new(x, second.min().y);
 			let signed_size = if right { x_size } else { -x_size };
-			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size), None);
-			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size), None);
+			overlay_context.line(transform.transform_point2(start), transform.transform_point2(start + DVec2::X * signed_size), None, None);
+			overlay_context.line(transform.transform_point2(end), transform.transform_point2(end + DVec2::X * signed_size), None, None);
 			overlay_context.line(
 				transform.transform_point2(start + DVec2::X * signed_size / 2.),
 				transform.transform_point2(end + DVec2::X * signed_size / 2.),
+				None,
 				None,
 			);
 		}
@@ -450,34 +447,34 @@ impl SnapManager {
 	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
 		let to_viewport = snap_data.document.metadata().document_to_viewport;
 		if let Some(ind) = &self.indicator {
-			for curve in &ind.curves {
-				let Some(curve) = curve else { continue };
-				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
+			for layer in &ind.outline_layers {
+				let &Some(layer) = layer else { continue };
+				overlay_context.outline(snap_data.document.metadata().layer_outline(layer), snap_data.document.metadata().transform_to_viewport(layer), None);
 			}
 			if let Some(quad) = ind.target_bounds {
-				overlay_context.quad(to_viewport * quad, None);
+				overlay_context.quad(to_viewport * quad, None, None);
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
-			Self::alignment_x_overlay(&ind.distribution_boxes_x, to_viewport, overlay_context);
-			Self::alignment_y_overlay(&ind.distribution_boxes_y, to_viewport, overlay_context);
+			Self::alignment_x_overlay(&ind.distribution_boxes_horizontal, to_viewport, overlay_context);
+			Self::alignment_y_overlay(&ind.distribution_boxes_vertical, to_viewport, overlay_context);
 
-			let align = [ind.alignment_target_x, ind.alignment_target_y].map(|target| target.map(|target| to_viewport.transform_point2(target)));
+			let align = [ind.alignment_target_horizontal, ind.alignment_target_vertical].map(|target| target.map(|target| to_viewport.transform_point2(target)));
 			let any_align = align.iter().flatten().next().is_some();
 			for &target in align.iter().flatten() {
-				overlay_context.line(viewport, target, None);
+				overlay_context.line(viewport, target, None, None);
 			}
 			for &target in align.iter().flatten() {
-				overlay_context.manipulator_handle(target, false);
+				overlay_context.manipulator_handle(target, false, None);
 			}
 			if any_align {
-				overlay_context.manipulator_handle(viewport, false);
+				overlay_context.manipulator_handle(viewport, false, None);
 			}
 
-			if !any_align && ind.distribution_equal_distance_x.is_none() && ind.distribution_equal_distance_y.is_none() {
-				let text = format!("{:?} to {:?}", ind.source, ind.target);
-				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 5.));
-				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_SNAP_BACKGROUND), transform, 5., [Pivot::Start, Pivot::End]);
+			if !any_align && ind.distribution_equal_distance_horizontal.is_none() && ind.distribution_equal_distance_vertical.is_none() {
+				let text = format!("[{}] from [{}]", ind.target, ind.source);
+				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 4.));
+				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_LABEL_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}
 		}

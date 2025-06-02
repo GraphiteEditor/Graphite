@@ -1,19 +1,17 @@
 use crate::consts::{
 	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
-	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR, VIEWPORT_ZOOM_WHEEL_RATE,
+	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
-use graph_craft::document::NodeId;
-
 use glam::{DAffine2, DVec2};
+use graph_craft::document::NodeId;
 
 pub struct NavigationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
@@ -22,6 +20,7 @@ pub struct NavigationMessageData<'a> {
 	pub selection_bounds: Option<[DVec2; 2]>,
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -29,6 +28,7 @@ pub struct NavigationMessageHandler {
 	navigation_operation: NavigationOperation,
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
+	abortable_pan_start: Option<f64>,
 }
 
 impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
@@ -40,6 +40,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			selection_bounds,
 			document_ptz,
 			graph_view_overlay_open,
+			preferences,
 		} = data;
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
@@ -95,14 +96,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					responses.add(FrontendMessage::UpdateInputHints {
 						hint_data: HintData(vec![
 							HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-							HintGroup(vec![HintInfo {
-								key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-								key_groups_mac: None,
-								mouse: None,
-								label: String::from("Snap 15°"),
-								plus: false,
-								slash: false,
-							}]),
+							HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 						]),
 					});
 
@@ -125,14 +119,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![
 						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-							key_groups_mac: None,
-							mouse: None,
-							label: String::from("Increments"),
-							plus: false,
-							slash: false,
-						}]),
+						HintGroup(vec![HintInfo::keys([Key::Shift], "Increments")]),
 					]),
 				});
 
@@ -155,6 +142,28 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(DocumentMessage::PTZUpdate);
 			}
+			NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis } => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get PTZ in CanvasPanAbortPrepare");
+					return;
+				};
+				self.abortable_pan_start = Some(if x_not_y_axis { ptz.pan.x } else { ptz.pan.y });
+			}
+			NavigationMessage::CanvasPanAbort { x_not_y_axis } => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get PTZ in CanvasPanAbort");
+					return;
+				};
+				if let Some(abortable_pan_start) = self.abortable_pan_start {
+					if x_not_y_axis {
+						ptz.pan.x = abortable_pan_start;
+					} else {
+						ptz.pan.y = abortable_pan_start;
+					}
+				}
+				self.abortable_pan_start = None;
+				responses.add(DocumentMessage::PTZUpdate);
+			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
@@ -167,10 +176,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
-				let delta = match use_y_as_x {
-					false => -ipp.mouse.scroll_delta.as_dvec2(),
-					true => (-ipp.mouse.scroll_delta.y, 0.).into(),
-				} * VIEWPORT_SCROLL_RATE;
+				let delta = if use_y_as_x { (-ipp.mouse.scroll_delta.y, 0.).into() } else { -ipp.mouse.scroll_delta.as_dvec2() } * VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
@@ -198,6 +204,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				responses.add(DocumentMessage::PTZUpdate);
 				if !graph_view_overlay_open {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					responses.add(MenuBarMessage::SendLayout);
 				}
 			}
 			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
@@ -224,7 +231,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::CanvasZoomMouseWheel => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
+				let mut zoom_factor = 1. + scroll.abs() * preferences.viewport_zoom_wheel_rate;
 				if ipp.mouse.scroll_delta.y > 0. {
 					zoom_factor = 1. / zoom_factor
 				}
@@ -266,6 +273,22 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				}
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::SetGridAlignedEdges);
+			}
+			NavigationMessage::CanvasFlip => {
+				if graph_view_overlay_open {
+					return;
+				}
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get mutable PTZ in CanvasFlip");
+					return;
+				};
+
+				ptz.flip = !ptz.flip;
+
+				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(MenuBarMessage::SendLayout);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -387,9 +410,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 						..
 					} => {
 						let tilt_raw_not_snapped = {
+							// Compute the angle in document space to counter for the canvas being flipped
+							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
 							let half_viewport = ipp.viewport_bounds.size() / 2.;
-							let start_offset = self.mouse_position - half_viewport;
-							let end_offset = ipp.mouse.position - half_viewport;
+							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
+							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
 
 							tilt_raw_not_snapped + angle
@@ -465,6 +490,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			CanvasZoomDecrease,
 			CanvasZoomIncrease,
 			CanvasZoomMouseWheel,
+			CanvasFlip,
 			FitViewportToSelection,
 		);
 
@@ -507,15 +533,16 @@ impl NavigationMessageHandler {
 		let tilt = ptz.tilt();
 		let zoom = ptz.zoom();
 
-		let scaled_center = viewport_center / self.snapped_zoom(zoom);
+		let scale = self.snapped_zoom(zoom);
+		let scale_vec = if ptz.flip { DVec2::new(-scale, scale) } else { DVec2::splat(scale) };
+		let scaled_center = viewport_center / scale_vec;
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
-		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);
-		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
+		let scale_transform = DAffine2::from_scale(scale_vec);
 		let angle_transform = DAffine2::from_angle(self.snapped_tilt(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform

@@ -1,8 +1,9 @@
 pub use self::color::{Color, Luma, SRGBA8};
-use crate::vector::VectorData;
-use crate::GraphicGroup;
-use crate::{registry::types::Percentage, transform::Footprint};
-
+use crate::Ctx;
+use crate::GraphicGroupTable;
+use crate::raster::image::ImageFrameTable;
+use crate::registry::types::Percentage;
+use crate::vector::VectorDataTable;
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::DVec2;
@@ -13,13 +14,12 @@ use spirv_std::num_traits::float::Float;
 pub mod adjustments;
 pub mod bbox;
 #[cfg(not(target_arch = "spirv"))]
-pub mod brightness_contrast;
-#[cfg(not(target_arch = "spirv"))]
 pub mod brush_cache;
 pub mod color;
 #[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
+
 pub use adjustments::*;
 
 pub trait Linear {
@@ -93,11 +93,7 @@ impl Channel for SRGBGammaFloat {
 	#[inline(always)]
 	fn from_linear<In: Linear>(linear: In) -> Self {
 		let x = linear.to_f32();
-		if x <= 0.0031308 {
-			Self(x * 12.92)
-		} else {
-			Self(1.055 * x.powf(1. / 2.4) - 0.055)
-		}
+		if x <= 0.0031308 { Self(x * 12.92) } else { Self(1.055 * x.powf(1. / 2.4) - 0.055) }
 	}
 }
 pub trait RGBPrimaries {
@@ -127,7 +123,7 @@ impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 impl<T> Serde for T {}
 
 // TODO: Come up with a better name for this trait
-pub trait Pixel: Clone + Pod + Zeroable {
+pub trait Pixel: Clone + Pod + Zeroable + Default {
 	#[cfg(not(target_arch = "spirv"))]
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()
@@ -180,6 +176,9 @@ pub trait Alpha {
 	}
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self;
 }
+pub trait AlphaMut: Alpha {
+	fn set_alpha(&mut self, value: Self::AlphaChannel);
+}
 
 pub trait Depth {
 	type DepthChannel: Channel;
@@ -226,6 +225,12 @@ pub trait Bitmap {
 	type Pixel: Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
+	fn dimensions(&self) -> (u32, u32) {
+		(self.width(), self.height())
+	}
+	fn dim(&self) -> (u32, u32) {
+		self.dimensions()
+	}
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel>;
 }
 
@@ -283,77 +288,64 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 }
 
 #[cfg(feature = "alloc")]
-pub use self::image::{Image, ImageFrame};
+pub use self::image::Image;
 #[cfg(feature = "alloc")]
-pub(crate) mod image;
+pub mod image;
 
 trait SetBlendMode {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode);
 }
 
-impl SetBlendMode for VectorData {
+impl SetBlendMode for VectorDataTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
-impl SetBlendMode for GraphicGroup {
+impl SetBlendMode for GraphicGroupTable {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
-impl SetBlendMode for ImageFrame<Color> {
+impl SetBlendMode for ImageFrameTable<Color> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
-		self.alpha_blending.blend_mode = blend_mode;
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.blend_mode = blend_mode;
+		}
 	}
 }
 
 #[node_macro::node(category("Style"))]
-async fn blend_mode<F: 'n + Send, T: SetBlendMode>(
+fn blend_mode<T: SetBlendMode>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-	)]
-	value: impl Node<F, Output = T>,
+	mut value: T,
 	blend_mode: BlendMode,
 ) -> T {
-	let mut value = value.eval(footprint).await;
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
 	value.set_blend_mode(blend_mode);
 	value
 }
 
 #[node_macro::node(category("Style"))]
-async fn opacity<F: 'n + Send, T: MultiplyAlpha>(
+fn opacity<T: MultiplyAlpha>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-	)]
-	value: impl Node<F, Output = T>,
+	mut value: T,
 	#[default(100.)] factor: Percentage,
 ) -> T {
-	let mut value = value.eval(footprint).await;
-	let opacity_multiplier = factor / 100.;
-	value.multiply_alpha(opacity_multiplier);
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	value.multiply_alpha(factor / 100.);
 	value
 }

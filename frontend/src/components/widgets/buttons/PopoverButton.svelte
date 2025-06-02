@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { MenuDirection } from "@graphite/messages";
 	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -7,6 +8,7 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
 	export let style: PopoverButtonStyle = "DropdownArrow";
+	export let menuDirection: MenuDirection = "Bottom";
 	export let icon: IconName | undefined = undefined;
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
@@ -23,13 +25,13 @@
 	}
 </script>
 
-<LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined }}>
+<LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined, "direction-top": menuDirection === "Top" }}>
 	<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
 	{#if icon !== undefined}
 		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltip} />
 	{/if}
 
-	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction="Bottom">
+	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction={menuDirection || "Bottom"}>
 		<slot />
 	</FloatingMenu>
 </LayoutRow>
@@ -47,6 +49,10 @@
 			.dropdown-icon {
 				padding-left: calc(36px - 16px);
 				box-sizing: content-box;
+			}
+
+			&.direction-top .dropdown-icon .icon-label {
+				transform: rotate(180deg);
 			}
 		}
 
@@ -85,6 +91,10 @@
 			.floating-menu-content > :last-child:not(:has(:not(.checkbox-input))) {
 				margin-bottom: -8px;
 			}
+		}
+
+		&.direction-top .floating-menu {
+			bottom: 100%;
 		}
 	}
 </style>

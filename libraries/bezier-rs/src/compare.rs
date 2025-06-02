@@ -1,11 +1,9 @@
 /// Comparison functions used for tests in the bezier module
 #[cfg(test)]
 use super::{CircleArc, Subpath};
+use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 #[cfg(test)]
 use crate::utils::f64_compare;
-
-use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
-
 use glam::DVec2;
 
 // Compare two f64s with some maximum absolute difference to account for floating point errors

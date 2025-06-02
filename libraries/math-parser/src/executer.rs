@@ -1,12 +1,10 @@
+use crate::ast::{Literal, Node};
+use crate::constants::DEFAULT_FUNCTIONS;
+use crate::context::{EvalContext, FunctionProvider, ValueProvider};
+use crate::value::{Number, Value};
 use num_complex::Complex;
-use thiserror::Error;
 
-use crate::{
-	ast::{Literal, Node},
-	constants::DEFAULT_FUNCTIONS,
-	context::{EvalContext, FunctionProvider, ValueProvider},
-	value::{Number, Value},
-};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum EvalError {
@@ -50,11 +48,7 @@ impl Node {
 					Value::Number(Number::Complex(number)) => number != Complex::ZERO,
 				};
 
-				if condition {
-					if_block.eval(context)
-				} else {
-					else_block.eval(context)
-				}
+				if condition { if_block.eval(context) } else { else_block.eval(context) }
 			}
 		}
 	}
@@ -62,14 +56,12 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		ast::{BinaryOp, Literal, Node, UnaryOp},
-		context::{EvalContext, ValueMap},
-		value::Value,
-	};
+	use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
+	use crate::context::{EvalContext, ValueMap};
+	use crate::value::Value;
 
 	macro_rules! eval_tests {
-		($($name:ident: $expected:expr => $expr:expr),* $(,)?) => {
+		($($name:ident: $expected:expr_2021 => $expr:expr_2021),* $(,)?) => {
 			$(
 				#[test]
 				fn $name() {

@@ -2,10 +2,8 @@ use dyn_any::DynAny;
 use graphene_core::Color;
 use std::borrow::Cow;
 use std::fmt::Debug;
-use std::sync::{
-	atomic::{AtomicBool, Ordering},
-	Arc, Mutex,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[derive(Default, Debug, Clone, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -4,9 +4,8 @@ pub mod util;
 
 #[cfg(test)]
 mod tests {
-	use graphene_core::*;
-
 	use futures::executor::block_on;
+	use graphene_core::*;
 
 	#[test]
 	fn double_number() {

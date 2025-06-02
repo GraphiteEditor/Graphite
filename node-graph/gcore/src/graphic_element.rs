@@ -1,14 +1,14 @@
-use crate::application_io::TextureFrame;
-use crate::raster::{BlendMode, ImageFrame};
-use crate::transform::{ApplyTransform, Footprint, Transform, TransformMut};
+use crate::application_io::{ImageTexture, TextureFrameTable};
+use crate::instances::{Instance, Instances};
+use crate::raster::BlendMode;
+use crate::raster::image::{Image, ImageFrameTable};
+use crate::transform::TransformMut;
 use crate::uuid::NodeId;
-use crate::vector::VectorData;
-use crate::Color;
-
+use crate::vector::{VectorData, VectorDataTable};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
-
-use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, IVec2};
+use std::hash::Hash;
 
 pub mod renderer;
 
@@ -36,162 +36,212 @@ impl AlphaBlending {
 			blend_mode: BlendMode::Normal,
 		}
 	}
-}
 
-/// A list of [`GraphicElement`]s
-#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GraphicGroup {
-	elements: Vec<(GraphicElement, Option<NodeId>)>,
-	pub transform: DAffine2,
-	pub alpha_blending: AlphaBlending,
-}
+	pub fn lerp(&self, other: &Self, t: f32) -> Self {
+		let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
 
-impl core::hash::Hash for GraphicGroup {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.transform.to_cols_array().iter().for_each(|element| element.to_bits().hash(state));
-		self.elements.hash(state);
-		self.alpha_blending.hash(state);
-	}
-}
-
-impl GraphicGroup {
-	pub const EMPTY: Self = Self {
-		elements: Vec::new(),
-		transform: DAffine2::IDENTITY,
-		alpha_blending: AlphaBlending::new(),
-	};
-
-	pub fn new(elements: Vec<GraphicElement>) -> Self {
-		Self {
-			elements: elements.into_iter().map(|element| (element, None)).collect(),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::new(),
+		AlphaBlending {
+			opacity: lerp(self.opacity, other.opacity, t),
+			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
 		}
 	}
 }
 
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldGraphicGroup {
+		elements: Vec<(GraphicElement, Option<NodeId>)>,
+		transform: DAffine2,
+		alpha_blending: AlphaBlending,
+	}
+	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct GraphicGroup {
+		elements: Vec<(GraphicElement, Option<NodeId>)>,
+	}
+	pub type OldGraphicGroupTable = Instances<GraphicGroup>;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum EitherFormat {
+		OldGraphicGroup(OldGraphicGroup),
+		InstanceTable(serde_json::Value),
+	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::OldGraphicGroup(old) => {
+			let mut graphic_group_table = GraphicGroupTable::empty();
+			for (graphic_element, source_node_id) in old.elements {
+				graphic_group_table.push(Instance {
+					instance: graphic_element,
+					transform: old.transform,
+					alpha_blending: old.alpha_blending,
+					source_node_id,
+				});
+			}
+			graphic_group_table
+		}
+		EitherFormat::InstanceTable(value) => {
+			// Try to deserialize as either table format
+			if let Ok(old_table) = serde_json::from_value::<OldGraphicGroupTable>(value.clone()) {
+				let mut graphic_group_table = GraphicGroupTable::empty();
+				for instance in old_table.instance_ref_iter() {
+					for (graphic_element, source_node_id) in &instance.instance.elements {
+						graphic_group_table.push(Instance {
+							instance: graphic_element.clone(),
+							transform: *instance.transform,
+							alpha_blending: *instance.alpha_blending,
+							source_node_id: *source_node_id,
+						});
+					}
+				}
+				graphic_group_table
+			} else if let Ok(new_table) = serde_json::from_value::<GraphicGroupTable>(value) {
+				new_table
+			} else {
+				return Err(serde::de::Error::custom("Failed to deserialize GraphicGroupTable"));
+			}
+		}
+	})
+}
+
+// TODO: Rename to GraphicElementTable
+pub type GraphicGroupTable = Instances<GraphicElement>;
+
+impl From<VectorData> for GraphicGroupTable {
+	fn from(vector_data: VectorData) -> Self {
+		Self::new(GraphicElement::VectorData(VectorDataTable::new(vector_data)))
+	}
+}
+impl From<VectorDataTable> for GraphicGroupTable {
+	fn from(vector_data: VectorDataTable) -> Self {
+		Self::new(GraphicElement::VectorData(vector_data))
+	}
+}
+impl From<Image<Color>> for GraphicGroupTable {
+	fn from(image: Image<Color>) -> Self {
+		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image))))
+	}
+}
+impl From<ImageFrameTable<Color>> for GraphicGroupTable {
+	fn from(image_frame: ImageFrameTable<Color>) -> Self {
+		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame)))
+	}
+}
+impl From<ImageTexture> for GraphicGroupTable {
+	fn from(image_texture: ImageTexture) -> Self {
+		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(image_texture))))
+	}
+}
+impl From<TextureFrameTable> for GraphicGroupTable {
+	fn from(texture_frame: TextureFrameTable) -> Self {
+		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture_frame)))
+	}
+}
+
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
-/// Can be another recursively nested [`GraphicGroup`], a [`VectorData`] shape, an [`ImageFrame`], or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElement {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
-	GraphicGroup(GraphicGroup),
+	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
-	VectorData(Box<VectorData>),
-	Raster(Raster),
+	VectorData(VectorDataTable),
+	RasterFrame(RasterFrame),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
 impl Default for GraphicElement {
 	fn default() -> Self {
-		Self::VectorData(Box::new(VectorData::empty()))
+		Self::VectorData(VectorDataTable::default())
 	}
 }
 
 impl GraphicElement {
-	pub fn as_group(&self) -> Option<&GraphicGroup> {
+	pub fn as_group(&self) -> Option<&GraphicGroupTable> {
 		match self {
 			GraphicElement::GraphicGroup(group) => Some(group),
 			_ => None,
 		}
 	}
 
-	pub fn as_group_mut(&mut self) -> Option<&mut GraphicGroup> {
+	pub fn as_group_mut(&mut self) -> Option<&mut GraphicGroupTable> {
 		match self {
 			GraphicElement::GraphicGroup(group) => Some(group),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_data(&self) -> Option<&VectorData> {
+	pub fn as_vector_data(&self) -> Option<&VectorDataTable> {
 		match self {
 			GraphicElement::VectorData(data) => Some(data),
 			_ => None,
 		}
 	}
 
-	pub fn as_vector_data_mut(&mut self) -> Option<&mut VectorData> {
+	pub fn as_vector_data_mut(&mut self) -> Option<&mut VectorDataTable> {
 		match self {
 			GraphicElement::VectorData(data) => Some(data),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&Raster> {
+	pub fn as_raster(&self) -> Option<&RasterFrame> {
 		match self {
-			GraphicElement::Raster(raster) => Some(raster),
+			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut Raster> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut RasterFrame> {
 		match self {
-			GraphicElement::Raster(raster) => Some(raster),
+			GraphicElement::RasterFrame(raster) => Some(raster),
 			_ => None,
 		}
 	}
 }
 
+// TODO: Rename to Raster
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-pub enum Raster {
-	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	ImageFrame(ImageFrame<Color>),
-	Texture(TextureFrame),
+pub enum RasterFrame {
+	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+	// TODO: Rename to ImageTable
+	ImageFrame(ImageFrameTable<Color>),
+	/// A GPU texture with a finite position and extent
+	// TODO: Rename to ImageTextureTable
+	TextureFrame(TextureFrameTable),
 }
 
-impl<'de> serde::Deserialize<'de> for Raster {
+impl<'de> serde::Deserialize<'de> for RasterFrame {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
 	{
-		let frame = ImageFrame::deserialize(deserializer)?;
-		Ok(Raster::ImageFrame(frame))
+		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
 	}
 }
 
-impl serde::Serialize for Raster {
+impl serde::Serialize for RasterFrame {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
 	{
 		match self {
-			Raster::ImageFrame(_) => self.serialize(serializer),
-			Raster::Texture(_) => todo!(),
-		}
-	}
-}
-
-impl Transform for Raster {
-	fn transform(&self) -> DAffine2 {
-		match self {
-			Raster::ImageFrame(frame) => frame.transform(),
-			Raster::Texture(frame) => frame.transform(),
-		}
-	}
-	fn local_pivot(&self, pivot: glam::DVec2) -> glam::DVec2 {
-		match self {
-			Raster::ImageFrame(frame) => frame.local_pivot(pivot),
-			Raster::Texture(frame) => frame.local_pivot(pivot),
-		}
-	}
-}
-impl TransformMut for Raster {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		match self {
-			Raster::ImageFrame(frame) => frame.transform_mut(),
-			Raster::Texture(frame) => frame.transform_mut(),
+			RasterFrame::ImageFrame(_) => self.serialize(serializer),
+			RasterFrame::TextureFrame(_) => todo!(),
 		}
 	}
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-/// Similar to an Inkscape page: https://media.inkscape.org/media/doc/release_notes/1.2/Inkscape_1.2.html#Page_tool
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Artboard {
-	pub graphic_group: GraphicGroup,
+	pub graphic_group: GraphicGroupTable,
 	pub label: String,
 	pub location: IVec2,
 	pub dimensions: IVec2,
@@ -199,11 +249,17 @@ pub struct Artboard {
 	pub clip: bool,
 }
 
+impl Default for Artboard {
+	fn default() -> Self {
+		Self::new(IVec2::ZERO, IVec2::new(1920, 1080))
+	}
+}
+
 impl Artboard {
 	pub fn new(location: IVec2, dimensions: IVec2) -> Self {
 		Self {
-			graphic_group: GraphicGroup::EMPTY,
-			label: String::from("Artboard"),
+			graphic_group: GraphicGroupTable::default(),
+			label: "Artboard".to_string(),
 			location: location.min(location + dimensions),
 			dimensions: dimensions.abs(),
 			background: Color::WHITE,
@@ -212,180 +268,147 @@ impl Artboard {
 	}
 }
 
-/// Contains multiple artboards.
-#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ArtboardGroup {
-	pub artboards: Vec<(Artboard, Option<NodeId>)>,
-}
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
+	use serde::Deserialize;
 
-impl ArtboardGroup {
-	pub const EMPTY: Self = Self { artboards: Vec::new() };
-
-	pub fn new() -> Self {
-		Default::default()
+	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct ArtboardGroup {
+		pub artboards: Vec<(Artboard, Option<NodeId>)>,
 	}
 
-	fn append_artboard(&mut self, artboard: Artboard, node_id: Option<NodeId>) {
-		self.artboards.push((artboard, node_id));
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum EitherFormat {
+		ArtboardGroup(ArtboardGroup),
+		ArtboardGroupTable(ArtboardGroupTable),
 	}
+
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::ArtboardGroup(artboard_group) => {
+			let mut table = ArtboardGroupTable::empty();
+			for (artboard, source_node_id) in artboard_group.artboards {
+				table.push(Instance {
+					instance: artboard,
+					transform: DAffine2::IDENTITY,
+					alpha_blending: AlphaBlending::default(),
+					source_node_id,
+				});
+			}
+			table
+		}
+		EitherFormat::ArtboardGroupTable(artboard_group_table) => artboard_group_table,
+	})
 }
+
+pub type ArtboardGroupTable = Instances<Artboard>;
 
 #[node_macro::node(category(""))]
-async fn layer<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	stack: impl Node<F, Output = GraphicGroup>,
-	#[implementations(
-		() -> GraphicElement,
-		Footprint -> GraphicElement,
-	)]
-	element: impl Node<F, Output = GraphicElement>,
-	node_path: Vec<NodeId>,
-) -> GraphicGroup {
-	let mut element = element.eval(footprint).await;
-	let mut stack = stack.eval(footprint).await;
-	if stack.transform.matrix2.determinant() != 0. {
-		*element.transform_mut() = stack.transform.inverse() * element.transform();
-	} else {
-		stack.clear();
-		stack.transform = DAffine2::IDENTITY;
-	}
-
+async fn layer(_: impl Ctx, mut stack: GraphicGroupTable, element: GraphicElement, node_path: Vec<NodeId>) -> GraphicGroupTable {
 	// Get the penultimate element of the node path, or None if the path is too short
-	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	stack.push((element, encapsulating_node_id));
+	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
+
+	stack.push(Instance {
+		instance: element,
+		transform: DAffine2::IDENTITY,
+		alpha_blending: AlphaBlending::default(),
+		source_node_id,
+	});
+
 	stack
 }
 
 #[node_macro::node(category("Debug"))]
-async fn to_element<F: 'n + Send, Data: Into<GraphicElement> + 'n>(
+async fn to_element<Data: Into<GraphicElement> + 'n>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroupTable,
+	 	VectorDataTable,
+		ImageFrameTable<Color>,
+	 	TextureFrameTable,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-	 	() -> VectorData,
-		() -> ImageFrame<Color>,
-	 	() -> TextureFrame,
-	 	Footprint -> GraphicGroup,
-	 	Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-	 	Footprint -> TextureFrame,
-	)]
-	data: impl Node<F, Output = Data>,
+	data: Data,
 ) -> GraphicElement {
-	data.eval(footprint).await.into()
+	data.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn to_group<F: 'n + Send, Data: Into<GraphicGroup> + 'n>(
+async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
+	_: impl Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		GraphicGroupTable,
+		VectorDataTable,
+		ImageFrameTable<Color>,
+		TextureFrameTable,
 	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		() -> TextureFrame,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-		Footprint -> TextureFrame,
-	)]
-	element: impl Node<F, Output = Data>,
-) -> GraphicGroup {
-	element.eval(footprint).await.into()
+	element: Data,
+) -> GraphicGroupTable {
+	element.into()
 }
 
 #[node_macro::node(category("General"))]
-async fn flatten_group<F: 'n + Send>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		Footprint -> GraphicGroup,
-	)]
-	group: impl Node<F, Output = GraphicGroup>,
-	fully_flatten: bool,
-) -> GraphicGroup {
-	let nested_group = group.eval(footprint).await;
-	let mut flat_group = GraphicGroup::EMPTY;
-	fn flatten_group(result_group: &mut GraphicGroup, current_group: GraphicGroup, fully_flatten: bool) {
-		let mut collection_group = GraphicGroup::EMPTY;
-		for (element, reference) in current_group.elements {
-			if let GraphicElement::GraphicGroup(mut nested_group) = element {
-				nested_group.transform *= current_group.transform;
-				let mut sub_group = GraphicGroup::EMPTY;
-				if fully_flatten {
-					flatten_group(&mut sub_group, nested_group, fully_flatten);
-				} else {
-					for (collection_element, _) in &mut nested_group.elements {
-						*collection_element.transform_mut() = nested_group.transform * collection_element.transform();
+async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: bool) -> GraphicGroupTable {
+	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
+	fn flatten_group(output_group_table: &mut GraphicGroupTable, current_group_table: GraphicGroupTable, fully_flatten: bool, recursion_depth: usize) {
+		for current_instance in current_group_table.instance_ref_iter() {
+			let current_element = current_instance.instance.clone();
+			let reference = *current_instance.source_node_id;
+
+			let recurse = fully_flatten || recursion_depth == 0;
+
+			match current_element {
+				// If we're allowed to recurse, flatten any GraphicGroups we encounter
+				GraphicElement::GraphicGroup(mut current_element) if recurse => {
+					// Apply the parent group's transform to all child elements
+					for graphic_element in current_element.instance_mut_iter() {
+						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
 					}
-					sub_group = nested_group;
+
+					flatten_group(output_group_table, current_element, fully_flatten, recursion_depth + 1);
 				}
-				collection_group.append(&mut sub_group.elements);
-			} else {
-				collection_group.push((element, reference));
+				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
+				_ => {
+					output_group_table.push(Instance {
+						instance: current_element,
+						transform: *current_instance.transform,
+						alpha_blending: *current_instance.alpha_blending,
+						source_node_id: reference,
+					});
+				}
 			}
 		}
-
-		result_group.append(&mut collection_group.elements);
 	}
-	flatten_group(&mut flat_group, nested_group, fully_flatten);
-	flat_group
+
+	let mut output = GraphicGroupTable::default();
+	flatten_group(&mut output, group, fully_flatten, 0);
+
+	output
 }
 
 #[node_macro::node(category(""))]
-async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + 'n>(
+async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
+	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
-		(),
-		(),
-		(),
-		(),
-		Footprint,
+		Context -> GraphicGroupTable,
+		Context -> VectorDataTable,
+		Context -> ImageFrameTable<Color>,
+		Context -> TextureFrameTable,
 	)]
-	mut footprint: F,
-	#[implementations(
-		() -> GraphicGroup,
-		() -> VectorData,
-		() -> ImageFrame<Color>,
-		() -> TextureFrame,
-		Footprint -> GraphicGroup,
-		Footprint -> VectorData,
-		Footprint -> ImageFrame<Color>,
-		Footprint -> TextureFrame,
-	)]
-	contents: impl Node<F, Output = Data>,
+	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
 	location: IVec2,
 	dimensions: IVec2,
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	footprint.apply_transform(&DAffine2::from_translation(location.as_dvec2()));
-	let graphic_group = contents.eval(footprint).await;
+	let footprint = ctx.try_footprint().copied();
+	let mut new_ctx = OwnedContextImpl::from(ctx);
+	if let Some(mut footprint) = footprint {
+		footprint.translate(location.as_dvec2());
+		new_ctx = new_ctx.with_footprint(footprint);
+	}
+	let graphic_group = contents.eval(new_ctx.into_context()).await;
 
 	Artboard {
 		graphic_group: graphic_group.into(),
@@ -398,85 +421,56 @@ async fn to_artboard<F: 'n + Send + ApplyTransform, Data: Into<GraphicGroup> + '
 }
 
 #[node_macro::node(category(""))]
-async fn append_artboard<F: 'n + Send + Copy>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ArtboardGroup,
-		Footprint -> ArtboardGroup,
-	)]
-	artboards: impl Node<F, Output = ArtboardGroup>,
-	#[implementations(
-		() -> Artboard,
-		Footprint -> Artboard,
-	)]
-	artboard: impl Node<F, Output = Artboard>,
-	node_path: Vec<NodeId>,
-) -> ArtboardGroup {
-	let artboard = artboard.eval(footprint).await;
-	let mut artboards = artboards.eval(footprint).await;
-
-	// Get the penultimate element of the node path, or None if the path is too short
+async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artboard: Artboard, node_path: Vec<NodeId>) -> ArtboardGroupTable {
+	// Get the penultimate element of the node path, or None if the path is too short.
+	// This is used to get the ID of the user-facing "Artboard" node (which encapsulates this internal "Append Artboard" node).
 	let encapsulating_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
-	artboards.append_artboard(artboard, encapsulating_node_id);
+
+	artboards.push(Instance {
+		instance: artboard,
+		transform: DAffine2::IDENTITY,
+		alpha_blending: AlphaBlending::default(),
+		source_node_id: encapsulating_node_id,
+	});
 
 	artboards
 }
 
-impl From<ImageFrame<Color>> for GraphicElement {
-	fn from(image_frame: ImageFrame<Color>) -> Self {
-		GraphicElement::Raster(Raster::ImageFrame(image_frame))
+// TODO: Remove this one
+impl From<Image<Color>> for GraphicElement {
+	fn from(image_frame: Image<Color>) -> Self {
+		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
 	}
 }
-impl From<TextureFrame> for GraphicElement {
-	fn from(texture: TextureFrame) -> Self {
-		GraphicElement::Raster(Raster::Texture(texture))
+impl From<ImageFrameTable<Color>> for GraphicElement {
+	fn from(image_frame: ImageFrameTable<Color>) -> Self {
+		GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))
 	}
 }
+// TODO: Remove this one
+impl From<ImageTexture> for GraphicElement {
+	fn from(texture: ImageTexture) -> Self {
+		GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture)))
+	}
+}
+impl From<TextureFrameTable> for GraphicElement {
+	fn from(texture: TextureFrameTable) -> Self {
+		GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture))
+	}
+}
+// TODO: Remove this one
 impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
-		GraphicElement::VectorData(Box::new(vector_data))
+		GraphicElement::VectorData(VectorDataTable::new(vector_data))
 	}
 }
-impl From<GraphicGroup> for GraphicElement {
-	fn from(graphic_group: GraphicGroup) -> Self {
+impl From<VectorDataTable> for GraphicElement {
+	fn from(vector_data: VectorDataTable) -> Self {
+		GraphicElement::VectorData(vector_data)
+	}
+}
+impl From<GraphicGroupTable> for GraphicElement {
+	fn from(graphic_group: GraphicGroupTable) -> Self {
 		GraphicElement::GraphicGroup(graphic_group)
-	}
-}
-
-impl Deref for GraphicGroup {
-	type Target = Vec<(GraphicElement, Option<NodeId>)>;
-	fn deref(&self) -> &Self::Target {
-		&self.elements
-	}
-}
-impl DerefMut for GraphicGroup {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.elements
-	}
-}
-
-/// This is a helper trait used for the Into Implementation.
-/// We can't just implement this for all for which from is implemented
-/// as that would conflict with the implementation for `Self`
-trait ToGraphicElement: Into<GraphicElement> {}
-
-impl ToGraphicElement for VectorData {}
-impl ToGraphicElement for ImageFrame<Color> {}
-impl ToGraphicElement for TextureFrame {}
-
-impl<T> From<T> for GraphicGroup
-where
-	T: ToGraphicElement,
-{
-	fn from(value: T) -> Self {
-		Self {
-			elements: (vec![(value.into(), None)]),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: AlphaBlending::default(),
-		}
 	}
 }

@@ -1,11 +1,14 @@
 use convert_case::{Case, Casing};
 use indoc::{formatdoc, indoc};
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, ToTokens};
+use quote::{ToTokens, format_ident};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
-use syn::{AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, WhereClause};
+use syn::{
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, WhereClause, parse_quote,
+};
 
 use crate::codegen::generate_node_code;
 
@@ -39,15 +42,57 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) display_name: Option<LitStr>,
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
+	pub(crate) properties_string: Option<LitStr>,
 	// Add more attributes as needed
 }
 
 #[derive(Debug, Default)]
-pub enum ValueSource {
+pub enum ParsedValueSource {
 	#[default]
 	None,
 	Default(TokenStream2),
 	Scope(LitStr),
+}
+
+// #[widget(ParsedWidgetOverride::Hidden)]
+// #[widget(ParsedWidgetOverride::String = "Some string")]
+// #[widget(ParsedWidgetOverride::Custom = "Custom string")]
+#[derive(Debug, Default)]
+pub enum ParsedWidgetOverride {
+	#[default]
+	None,
+	Hidden,
+	String(LitStr),
+	Custom(LitStr),
+}
+
+impl Parse for ParsedWidgetOverride {
+	fn parse(input: ParseStream) -> syn::Result<Self> {
+		// Parse the full path (e.g., ParsedWidgetOverride::Hidden)
+		let path: Path = input.parse()?;
+
+		// Ensure the path starts with `ParsedWidgetOverride`
+		if path.segments.len() == 2 && path.segments[0].ident == "ParsedWidgetOverride" {
+			let variant = &path.segments[1].ident;
+
+			match variant.to_string().as_str() {
+				"Hidden" => Ok(ParsedWidgetOverride::Hidden),
+				"String" => {
+					input.parse::<syn::Token![=]>()?;
+					let lit: LitStr = input.parse()?;
+					Ok(ParsedWidgetOverride::String(lit))
+				}
+				"Custom" => {
+					input.parse::<syn::Token![=]>()?;
+					let lit: LitStr = input.parse()?;
+					Ok(ParsedWidgetOverride::Custom(lit))
+				}
+				_ => Err(syn::Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
+			}
+		} else {
+			Err(syn::Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -55,17 +100,23 @@ pub(crate) enum ParsedField {
 	Regular {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
+		description: String,
+		widget_override: ParsedWidgetOverride,
 		ty: Type,
 		exposed: bool,
-		value_source: ValueSource,
-		number_min: Option<LitFloat>,
-		number_max: Option<LitFloat>,
+		value_source: ParsedValueSource,
+		number_soft_min: Option<LitFloat>,
+		number_soft_max: Option<LitFloat>,
+		number_hard_min: Option<LitFloat>,
+		number_hard_max: Option<LitFloat>,
 		number_mode_range: Option<ExprTuple>,
 		implementations: Punctuated<Type, Comma>,
 	},
 	Node {
 		pat_ident: PatIdent,
 		name: Option<LitStr>,
+		description: String,
+		widget_override: ParsedWidgetOverride,
 		input_type: Type,
 		output_type: Type,
 		implementations: Punctuated<Implementation, Comma>,
@@ -124,6 +175,7 @@ impl Parse for NodeFnAttributes {
 		let mut display_name = None;
 		let mut path = None;
 		let mut skip_impl = false;
+		let mut properties_string = None;
 
 		let content = input;
 		// let content;
@@ -163,6 +215,16 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
+				Meta::List(meta) if meta.path.is_ident("properties") => {
+					if properties_string.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
+					}
+					let parsed_properties_string: LitStr = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., name(\"channel_mixer_properties\")"))?;
+
+					properties_string = Some(parsed_properties_string);
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
@@ -170,7 +232,7 @@ impl Parse for NodeFnAttributes {
 							r#"
 							Unsupported attribute in `node`.
 							Supported attributes are 'category', 'path' and 'name'.
-							
+
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
 							"#
@@ -185,6 +247,7 @@ impl Parse for NodeFnAttributes {
 			display_name,
 			path,
 			skip_impl,
+			properties_string,
 		})
 	}
 }
@@ -341,25 +404,46 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `name` value for argument '{}': {}", ident, e))))
 		.transpose()?;
 
+	let widget_override = extract_attribute(attrs, "widget")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid `widget override` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?
+		.unwrap_or_default();
+
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
-		(Some(default_value), _) => ValueSource::Default(default_value),
-		(_, Some(scope)) => ValueSource::Scope(scope),
-		_ => ValueSource::None,
+		(Some(default_value), _) => ParsedValueSource::Default(default_value),
+		(_, Some(scope)) => ParsedValueSource::Scope(scope),
+		_ => ParsedValueSource::None,
 	};
 
-	let number_min = extract_attribute(attrs, "min")
+	let number_soft_min = extract_attribute(attrs, "soft_min")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `min` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_min` value for argument '{}': {}", ident, e)))
 		})
 		.transpose()?;
-	let number_max = extract_attribute(attrs, "max")
+	let number_soft_max = extract_attribute(attrs, "soft_max")
 		.map(|attr| {
 			attr.parse_args()
-				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `max` value for argument '{}': {}", ident, e)))
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `soft_max` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+
+	let number_hard_min = extract_attribute(attrs, "hard_min")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_min` value for argument '{}': {}", ident, e)))
+		})
+		.transpose()?;
+	let number_hard_max = extract_attribute(attrs, "hard_max")
+		.map(|attr| {
+			attr.parse_args()
+				.map_err(|e| Error::new_spanned(attr, format!("Invalid numerical `hard_max` value for argument '{}': {}", ident, e)))
 		})
 		.transpose()?;
 
@@ -383,12 +467,27 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
+	let description = attrs
+		.iter()
+		.filter_map(|a| {
+			if a.style != AttrStyle::Outer {
+				return None;
+			}
+			let Meta::NameValue(name_val) = &a.meta else { return None };
+			if name_val.path.get_ident().map(|x| x.to_string()) != Some("doc".into()) {
+				return None;
+			}
+			let Expr::Lit(expr_lit) = &name_val.value else { return None };
+			let Lit::Str(ref text) = expr_lit.lit else { return None };
+			Some(text.value().trim().to_string())
+		})
+		.fold(String::new(), |acc, b| acc + &b + "\n");
 
 	if is_node {
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
-		if !matches!(&value_source, ValueSource::None) {
+		if !matches!(&value_source, ParsedValueSource::None) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
@@ -399,6 +498,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Node {
 			pat_ident,
 			name,
+			description,
+			widget_override,
 			input_type,
 			output_type,
 			implementations,
@@ -411,9 +512,13 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		Ok(ParsedField::Regular {
 			pat_ident,
 			name,
+			description,
+			widget_override,
 			exposed,
-			number_min,
-			number_max,
+			number_soft_min,
+			number_soft_max,
+			number_hard_min,
+			number_hard_max,
 			number_mode_range,
 			ty,
 			value_source,
@@ -431,11 +536,7 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
 						let output_type = args.args.iter().find_map(|arg| {
 							if let syn::GenericArgument::AssocType(assoc_type) = arg {
-								if assoc_type.ident == "Output" {
-									Some(assoc_type.ty.clone())
-								} else {
-									None
-								}
+								if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
 							} else {
 								None
 							}
@@ -463,10 +564,12 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 // Modify the new_node_fn function to use the code generation
 pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 	let parse_result = parse_node_fn(attr, item.clone());
-	let Ok(parsed_node) = parse_result else {
+	let Ok(mut parsed_node) = parse_result else {
 		let e = parse_result.unwrap_err();
 		return Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error();
 	};
+
+	parsed_node.replace_impl_trait_in_input();
 	if let Err(e) = crate::validation::validate_node_fn(&parsed_node) {
 		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
 	}
@@ -479,11 +582,36 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
 	}
 }
 
+impl ParsedNodeFn {
+	fn replace_impl_trait_in_input(&mut self) {
+		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
+			let ident = Ident::new("_Input", impl_trait.span());
+			let mut bounds = impl_trait.bounds;
+			bounds.push(parse_quote!('n));
+			self.fn_generics.push(GenericParam::Type(TypeParam {
+				attrs: Default::default(),
+				ident: ident.clone(),
+				colon_token: Some(Default::default()),
+				bounds,
+				eq_token: None,
+				default: None,
+			}));
+			self.input.ty = parse_quote!(#ident);
+			if self.input.implementations.is_empty() {
+				self.input.implementations.push(parse_quote!(gcore::Context));
+			}
+		}
+		if self.input.pat_ident.ident == "_" {
+			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use proc_macro2::Span;
 	use proc_macro_crate::FoundCrate;
+	use proc_macro2::Span;
 	use quote::{quote, quote_spanned};
 	use syn::parse_quote;
 	fn pat_ident(name: &str) -> PatIdent {
@@ -531,11 +659,11 @@ mod tests {
 					assert_eq!(p_name, e_name);
 					assert_eq!(p_exp, e_exp);
 					match (p_default, e_default) {
-						(ValueSource::None, ValueSource::None) => {}
-						(ValueSource::Default(p), ValueSource::Default(e)) => {
+						(ParsedValueSource::None, ParsedValueSource::None) => {}
+						(ParsedValueSource::Default(p), ParsedValueSource::Default(e)) => {
 							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
 						}
-						(ValueSource::Scope(p), ValueSource::Scope(e)) => {
+						(ParsedValueSource::Scope(p), ParsedValueSource::Scope(e)) => {
 							assert_eq!(p.value(), e.value());
 						}
 						_ => panic!("Mismatched default values"),
@@ -583,6 +711,7 @@ mod tests {
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
 				skip_impl: true,
+				properties_string: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -599,11 +728,15 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("b"),
 				name: None,
+				description: String::new(),
+				widget_override: ParsedWidgetOverride::None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::None,
-				number_min: None,
-				number_max: None,
+				value_source: ParsedValueSource::None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -635,6 +768,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -652,6 +786,8 @@ mod tests {
 				ParsedField::Node {
 					pat_ident: pat_ident("transform_target"),
 					name: None,
+					description: String::new(),
+					widget_override: ParsedWidgetOverride::None,
 					input_type: parse_quote!(Footprint),
 					output_type: parse_quote!(T),
 					implementations: Punctuated::new(),
@@ -659,11 +795,15 @@ mod tests {
 				ParsedField::Regular {
 					pat_ident: pat_ident("translate"),
 					name: None,
+					description: String::new(),
+					widget_override: ParsedWidgetOverride::None,
 					ty: parse_quote!(DVec2),
 					exposed: false,
-					value_source: ValueSource::None,
-					number_min: None,
-					number_max: None,
+					value_source: ParsedValueSource::None,
+					number_soft_min: None,
+					number_soft_max: None,
+					number_hard_min: None,
+					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
 				},
@@ -681,7 +821,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: (), #[default(50.)] radius: f64) -> VectorData {
+			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> VectorData {
 				// Implementation details...
 			}
 		);
@@ -693,6 +833,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -701,7 +842,7 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("_"),
-				ty: parse_quote!(()),
+				ty: parse_quote!(impl Ctx),
 				implementations: Punctuated::new(),
 			},
 			output_type: parse_quote!(VectorData),
@@ -709,11 +850,15 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("radius"),
 				name: None,
+				description: String::new(),
+				widget_override: ParsedWidgetOverride::None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::Default(quote!(50.)),
-				number_min: None,
-				number_max: None,
+				value_source: ParsedValueSource::Default(quote!(50.)),
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -729,7 +874,7 @@ mod tests {
 	fn test_node_with_implementations() {
 		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
-			fn levels<P: Pixel>(image: ImageFrame<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrame<P> {
+			fn levels<P: Pixel>(image: ImageFrameTable<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrameTable<P> {
 				// Implementation details...
 			}
 		);
@@ -741,6 +886,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -749,19 +895,23 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("image"),
-				ty: parse_quote!(ImageFrame<P>),
+				ty: parse_quote!(ImageFrameTable<P>),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrame<P>),
+			output_type: parse_quote!(ImageFrameTable<P>),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
 				name: None,
+				description: String::new(),
+				widget_override: ParsedWidgetOverride::None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::None,
-				number_min: None,
-				number_max: None,
+				value_source: ParsedValueSource::None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: {
 					let mut p = Punctuated::new();
@@ -784,9 +934,10 @@ mod tests {
 		let input = quote!(
 			fn add(
 				a: f64,
+				/// b
 				#[range((0., 100.))]
-				#[min(-500.)]
-				#[max(500.)]
+				#[soft_min(-500.)]
+				#[soft_max(500.)]
 				b: f64,
 			) -> f64 {
 				a + b
@@ -800,6 +951,7 @@ mod tests {
 				display_name: None,
 				path: Some(parse_quote!(graphene_core::TestNode)),
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -816,11 +968,15 @@ mod tests {
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("b"),
 				name: None,
+				description: String::from("b"),
+				widget_override: ParsedWidgetOverride::None,
 				ty: parse_quote!(f64),
 				exposed: false,
-				value_source: ValueSource::None,
-				number_min: Some(parse_quote!(-500.)),
-				number_max: Some(parse_quote!(500.)),
+				value_source: ParsedValueSource::None,
+				number_soft_min: Some(parse_quote!(-500.)),
+				number_soft_max: Some(parse_quote!(500.)),
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: Some(parse_quote!((0., 100.))),
 				implementations: Punctuated::new(),
 			}],
@@ -836,7 +992,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrame<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrameTable<Color> {
 				// Implementation details...
 			}
 		);
@@ -848,6 +1004,7 @@ mod tests {
 				display_name: None,
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -859,16 +1016,20 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrame<Color>),
+			output_type: parse_quote!(ImageFrameTable<Color>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
 				name: None,
 				ty: parse_quote!(String),
+				description: String::new(),
+				widget_override: ParsedWidgetOverride::None,
 				exposed: true,
-				value_source: ValueSource::None,
-				number_min: None,
-				number_max: None,
+				value_source: ParsedValueSource::None,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
 				number_mode_range: None,
 				implementations: Punctuated::new(),
 			}],
@@ -896,6 +1057,7 @@ mod tests {
 				display_name: Some(parse_quote!("CustomNode2")),
 				path: None,
 				skip_impl: false,
+				properties_string: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
@@ -970,7 +1132,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, ImageFrame<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, ImageFrameTable<Color>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -996,10 +1158,10 @@ mod tests {
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> ImageFrame<Color>,
+				() -> ImageFrameTable<Color>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> ImageFrame<Color>,
+				Footprint -> ImageFrameTable<Color>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

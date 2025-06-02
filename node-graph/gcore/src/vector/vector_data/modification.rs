@@ -1,10 +1,10 @@
 use super::*;
+use crate::Ctx;
 use crate::uuid::generate_uuid;
-
 use bezier_rs::BezierHandles;
-use dyn_any::DynAny;
-
 use core::hash::BuildHasher;
+use dyn_any::DynAny;
+use kurbo::{BezPath, PathEl};
 use std::collections::{HashMap, HashSet};
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
@@ -130,7 +130,7 @@ impl SegmentModification {
 			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
 			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
 
-			if !start.unwrap_or_default().map_or(true, |start| start.is_finite()) || !end.unwrap_or_default().map_or(true, |end| end.is_finite()) {
+			if !start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
 				warn!("Invalid handles when applying a segment modification");
 				continue;
 			}
@@ -421,24 +421,12 @@ impl core::hash::Hash for VectorModification {
 	}
 }
 
-use crate::transform::Footprint;
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify<F: 'n + Send + Sync + Clone>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	input: F,
-	#[implementations(
-		() -> VectorData,
-		Footprint -> VectorData,
-	)]
-	vector_data: impl Node<F, Output = VectorData>,
-	modification: Box<VectorModification>,
-) -> VectorData {
-	let mut vector_data = vector_data.eval(input).await;
-	modification.apply(&mut vector_data);
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
+	for mut vector_data_instance in vector_data.instance_mut_iter() {
+		modification.apply(&mut vector_data_instance.instance);
+	}
 	vector_data
 }
 
@@ -501,7 +489,7 @@ fn modify_existing() {
 }
 
 // Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -559,4 +547,96 @@ where
 
 	let visitor = HashMapVisitor { marker: std::marker::PhantomData };
 	deserializer.deserialize_seq(visitor)
+}
+
+pub struct AppendBezpath<'a> {
+	first_point_index: Option<usize>,
+	last_point_index: Option<usize>,
+	first_segment_id: Option<SegmentId>,
+	last_segment_id: Option<SegmentId>,
+	next_handle: Option<BezierHandles>,
+	point_id: PointId,
+	segment_id: SegmentId,
+	vector_data: &'a mut VectorData,
+}
+
+impl<'a> AppendBezpath<'a> {
+	fn new(vector_data: &'a mut VectorData) -> Self {
+		Self {
+			first_point_index: None,
+			last_point_index: None,
+			first_segment_id: None,
+			last_segment_id: None,
+			next_handle: None,
+			point_id: vector_data.point_domain.next_id(),
+			segment_id: vector_data.segment_domain.next_id(),
+			vector_data,
+		}
+	}
+
+	fn append_path_element(&mut self, handle: BezierHandles, point: kurbo::Point, next_element: Option<&PathEl>) {
+		if let Some(PathEl::ClosePath) = next_element {
+			self.next_handle = Some(handle);
+		} else {
+			let next_point_index = self.vector_data.point_domain.ids().len();
+			self.vector_data.point_domain.push(self.point_id.next_id(), point_to_dvec2(point));
+
+			let next_segment_id = self.segment_id.next_id();
+			self.vector_data
+				.segment_domain
+				.push(self.segment_id.next_id(), self.last_point_index.unwrap(), next_point_index, handle, StrokeId::ZERO);
+
+			self.last_point_index = Some(next_point_index);
+			self.first_segment_id = Some(self.first_segment_id.unwrap_or(next_segment_id));
+			self.last_segment_id = Some(next_segment_id);
+		}
+	}
+
+	pub fn append_bezpath(vector_data: &'a mut VectorData, bezpath: BezPath) {
+		let mut this = Self::new(vector_data);
+
+		let stroke_id = StrokeId::ZERO;
+		let fill_id = FillId::ZERO;
+
+		for i in 0..bezpath.elements().len() {
+			let current_element = bezpath.elements()[i];
+			let next_element = bezpath.elements().get(i + 1);
+
+			match current_element {
+				kurbo::PathEl::MoveTo(point) => {
+					let next_point_index = this.vector_data.point_domain.ids().len();
+					this.vector_data.point_domain.push(this.point_id.next_id(), point_to_dvec2(point));
+					this.first_point_index = Some(next_point_index);
+					this.last_point_index = Some(next_point_index);
+				}
+				kurbo::PathEl::ClosePath => match (this.first_point_index, this.last_point_index) {
+					(Some(first_point_index), Some(last_point_index)) => {
+						let next_segment_id = this.segment_id.next_id();
+						this.vector_data
+							.segment_domain
+							.push(next_segment_id, last_point_index, first_point_index, this.next_handle.unwrap_or(BezierHandles::Linear), stroke_id);
+
+						let next_region_id = this.vector_data.region_domain.next_id();
+						// In case there is only one anchor point.
+						let first_segment_id = this.first_segment_id.unwrap_or(next_segment_id);
+
+						this.vector_data.region_domain.push(next_region_id, first_segment_id..=next_segment_id, fill_id);
+					}
+					_ => {
+						error!("Empty bezpath cannot be closed.")
+					}
+				},
+				kurbo::PathEl::LineTo(point) => this.append_path_element(BezierHandles::Linear, point, next_element),
+				kurbo::PathEl::QuadTo(handle, point) => this.append_path_element(BezierHandles::Quadratic { handle: point_to_dvec2(handle) }, point, next_element),
+				kurbo::PathEl::CurveTo(handle_start, handle_end, point) => this.append_path_element(
+					BezierHandles::Cubic {
+						handle_start: point_to_dvec2(handle_start),
+						handle_end: point_to_dvec2(handle_end),
+					},
+					point,
+					next_element,
+				),
+			}
+		}
+	}
 }

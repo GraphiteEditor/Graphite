@@ -170,8 +170,8 @@ export function getSubpathDemoArgs(): SubpathDemoArgs[] {
 export const tSliderOptions = {
 	variable: "t",
 	inputType: "slider",
-	min: 0,
-	max: 1,
+	min: -0.01,
+	max: 1.01,
 	step: 0.01,
 	default: 0.5,
 };

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
+	import type { Editor } from "@graphite/editor";
+	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -26,9 +26,9 @@
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
-		<TextLabel bold={true}>{widgetData.name}</TextLabel>
+		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
-			icon={widgetData.pinned ? "CheckboxChecked" : "CheckboxUnchecked"}
+			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
 			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
 			size={24}
 			action={(e) => {
@@ -65,11 +65,11 @@
 				{#if isWidgetSpanRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
 				{:else if isWidgetSpanColumn(layoutGroup)}
-					<span style="color: #d6536e">Error: The WidgetSpan used here should be a row not a column</span>
+					<TextLabel styles={{ color: "#d6536e" }}>Error: The WidgetSpan used here should be a row not a column</TextLabel>
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />
 				{:else}
-					<span style="color: #d6536e">Error: The widget that belongs here has an invalid layout group type</span>
+					<TextLabel styles={{ color: "#d6536e" }}>Error: The widget that belongs here has an invalid layout group type</TextLabel>
 				{/if}
 			{/each}
 		</LayoutCol>

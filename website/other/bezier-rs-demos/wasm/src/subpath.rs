@@ -1,8 +1,6 @@
 use crate::svg_drawing::*;
 use crate::utils::{parse_cap, parse_join, parse_point};
-
 use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
-
 use glam::DVec2;
 use js_sys::Array;
 use js_sys::Math;
@@ -139,7 +137,9 @@ impl WasmSubpath {
 		let r = separation_disk_diameter / 2.;
 
 		let subpath_svg = self.to_default_svg();
-		let points = self.0.poisson_disk_points(separation_disk_diameter, Math::random);
+		let points = self
+			.0
+			.poisson_disk_points(separation_disk_diameter, Math::random, &[(self.0.clone(), self.0.bounding_box().unwrap())], 0);
 
 		let points_style = format!("<style class=\"poisson\">style.poisson ~ circle {{ fill: {RED}; opacity: 0.25; }}</style>");
 		let content = points
@@ -441,6 +441,21 @@ impl WasmSubpath {
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
 		wrap_svg_tag(format!("{subpath_svg}{rectangle_svg}{intersections_svg}"))
+	}
+
+	pub fn inside_subpath(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
+		let array = js_points.dyn_into::<Array>().unwrap();
+		let points = array.iter().map(|p| parse_point(&p));
+		let other = Subpath::<EmptyId>::from_anchors(points, true);
+
+		let is_inside = self.0.is_inside_subpath(&other, Some(error), Some(minimum_separation));
+		let color = if is_inside { RED } else { BLACK };
+
+		let self_svg = self.to_default_svg();
+		let mut other_svg = String::new();
+		other.curve_to_svg(&mut other_svg, CURVE_ATTRIBUTES.replace(BLACK, color));
+
+		wrap_svg_tag(format!("{self_svg}{other_svg}"))
 	}
 
 	pub fn curvature(&self, t: f64, t_variant: String) -> String {

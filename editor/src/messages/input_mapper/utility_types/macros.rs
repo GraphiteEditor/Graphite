@@ -24,7 +24,7 @@ macro_rules! modifiers {
 /// Each handler adds or removes actions in the form of message discriminants. Here, we tie an input condition (such as a hotkey) to an action's full message.
 /// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
 macro_rules! entry {
-	($input:expr; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr$(,)?) => {
+	($input:expr_2021; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr_2021$(,)?) => {
 		&[&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
 			MappingEntry {
@@ -72,7 +72,7 @@ macro_rules! entry {
 /// (key_up, key_down, double_click, wheel_scroll, pointer_move)
 /// ```
 macro_rules! mapping {
-	[$($entry:expr),* $(,)?] => {{
+	[$($entry:expr_2021),* $(,)?] => {{
 		let mut key_up = KeyMappingEntries::key_array();
 		let mut key_down = KeyMappingEntries::key_array();
 		let mut key_up_no_repeat = KeyMappingEntries::key_array();
@@ -107,7 +107,7 @@ macro_rules! mapping {
 
 /// Constructs an `ActionKeys` macro with a certain `Action` variant, conveniently wrapped in `Some()`.
 macro_rules! action_keys {
-	($action:expr) => {
+	($action:expr_2021) => {
 		Some(crate::messages::input_mapper::utility_types::misc::ActionKeys::Action($action.into()))
 	};
 }

@@ -8,19 +8,20 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing, TypeSource,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-
+use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
+use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use renderer::Quad;
-
-use glam::{DAffine2, DVec2, IVec2};
 use std::cmp::Ordering;
 
 #[derive(Debug)]
@@ -34,6 +35,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
 	pub navigation_handler: &'a NavigationMessageHandler,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Clone)]
@@ -43,14 +45,16 @@ pub struct NodeGraphMessageHandler {
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
-	/// The start position when dragging nodes
-	pub drag_start: Option<DragStart>,
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
 	/// Used to prevent entering a nested network if the node is dragged after double clicking
-	drag_occurred: bool,
-	/// Stored in node graph coordinates
-	box_selection_start: Option<DVec2>,
+	node_has_moved_in_drag: bool,
+	/// If dragging the selected nodes, this stores the starting position both in viewport and node graph coordinates,
+	/// plus a flag indicating if it has been dragged since the mousedown began.
+	pub drag_start: Option<(DragStart, bool)>,
+	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
+	/// plus a flag indicating if it has been dragged since the mousedown began.
+	box_selection_start: Option<(DVec2, bool)>,
 	/// Restore the selection before box selection if it is aborted
 	selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
@@ -71,6 +75,12 @@ pub struct NodeGraphMessageHandler {
 	auto_panning: AutoPanning,
 	/// The node to preview on mouse up if alt-clicked
 	preview_on_mouse_up: Option<NodeId>,
+	// The index of the import that is being moved
+	reordering_import: Option<usize>,
+	// The index of the export that is being moved
+	reordering_export: Option<usize>,
+	// The end index of the moved port
+	end_index: Option<usize>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -86,6 +96,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
 			navigation_handler,
+			preferences,
 		} = data;
 
 		match message {
@@ -99,8 +110,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_layer_id] });
 			}
-			NodeGraphMessage::AddImport => network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, String::new(), breadcrumb_network_path),
-			NodeGraphMessage::AddExport => network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, String::new(), breadcrumb_network_path),
+			NodeGraphMessage::AddImport => {
+				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", "", breadcrumb_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
+			NodeGraphMessage::AddExport => {
+				network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, "", breadcrumb_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			NodeGraphMessage::Init => {
 				responses.add(BroadcastMessage::SubscribeEvent {
 					on: BroadcastEvent::SelectionChanged,
@@ -110,11 +127,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				collapsed.0.retain(|&layer| network_interface.document_metadata().layer_exists(layer));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
-				let selected_layers = network_interface
-					.selected_nodes(&[])
-					.unwrap()
-					.selected_layers(network_interface.document_metadata())
-					.collect::<Vec<_>>();
+				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();
 				if selected_layers.len() <= 1 {
 					responses.add(DocumentMessage::SetRangeSelectionLayer {
 						new_layer: selected_layers.first().cloned(),
@@ -249,7 +262,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
 			NodeGraphMessage::DeleteSelectedNodes { delete_children } => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in DeleteSelectedNodes");
 					return;
 				};
@@ -285,7 +298,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
 				// Do not enter the nested network if the node was dragged
-				if self.drag_occurred {
+				if self.node_has_moved_in_drag {
 					return;
 				}
 
@@ -298,46 +311,63 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				{
 					return;
 				};
-				let Some(network) = network_interface.network(selection_network_path) else {
-					log::error!("Could not get network in EnterNestedNetwork");
-					return;
-				};
-
-				let Some(node) = network.nodes.get(&node_id) else { return };
-				if let DocumentNodeImplementation::Network(_) = node.implementation {
+				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}
-			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
-				let Some(network) = network_interface.network(selection_network_path) else {
+			NodeGraphMessage::ExposeInput {
+				input_connector,
+				set_to_exposed,
+				start_transaction,
+			} => {
+				let InputConnector::Node { node_id, input_index } = input_connector else {
+					log::error!("Cannot expose/hide export");
 					return;
 				};
-
-				let Some(node) = network.nodes.get(&node_id) else {
+				let Some(node) = network_interface.document_node(&node_id, selection_network_path) else {
 					log::error!("Could not find node {node_id} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-
-				let Some(mut input) = node.inputs.get(input_index).cloned() else {
+				let Some(mut node_input) = node.inputs.get(input_index).cloned() else {
 					log::error!("Could not find input {input_index} in NodeGraphMessage::ExposeInput");
 					return;
 				};
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = new_exposed;
-				} else {
-					// TODO: Should network and node inputs be able to be hidden?
-					log::error!("Could not hide/show input: {:?} since it is not NodeInput::Value", input);
+
+				// If we're un-exposing an input that is not a value, then disconnect it. This will convert it to a value input,
+				// so we can come back to handle this message again to set the exposed value in the second run-through.
+				if !set_to_exposed && node_input.as_value().is_none() {
+					// Reversed order because we are pushing front
+					responses.add_front(NodeGraphMessage::ExposeInput {
+						input_connector,
+						set_to_exposed,
+						start_transaction: false,
+					});
+					responses.add_front(NodeGraphMessage::DisconnectInput { input_connector });
+					responses.add_front(DocumentMessage::StartTransaction);
 					return;
 				}
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Add a history step, but only do so if we didn't already start a transaction in the first run-through of this message in the above code
+				if start_transaction {
+					responses.add_front(DocumentMessage::StartTransaction);
+				}
 
+				// If this node's input is a value type, we set its chosen exposed state
+				if let NodeInput::Value { exposed, .. } = &mut node_input {
+					*exposed = set_to_exposed;
+				}
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
-					input,
+					input: node_input,
 				});
+
+				// Finish the history step
+				responses.add(DocumentMessage::CommitTransaction);
+
+				// Update the graph UI and re-render
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, node_template } => {
 				network_interface.insert_node(node_id, node_template, selection_network_path);
@@ -351,7 +381,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::MergeSelectedNodes => {
 				let new_ids = network_interface
-					.selected_nodes(breadcrumb_network_path)
+					.selected_nodes_in_nested_network(breadcrumb_network_path)
 					.unwrap()
 					.selected_nodes()
 					.map(|id| (*id, *id))
@@ -367,12 +397,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let mut import_connections = Vec::new();
 				let mut export_connections = Vec::new();
 				// Scan current nodes top to bottom and find all inputs/outputs connected to nodes that are not in the copied nodes. These will represent the new imports and exports.
-				let Some(nodes_sorted_top_to_bottom) =
-					network_interface.nodes_sorted_top_to_bottom(network_interface.selected_nodes(breadcrumb_network_path).unwrap().selected_nodes(), breadcrumb_network_path)
-				else {
+				let Some(nodes_sorted_top_to_bottom) = network_interface.nodes_sorted_top_to_bottom(
+					network_interface.selected_nodes_in_nested_network(breadcrumb_network_path).unwrap().selected_nodes(),
+					breadcrumb_network_path,
+				) else {
 					return;
 				};
-				//Ensure that nodes can be grouped by checking if there is an unselected node between selected nodes
+				// Ensure that nodes can be grouped by checking if there is an unselected node between selected nodes
 				for selected_node_id in &selected_node_ids {
 					for input_index in 0..network_interface.number_of_inputs(selected_node_id, breadcrumb_network_path) {
 						let input_connector = InputConnector::node(*selected_node_id, input_index);
@@ -559,23 +590,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let node_graph_point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
 
-				let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
-					log::error!("Could not get modify import export in PointerDown");
-					return;
-				};
-
-				if modify_import_export.add_export.intersect_point_no_stroke(node_graph_point) {
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::AddExport);
-					responses.add(NodeGraphMessage::SendGraph);
-					return;
-				} else if modify_import_export.add_import.intersect_point_no_stroke(node_graph_point) {
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::AddImport);
-					responses.add(NodeGraphMessage::SendGraph);
-					return;
-				}
-
 				if network_interface
 					.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Grip, selection_network_path)
 					.is_some()
@@ -592,8 +606,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if right_click {
 					// Abort dragging a node
 					if self.drag_start.is_some() {
-						responses.add(DocumentMessage::AbortTransaction);
 						self.drag_start = None;
+						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
 						});
@@ -610,24 +624,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
-						responses.add(DocumentMessage::AbortTransaction);
 						self.wire_in_progress_from_connector = None;
 						self.wire_in_progress_to_connector = None;
+						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 						return;
 					}
 
 					let context_menu_data = if let Some(node_id) = clicked_id {
-						ContextMenuData::ToggleLayer {
-							node_id,
-							currently_is_node: !network_interface.is_layer(&node_id, selection_network_path),
-						}
+						let currently_is_node = !network_interface.is_layer(&node_id, selection_network_path);
+						ContextMenuData::ToggleLayer { node_id, currently_is_node }
 					} else {
-						ContextMenuData::CreateNode
+						ContextMenuData::CreateNode { compatible_type: None }
 					};
 
 					// TODO: Create function
-					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
+					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode { compatible_type: None }) {
 						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
@@ -651,8 +663,39 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
+				let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+					log::error!("Could not get modify import export in PointerDown");
+					return;
+				};
+
+				if modify_import_export.add_import_export.clicked_input_port_from_point(node_graph_point).is_some() {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::AddExport);
+					return;
+				} else if modify_import_export.add_import_export.clicked_output_port_from_point(node_graph_point).is_some() {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::AddImport);
+					return;
+				} else if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
+					return;
+				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
+					return;
+				} else if let Some(move_import_index) = modify_import_export.reorder_imports_exports.clicked_output_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::StartTransaction);
+					self.reordering_import = Some(move_import_index);
+					return;
+				} else if let Some(move_export_index) = modify_import_export.reorder_imports_exports.clicked_input_port_from_point(node_graph_point) {
+					responses.add(DocumentMessage::StartTransaction);
+					self.reordering_export = Some(move_export_index);
+					return;
+				}
+
 				self.selection_before_pointer_down = network_interface
-					.selected_nodes(selection_network_path)
+					.selected_nodes_in_nested_network(selection_network_path)
 					.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect())
 					.unwrap_or_default();
 
@@ -702,11 +745,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.initial_disconnecting = false;
 
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
+					self.update_node_graph_hints(responses);
 					return;
 				}
 
 				if let Some(clicked_id) = clicked_id {
-					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerDown");
 						return;
 					};
@@ -745,9 +789,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							round_y: 0,
 						};
 
-						self.drag_start = Some(drag_start);
+						self.drag_start = Some((drag_start, false));
 						self.begin_dragging = true;
-						self.drag_occurred = false;
+						self.node_has_moved_in_drag = false;
+						self.update_node_graph_hints(responses);
 					}
 
 					// Update the selection if it was modified
@@ -764,7 +809,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if !shift_click {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
 				}
-				self.box_selection_start = Some(node_graph_point);
+				self.box_selection_start = Some((node_graph_point, false));
+				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerMove { shift } => {
 				if selection_network_path != breadcrumb_network_path {
@@ -853,11 +899,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
-				} else if let Some(drag_start) = &mut self.drag_start {
-					self.drag_occurred = true;
+				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
+					if drag_start.start_x != point.x || drag_start.start_y != point.y {
+						*dragged = true;
+					}
+
+					self.node_has_moved_in_drag = true;
 					if self.begin_dragging {
 						self.begin_dragging = false;
-						if ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Alt as usize) {
+						if ipp.keyboard.get(Key::Alt as usize) {
 							responses.add(NodeGraphMessage::DuplicateSelectedNodes);
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
@@ -879,8 +929,52 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					graph_delta.y -= previous_round_y;
 
 					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true });
-				} else if self.box_selection_start.is_some() {
+
+					self.update_node_graph_hints(responses);
+				} else if let Some((_, box_selection_dragged)) = &mut self.box_selection_start {
+					*box_selection_dragged = true;
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
+					self.update_node_graph_hints(responses);
+				} else if self.reordering_import.is_some() {
+					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+						log::error!("Could not get modify import export in PointerUp");
+						return;
+					};
+					// Find the first import that is below the mouse position
+					self.end_index = Some(
+						modify_import_export
+							.reorder_imports_exports
+							.output_ports()
+							.find_map(|(index, click_target)| {
+								let Some(position) = click_target.bounding_box().map(|bbox| (bbox[0].y + bbox[1].y) / 2.) else {
+									log::error!("Could not get bounding box for import: {index}");
+									return None;
+								};
+								(position > point.y).then_some(*index)
+							})
+							.unwrap_or(modify_import_export.reorder_imports_exports.output_ports().count()),
+					);
+					responses.add(FrontendMessage::UpdateImportReorderIndex { index: self.end_index });
+				} else if self.reordering_export.is_some() {
+					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
+						log::error!("Could not get modify import export in PointerUp");
+						return;
+					};
+					// Find the first export that is below the mouse position
+					self.end_index = Some(
+						modify_import_export
+							.reorder_imports_exports
+							.input_ports()
+							.find_map(|(index, click_target)| {
+								let Some(position) = click_target.bounding_box().map(|bbox| (bbox[0].y + bbox[1].y) / 2.) else {
+									log::error!("Could not get bounding box for export: {index}");
+									return None;
+								};
+								(position > point.y).then_some(*index)
+							})
+							.unwrap_or(modify_import_export.reorder_imports_exports.input_ports().count()),
+					);
+					responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
 				}
 			}
 			NodeGraphMessage::PointerUp => {
@@ -888,7 +982,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
 					return;
 				}
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in PointerUp");
 					return;
 				};
@@ -940,14 +1034,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							warn!("No network_metadata");
 							return;
 						};
+						// Get the compatible type from the output connector
+						let compatible_type = output_connector.and_then(|output_connector| {
+							output_connector.node_id().and_then(|node_id| {
+								let output_index = output_connector.index();
+								// Get the output types from the network interface
+								let output_types = network_interface.output_types(&node_id, selection_network_path);
 
+								// Extract the type if available
+								output_types.get(output_index).and_then(|type_option| type_option.as_ref()).map(|(output_type, _)| {
+									// Create a search term based on the type
+									format!("type:{}", output_type.clone().nested_type())
+								})
+							})
+						});
 						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
-							context_menu_data: ContextMenuData::CreateNode,
+							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
 						responses.add(FrontendMessage::UpdateContextMenuInformation {
@@ -957,15 +1064,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				// End of dragging a node
-				else if let Some(drag_start) = &self.drag_start {
+				else if let Some((drag_start, _)) = &self.drag_start {
 					self.shift_without_push = false;
+
 					// Reset all offsets to end the rubber banding while dragging
 					network_interface.unload_stack_dependents_y_offset(selection_network_path);
-					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else { return };
+					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
+						log::error!("Could not get selected nodes in PointerUp");
+						return;
+					};
+
 					// Only select clicked node if multiple are selected and they were not dragged
 					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
-						if drag_start.start_x == point.x
-							&& drag_start.start_y == point.y
+						let not_dragged = drag_start.start_x == point.x && drag_start.start_y == point.y;
+						if not_dragged
 							&& (selected_nodes.selected_nodes_ref().len() != 1
 								|| selected_nodes
 									.selected_nodes_ref()
@@ -977,7 +1089,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 
 					// Try expand the upstream chain for all layers if there is an eligible node
-					let Some(network) = network_interface.network(selection_network_path) else { return };
+					let Some(network) = network_interface.nested_network(selection_network_path) else { return };
 					for layer in network
 						.nodes
 						.keys()
@@ -989,14 +1101,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
-					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else { return };
+					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
+						log::error!("Could not get selected nodes in PointerUp");
+						return;
+					};
 					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
 					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						let has_primary_output_connection = network_interface
 							.outward_wires(selection_network_path)
 							.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::node(selected_node_id, 0)).is_some_and(|outward_wires| !outward_wires.is_empty()));
-						let Some(network) = network_interface.network(selection_network_path) else {
+						let Some(network) = network_interface.nested_network(selection_network_path) else {
 							return;
 						};
 						if let Some(selected_node) = network.nodes.get(&selected_node_id) {
@@ -1061,6 +1176,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 										!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
 									})
+									.collect::<Vec<_>>()
+									.into_iter()
+									.filter_map(|mut wire| {
+										if let Some(end_node_id) = wire.wire_end.node_id() {
+											let Some(actual_index_from_exposed) = (0..network_interface.number_of_inputs(&end_node_id, selection_network_path))
+												.filter(|&input_index| {
+													network_interface
+														.input_from_connector(&InputConnector::Node { node_id: end_node_id, input_index }, selection_network_path)
+														.is_some_and(|input| input.is_exposed_to_frontend(selection_network_path.is_empty()))
+												})
+												.nth(wire.wire_end.input_index())
+											else {
+												log::error!("Could not get exposed input index for {:?}", wire.wire_end);
+												return None;
+											};
+											wire.wire_end = InputConnector::Node {
+												node_id: end_node_id,
+												input_index: actual_index_from_exposed,
+											};
+										}
+										Some(wire)
+									})
 									.collect::<Vec<_>>();
 
 								let is_stack_wire = |wire: &FrontendNodeWire| match (wire.wire_start.node_id(), wire.wire_end.node_id(), wire.wire_end.input_index()) {
@@ -1074,16 +1211,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let mut node_wires = Vec::new();
 								let mut stack_wires = Vec::new();
 								for wire in overlapping_wires {
-									if is_stack_wire(&wire) {
-										stack_wires.push(wire)
-									} else {
-										node_wires.push(wire)
-									}
-								}
-
-								// Auto convert node to layer when inserting on a single stack wire
-								if stack_wires.len() == 1 && node_wires.is_empty() {
-									network_interface.set_to_node_or_layer(&selected_node_id, selection_network_path, true)
+									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
 								}
 
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
@@ -1100,7 +1228,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									None
 								};
 								if let Some(overlapping_wire) = overlapping_wire {
-									let Some(network) = network_interface.network(selection_network_path) else {
+									let Some(network) = network_interface.nested_network(selection_network_path) else {
 										return;
 									};
 									// Ensure connection is to first visible input of selected node. If it does not have an input then do not connect
@@ -1129,18 +1257,38 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					self.select_if_not_dragged = None;
 				}
-
+				// End of reordering an import
+				else if let (Some(moving_import), Some(end_index)) = (self.reordering_import, self.end_index) {
+					responses.add(NodeGraphMessage::ReorderImport {
+						start_index: moving_import,
+						end_index,
+					});
+					responses.add(DocumentMessage::EndTransaction);
+				}
+				// End of reordering an export
+				else if let (Some(moving_export), Some(end_index)) = (self.reordering_export, self.end_index) {
+					responses.add(NodeGraphMessage::ReorderExport {
+						start_index: moving_export,
+						end_index,
+					});
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				self.drag_start = None;
 				self.begin_dragging = false;
 				self.box_selection_start = None;
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_to_connector = None;
+				self.reordering_export = None;
+				self.reordering_import = None;
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
-				responses.add(FrontendMessage::UpdateBox { box_selection: None })
+				responses.add(FrontendMessage::UpdateBox { box_selection: None });
+				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
+				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
+				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
-				if self.drag_start.is_some() || self.box_selection_start.is_some() {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
 					let _ = self.auto_panning.shift_viewport(ipp, responses);
 				} else {
 					// Auto-panning
@@ -1148,43 +1296,25 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.auto_panning.stop(&messages, responses);
 				}
 			}
-			NodeGraphMessage::PrintSelectedNodeCoordinates => {
-				// TODO: This will also have to print all metadata
-				// for (_, node_to_print) in network
-				// 	.nodes
-				// 	.iter()
-				// 	.filter(|node_id| selected_nodes.selected_nodes().any(|selected_id| selected_id == node_id.0))
-				// {
-				// 	if let DocumentNodeImplementation::Network(network) = &node_to_print.implementation {
-				// 		let mut output = "\r\n\r\n".to_string();
-				// 		output += &node_to_print.name;
-				// 		output += ":\r\n\r\n";
-				// 		let mut nodes = network.nodes.iter().collect::<Vec<_>>();
-				// 		nodes.sort_by_key(|(a, _)| a.0);
-				// 		output += &nodes
-				// 			.iter()
-				// 			.map(|(_, node)| {
-				// 				format!(
-				// 					"metadata: DocumentNodeMetadata {{ position: glam::IVec2::new({}, {}) }}, // {}",
-				// 					node.metadata().position.x, node.metadata().position.y, node.name
-				// 				)
-				// 			})
-				// 			.collect::<Vec<_>>()
-				// 			.join("\r\n");
-				// 		output += "\r\n";
-				// 		output += &format!(
-				// 			"imports_metadata: (NodeId::new(), ({}, {}).into()),\r\n",
-				// 			network.imports_metadata.1.x, network.imports_metadata.1.y
-				// 		);
-				// 		output += &format!(
-				// 			"exports_metadata: (NodeId::new(), ({}, {}).into()),",
-				// 			network.exports_metadata.1.x, network.exports_metadata.1.y
-				// 		);
-				// 		output += "\r\n\r\n";
-				// 		// KEEP THIS `debug!()` - Someday we can remove this once this development utility is no longer needed
-				// 		log::debug!("{output}");
-				// 	}
-				// }
+			NodeGraphMessage::RemoveImport { import_index: usize } => {
+				network_interface.remove_import(usize, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			NodeGraphMessage::RemoveExport { export_index: usize } => {
+				network_interface.remove_export(usize, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			NodeGraphMessage::ReorderImport { start_index, end_index } => {
+				network_interface.reorder_import(start_index, end_index, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			NodeGraphMessage::ReorderExport { start_index, end_index } => {
+				network_interface.reorder_export(start_index, end_index, selection_network_path);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::RunDocumentGraph => {
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
@@ -1230,39 +1360,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let wires = Self::collect_wires(network_interface, breadcrumb_network_path);
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
-					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
-					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-					let add_import = network_interface.frontend_import_modify(breadcrumb_network_path);
-					let add_export = network_interface.frontend_export_modify(breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateImportsExports {
-						imports,
-						exports,
-						add_import,
-						add_export,
+					let wires_direct_not_grid_aligned = preferences.graph_wire_style.is_direct();
+
+					responses.add(NodeGraphMessage::UpdateImportsExports);
+					responses.add(FrontendMessage::UpdateNodeGraph {
+						nodes,
+						wires,
+						wires_direct_not_grid_aligned,
 					});
-					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 					responses.add(FrontendMessage::UpdateLayerWidths {
 						layer_widths,
 						chain_widths,
 						has_left_input_wire,
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
+					self.update_node_graph_hints(responses);
 				}
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
 				if graph_view_overlay_open {
 					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
 					// Send the new edges to the frontend
-					let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
-					let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
-					let add_import = network_interface.frontend_import_modify(breadcrumb_network_path);
-					let add_export = network_interface.frontend_export_modify(breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateImportsExports {
-						imports,
-						exports,
-						add_import,
-						add_export,
-					});
+					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -1272,7 +1391,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (!network_interface.reference(&node_id, selection_network_path).is_some_and(|reference| reference == "Imaginate") || input_index == 0)
+				if (network_interface
+					.reference(&node_id, selection_network_path)
+					.is_none_or(|reference| *reference != Some("Imaginate".to_string())) // TODO: Potentially remove the reference to Imaginate
+					|| input_index == 0)
 					&& network_interface.connected_to_output(&node_id, selection_network_path)
 				{
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1334,7 +1456,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedAsLayersOrNodes");
 					return;
 				};
@@ -1365,11 +1487,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::SetDisplayName { node_id, alias } => {
-				responses.add(DocumentMessage::StartTransaction);
+			NodeGraphMessage::SetDisplayName {
+				node_id,
+				alias,
+				skip_adding_history_step,
+			} => {
+				if !skip_adding_history_step {
+					responses.add(DocumentMessage::StartTransaction);
+				}
 				responses.add(NodeGraphMessage::SetDisplayNameImpl { node_id, alias });
-				// Does not add a history step if the name was not changed
-				responses.add(DocumentMessage::EndTransaction);
+				if !skip_adding_history_step {
+					// Does not add a history step if the name was not changed
+					responses.add(DocumentMessage::EndTransaction);
+				}
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1377,6 +1507,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetDisplayNameImpl { node_id, alias } => {
 				network_interface.set_display_name(&node_id, alias, selection_network_path);
 			}
+			NodeGraphMessage::SetImportExportName { name, index } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::SetImportExportNameImpl { name, index });
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+			}
+			NodeGraphMessage::SetImportExportNameImpl { name, index } => network_interface.set_import_export_name(name, index, breadcrumb_network_path),
 			NodeGraphMessage::TogglePreview { node_id } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::TogglePreviewImpl { node_id });
@@ -1387,7 +1524,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.toggle_preview(node_id, selection_network_path);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
@@ -1405,7 +1542,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids })
 			}
 			NodeGraphMessage::ToggleLocked { node_id } => {
-				let Some(node_metadata) = network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata.get(&node_id) else {
+				let Some(node_metadata) = network_interface.document_network_metadata().persistent_metadata.node_metadata.get(&node_id) else {
 					log::error!("Cannot get node {:?} in NodeGraphMessage::ToggleLocked", node_id);
 					return;
 				};
@@ -1420,20 +1557,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_locked(&node_id, selection_network_path, locked);
 			}
 			NodeGraphMessage::ToggleSelectedIsPinned => {
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedIsPinned");
 					return;
 				};
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected nodes are pinned, unpin them all. Otherwise, pin them all.
-				let pinned = !node_ids.iter().all(|node_id| {
-					if let Some(node) = network_interface.node_metadata(node_id, breadcrumb_network_path) {
-						node.persistent_metadata.pinned
-					} else {
-						false
-					}
-				});
+				let pinned = !node_ids.iter().all(|node_id| network_interface.is_pinned(node_id, breadcrumb_network_path));
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
@@ -1442,17 +1573,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
-				let Some(network) = network_interface.network(selection_network_path) else {
-					return;
-				};
-				let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
 				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !node_ids.iter().all(|node_id| network.nodes.get(node_id).is_some_and(|node| node.visible));
+				let visible = !node_ids.iter().all(|node_id| network_interface.is_visible(node_id, selection_network_path));
 
 				responses.add(DocumentMessage::AddTransaction);
 				for node_id in &node_ids {
@@ -1461,16 +1589,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
 			}
 			NodeGraphMessage::ToggleVisibility { node_id } => {
-				let Some(network) = network_interface.network(selection_network_path) else {
-					return;
-				};
-
-				let Some(node) = network.nodes.get(&node_id) else {
-					log::error!("Cannot get node {node_id} in NodeGraphMessage::ToggleVisibility");
-					return;
-				};
-
-				let visible = !node.visible;
+				let visible = !network_interface.is_visible(&node_id, selection_network_path);
 
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
@@ -1492,7 +1611,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
-				if let Some(box_selection_start) = self.box_selection_start {
+				if let Some((box_selection_start, _)) = self.box_selection_start {
 					// The mouse button was released but we missed the pointer up event
 					// if ((e.buttons & 1) === 0) {
 					// 	completeBoxSelection();
@@ -1522,8 +1641,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.inverse()
 						.transform_point2(ipp.mouse.position);
 
-					let shift = ipp.keyboard.get(crate::messages::tool::tool_messages::tool_prelude::Key::Shift as usize);
-					let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+					let shift = ipp.keyboard.get(Key::Shift as usize);
+					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerMove");
 						return;
 					};
@@ -1552,6 +1671,32 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
 			}
+			NodeGraphMessage::UpdateImportsExports => {
+				let imports = network_interface.frontend_imports(breadcrumb_network_path).unwrap_or_default();
+				let exports = network_interface.frontend_exports(breadcrumb_network_path).unwrap_or_default();
+				let add_import = network_interface
+					.frontend_import_export_modify(
+						|modify_import_export_click_target| modify_import_export_click_target.add_import_export.output_ports().collect::<Vec<_>>(),
+						breadcrumb_network_path,
+					)
+					.into_iter()
+					.next();
+				let add_export = network_interface
+					.frontend_import_export_modify(
+						|modify_import_export_click_target| modify_import_export_click_target.add_import_export.input_ports().collect::<Vec<_>>(),
+						breadcrumb_network_path,
+					)
+					.into_iter()
+					.next();
+
+				responses.add(FrontendMessage::UpdateImportsExports {
+					imports,
+					exports,
+					add_import,
+					add_export,
+				});
+			}
+
 			NodeGraphMessage::UpdateLayerPanel => {
 				Self::update_layer_panel(network_interface, selection_network_path, collapsed, responses);
 			}
@@ -1590,8 +1735,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::UpdateInSelectedNetwork => responses.add(FrontendMessage::UpdateInSelectedNetwork {
 				in_selected_network: selection_network_path == breadcrumb_network_path,
 			}),
+			NodeGraphMessage::UpdateHints => {
+				self.update_node_graph_hints(responses);
+			}
 			NodeGraphMessage::SendSelectedNodes => {
-				let Some(selected_nodes) = network_interface.selected_nodes(breadcrumb_network_path) else {
+				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(breadcrumb_network_path) else {
 					log::error!("Could not get selected nodes in NodeGraphMessage::SendSelectedNodes");
 					return;
 				};
@@ -1601,7 +1749,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 		}
-		let Some(selected_nodes) = network_interface.selected_nodes(selection_network_path) else {
+		let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 			log::error!("Could not get selected nodes in NodeGraphMessageHandler");
 			return;
 		};
@@ -1629,7 +1777,6 @@ impl NodeGraphMessageHandler {
 				ToggleSelectedAsLayersOrNodes,
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
-				PrintSelectedNodeCoordinates,
 				ShiftSelectedNodes,
 			));
 		}
@@ -1637,11 +1784,11 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
-	/// Send the cached layout to the frontend for the options bar at the top of the node panel
+	/// Send the cached layout to the frontend for the control bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(WidgetLayout::new(self.widgets.to_vec())),
-			layout_target: LayoutTarget::NodeGraphBar,
+			layout_target: LayoutTarget::NodeGraphControlBar,
 		});
 	}
 
@@ -1658,32 +1805,25 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
 
-		let Some(selected_nodes) = network_interface.selected_nodes(breadcrumb_network_path) else {
+		let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(breadcrumb_network_path) else {
 			warn!("No selected nodes in update_selection_action_buttons");
 			return;
 		};
 
 		let has_selection = selected_nodes.has_selected_nodes();
-		let selection_includes_layers = network_interface.selected_nodes(&[]).unwrap().selected_layers(network_interface.document_metadata()).count() > 0;
-		let selection_all_locked = network_interface.selected_nodes(&[]).unwrap().selected_unlocked_layers(network_interface).count() == 0;
-		let selection_all_visible = selected_nodes.selected_nodes().all(|id| {
-			if let Some(node) = network.nodes.get(id) {
-				node.visible
-			} else {
-				error!("Could not get node {id} in update_selection_action_buttons");
-				true
-			}
-		});
+		let selection_includes_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).count() > 0;
+		let selection_all_locked = network_interface.selected_nodes().selected_unlocked_layers(network_interface).count() == 0;
+		let selection_all_visible = selected_nodes.selected_nodes().all(|node_id| network_interface.is_visible(node_id, breadcrumb_network_path));
 
 		let mut widgets = vec![
 			PopoverButton::new()
 				.icon(Some("Node".to_string()))
-				.tooltip("Add a new node")
+				.tooltip("New Node (Right Click)")
 				.popover_layout({
 					let node_chooser = NodeCatalog::new()
 						.on_update(move |node_type| {
@@ -1706,16 +1846,19 @@ impl NodeGraphMessageHandler {
 			//
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			//
+			IconButton::new("Folder", 24)
+				.tooltip("Group Selected")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.on_update(|_| {
+					let group_folder_type = GroupFolderType::Layer;
+					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+				})
+				.disabled(!has_selection)
+				.widget_holder(),
 			IconButton::new("NewLayer", 24)
 				.tooltip("New Layer")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
-			IconButton::new("Folder", 24)
-				.tooltip("Group Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
-				.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
-				.disabled(!has_selection)
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip("Delete Selected")
@@ -1756,7 +1899,7 @@ impl NodeGraphMessageHandler {
 		// If only one node is selected then show the preview or stop previewing button
 		if let Some(node_id) = previewing {
 			let button = TextButton::new("End Preview")
-				.icon(Some("Rescale".to_string()))
+				.icon(Some("FrameAll".to_string()))
 				.tooltip("Restore preview to the graph output")
 				.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 				.widget_holder();
@@ -1768,7 +1911,7 @@ impl NodeGraphMessageHandler {
 				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
 			if selection_is_not_already_the_output && no_other_selections {
 				let button = TextButton::new("Preview")
-					.icon(Some("Rescale".to_string()))
+					.icon(Some("FrameAll".to_string()))
 					.tooltip("Preview selected node/layer (Shortcut: Alt-click node/layer)")
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 					.widget_holder();
@@ -1821,7 +1964,7 @@ impl NodeGraphMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 		];
-		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, "Node Graph"));
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true));
 		widgets.extend([
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
@@ -1839,11 +1982,7 @@ impl NodeGraphMessageHandler {
 	/// Collate the properties panel sections for a node graph
 	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-		let Some(network) = context.network_interface.network(context.selection_network_path) else {
-			warn!("No network in collate_properties");
-			return Vec::new();
-		};
-		let Some(selected_nodes) = context.network_interface.selected_nodes(context.selection_network_path) else {
+		let Some(selected_nodes) = context.network_interface.selected_nodes_in_nested_network(context.selection_network_path) else {
 			warn!("No selected nodes in collate_properties");
 			return Vec::new();
 		};
@@ -1865,28 +2004,42 @@ impl NodeGraphMessageHandler {
 		}
 
 		// Next, we decide what to display based on the number of layers and nodes selected
-		match layers.len() {
+		match *layers.as_slice() {
 			// If no layers are selected, show properties for all selected nodes
-			0 => {
-				let selected_nodes = nodes
-					.iter()
-					.filter_map(|node_id| {
-						network.nodes.get(node_id).map(|node| {
-							let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
-								node.persistent_metadata.pinned
-							} else {
-								error!("Could not get node {node_id} in collate_properties");
-								false
-							};
-
-							node_properties::generate_node_properties(node, *node_id, pinned, context)
-						})
-					})
-					.collect::<Vec<_>>();
+			[] => {
+				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
-					return selected_nodes;
+					let mut properties = Vec::new();
+
+					if let [node_id] = *nodes.as_slice() {
+						properties.push(LayoutGroup::Row {
+							widgets: vec![
+								Separator::new(SeparatorType::Related).widget_holder(),
+								IconLabel::new("Node").tooltip("Name of the selected node").widget_holder(),
+								Separator::new(SeparatorType::Related).widget_holder(),
+								TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
+									.tooltip("Name of the selected node")
+									.on_update(move |text_input| {
+										NodeGraphMessage::SetDisplayName {
+											node_id,
+											alias: text_input.value.clone(),
+											skip_adding_history_step: false,
+										}
+										.into()
+									})
+									.widget_holder(),
+								Separator::new(SeparatorType::Related).widget_holder(),
+							],
+						});
+					}
+
+					properties.extend(selected_nodes);
+
+					return properties;
 				}
 
+				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
+				// This may require store a separate path for the properties panel
 				let mut properties = vec![LayoutGroup::Row {
 					widgets: vec![
 						Separator::new(SeparatorType::Related).widget_holder(),
@@ -1900,20 +2053,20 @@ impl NodeGraphMessageHandler {
 					],
 				}];
 
+				let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
+					warn!("No network in collate_properties");
+					return Vec::new();
+				};
 				// And if no nodes are selected, show properties for all pinned nodes
 				let pinned_node_properties = network
 					.nodes
+					.keys()
+					.cloned()
+					.collect::<Vec<_>>()
 					.iter()
-					.filter_map(|(node_id, node)| {
-						let pinned = if let Some(node) = context.network_interface.node_metadata(node_id, context.selection_network_path) {
-							node.persistent_metadata.pinned
-						} else {
-							error!("Could not get node {node_id} in collate_properties");
-							false
-						};
-
-						if pinned {
-							Some(node_properties::generate_node_properties(node, *node_id, pinned, context))
+					.filter_map(|node_id| {
+						if context.network_interface.is_pinned(node_id, context.selection_network_path) {
+							Some(node_properties::generate_node_properties(*node_id, context))
 						} else {
 							None
 						}
@@ -1924,8 +2077,7 @@ impl NodeGraphMessageHandler {
 				properties
 			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
-			1 => {
-				let layer = layers[0];
+			[layer] => {
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
 					!context
 						.network_interface
@@ -1940,12 +2092,13 @@ impl NodeGraphMessageHandler {
 						Separator::new(SeparatorType::Related).widget_holder(),
 						IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
-						TextInput::new(context.network_interface.frontend_display_name(&layer, context.selection_network_path))
+						TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
 							.tooltip("Name of the selected layer")
 							.on_update(move |text_input| {
 								NodeGraphMessage::SetDisplayName {
 									node_id: layer,
 									alias: text_input.value.clone(),
+									skip_adding_history_step: false,
 								}
 								.into()
 							})
@@ -1983,17 +2136,10 @@ impl NodeGraphMessageHandler {
 							!context.network_interface.is_layer(node_id, context.selection_network_path)
 						}
 					})
-					.filter_map(|(_, node_id)| network.nodes.get(&node_id).map(|node| (node, node_id)))
-					.map(|(node, node_id)| {
-						let pinned = if let Some(node) = context.network_interface.node_metadata(&node_id, context.selection_network_path) {
-							node.persistent_metadata.pinned
-						} else {
-							error!("Could not get node {node_id} in collate_properties");
-							false
-						};
-
-						node_properties::generate_node_properties(node, node_id, pinned, context)
-					})
+					.map(|(_, node_id)| node_id)
+					.collect::<Vec<_>>()
+					.into_iter()
+					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
 
 				layer_properties.extend(node_properties);
@@ -2005,7 +2151,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_wires(network_interface: &NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNodeWire> {
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get network when collecting wires");
 			return Vec::new();
 		};
@@ -2014,26 +2160,23 @@ impl NodeGraphMessageHandler {
 			.iter()
 			.flat_map(|(wire_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, wire_end, index)))
 			.filter_map(|(input, &wire_end, wire_end_input_index)| {
-				if let NodeInput::Node {
-					node_id: wire_start,
-					output_index: wire_start_output_index,
-					// TODO: add ui for lambdas
-					lambda: _,
-				} = *input
-				{
-					Some(FrontendNodeWire {
+				match *input {
+					NodeInput::Node {
+						node_id: wire_start,
+						output_index: wire_start_output_index,
+						// TODO: add ui for lambdas
+						lambda: _,
+					} => Some(FrontendNodeWire {
 						wire_start: OutputConnector::node(wire_start, wire_start_output_index),
 						wire_end: InputConnector::node(wire_end, wire_end_input_index),
 						dashed: false,
-					})
-				} else if let NodeInput::Network { import_index, .. } = *input {
-					Some(FrontendNodeWire {
+					}),
+					NodeInput::Network { import_index, .. } => Some(FrontendNodeWire {
 						wire_start: OutputConnector::Import(import_index),
 						wire_end: InputConnector::node(wire_end, wire_end_input_index),
 						dashed: false,
-					})
-				} else {
-					None
+					}),
+					_ => None,
 				}
 			})
 			.collect::<Vec<_>>();
@@ -2078,7 +2221,7 @@ impl NodeGraphMessageHandler {
 		};
 		let mut can_be_layer_lookup = HashSet::new();
 		let mut position_lookup = HashMap::new();
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
@@ -2094,7 +2237,7 @@ impl NodeGraphMessageHandler {
 			}
 		}
 		let mut frontend_inputs_lookup = frontend_inputs_lookup(breadcrumb_network_path, network_interface);
-		let Some(network) = network_interface.network(breadcrumb_network_path) else {
+		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
@@ -2110,9 +2253,11 @@ impl NodeGraphMessageHandler {
 			let inputs = frontend_inputs_lookup.remove(&node_id).unwrap_or_default();
 			let mut inputs = inputs.into_iter().map(|input| {
 				input.map(|input| FrontendGraphInput {
-					data_type: FrontendGraphDataType::with_type(&input.ty),
-					resolved_type: Some(format!("{:?} from {:?}", &input.ty, input.type_source)),
-					name: input.name.unwrap_or_else(|| input.ty.nested_type().to_string()),
+					data_type: FrontendGraphDataType::displayed_type(&input.ty, &input.type_source),
+					resolved_type: Some(format!("{:?}", &input.ty)),
+					valid_types: input.valid_types.iter().map(|ty| ty.to_string()).collect(),
+					name: input.input_name.unwrap_or_else(|| input.ty.nested_type().to_string()),
+					description: input.input_description.unwrap_or_default(),
 					connected_to: input.output_connector,
 				})
 			});
@@ -2122,8 +2267,8 @@ impl NodeGraphMessageHandler {
 
 			let output_types = network_interface.output_types(&node_id, breadcrumb_network_path);
 			let primary_output_type = output_types.first().cloned().flatten();
-			let frontend_data_type = if let Some((output_type, _)) = &primary_output_type {
-				FrontendGraphDataType::with_type(output_type)
+			let frontend_data_type = if let Some((output_type, type_source)) = &primary_output_type {
+				FrontendGraphDataType::displayed_type(output_type, type_source)
 			} else {
 				FrontendGraphDataType::General
 			};
@@ -2132,7 +2277,8 @@ impl NodeGraphMessageHandler {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
-					resolved_type: primary_output_type.map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
+					description: String::new(),
+					resolved_type: primary_output_type.map(|(input, _)| format!("{input:?}")),
 					connected_to,
 				})
 			} else {
@@ -2144,8 +2290,8 @@ impl NodeGraphMessageHandler {
 				if index == 0 && network_interface.has_primary_output(&node_id, breadcrumb_network_path) {
 					continue;
 				}
-				let frontend_data_type = if let Some((output_type, _)) = &exposed_output {
-					FrontendGraphDataType::with_type(output_type)
+				let frontend_data_type = if let Some((output_type, type_source)) = &exposed_output {
+					FrontendGraphDataType::displayed_type(output_type, type_source)
 				} else {
 					FrontendGraphDataType::General
 				};
@@ -2165,11 +2311,12 @@ impl NodeGraphMessageHandler {
 				exposed_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: output_name,
-					resolved_type: exposed_output.clone().map(|(input, type_source)| format!("{input:?} from {type_source:?}")),
+					description: String::new(),
+					resolved_type: exposed_output.clone().map(|(input, _)| format!("{input:?}")),
 					connected_to,
 				});
 			}
-			let Some(network) = network_interface.network(breadcrumb_network_path) else {
+			let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 				log::error!("Could not get nested network when collecting nodes");
 				return Vec::new();
 			};
@@ -2203,8 +2350,8 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: can_be_layer_lookup.contains(&node_id),
-				reference: network_interface.reference(&node_id, breadcrumb_network_path),
-				display_name: network_interface.frontend_display_name(&node_id, breadcrumb_network_path),
+				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned().unwrap_or_default(),
+				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,
 				primary_output,
@@ -2223,29 +2370,22 @@ impl NodeGraphMessageHandler {
 
 	fn collect_subgraph_names(network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<Vec<String>> {
 		let mut current_network_path = vec![];
-		let mut current_network = network_interface.network(&current_network_path).unwrap();
+		let mut current_network = network_interface.nested_network(&current_network_path).unwrap();
 		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in breadcrumb_network_path {
-			if let Some(node) = current_network.nodes.get(node_id) {
-				if let Some(network) = node.implementation.get_network() {
-					current_network = network;
-				};
-				subgraph_names.push(network_interface.frontend_display_name(node_id, &current_network_path));
-				current_network_path.push(*node_id)
-			} else {
-				// Could not get node in network in breadcrumb_network_path
-				return None;
+			let node = current_network.nodes.get(node_id)?;
+			if let Some(network) = node.implementation.get_network() {
+				current_network = network;
 			};
+			subgraph_names.push(network_interface.display_name(node_id, &current_network_path));
+			current_network_path.push(*node_id)
 		}
 		Some(subgraph_names)
 	}
 
 	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
-		let Some(selected_nodes) = network_interface.selected_nodes(&[]) else {
-			log::error!("Could not get selected layers in update_layer_panel");
-			return;
-		};
-		let selected_layers = selected_nodes
+		let selected_layers = network_interface
+			.selected_nodes()
 			.selected_layers(network_interface.document_metadata())
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
@@ -2263,7 +2403,7 @@ impl NodeGraphMessageHandler {
 			}
 		}
 
-		for (&node_id, node_metadata) in &network_interface.network_metadata(&[]).unwrap().persistent_metadata.node_metadata {
+		for (&node_id, node_metadata) in &network_interface.document_network_metadata().persistent_metadata.node_metadata {
 			if node_metadata.persistent_metadata.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface, &[]);
 
@@ -2273,7 +2413,7 @@ impl NodeGraphMessageHandler {
 						|| (
 							// Check if the last node in the chain has an exposed left input
 							network_interface.upstream_flow_back_from_nodes(vec![node_id], &[], network_interface::FlowType::HorizontalFlow).last().is_some_and(|node_id|
-								network_interface.network(&[]).unwrap().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node| {
+								network_interface.document_node(&node_id, &[]).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node| {
 									if network_interface.is_layer(&node_id, &[]) {
 										node.inputs.iter().filter(|input| input.is_exposed_to_frontend(true)).nth(1).is_some_and(|input| input.as_value().is_some())
 									} else {
@@ -2284,7 +2424,7 @@ impl NodeGraphMessageHandler {
 
 				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network_interface.network(&[]).unwrap().nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
+						network_interface.document_node(&layer.to_node(), &[]).map(|node| node.visible).unwrap_or_default()
 					} else {
 						true
 					}
@@ -2300,7 +2440,7 @@ impl NodeGraphMessageHandler {
 
 				let data = LayerPanelEntry {
 					id: node_id,
-					alias: network_interface.frontend_display_name(&node_id, &[]),
+					alias: network_interface.display_name(&node_id, &[]),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
@@ -2382,13 +2522,55 @@ impl NodeGraphMessageHandler {
 			DVec2::new(input_position.x, input_position.y),
 		]
 	}
+
+	pub fn update_node_graph_hints(&self, responses: &mut VecDeque<Message>) {
+		// A wire is in progress and its start and end connectors are set
+		let wiring = self.wire_in_progress_from_connector.is_some();
+
+		// Node gragging is in progress (having already moved at least one pixel from the mouse down position)
+		let dragging_nodes = self.drag_start.as_ref().is_some_and(|(_, dragged)| *dragged);
+
+		// A box selection is in progress
+		let dragging_box_selection = self.box_selection_start.is_some_and(|(_, box_selection_dragged)| box_selection_dragged);
+
+		// Cancel the ongoing action
+		if wiring || dragging_nodes || dragging_box_selection {
+			let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+			responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			return;
+		}
+
+		// Default hints for all other states
+		let mut hint_data = HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Node"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+		]);
+		if self.has_selection {
+			hint_data.0.extend([
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+				HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Selected"), HintInfo::keys([Key::Control], "Keep Children").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
+					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
+				]),
+			]);
+		}
+		hint_data.0.extend([
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Subgraph")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node Output")]),
+		]);
+		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	}
 }
 
 #[derive(Default)]
 struct InputLookup {
-	name: Option<String>,
+	input_name: Option<String>,
+	input_description: Option<String>,
 	ty: Type,
 	type_source: TypeSource,
+	valid_types: Vec<Type>,
 	output_connector: Option<OutputConnector>,
 }
 
@@ -2396,7 +2578,7 @@ type FrontendInputsLookup = HashMap<NodeId, Vec<Option<InputLookup>>>;
 
 /// Create a lookup hashmap that can be used to create the frontend inputs. This is needed because `input_type` requires a mutable `network_interface`.
 fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface: &mut NodeNetworkInterface) -> FrontendInputsLookup {
-	let Some(network) = network_interface.network(breadcrumb_network_path) else {
+	let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 		return Default::default();
 	};
 	let mut frontend_inputs_lookup = HashMap::new();
@@ -2412,13 +2594,17 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 			}
 
 			// Get the name from the metadata here (since it also requires a reference to the `network_interface`)
-			let name = network_interface.input_name(&node_id, index, breadcrumb_network_path);
-
+			let input_name = network_interface
+				.input_name(node_id, index, breadcrumb_network_path)
+				.filter(|s| !s.is_empty())
+				.map(|name| name.to_string());
+			let input_description = network_interface.input_description(node_id, index, breadcrumb_network_path).map(|description| description.to_string());
 			// Get the output connector that feeds into this input (done here as well for simplicity)
 			let connector = OutputConnector::from_input(input);
 
 			inputs.push(Some(InputLookup {
-				name,
+				input_name,
+				input_description,
 				output_connector: connector,
 				..Default::default()
 			}));
@@ -2430,11 +2616,19 @@ fn frontend_inputs_lookup(breadcrumb_network_path: &[NodeId], network_interface:
 		for (index, value) in value.iter_mut().enumerate() {
 			// Skip not exposed inputs for efficiency
 			let Some(value) = value else { continue };
-
 			// Resolve the type (done in a separate loop because it requires a mutable reference to the `network_interface`)
 			let (ty, type_source) = network_interface.input_type(&InputConnector::node(node_id, index), breadcrumb_network_path);
 			value.ty = ty;
 			value.type_source = type_source;
+		}
+	}
+
+	for (&node_id, value) in frontend_inputs_lookup.iter_mut() {
+		for (index, value) in value.iter_mut().enumerate() {
+			// Skip not exposed inputs for efficiency
+			let Some(value) = value else { continue };
+			// Resolve the type (done in a separate loop because it requires a mutable reference to the `network_interface`)
+			value.valid_types = network_interface.valid_input_types(&InputConnector::node(node_id, index), breadcrumb_network_path);
 		}
 	}
 	frontend_inputs_lookup
@@ -2449,7 +2643,7 @@ impl Default for NodeGraphMessageHandler {
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: Vec::new() }],
 			drag_start: None,
 			begin_dragging: false,
-			drag_occurred: false,
+			node_has_moved_in_drag: false,
 			shift_without_push: false,
 			box_selection_start: None,
 			selection_before_pointer_down: Vec::new(),
@@ -2462,6 +2656,9 @@ impl Default for NodeGraphMessageHandler {
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
 			preview_on_mouse_up: None,
+			reordering_export: None,
+			reordering_import: None,
+			end_index: None,
 		}
 	}
 }
@@ -2474,7 +2671,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
 			&& self.begin_dragging == other.begin_dragging
-			&& self.drag_occurred == other.drag_occurred
+			&& self.node_has_moved_in_drag == other.node_has_moved_in_drag
 			&& self.box_selection_start == other.box_selection_start
 			&& self.initial_disconnecting == other.initial_disconnecting
 			&& self.select_if_not_dragged == other.select_if_not_dragged

@@ -2,7 +2,6 @@ use core::any::TypeId;
 
 #[cfg(not(feature = "std"))]
 pub use alloc::borrow::Cow;
-use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
@@ -30,7 +29,7 @@ macro_rules! concrete {
 
 #[macro_export]
 macro_rules! concrete_with_name {
-	($type:ty, $name:expr) => {
+	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(core::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
@@ -43,16 +42,15 @@ macro_rules! concrete_with_name {
 
 #[macro_export]
 macro_rules! generic {
-	($type:ty) => {{
-		$crate::Type::Generic($crate::Cow::Borrowed(stringify!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Generic($crate::Cow::Borrowed(stringify!($type))) }};
 }
 
 #[macro_export]
 macro_rules! future {
-	($type:ty) => {{
-		$crate::Type::Future(Box::new(concrete!($type)))
-	}};
+	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
+	($type:ty, $name:ty) => {
+		$crate::Type::Future(Box::new(concrete!($type, $name)))
+	};
 }
 
 #[macro_export]
@@ -67,8 +65,20 @@ macro_rules! fn_type {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
 	};
 }
+#[macro_export]
+macro_rules! fn_type_fut {
+	($type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
+	};
+	($in_type:ty, $type:ty, alias: $outname:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
+	};
+	($in_type:ty, $type:ty) => {
+		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
+	};
+}
 
-#[derive(Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -110,7 +120,7 @@ impl NodeIOTypes {
 impl core::fmt::Debug for NodeIOTypes {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		f.write_fmt(format_args!(
-			"node({}) -> {}",
+			"node({}) → {}",
 			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
 			self.return_value
 		))
@@ -131,12 +141,21 @@ impl From<String> for ProtoNodeIdentifier {
 fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
 	use serde::Deserialize;
 
-	// Rename "f32" to "f64"
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
+		"graphene_core::transform::Footprint" => "core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::instances::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
+		"graphene_core::vector::vector_data::VectorData" => "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
+		"graphene_core::raster::image::ImageFrame<Color>"
+		| "graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<Color>>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>>" => {
+			"graphene_core::instances::Instances<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>".to_string()
+		}
 		_ => name,
 	};
+
 	Ok(Cow::Owned(name))
 }
 
@@ -150,9 +169,9 @@ pub struct TypeDescriptor {
 	pub name: Cow<'static, str>,
 	#[serde(default)]
 	pub alias: Option<Cow<'static, str>>,
-	#[serde(default)]
+	#[serde(skip)]
 	pub size: usize,
-	#[serde(default)]
+	#[serde(skip)]
 	pub align: usize,
 }
 
@@ -186,7 +205,7 @@ pub enum Type {
 	/// Runtime type information for a function. Given some input, gives some output.
 	/// See the example and explanation in the `ComposeNode` implementation within the node registry for more info.
 	Fn(Box<Type>, Box<Type>),
-	/// Not used at the moment.
+	/// Represents a future which promises to return the inner type.
 	Future(Box<Type>),
 }
 
@@ -196,7 +215,8 @@ impl Default for Type {
 	}
 }
 
-unsafe impl StaticType for Type {
+#[cfg(feature = "dyn-any")]
+unsafe impl dyn_any::StaticType for Type {
 	type Static = Self;
 }
 
@@ -245,7 +265,7 @@ impl Type {
 }
 
 impl Type {
-	pub fn new<T: StaticType + Sized>() -> Self {
+	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
@@ -254,6 +274,7 @@ impl Type {
 			align: core::mem::align_of::<T>(),
 		})
 	}
+
 	pub fn size(&self) -> Option<usize> {
 		match self {
 			Self::Generic(_) => None,
@@ -272,12 +293,24 @@ impl Type {
 		}
 	}
 
-	pub fn nested_type(self) -> Type {
+	pub fn nested_type(&self) -> &Type {
 		match self {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
-			Self::Future(_) => self,
+			Self::Future(output) => output.nested_type(),
+		}
+	}
+
+	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
+		if let Some(replacement) = f(self) {
+			return Some(std::mem::replace(self, replacement));
+		}
+		match self {
+			Self::Generic(_) => None,
+			Self::Concrete(_) => None,
+			Self::Fn(_, output) => output.replace_nested(f),
+			Self::Future(output) => output.replace_nested(f),
 		}
 	}
 }
@@ -291,26 +324,30 @@ fn format_type(ty: &str) -> String {
 
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		match self {
-			Self::Generic(arg0) => write!(f, "Generic({arg0})"),
+		let result = match self {
+			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(arg0) => write!(f, "Concrete({}, {:?})", arg0.name, arg0.id),
+			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => write!(f, "Concrete({})", format_type(&arg0.name)),
-			Self::Fn(arg0, arg1) => write!(f, "({arg0:?} -> {arg1:?})"),
-			Self::Future(arg0) => write!(f, "Future({arg0:?})"),
-		}
+			Self::Concrete(ty) => format_type(&ty.name),
+			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
+			Self::Future(ty) => format!("{ty:?}"),
+		};
+		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
+		write!(f, "{}", result)
 	}
 }
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Type::Generic(name) => write!(f, "{name}"),
-			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
-			Type::Fn(input, output) => write!(f, "({input} -> {output})"),
-			Type::Future(ty) => write!(f, "Future<{ty}>"),
-		}
+		let result = match self {
+			Type::Generic(name) => name.to_string(),
+			Type::Concrete(ty) => format_type(&ty.name),
+			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
+			Type::Future(ty) => ty.to_string(),
+		};
+		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
+		write!(f, "{}", result)
 	}
 }
 
@@ -323,5 +360,9 @@ impl From<&'static str> for ProtoNodeIdentifier {
 impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
 		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+	}
+
+	pub const fn with_owned_string(name: String) -> Self {
+		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
 }

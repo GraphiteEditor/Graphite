@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 
-	import { type Editor as GraphiteEditor, initWasm, createEditor } from "@graphite/wasm-communication/editor";
+	import { type Editor as GraphiteEditor, initWasm, createEditor } from "@graphite/editor";
 
 	import Editor from "@graphite/components/Editor.svelte";
 

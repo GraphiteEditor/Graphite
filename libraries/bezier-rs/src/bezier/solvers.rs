@@ -1,8 +1,7 @@
 use super::*;
 use crate::polynomial::Polynomial;
-use crate::utils::{solve_cubic, solve_quadratic, TValue};
-use crate::{to_symmetrical_basis_pair, SymmetricalBasis};
-
+use crate::utils::{TValue, solve_cubic, solve_quadratic};
+use crate::{SymmetricalBasis, to_symmetrical_basis_pair};
 use glam::DMat2;
 use std::ops::Range;
 
@@ -99,11 +98,7 @@ impl Bezier {
 	pub fn tangent(&self, t: TValue) -> DVec2 {
 		let t = self.t_value_to_parametric(t);
 		let tangent = self.non_normalized_tangent(t);
-		if tangent.length() > 0. {
-			tangent.normalize()
-		} else {
-			tangent
-		}
+		if tangent.length() > 0. { tangent.normalize() } else { tangent }
 	}
 
 	/// Find the `t`-value(s) such that the tangent(s) at `t` pass through the specified point.
@@ -147,11 +142,7 @@ impl Bezier {
 
 		let numerator = d.x * dd.y - d.y * dd.x;
 		let denominator = (d.x.powf(2.) + d.y.powf(2.)).powf(1.5);
-		if denominator.abs() < MAX_ABSOLUTE_DIFFERENCE {
-			0.
-		} else {
-			numerator / denominator
-		}
+		if denominator.abs() < MAX_ABSOLUTE_DIFFERENCE { 0. } else { numerator / denominator }
 	}
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
@@ -228,7 +219,7 @@ impl Bezier {
 	}
 
 	/// Returns an `Iterator` containing all possible parametric `t`-values at the given `x`-coordinate.
-	pub fn find_tvalues_for_x(&self, x: f64) -> impl Iterator<Item = f64> {
+	pub fn find_tvalues_for_x(&self, x: f64) -> impl Iterator<Item = f64> + use<> {
 		// Compute the roots of the resulting bezier curve
 		match self.handles {
 			BezierHandles::Linear => {

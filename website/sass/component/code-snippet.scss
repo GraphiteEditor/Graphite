@@ -1,0 +1,106 @@
+pre {
+	display: flex;
+	max-width: 100%;
+	color: var(--color-fog);
+	// This zero transform sets this element as the root for `position: fixed`
+	transform: translate(0);
+
+	// Color overrides
+	&,
+	&.z-code {
+		background: var(--color-navy);
+
+		.z-path {
+			color: #679f70;
+
+			span {
+				color: #e6e1dc;
+			}
+		}
+	}
+
+	// Container for the element (span or table) containing the lines of code
+	code {
+		background: initial;
+		color: inherit;
+		display: block;
+		overflow-x: auto;
+		padding: 20px;
+		width: 0;
+		flex: 1 1 auto;
+	}
+
+	// Language name in top right corner
+	&[data-lang] {
+		padding-top: 28px;
+
+		&::before {
+			content: attr(data-lang);
+			color: rgba(var(--color-seaside-rgb), 0.5);
+			text-transform: lowercase;
+			font-family: "Inter Variable", sans-serif;
+			font-size: 0.75em;
+			font-weight: 700;
+			font-style: italic;
+			-webkit-user-select: none;
+			user-select: none;
+			pointer-events: none;
+			position: fixed;
+			top: 0;
+			line-height: 28px;
+			display: block;
+			width: 100%;
+			text-indent: 20px;
+			background: rgba(0, 0, 0, 0.25);
+
+			&[data-lang="sh"] {
+				content: "Shell";
+			}
+
+			&[data-lang="rs"] {
+				content: "Rust";
+			}
+
+			&[data-lang="js"] {
+				content: "JavaScript";
+			}
+
+			&[data-lang="ts"] {
+				content: "TypeScript";
+			}
+		}
+	}
+
+	// Code blocks with line numbers
+	&[data-linenos] table {
+		border-spacing: 0;
+		margin: -20px;
+
+		tr {
+			&:first-child td {
+				padding-top: 20px;
+			}
+
+			&:last-child td {
+				padding-bottom: 20px;
+			}
+
+			td {
+				&:first-child {
+					padding-left: 20px;
+					padding-right: 10px;
+					-webkit-user-select: none;
+					user-select: none;
+					vertical-align: top;
+					text-align: right;
+					background: rgba(0, 0, 0, 0.25);
+				}
+
+				&:last-child {
+					padding-left: 10px;
+					padding-right: 20px;
+				}
+			}
+		}
+	}
+}

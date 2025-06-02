@@ -4,11 +4,10 @@ template = "book.html"
 page_template = "book.html"
 
 [extra]
-order = 3 # Chapter number
-js = ["video-embed.js"]
+order = 5 # Chapter number
 +++
 
-**Graphene** is the node graph engine that powers the Graphite editor.
+Graphene is the node graph engine that powers the Graphite editor.
 
 It's hard to describe in one sentence precisely what Graphene is, because it's a technology that serves several roles when viewed from different angles. But to get a feel for what it encompasses, here is a list of some of its purposes:
 
@@ -89,7 +88,7 @@ Since Graphene is fundamentally a programming language, throughout this document
 | Graph execution   | Program execution                    |
 
 <!-- Our philosophy of building (bootstrapping) our own higher-level language features from the language itself -->
-<!-- Primary inputs/outputs, secondary inputs/outputs, `.eval()`, recompiling when secondary input values are updated but not when primary input data is updated -->
+<!-- Call arguments, construction arguments, `.eval()`, recompiling when construction argument values are updated but not when call argument data changes -->
 <!-- Compose nodes and automatic/manual composition -->
 <!-- Extract/inject nodes and metaprogramming -->
 <!-- Cache nodes and stable node IDs -->

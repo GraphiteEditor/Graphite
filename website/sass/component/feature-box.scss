@@ -1,0 +1,109 @@
+:not(.diptych, .triptych) > :is(.block, .diptych, .triptych) + :is(.block, .diptych, .triptych) {
+	margin-top: calc(120 * var(--variable-px));
+}
+
+.feature-box-narrow,
+.feature-box-outer {
+	padding: calc(var(--feature-box-padding) * var(--variable-px));
+	background-image: url("https://static.graphite.rs/textures/noise.png");
+	background-blend-mode: overlay;
+	background-position: center;
+}
+
+:where(h1, h2, h3, h4, p) + .feature-box-narrow {
+	margin-top: calc(40 * var(--variable-px));
+}
+
+.feature-box-full-image {
+	width: calc(100% + 2 * var(--feature-box-padding) * var(--variable-px));
+	height: auto;
+	margin-left: calc(-1 * var(--feature-box-padding) * var(--variable-px));
+	margin-top: calc(-1 * var(--feature-box-padding) * var(--variable-px));
+	margin-bottom: calc(var(--feature-box-padding) / 2 * var(--variable-px));
+	display: block;
+}
+
+.feature-box-outer {
+	@media screen and (max-width: 1000px) {
+		&.feature-box-outer {
+			margin-left: calc(-1 * var(--page-edge-padding));
+			margin-right: calc(-1 * var(--page-edge-padding));
+			padding-left: var(--page-edge-padding);
+			padding-right: var(--page-edge-padding);
+		}
+	}
+
+	&.feature-box-outer {
+		max-width: unset;
+	}
+
+	.feature-box-inner {
+		max-width: var(--max-width);
+		margin: 0 auto;
+	}
+}
+
+h1.feature-box-header.feature-box-header {
+	&,
+	& a {
+		font-family: "Inter Variable", sans-serif;
+		line-height: 1.5;
+		font-weight: 800;
+		text-transform: uppercase;
+		font-size: calc(1rem * 14 / 9);
+	}
+
+	span {
+		white-space: pre;
+	}
+
+	~ hr {
+		margin-top: 20px;
+		margin-bottom: 40px;
+
+		+ p {
+			margin-top: 0;
+		}
+	}
+}
+
+.diptych,
+.triptych {
+	display: flex;
+	flex-wrap: wrap;
+	gap: calc(var(--feature-box-padding) * var(--variable-px));
+
+	.block {
+		flex: 1 1 0;
+	}
+
+	img[alt=""] {
+		display: block;
+
+		&::after {
+			content: "";
+			display: block;
+			width: 100%;
+			height: 240px;
+			background: var(--color-crimson);
+		}
+	}
+}
+
+.diptych .block {
+	min-width: 320px;
+}
+
+.triptych .block {
+	min-width: 280px;
+}
+
+@media screen and (max-width: 520px) {
+	.diptych .block {
+		min-width: 200px;
+	}
+
+	.triptych .block {
+		min-width: 280px;
+	}
+}

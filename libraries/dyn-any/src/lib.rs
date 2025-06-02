@@ -58,6 +58,13 @@ pub trait DynAny<'a>: 'a {
 	fn type_id(&self) -> TypeId;
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str;
+	fn reborrow_box<'short>(self: Box<Self>) -> Box<dyn DynAny<'short> + 'short>
+	where
+		'a: 'short;
+	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + Send + Sync + 'short)
+	where
+		'a: 'short,
+		Self: Send + Sync;
 }
 
 impl<'a, T: StaticType + 'a> DynAny<'a> for T {
@@ -67,6 +74,20 @@ impl<'a, T: StaticType + 'a> DynAny<'a> for T {
 	#[cfg(feature = "log-bad-types")]
 	fn type_name(&self) -> &'static str {
 		core::any::type_name::<T>()
+	}
+	fn reborrow_box<'short>(self: Box<Self>) -> Box<dyn DynAny<'short> + 'short>
+	where
+		'a: 'short,
+	{
+		self
+	}
+
+	fn reborrow_ref<'short>(&'a self) -> &'short (dyn DynAny<'short> + Send + Sync + 'short)
+	where
+		'a: 'short,
+		Self: Send + Sync,
+	{
+		self
 	}
 }
 pub fn downcast_ref<'a, V: StaticType + 'a>(i: &'a dyn DynAny<'a>) -> Option<&'a V> {
@@ -166,7 +187,6 @@ macro_rules! impl_slice {
 
 mod slice {
 	use super::*;
-
 	use core::slice::*;
 
 	impl_slice!(Iter, IterMut, Chunks, ChunksMut, RChunks, RChunksMut, Windows);
@@ -228,24 +248,24 @@ impl From<()> for Box<dyn DynAny<'static>> {
 }
 
 #[cfg(feature = "alloc")]
-use alloc::{
-	borrow::Cow,
-	boxed::Box,
-	collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque},
-	string::String,
-	vec::Vec,
-};
+use alloc::borrow::Cow;
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+#[cfg(feature = "alloc")]
+use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+use core::cell::{Cell, RefCell, UnsafeCell};
+use core::iter::Empty;
+use core::marker::{PhantomData, PhantomPinned};
+use core::mem::{ManuallyDrop, MaybeUninit};
+use core::num::Wrapping;
+use core::ops::Range;
+use core::pin::Pin;
 use core::sync::atomic::*;
-use core::{
-	cell::{Cell, RefCell, UnsafeCell},
-	iter::Empty,
-	marker::{PhantomData, PhantomPinned},
-	mem::{ManuallyDrop, MaybeUninit},
-	num::Wrapping,
-	ops::Range,
-	pin::Pin,
-	time::Duration,
-};
+use core::time::Duration;
 
 impl_type!(
 	Option<T>, Result<T, E>, Cell<T>, UnsafeCell<T>, RefCell<T>, MaybeUninit<T>,
@@ -265,10 +285,9 @@ impl_type!(
 );
 
 #[cfg(feature = "std")]
-use std::{
-	collections::{HashMap, HashSet},
-	sync::*,
-};
+use std::collections::{HashMap, HashSet};
+#[cfg(feature = "std")]
+use std::sync::*;
 
 #[cfg(feature = "std")]
 impl_type!(Once, Mutex<T>, RwLock<T>, HashSet<T>, HashMap<K, V>);

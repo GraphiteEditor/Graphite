@@ -7,7 +7,7 @@ pub(crate) mod path_segment;
 use glam::DVec2;
 
 #[cfg(feature = "parsing")]
-use crate::path_command::{to_absolute_commands, AbsolutePathCommand, PathCommand};
+use crate::path_command::{AbsolutePathCommand, PathCommand, to_absolute_commands};
 use crate::path_segment::PathSegment;
 
 pub type Path = Vec<PathSegment>;
@@ -107,7 +107,7 @@ where
 			let start = seg.start();
 			let mut commands = Vec::new();
 
-			if last_point.map_or(true, |lp| !start.abs_diff_eq(lp, eps)) {
+			if last_point.is_none_or(|lp| !start.abs_diff_eq(lp, eps)) {
 				if last_point.is_some() {
 					commands.push(PathCommand::Absolute(AbsolutePathCommand::Z));
 				}

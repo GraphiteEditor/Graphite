@@ -1,0 +1,21 @@
+.youtube-embed {
+	position: relative;
+	width: 100%;
+
+	&.aspect-16x9 {
+		padding-top: calc(100% / (16 / 9));
+	}
+
+	img,
+	iframe {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		top: 0;
+		left: 0;
+	}
+
+	img {
+		cursor: pointer;
+	}
+}

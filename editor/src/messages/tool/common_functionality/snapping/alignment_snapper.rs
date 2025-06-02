@@ -1,9 +1,7 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::*;
-
-use graphene_core::renderer::Quad;
-
 use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
 
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentSnapper {
@@ -19,7 +17,7 @@ impl AlignmentSnapper {
 		let document = snap_data.document;
 
 		self.bounding_box_points.clear();
-		if !document.snapping_state.bounds.align {
+		if !document.snapping_state.bounding_box.align_with_edges {
 			return;
 		}
 
@@ -28,7 +26,7 @@ impl AlignmentSnapper {
 				continue;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::Corner)) {
+			if document.snapping_state.target_enabled(SnapTarget::Artboard(ArtboardSnapTarget::CornerPoint)) {
 				let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
 					continue;
 				};
@@ -52,7 +50,7 @@ impl AlignmentSnapper {
 
 	pub fn snap_bbox_points(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		self.collect_bounding_box_points(snap_data, !config.use_existing_candidates);
-		let unselected_geometry = if snap_data.document.snapping_state.target_enabled(SnapTarget::Alignment(AlignmentSnapTarget::Handle)) {
+		let unselected_geometry = if snap_data.document.snapping_state.target_enabled(SnapTarget::Alignment(AlignmentSnapTarget::AlignWithAnchorPoint)) {
 			snap_data.node_snap_cache.map(|cache| cache.unselected.as_slice()).unwrap_or(&[])
 		} else {
 			&[]
@@ -61,25 +59,60 @@ impl AlignmentSnapper {
 		// TODO: snap handle points
 		let document = snap_data.document;
 		let tolerance = snap_tolerance(document);
-
+		let tolerance_squared = tolerance.powi(2);
 		let mut snap_x: Option<SnappedPoint> = None;
 		let mut snap_y: Option<SnappedPoint> = None;
 
 		for target_point in self.bounding_box_points.iter().chain(unselected_geometry) {
 			let target_position = target_point.document_point;
 
+			// Perpendicular snap for line's endpoints
+			if let Some(quad) = target_point.quad.map(|q| q.0) {
+				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
+					let [p1, p2, ..] = quad;
+					let direction = (p2 - p1).normalize();
+					let normal = DVec2::new(-direction.y, direction.x);
+
+					for endpoint in [p1, p2] {
+						if let Some(perpendicular_snap) = Quad::intersect_rays(point.document_point, direction, endpoint, normal) {
+							let distance_squared = point.document_point.distance_squared(perpendicular_snap);
+							if distance_squared < tolerance_squared {
+								let distance = distance_squared.sqrt();
+								let distance_to_align_target = perpendicular_snap.distance_squared(endpoint).sqrt();
+
+								let snap_point = SnappedPoint {
+									snapped_point_document: perpendicular_snap,
+									source: point.source,
+									target: SnapTarget::Alignment(AlignmentSnapTarget::PerpendicularToEndpoint),
+									target_bounds: Some(Quad(quad)),
+									distance,
+									tolerance,
+									distance_to_align_target,
+									fully_constrained: false,
+									at_intersection: true,
+									alignment_target_horizontal: Some(endpoint),
+									..Default::default()
+								};
+								snap_results.points.push(snap_point);
+							}
+						}
+					}
+				}
+			}
 			let [point_on_x, point_on_y] = if let SnapConstraint::Line { origin, direction } = constraint {
 				[
 					Quad::intersect_rays(target_point.document_point, DVec2::Y, origin, direction),
 					Quad::intersect_rays(target_point.document_point, DVec2::X, origin, direction),
 				]
 			} else {
-				[DVec2::new(point.document_point.x, target_position.y), DVec2::new(target_position.x, point.document_point.y)].map(Some)
+				let Some(quad) = target_point.quad.map(|quad| quad.0) else { continue };
+				let edges = [quad[1] - quad[0], quad[3] - quad[0]];
+				edges.map(|edge| edge.try_normalize().map(|edge| (point.document_point - target_position).project_onto(edge) + target_position))
 			};
 
-			let target_geometry = matches!(target_point.target, SnapTarget::Geometry(_));
-			let updated_target = if target_geometry {
-				SnapTarget::Alignment(AlignmentSnapTarget::Handle)
+			let target_path = matches!(target_point.target, SnapTarget::Path(_));
+			let updated_target = if target_path {
+				SnapTarget::Alignment(AlignmentSnapTarget::AlignWithAnchorPoint)
 			} else {
 				target_point.target
 			};
@@ -87,16 +120,16 @@ impl AlignmentSnapper {
 			if let Some(point_on_x) = point_on_x {
 				let distance_to_snapped = point.document_point.distance(point_on_x);
 				let distance_to_align_target = point_on_x.distance(target_position);
-				if distance_to_snapped < tolerance && snap_x.as_ref().map_or(true, |point| distance_to_align_target < point.distance_to_align_target) {
+				if distance_to_snapped < tolerance && snap_x.as_ref().is_none_or(|point| distance_to_align_target < point.distance_to_align_target) {
 					snap_x = Some(SnappedPoint {
 						snapped_point_document: point_on_x,
-						source: point.source, //ToDo map source
+						source: point.source, // TODO(0Hypercube): map source
 						target: updated_target,
 						target_bounds: target_point.quad,
 						distance: distance_to_snapped,
 						tolerance,
 						distance_to_align_target,
-						alignment_target_x: Some(target_position),
+						alignment_target_horizontal: Some(target_position),
 						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
@@ -106,16 +139,16 @@ impl AlignmentSnapper {
 			if let Some(point_on_y) = point_on_y {
 				let distance_to_snapped = point.document_point.distance(point_on_y);
 				let distance_to_align_target = point_on_y.distance(target_position);
-				if distance_to_snapped < tolerance && snap_y.as_ref().map_or(true, |point| distance_to_align_target < point.distance_to_align_target) {
+				if distance_to_snapped < tolerance && snap_y.as_ref().is_none_or(|point| distance_to_align_target < point.distance_to_align_target) {
 					snap_y = Some(SnappedPoint {
 						snapped_point_document: point_on_y,
-						source: point.source, //ToDo map source
+						source: point.source, // TODO(0Hypercube): map source
 						target: updated_target,
 						target_bounds: target_point.quad,
 						distance: distance_to_snapped,
 						tolerance,
 						distance_to_align_target,
-						alignment_target_y: Some(target_position),
+						alignment_target_vertical: Some(target_position),
 						fully_constrained: true,
 						at_intersection: matches!(constraint, SnapConstraint::Line { .. }),
 						..Default::default()
@@ -137,12 +170,12 @@ impl AlignmentSnapper {
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: intersection,
 					source: point.source, // TODO: map source
-					target: SnapTarget::Alignment(AlignmentSnapTarget::Intersection),
+					target: SnapTarget::Alignment(AlignmentSnapTarget::IntersectionPoint),
 					target_bounds: snap_x.target_bounds,
 					distance,
 					tolerance,
-					alignment_target_x: snap_x.alignment_target_x,
-					alignment_target_y: snap_y.alignment_target_y,
+					alignment_target_horizontal: snap_x.alignment_target_horizontal,
+					alignment_target_vertical: snap_y.alignment_target_vertical,
 					constrained: true,
 					at_intersection: true,
 					..Default::default()
@@ -154,22 +187,23 @@ impl AlignmentSnapper {
 			_ => {}
 		}
 	}
+
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
-		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
-		let geometry_selected = snap_data.has_manipulators();
+		let is_path = matches!(point.source, SnapSource::Path(_));
+		let path_selected = snap_data.has_manipulators();
 
-		if is_bbox || (is_geometry && geometry_selected) || (is_geometry && point.alignment) {
+		if is_bbox || (is_path && path_selected) || (is_path && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None, config);
 		}
 	}
 
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
-		let is_geometry = matches!(point.source, SnapSource::Geometry(_));
-		let geometry_selected = snap_data.has_manipulators();
+		let is_path = matches!(point.source, SnapSource::Path(_));
+		let path_selected = snap_data.has_manipulators();
 
-		if is_bbox || (is_geometry && geometry_selected) || (is_geometry && point.alignment) {
+		if is_bbox || (is_path && path_selected) || (is_path && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, constraint, config);
 		}
 	}

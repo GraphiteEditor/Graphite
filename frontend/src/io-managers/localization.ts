@@ -1,5 +1,5 @@
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/wasm-communication/messages";
+import { type Editor } from "@graphite/editor";
+import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/messages";
 
 export function createLocalizationManager(editor: Editor) {
 	// Subscribe to process backend event
@@ -14,7 +14,7 @@ function localizeTimestamp(utc: string): { timestamp: string; year: string } {
 	const date = new Date(utc);
 	if (Number.isNaN(date.getTime())) return { timestamp: utc, year: `${new Date().getFullYear()}` };
 
-	const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "long" })
+	const timezoneName = Intl.DateTimeFormat(undefined, { timeZoneName: "longGeneric" })
 		.formatToParts(new Date())
 		.find((part) => part.type === "timeZoneName");
 

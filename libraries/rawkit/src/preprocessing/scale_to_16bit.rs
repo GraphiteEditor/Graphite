@@ -1,7 +1,7 @@
 use crate::{RawImage, RawPixel, SubtractBlack};
 
 impl RawImage {
-	pub fn scale_to_16bit_fn(&self) -> impl Fn(RawPixel) -> u16 {
+	pub fn scale_to_16bit_fn(&self) -> impl Fn(RawPixel) -> u16 + use<> {
 		let black_level = match self.black {
 			SubtractBlack::CfaGrid(x) => x,
 			_ => unreachable!(),

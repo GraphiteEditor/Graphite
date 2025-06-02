@@ -1,8 +1,7 @@
-use std::io::{Read, Seek};
-
 use super::file::TiffRead;
 use super::values::{CurveLookupTable, Rational, Transform};
 use super::{Ifd, IfdTagType, TiffError};
+use std::io::{Read, Seek};
 
 pub struct TypeAscii;
 pub struct TypeByte;
@@ -41,11 +40,7 @@ impl PrimitiveType for TypeAscii {
 
 	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let value = file.read_ascii()?;
-		if value.is_ascii() {
-			Ok(value)
-		} else {
-			Err(TiffError::InvalidValue)
-		}
+		if value.is_ascii() { Ok(value) } else { Err(TiffError::InvalidValue) }
 	}
 }
 

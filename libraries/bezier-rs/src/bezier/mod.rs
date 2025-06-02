@@ -7,11 +7,9 @@ mod transform;
 
 use crate::consts::*;
 use crate::utils;
-
-pub use structs::*;
-
 use glam::DVec2;
 use std::fmt::{Debug, Formatter, Result};
+pub use structs::*;
 
 /// Representation of the handle point(s) in a bezier segment.
 #[derive(Copy, Clone, PartialEq, Debug)]

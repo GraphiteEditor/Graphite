@@ -82,9 +82,7 @@ impl Fsm for EyedropperToolFsmState {
 	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { global_tool_data, input, .. } = tool_action_data;
 
-		let ToolMessage::Eyedropper(event) = event else {
-			return self;
-		};
+		let ToolMessage::Eyedropper(event) = event else { return self };
 		match (self, event) {
 			// Ready -> Sampling
 			(EyedropperToolFsmState::Ready, mouse_down) if matches!(mouse_down, EyedropperToolMessage::SamplePrimaryColorBegin | EyedropperToolMessage::SampleSecondaryColorBegin) => {
@@ -161,8 +159,8 @@ fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
 fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler, global_tool_data: &DocumentToolData, set_color_choice: Option<String>) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
 		mouse_position: Some(input.mouse.position.into()),
-		primary_color: "#".to_string() + global_tool_data.primary_color.rgb_hex().as_str(),
-		secondary_color: "#".to_string() + global_tool_data.secondary_color.rgb_hex().as_str(),
+		primary_color: "#".to_string() + global_tool_data.primary_color.to_rgb_hex_srgb().as_str(),
+		secondary_color: "#".to_string() + global_tool_data.secondary_color.to_rgb_hex_srgb().as_str(),
 		set_color_choice,
 	});
 }

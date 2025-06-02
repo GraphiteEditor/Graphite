@@ -1,7 +1,8 @@
 use crate::wasm_application_io::WasmEditorApi;
 use core::any::TypeId;
 use core::future::Future;
-use futures::{future::Either, TryFutureExt};
+use futures::TryFutureExt;
+use futures::future::Either;
 use glam::{DVec2, U64Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus, ImaginateTerminationHandle};
 use graph_craft::wasm_application_io::EditorPreferences;
@@ -327,7 +328,7 @@ pub async fn imaginate<'a, P: Pixel>(
 				set_progress(ImaginateStatus::Failed(err.to_string()));
 			}
 		};
-		Image::empty()
+		Image::default()
 	})
 }
 

@@ -1,18 +1,17 @@
-use crate::document::value::TaggedValue;
-use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-
-use dyn_any::DynAny;
-use graphene_core::memo::MemoHashGuard;
-pub use graphene_core::uuid::generate_uuid;
-pub use graphene_core::uuid::NodeId;
-use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 pub mod value;
 
+use crate::document::value::TaggedValue;
+use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+use dyn_any::DynAny;
 use glam::IVec2;
+use graphene_core::memo::MemoHashGuard;
+pub use graphene_core::uuid::NodeId;
+pub use graphene_core::uuid::generate_uuid;
+use graphene_core::{Cow, MemoHash, ProtoNodeIdentifier, Type};
 use log::Metadata;
 use rustc_hash::FxHashMap;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 /// Hash two IDs together, returning a new ID that is always consistent for two input IDs in a specific order.
@@ -31,61 +30,6 @@ fn return_true() -> bool {
 	true
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(untagged))]
-enum NodeInputVersions {
-	OldNodeInput(OldNodeInput),
-	NodeInput(NodeInput),
-}
-
-// TODO: Eventually remove this (probably starting late 2024)
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-pub enum OldNodeInput {
-	/// A reference to another node in the same network from which this node can receive its input.
-	Node { node_id: NodeId, output_index: usize, lambda: bool },
-
-	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: TaggedValue, exposed: bool },
-
-	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
-	Network(Type),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
-}
-
-// TODO: Eventually remove this (probably starting late 2024)
-#[cfg(feature = "serde")]
-fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
-where
-	D: serde::Deserializer<'de>,
-{
-	use serde::Deserialize;
-	let input_versions = Vec::<NodeInputVersions>::deserialize(deserializer)?;
-
-	let inputs = input_versions
-		.into_iter()
-		.map(|old_input| {
-			let old_input = match old_input {
-				NodeInputVersions::OldNodeInput(old_input) => old_input,
-				NodeInputVersions::NodeInput(node_input) => return node_input,
-			};
-			match old_input {
-				OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
-				OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
-				OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
-				OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
-			}
-		})
-		.collect();
-
-	Ok(inputs)
-}
-
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
@@ -100,7 +44,7 @@ pub struct DocumentNode {
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input)
 	/// by using network.update_click_target(node_id).
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_inputs"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
 	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
@@ -282,21 +226,16 @@ impl DocumentNode {
 		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
 		let input_source = &mut self.original_location.inputs_source;
 		for source in source {
-			input_source.insert(source, index + self.original_location.skip_inputs - skip);
+			input_source.insert(source, (index + self.original_location.skip_inputs).saturating_sub(skip));
 		}
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
-		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
+		let DocumentNodeImplementation::ProtoNode(identifier) = self.implementation else {
 			unreachable!("tried to resolve not flattened node on resolved node {self:?}");
 		};
 
-		// TODO replace with proper generics removal
-		let identifier = match fqn.name.clone().split_once('<') {
-			Some((path, _generics)) => ProtoNodeIdentifier { name: Cow::Owned(path.to_string()) },
-			_ => ProtoNodeIdentifier { name: fqn.name },
-		};
 		let (input, mut args) = if let Some(ty) = self.manual_composition {
 			(ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![]))
 		} else {
@@ -304,7 +243,7 @@ impl DocumentNode {
 			match first {
 				NodeInput::Value { tagged_value, .. } => {
 					assert_eq!(self.inputs.len(), 0, "A value node cannot have any inputs. Current inputs: {:?}", self.inputs);
-					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
+					(ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context<'static>)), ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
@@ -455,33 +394,17 @@ impl NodeInput {
 	}
 
 	pub fn as_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, .. } = self {
-			Some(tagged_value)
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
 	}
 	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
-		if let NodeInput::Value { tagged_value, .. } = self {
-			Some(tagged_value.inner_mut())
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
 	}
 	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, exposed: false } = self {
-			Some(tagged_value)
-		} else {
-			None
-		}
+		if let NodeInput::Value { tagged_value, exposed: false } = self { Some(tagged_value) } else { None }
 	}
 
 	pub fn as_node(&self) -> Option<NodeId> {
-		if let NodeInput::Node { node_id, .. } = self {
-			Some(*node_id)
-		} else {
-			None
-		}
+		if let NodeInput::Node { node_id, .. } = self { Some(*node_id) } else { None }
 	}
 }
 
@@ -496,7 +419,7 @@ pub enum OldDocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -531,7 +454,7 @@ pub enum DocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -576,6 +499,13 @@ impl DocumentNodeImplementation {
 		}
 	}
 
+	pub fn get_proto_node(&self) -> Option<&ProtoNodeIdentifier> {
+		match self {
+			DocumentNodeImplementation::ProtoNode(p) => Some(p),
+			_ => None,
+		}
+	}
+
 	pub const fn proto(name: &'static str) -> Self {
 		Self::ProtoNode(ProtoNodeIdentifier::new(name))
 	}
@@ -588,7 +518,7 @@ impl DocumentNodeImplementation {
 	}
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(untagged))]
@@ -597,7 +527,7 @@ pub enum NodeExportVersions {
 	NodeInput(NodeInput),
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 pub struct NodeOutput {
@@ -605,7 +535,7 @@ pub struct NodeOutput {
 	pub node_output_index: usize,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "serde")]
 fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
@@ -650,7 +580,7 @@ pub struct OldDocumentNode {
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_inputs"))]
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
 	// TODO: Remove once this references its definition instead (see above TODO).
@@ -681,7 +611,7 @@ pub struct OldDocumentNode {
 	pub original_location: OriginalLocation,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Metadata about the node including its position in the graph UI
@@ -689,7 +619,7 @@ pub struct OldDocumentNodeMetadata {
 	pub position: IVec2,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Copy, Debug, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
@@ -698,7 +628,7 @@ pub struct OldRootNode {
 	pub output_index: usize,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(PartialEq, Debug, Clone, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OldPreviewing {
@@ -709,14 +639,14 @@ pub enum OldPreviewing {
 	No,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct OldNodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias document upgrade code
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
 	//cfg_attr(feature = "serde", #[cfg_attr(feature = "serde", serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")))]
@@ -736,7 +666,7 @@ pub struct OldNodeNetwork {
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 #[cfg(feature = "serde")]
 fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
 	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
@@ -745,11 +675,11 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	}
 	Ok(s)
 }
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 fn default_import_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(-25, -4))
 }
-// TODO: Eventually remove this (probably starting late 2024)
+// TODO: Eventually remove this document upgrade code
 fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(8, -4))
 }
@@ -760,9 +690,10 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias (probably starting late 2024)
+	// TODO: Eventually remove this alias document upgrade code
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	pub exports: Vec<NodeInput>,
-	/// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
+	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	#[cfg_attr(
@@ -935,12 +866,7 @@ impl NodeNetwork {
 	fn replace_node_inputs(&mut self, node_id: NodeId, old_input: (NodeId, usize), new_input: (NodeId, usize)) {
 		let Some(node) = self.nodes.get_mut(&node_id) else { return };
 		node.inputs.iter_mut().for_each(|input| {
-			if let NodeInput::Node {
-				node_id: ref mut input_id,
-				ref mut output_index,
-				..
-			} = input
-			{
+			if let NodeInput::Node { node_id: input_id, output_index, .. } = input {
 				if (*input_id, *output_index) == old_input {
 					(*input_id, *output_index) = new_input;
 				}
@@ -1234,12 +1160,7 @@ impl NodeNetwork {
 							}
 						}
 						for node_input in self.exports.iter_mut() {
-							if let NodeInput::Node {
-								ref mut node_id,
-								ref mut output_index,
-								..
-							} = node_input
-							{
+							if let NodeInput::Node { node_id, output_index, .. } = node_input {
 								if *node_id == id {
 									*node_id = input_node_id;
 									*output_index = node_input_output_index;
@@ -1375,9 +1296,7 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 mod test {
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-
 	use graphene_core::ProtoNodeIdentifier;
-
 	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {
@@ -1471,7 +1390,7 @@ mod test {
 		assert_eq!(extraction_network.nodes.len(), 1);
 		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
-		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(ref network), ..) if network == &id_node));
+		assert!(matches!(&inputs[0].as_value(), &Some(TaggedValue::DocumentNode(network), ..) if network == &id_node));
 	}
 
 	#[test]
@@ -1560,7 +1479,7 @@ mod test {
 					NodeId(14),
 					ProtoNode {
 						identifier: "graphene_core::value::ClonedNode".into(),
-						input: ProtoNodeInput::None,
+						input: ProtoNodeInput::ManualComposition(concrete!(graphene_core::Context)),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
@@ -1582,7 +1501,7 @@ mod test {
 
 		println!("{:#?}", resolved_network[0]);
 		println!("{construction_network:#?}");
-		assert_eq!(resolved_network[0], construction_network);
+		pretty_assertions::assert_eq!(resolved_network[0], construction_network);
 	}
 
 	fn flat_network() -> NodeNetwork {

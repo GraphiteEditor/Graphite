@@ -1,15 +1,32 @@
 <script lang="ts" context="module">
-	export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
+
+	/// Prevents the escape key from closing the parent floating menu of the given element.
+	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
+	/// After checking for the Escape key, it checks (in one `setTimeout`) for the attribute and ignores the key if it's present.
+	/// Then after two calls of `setTimeout`, we can safely remove the attribute here.
+	export function preventEscapeClosingParentFloatingMenu(element: HTMLElement) {
+		const floatingMenuParent = element.closest("[data-floating-menu-content]") || undefined;
+		if (floatingMenuParent instanceof HTMLElement) {
+			floatingMenuParent.setAttribute("data-escape-does-not-close", "");
+			setTimeout(() => {
+				setTimeout(() => {
+					floatingMenuParent.removeAttribute("data-escape-does-not-close");
+				}, 0);
+			}, 0);
+		}
+	}
 </script>
 
 <script lang="ts">
 	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
 
+	import type { MenuDirection } from "@graphite/messages";
 	import { browserVersion } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 
+	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
 
 	const dispatch = createEventDispatcher<{ open: boolean; naturalWidth: number }>();
@@ -167,6 +184,7 @@
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
+		const viewportBounds = document.documentElement.getBoundingClientRect();
 		workspaceBounds = workspace.getBoundingClientRect();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
@@ -178,17 +196,17 @@
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			const tailOffset = type === "Popover" ? 10 : 0;
-			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.top}px`;
-			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + floatingMenuBounds.bottom}px`;
-			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.left}px`;
-			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + floatingMenuBounds.right}px`;
+			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
+			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (viewportBounds.height - floatingMenuBounds.y)}px`;
+			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
+			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (viewportBounds.width - floatingMenuBounds.x)}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.top}px`;
-			if (tail && direction === "Top") tail.style.bottom = `${floatingMenuBounds.bottom}px`;
-			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.left}px`;
-			if (tail && direction === "Left") tail.style.right = `${floatingMenuBounds.right}px`;
+			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
+			if (tail && direction === "Top") tail.style.bottom = `${viewportBounds.height - floatingMenuBounds.y}px`;
+			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
+			if (tail && direction === "Left") tail.style.right = `${viewportBounds.width - floatingMenuBounds.x}px`;
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -302,7 +320,8 @@
 		}
 
 		// Clean up any messes from lost pointerup events
-		const eventIncludesLmb = Boolean(e.buttons & 1);
+		const BUTTONS_LEFT = 0b0000_0001;
+		const eventIncludesLmb = Boolean(e.buttons & BUTTONS_LEFT);
 		if (!open && !eventIncludesLmb) {
 			pointerStillDown = false;
 			window.removeEventListener("pointerup", pointerUpHandler);
@@ -377,8 +396,15 @@
 	}
 
 	function keyDownHandler(e: KeyboardEvent) {
-		if (escapeCloses && e.key.toLowerCase() === "escape") {
-			dispatch("open", false);
+		if (escapeCloses && e.key === "Escape") {
+			setTimeout(() => {
+				if (!floatingMenuContainer?.querySelector("[data-floating-menu-content][data-escape-does-not-close]")) {
+					dispatch("open", false);
+				}
+			}, 0);
+
+			// Find the parent floating menu and prevent it from also closing with the escape key when this floating menu does
+			if (self) preventEscapeClosingParentFloatingMenu(self);
 		}
 	}
 
@@ -388,13 +414,13 @@
 			dispatch("open", false);
 
 			// Track if the left pointer button is now down so its later click event can be canceled
-			const eventIsForLmb = e.button === 0;
+			const eventIsForLmb = e.button === BUTTON_LEFT;
 			if (eventIsForLmb) pointerStillDown = true;
 		}
 	}
 
 	function pointerUpHandler(e: PointerEvent) {
-		const eventIsForLmb = e.button === 0;
+		const eventIsForLmb = e.button === BUTTON_LEFT;
 		if (pointerStillDown && eventIsForLmb) {
 			// Clean up self
 			pointerStillDown = false;

@@ -1,8 +1,6 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
-
 use graph_craft::document::{NodeId, NodeNetwork};
-
 use serde::ser::SerializeStruct;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

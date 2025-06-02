@@ -21,37 +21,41 @@ On the left, the [**menu bar**](./menu-bar) provides quick access to many editor
 
 <p><img src="https://static.graphite.rs/content/learn/interface/menu-bar.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The menu bar" /></p>
 
-In the (forthcoming) macOS desktop release, the menu bar is absent from the editor window; its functions are instead located in macOS menu bar.
+<!-- In the (forthcoming) macOS desktop release, the menu bar is absent from the editor window; its functions are instead located in macOS menu bar. -->
 
 ### Document title
 
-In the center, the **document title** displays the name of the active document. That name is given a `*` suffix if the file has unsaved changes. For example, *Painting.graphite** would be unsaved but *Painting.graphite* would have no changes since it was last saved.
+In the center, the **document title** displays the name of the active document. That name is given a `*` suffix if the file has unsaved changes. For example, *Painting.graphite** would be unsaved but *Painting.graphite* would have no changes following its last save.
 
 <p><img src="https://static.graphite.rs/content/learn/interface/document-title.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The document title" /></p>
 
 ### Window buttons
 
-On the right, the **window buttons** provide platform-specific controls for the application window. In the (forthcoming) macOS desktop release, this appears on the left side instead.
+On the right, the **window buttons** provide platform-specific controls for the application.
+
+<!-- In the (forthcoming) macOS desktop release, this appears on the left side instead. -->
 
 | | |
 |-|-|
-| **Web** | A button to enter fullscreen mode is displayed.<br /><br />The label "*Go fullscreen to access all hotkeys*" indicates that some shortcut keys like <kbd>Ctrl</kbd><kbd>N</kbd> (macOS: <kbd>⌘</kbd><kbd>N</kbd>) are reserved by the web browser and can only be used in fullscreen mode. (An alternative to fullscreen mode: include <kbd>Alt</kbd> in the shortcut combinations for browser-reserved hotkeys.)<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-web.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Fullscreen button" /> |
-| **Windows<br />& Linux** | The standard window controls are displayed: minimize, maximize/restore down, and close.<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-windows-linux.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Minimize/maximize/close window buttons" /> |
-| **macOS** | The standard window controls are displayed: close, minimize, and fullscreen. These are located on the left of the title bar.<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-macos.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Close/minimize/fullscreen window buttons" /> |
+| **Web** | <p>A button to enter fullscreen mode is displayed.</p><p>The label "*Go fullscreen to access all hotkeys*" indicates that some shortcut keys like <kbd>Ctrl</kbd><kbd>N</kbd> (macOS: <kbd>⌘</kbd><kbd>N</kbd>) are reserved by the web browser and can only be used in fullscreen mode. (An alternative to going fullscreen: include <kbd>Alt</kbd> in the shortcut combinations for browser-reserved hotkeys.)</p><p><img src="https://static.graphite.rs/content/learn/interface/window-buttons-web.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Fullscreen button" /></p> |
+<!-- | **Windows<br />& Linux** | The standard window controls are displayed: minimize, maximize/restore down, and close.<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-windows-linux.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Minimize/maximize/close window buttons" /> | -->
+<!-- | **macOS** | The standard window controls are displayed: close, minimize, and fullscreen. These are located on the left of the title bar.<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-macos.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Close/minimize/fullscreen window buttons" /> | -->
 
 ## Workspace
 
-The **workspace** is the editor's main content area. It houses the **panels** packed next to one another. The **gutter** lines between neighboring panels may be dragged to resize them.
+The **workspace** is the editor's main content area, filled with **panels** arranged next to one another. The **gutter** lines, located between neighboring panels, may be dragged to resize them.
 
-<p><img src="https://static.graphite.rs/content/learn/interface/workspace__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The workspace" /></p>
+<p><img src="https://static.graphite.rs/content/learn/interface/workspace__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The workspace" /></p>
 
 ### Panels
 
-Panels are regions of the UI dedicated to a specific purpose. [**Document**](./document-panel), [**Properties**](./properties-panel), and [**Layers**](./layers-panel) are presently the three panel types. Each will be covered later in the chapter.
+Panels are regions of the UI dedicated to a specific purpose. [**Document**](./document-panel), Properties, and Layers are presently the three panel types.
 
-Each panel name is shown in its **panel tab bar**. Panel tabs provide a quick way to swap between multiple panels occupying the same area (currently only documents support this). Down the road, these tabs will be dockable so the default layout may be customized.
+Each panel name is shown in its **panel header**. Panel tabs offer a quick way to swap between multiple panels occupying the same area (currently only documents support this).
 
-Beneath the panel tab bar, the **panel body** displays the content for its panel type. Each will be described in the following pages.
+Down the road, these tabs will be dockable so the default layout may be customized.
+
+Beneath the panel header, the **panel content** displays the content for its panel type. Each will be described in the following pages.
 
 ## Status bar
 
@@ -75,6 +79,7 @@ The following chart describes each icon representing the mouse inputs you can pe
 
 | | Clicks | Drags | Others |
 |-|:-:|:-:|:-:|
-| **Left<br />mouse<br />button** | Left click<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-left-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Left click icon" /> | Left click drag<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-left-click-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Left click drag icon" /> | Left double-click<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-left-double-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Left double-click icon" /> |
-| **Right<br />mouse<br />button** | Right click<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-right-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Right click icon" /> | Right click drag<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-right-click-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Right click drag icon" /> | Right double-click<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-right-double-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Right double-click icon" /> |
-| **Middle<br />mouse<br />button** | Middle click<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-middle-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Middle click icon" /> | Middle click drag<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-middle-click-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Middle click drag icon" /> | Scroll up/down<br /><br /><img src="https://static.graphite.rs/content/learn/interface/mouse-input-scroll-up.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Scroll up icon" /> <img src="https://static.graphite.rs/content/learn/interface/mouse-input-scroll-down.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Scroll down icon" /> |
+| | | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Drag icon" /><br style="line-height: 4" />Drag | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-stationary.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Mouse kept stationary icon" /><br style="line-height: 4" />Stationary |
+| **Left<br />mouse<br />button** | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-left-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Left click icon" /><br style="line-height: 4" />Left click | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-left-click-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Left click drag icon" /><br style="line-height: 4" />Left click drag | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-left-double-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Left double-click icon" /><br style="line-height: 4" />Left double-click |
+| **Right<br />mouse<br />button** | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-right-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Right click icon" /><br style="line-height: 4" />Right click | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-right-click-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Right click drag icon" /><br style="line-height: 4" />Right click drag | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-right-double-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Right double-click icon" /><br style="line-height: 4" />Right double-click |
+| **Middle<br />mouse<br />button** | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-middle-click.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Middle click icon" /><br style="line-height: 4" />Middle click | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-middle-click-drag.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Middle click drag icon" /><br style="line-height: 4" />Middle click drag | <img src="https://static.graphite.rs/content/learn/interface/mouse-icon-scroll.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Scroll up/down icons" /><br style="line-height: 4" />Scroll up/down |

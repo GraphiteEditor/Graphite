@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
+	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/wasm-communication/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";

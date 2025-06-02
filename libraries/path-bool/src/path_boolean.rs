@@ -63,7 +63,7 @@ new_key_type! {
 //
 // SPDX-License-Identifier: MIT
 
-use crate::aabb::{bounding_box_around_point, bounding_box_max_extent, merge_bounding_boxes, Aabb};
+use crate::aabb::{Aabb, bounding_box_around_point, bounding_box_max_extent, merge_bounding_boxes};
 use crate::epsilons::Epsilons;
 use crate::intersection_path_segment::{path_segment_intersection, segments_equal};
 use crate::path::Path;
@@ -72,9 +72,8 @@ use crate::path_segment::PathSegment;
 #[cfg(feature = "logging")]
 use crate::path_to_path_data;
 use crate::quad_tree::QuadTree;
-
 use glam::DVec2;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{SlotMap, new_key_type};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Display;
@@ -1090,7 +1089,11 @@ fn compute_dual(minor_graph: &MinorGraph) -> Result<DualGraph, BooleanError> {
 			let (key, _) = *areas.iter().max_by_key(|(_, area)| ((area.abs() * 1000.) as u64)).unwrap();
 			*key
 		} else {
-			*windings.iter().find(|(&_, winding)| (winding < &0) ^ reverse_winding).expect("No outer face of a component found.").0
+			*windings
+				.iter()
+				.find(|&&(&_, ref winding)| (winding < &0) ^ reverse_winding)
+				.expect("No outer face of a component found.")
+				.0
 		};
 		#[cfg(feature = "logging")]
 		dbg!(outer_face_key);
@@ -1338,9 +1341,9 @@ fn get_selected_faces<'a>(predicate: &'a impl Fn(u8) -> bool, flags: &'a HashMap
 	flags.iter().filter_map(|(key, &flag)| predicate(flag).then_some(*key))
 }
 
-fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + 'a {
+fn walk_faces<'a>(faces: &'a [DualVertexKey], edges: &SlotMap<DualEdgeKey, DualGraphHalfEdge>, vertices: &SlotMap<DualVertexKey, DualGraphVertex>) -> impl Iterator<Item = PathSegment> + use<'a> {
 	let face_set: HashSet<_> = faces.iter().copied().collect();
-	// TODO: Try using a binary search to avioid the hashset construction
+	// TODO: Try using a binary search to avoid the hashset construction
 	let is_removed_edge = |edge: &DualGraphHalfEdge| face_set.contains(&edge.incident_vertex) == face_set.contains(&edges[edge.twin.unwrap()].incident_vertex);
 
 	let mut edge_to_next = HashMap::new();
@@ -1481,7 +1484,7 @@ impl Display for BooleanError {
 		match self {
 			Self::MultipleOuterFaces => f.write_str("Found multiple candidates for the outer face in a connected component of the dual graph."),
 			Self::NoEarInPolygon => f.write_str("Failed to compute winding order for one of the faces, this usually happens when the polygon is malformed."),
-			Self::InvalidPathCommand(cmd) => f.write_fmt(format_args!("Encountered a '{cmd}' while parsing the svg data which was not recogniezed")),
+			Self::InvalidPathCommand(cmd) => f.write_fmt(format_args!("Encountered a '{cmd}' while parsing the svg data which was not recognized")),
 		}
 	}
 }

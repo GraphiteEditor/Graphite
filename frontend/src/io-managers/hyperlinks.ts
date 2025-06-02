@@ -1,5 +1,5 @@
-import { type Editor } from "@graphite/wasm-communication/editor";
-import { TriggerVisitLink } from "@graphite/wasm-communication/messages";
+import { type Editor } from "@graphite/editor";
+import { TriggerVisitLink } from "@graphite/messages";
 
 export function createHyperlinkManager(editor: Editor) {
 	// Subscribe to process backend event

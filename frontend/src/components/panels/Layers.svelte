@@ -1,18 +1,27 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
+	import {
+		defaultWidgetLayout,
+		patchWidgetLayout,
+		UpdateDocumentLayerDetails,
+		UpdateDocumentLayerStructureJs,
+		UpdateLayersPanelControlBarLeftLayout,
+		UpdateLayersPanelControlBarRightLayout,
+		UpdateLayersPanelBottomBarLayout,
+	} from "@graphite/messages";
+	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
-	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	type LayerListingInfo = {
@@ -47,12 +56,24 @@
 	let dragInPanel = false;
 
 	// Layouts
-	let layersPanelOptionsLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
+	let layersPanelControlBarRightLayout = defaultWidgetLayout();
+	let layersPanelBottomBarLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelOptionsLayout, (updateLayersPanelOptionsLayout) => {
-			patchWidgetLayout(layersPanelOptionsLayout, updateLayersPanelOptionsLayout);
-			layersPanelOptionsLayout = layersPanelOptionsLayout;
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
+			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
+		});
+
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
+			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
+		});
+
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
+			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -135,8 +156,11 @@
 		editor.handle.toggleLayerLock(id);
 	}
 
-	function handleExpandArrowClick(id: bigint) {
-		editor.handle.toggleLayerExpansion(id);
+	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
+		const accel = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const collapseRecursive = e.altKey || accel;
+		editor.handle.toggleLayerExpansion(id, collapseRecursive);
+		e.stopPropagation();
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -403,8 +427,10 @@
 </script>
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
-	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelOptionsLayout} />
+	<LayoutRow class="control-bar" scrollableX={true}>
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
+		<Separator />
+		<WidgetLayout layout={layersPanelControlBarRightLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" data-layer-panel bind:this={list} on:click={() => deselectAllLayers()} on:dragover={updateInsertLine} on:dragend={drop} on:drop={drop}>
@@ -432,10 +458,12 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							title={listing.entry.expanded ? "Collapse" : `Expand${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
-							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
+							title={listing.entry.expanded
+								? "Collapse (Click) / Collapse All (Alt Click)"
+								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
+							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
-						/>
+						></button>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -485,49 +513,46 @@
 			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
 		{/if}
 	</LayoutRow>
+	<LayoutRow class="bottom-bar" scrollableX={true}>
+		<WidgetLayout layout={layersPanelBottomBarLayout} />
+	</LayoutRow>
 </LayoutCol>
 
 <style lang="scss" global>
 	.layers {
-		// Options bar
-		.options-bar {
+		// Control bar
+		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
+			border-bottom: 1px solid var(--color-2-mildblack);
+			justify-content: space-between;
 
-			.widget-span {
-				width: 100%;
-				height: 100%;
-				min-width: 300px;
-			}
-
-			// Blend mode selector and opacity slider
-			.dropdown-input,
-			.number-input {
+			.widget-span:first-child {
 				flex: 1 1 auto;
 			}
+		}
 
-			// Blend mode selector
-			.dropdown-input {
-				max-width: 120px;
-				flex-basis: 120px;
-			}
+		// Bottom bar
+		.bottom-bar {
+			height: 24px;
+			padding-top: 4px;
+			flex: 0 0 auto;
+			margin: 0 4px;
+			justify-content: flex-end;
+			border-top: 1px solid var(--color-2-mildblack);
 
-			// Opacity slider
-			.number-input {
-				max-width: 180px;
-				flex-basis: 180px;
-
-				+ .separator ~ .separator {
-					flex-grow: 1;
-				}
+			.widget-span > * {
+				margin: 0;
 			}
 		}
 
 		// Layer hierarchy
 		.list-area {
-			margin: 4px 0;
 			position: relative;
+			margin-top: 4px;
+			// Combine with the bottom bar to avoid a double border
+			margin-bottom: -1px;
 
 			.layer {
 				flex: 0 0 auto;
@@ -545,11 +570,11 @@
 				}
 
 				&.ancestor-of-selected .expand-arrow:not(.expanded) {
-					background-image: var(--inheritance-stripes-background);
+					background-image: var(--inheritance-dots-background-6-lowergray);
 				}
 
 				&.descendant-of-selected {
-					background-image: var(--inheritance-dots-background);
+					background-image: var(--inheritance-dots-background-4-dimgray);
 				}
 
 				&.selected-but-not-in-selected-network {

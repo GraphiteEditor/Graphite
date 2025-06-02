@@ -1,9 +1,8 @@
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
-use toml::{Table, Value};
-
+use quote::{ToTokens, quote};
 use std::fs;
 use std::path::Path;
+use toml::{Table, Value};
 
 enum CustomValue {
 	String(String),

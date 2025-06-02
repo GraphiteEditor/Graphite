@@ -1,8 +1,7 @@
-use graph_craft::document::value::TaggedValue;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
 use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
 use graphene_core::Type;
-
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -11,12 +10,12 @@ pub enum FrontendGraphDataType {
 	Raster,
 	VectorData,
 	Number,
-	Graphic,
+	Group,
 	Artboard,
 }
 
 impl FrontendGraphDataType {
-	pub fn with_type(input: &Type) -> Self {
+	fn with_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::Image(_) | TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
@@ -30,9 +29,16 @@ impl FrontendGraphDataType {
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
 			| TaggedValue::VecDVec2(_) => Self::Number,
-			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Graphic,
+			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group, // TODO: Is GraphicElement supposed to be included here?
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
+		}
+	}
+
+	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
+		match type_source {
+			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
+			_ => Self::with_type(input),
 		}
 	}
 }
@@ -42,8 +48,11 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
+	#[serde(rename = "validTypes")]
+	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
 	pub connected_to: Option<OutputConnector>,
 }
@@ -53,6 +62,7 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
+	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	#[serde(rename = "connectedTo")]
@@ -99,6 +109,8 @@ pub struct FrontendNodeWire {
 pub struct FrontendNodeType {
 	pub name: String,
 	pub category: String,
+	#[serde(rename = "inputTypes")]
+	pub input_types: Option<Vec<String>>,
 }
 
 impl FrontendNodeType {
@@ -106,6 +118,23 @@ impl FrontendNodeType {
 		Self {
 			name: name.to_string(),
 			category: category.to_string(),
+			input_types: None,
+		}
+	}
+
+	pub fn with_input_types(name: &'static str, category: &'static str, input_types: Vec<String>) -> Self {
+		Self {
+			name: name.to_string(),
+			category: category.to_string(),
+			input_types: Some(input_types),
+		}
+	}
+
+	pub fn with_owned_strings_and_input_types(name: String, category: String, input_types: Vec<String>) -> Self {
+		Self {
+			name,
+			category,
+			input_types: Some(input_types),
 		}
 	}
 }
@@ -154,7 +183,11 @@ pub enum ContextMenuData {
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
 	},
-	CreateNode,
+	CreateNode {
+		#[serde(rename = "compatibleType")]
+		#[serde(default)]
+		compatible_type: Option<String>,
+	},
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -180,6 +213,8 @@ pub struct FrontendClickTargets {
 	pub all_nodes_bounding_box: String,
 	#[serde(rename = "importExportsBoundingBox")]
 	pub import_exports_bounding_box: String,
+	#[serde(rename = "modifyImportExport")]
+	pub modify_import_export: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -188,4 +223,33 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum GraphWireStyle {
+	#[default]
+	Direct = 0,
+	GridAligned = 1,
+}
+
+impl std::fmt::Display for GraphWireStyle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			GraphWireStyle::GridAligned => write!(f, "Grid-Aligned"),
+			GraphWireStyle::Direct => write!(f, "Direct"),
+		}
+	}
+}
+
+impl GraphWireStyle {
+	pub fn tooltip_description(&self) -> &'static str {
+		match self {
+			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes",
+			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes",
+		}
+	}
+
+	pub fn is_direct(&self) -> bool {
+		*self == GraphWireStyle::Direct
+	}
 }

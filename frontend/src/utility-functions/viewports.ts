@@ -1,4 +1,4 @@
-import { type Editor } from "@graphite/wasm-communication/editor";
+import { type Editor } from "@graphite/editor";
 
 export function updateBoundsOfViewports(editor: Editor, container: HTMLElement) {
 	const viewports = Array.from(container.querySelectorAll("[data-viewport]"));

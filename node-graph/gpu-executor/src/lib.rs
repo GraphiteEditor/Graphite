@@ -1,9 +1,9 @@
-use dyn_any::{StaticType, StaticTypeSized};
-use graphene_core::raster::{color::RGBA16F, Image, Pixel, SRGBA8};
-use graphene_core::*;
-
 use bytemuck::{Pod, Zeroable};
+use dyn_any::{StaticType, StaticTypeSized};
 use glam::UVec3;
+use graphene_core::raster::color::RGBA16F;
+use graphene_core::raster::{Image, Pixel, SRGBA8};
+use graphene_core::*;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, dyn_any::DynAny)]

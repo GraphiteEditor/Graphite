@@ -3,10 +3,9 @@ use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-
+use graphene_core::Color;
 use graphene_core::raster::Image;
 use graphene_core::text::Font;
-use graphene_core::Color;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -16,6 +15,8 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
 	DocumentPassMessage {
@@ -46,16 +47,16 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
+	EditorPreferences,
 	FontLoaded {
 		font_family: String,
 		font_style: String,
 		preview_url: String,
 		data: Vec<u8>,
 	},
-	ImaginateCheckServerStatus,
-	ImaginatePollServerStatus,
-	EditorPreferences,
-	ImaginateServerHostname,
+	// ImaginateCheckServerStatus,
+	// ImaginatePollServerStatus,
+	// ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,
@@ -72,12 +73,14 @@ pub enum PortfolioMessage {
 		document_name: String,
 		document_serialized_content: String,
 	},
+	ToggleResetNodesToDefinitionsOnOpen,
 	OpenDocumentFileWithId {
 		document_id: DocumentId,
 		document_name: String,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
+		to_front: bool,
 	},
 	PasteIntoFolder {
 		clipboard: Clipboard,
@@ -86,6 +89,9 @@ pub enum PortfolioMessage {
 	},
 	PasteSerializedData {
 		data: String,
+	},
+	CenterPastedLayers {
+		layers: Vec<LayerNodeIdentifier>,
 	},
 	PasteImage {
 		name: Option<String>,
@@ -103,6 +109,9 @@ pub enum PortfolioMessage {
 	SetActivePanel {
 		panel: PanelType,
 	},
+	SetDevicePixelRatio {
+		ratio: f64,
+	},
 	SelectDocument {
 		document_id: DocumentId,
 	},
@@ -113,6 +122,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		transparent_background: bool,
 	},
+	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
 		ignore_hash: bool,

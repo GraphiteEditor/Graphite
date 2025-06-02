@@ -1,5 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
-use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
+use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
@@ -7,7 +7,6 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-
 use graphene_core::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
@@ -18,6 +17,7 @@ pub struct ToolMessageData<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub node_graph: &'a NodeGraphExecutor,
+	pub preferences: &'a PreferencesMessageHandler,
 }
 
 #[derive(Debug, Default)]
@@ -36,6 +36,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			input,
 			persistent_data,
 			node_graph,
+			preferences,
 		} = data;
 		let font_cache = &persistent_data.font_cache;
 
@@ -63,8 +64,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
-			ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
-
+			// ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
 				let old_tool = tool_data.active_tool_type;
@@ -76,8 +76,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				self.tool_is_active = true;
 
 				// Send the old and new tools a transition to their FSM Abort states
-				let mut send_abort_to_tool = |tool_type, update_hints_and_cursor: bool| {
-					if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+				let mut send_abort_to_tool = |old_tool: ToolType, new_tool: ToolType, update_hints_and_cursor: bool| {
+					if let Some(tool) = tool_data.tools.get_mut(&new_tool) {
 						let mut data = ToolActionHandlerData {
 							document,
 							document_id,
@@ -86,6 +86,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
+							preferences,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -101,9 +102,14 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							tool.process_message(ToolMessage::UpdateCursor, responses, &mut data);
 						}
 					}
+
+					if matches!(old_tool, ToolType::Path | ToolType::Select) {
+						responses.add(TransformLayerMessage::CancelTransformOperation);
+					}
 				};
-				send_abort_to_tool(tool_type, true);
-				send_abort_to_tool(old_tool, false);
+
+				send_abort_to_tool(old_tool, tool_type, true);
+				send_abort_to_tool(old_tool, old_tool, false);
 
 				// Unsubscribe old tool from the broadcaster
 				tool_data.tools.get(&tool_type).unwrap().deactivate(responses);
@@ -175,6 +181,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					font_cache,
 					shape_editor: &mut self.shape_editor,
 					node_graph,
+					preferences,
 				};
 
 				// Set initial hints and cursor
@@ -211,7 +218,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let document_data = &mut self.tool_state.document_tool_data;
 				document_data.primary_color = color;
 
-				self.tool_state.document_tool_data.update_working_colors(responses); // TODO: Make this an event
+				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
 			ToolMessage::SelectRandomPrimaryColor => {
 				// Select a random primary color (rgba) based on an UUID
@@ -255,6 +262,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let tool_data = &mut self.tool_state.tool_data;
 
 				if let Some(tool) = tool_data.tools.get_mut(&tool_type) {
+					let graph_view_overlay_open = document.graph_view_overlay_open();
+
 					if tool_type == tool_data.active_tool_type {
 						let mut data = ToolActionHandlerData {
 							document,
@@ -264,9 +273,13 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
+							preferences,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
-							if self.transform_layer_handler.is_transforming() {
+							if graph_view_overlay_open {
+								// When graph view is open, forward the hint update to the node graph handler
+								responses.add(NodeGraphMessage::UpdateHints);
+							} else if self.transform_layer_handler.is_transforming() {
 								self.transform_layer_handler.hints(responses);
 							} else {
 								tool.process_message(ToolMessage::UpdateHints, responses, &mut data)
@@ -300,7 +313,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolPolygon,
 
 			ActivateToolBrush,
-			ActivateToolImaginate,
+			// ActivateToolImaginate,
 
 			SelectRandomPrimaryColor,
 			ResetColors,

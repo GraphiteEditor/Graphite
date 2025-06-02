@@ -9,11 +9,13 @@ module.exports = {
 		ecmaVersion: 2020,
 	},
 	extends: [
-		// JS defaults
-		"airbnb-base",
-		// General Prettier defaults
+		"eslint:recommended",
+		"plugin:import/recommended",
+		"plugin:@typescript-eslint/recommended",
+		"plugin:import/typescript",
 		"prettier",
 	],
+	plugins: ["import", "@typescript-eslint", "prettier"],
 	settings: {
 		// https://github.com/import-js/eslint-plugin-import#resolvers
 		"import/resolver": {
@@ -30,7 +32,6 @@ module.exports = {
 		"!.*.js",
 		"!.*.ts",
 	],
-	plugins: ["prettier"],
 	rules: {
 		// Standard ESLint config
 		indent: "off",

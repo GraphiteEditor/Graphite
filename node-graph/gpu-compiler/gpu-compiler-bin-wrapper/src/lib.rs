@@ -1,7 +1,7 @@
-use graph_craft::{proto::ProtoNetwork, Type};
-use wgpu_executor::ShaderIO;
-
+use graph_craft::Type;
+use graph_craft::proto::ProtoNetwork;
 use std::io::Write;
+use wgpu_executor::ShaderIO;
 
 pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manifest_path: &str) -> anyhow::Result<Vec<u8>> {
 	let serialized_graph = serde_json::to_string(&graph_craft::graphene_compiler::CompileRequest {

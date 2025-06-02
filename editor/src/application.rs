@@ -1,6 +1,5 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
-
 pub use graphene_core::uuid::*;
 
 // TODO: serialize with serde to save the current editor state
@@ -13,6 +12,13 @@ impl Editor {
 	/// Remember to provide a random seed with `editor::set_uuid_seed(seed)` before any editors can be used.
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
+	}
+
+	#[cfg(test)]
+	pub(crate) fn new_local_executor() -> (Self, crate::node_graph_executor::NodeRuntime) {
+		let (runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
+		let dispatcher = Dispatcher::with_executor(executor);
+		(Self { dispatcher }, runtime)
 	}
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
@@ -50,51 +56,52 @@ pub fn commit_info_localized(localized_commit_date: &str) -> String {
 	)
 }
 
-#[cfg(test)]
-mod test {
-	use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
-	use crate::messages::prelude::*;
+// #[cfg(test)]
+// mod test {
+// 	use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
+// 	use crate::messages::prelude::*;
 
-	// TODO: Fix and reenable
-	#[ignore]
-	#[test]
-	fn debug_ub() {
-		use super::Message;
+// 	// TODO: Fix and reenable
+// 	#[ignore]
+// 	#[test]
+// 	fn debug_ub() {
+// 		use super::Message;
 
-		let mut editor = super::Editor::new();
-		let mut responses = Vec::new();
+// 		let mut editor = super::Editor::new();
+// 		let mut responses = Vec::new();
 
-		let messages: Vec<Message> = vec![
-			Message::Init,
-			Message::Preferences(PreferencesMessage::Load {
-				preferences: r#"{ "imaginate_server_hostname": "http://localhost:7860/", "imaginate_refresh_frequency": 1, "zoom_with_scroll": false }"#.to_string(),
-			}),
-			PortfolioMessage::OpenDocumentFileWithId {
-				document_id: DocumentId(0),
-				document_name: "".into(),
-				document_is_auto_saved: true,
-				document_is_saved: true,
-				document_serialized_content: r#" [removed until test is reenabled] "#.into(),
-			}
-			.into(),
-			InputPreprocessorMessage::BoundsOfViewports {
-				bounds_of_viewports: vec![ViewportBounds::from_slice(&[0., 0., 1920., 1080.])],
-			}
-			.into(),
-		];
+// 		let messages: Vec<Message> = vec![
+// 			Message::Init,
+// 			Message::Preferences(PreferencesMessage::Load {
+// 				preferences: r#"{ "imaginate_server_hostname": "http://localhost:7860/", "imaginate_refresh_frequency": 1, "zoom_with_scroll": false }"#.to_string(),
+// 			}),
+// 			PortfolioMessage::OpenDocumentFileWithId {
+// 				document_id: DocumentId(0),
+// 				document_name: "".into(),
+// 				document_is_auto_saved: true,
+// 				document_is_saved: true,
+// 				document_serialized_content: r#" [removed until test is reenabled] "#.into(),
+// 				to_front: false,
+// 			}
+// 			.into(),
+// 			InputPreprocessorMessage::BoundsOfViewports {
+// 				bounds_of_viewports: vec![ViewportBounds::from_slice(&[0., 0., 1920., 1080.])],
+// 			}
+// 			.into(),
+// 		];
 
-		use futures::executor::block_on;
-		for message in messages {
-			block_on(crate::node_graph_executor::run_node_graph());
-			let mut res = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut res).expect("poll_node_graph_evaluation failed");
+// 		use futures::executor::block_on;
+// 		for message in messages {
+// 			block_on(crate::node_graph_executor::run_node_graph());
+// 			let mut res = VecDeque::new();
+// 			editor.poll_node_graph_evaluation(&mut res).expect("poll_node_graph_evaluation failed");
 
-			let res = editor.handle_message(message);
-			responses.push(res);
-		}
-		let responses = responses.pop().unwrap();
-		// let trigger_message = responses[responses.len() - 2].clone();
+// 			let res = editor.handle_message(message);
+// 			responses.push(res);
+// 		}
+// 		let responses = responses.pop().unwrap();
+// 		// let trigger_message = responses[responses.len() - 2].clone();
 
-		println!("responses: {responses:#?}");
-	}
-}
+// 		println!("responses: {responses:#?}");
+// 	}
+// }

@@ -1,52 +1,40 @@
 use graph_craft::proto::types::Percentage;
-use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::transform::Footprint;
-use graphene_core::Color;
-
+use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::{Color, Ctx};
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
-#[node_macro::node(category("Raster: Filter"))]
-async fn dehaze<F: 'n + Send + Sync>(
-	#[implementations(
-		(),
-		Footprint,
-	)]
-	footprint: F,
-	#[implementations(
-		() -> ImageFrame<Color>,
-		Footprint -> ImageFrame<Color>,
-	)]
-	image_frame: impl Node<F, Output = ImageFrame<Color>>,
-	strength: Percentage,
-) -> ImageFrame<Color> {
-	let image_frame = image_frame.eval(footprint).await;
+#[node_macro::node(category("Raster"))]
+async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
+	let mut result_table = ImageFrameTable::empty();
 
-	// Prepare the image data for processing
-	let image = image_frame.image;
-	let image_data = bytemuck::cast_vec(image.data);
-	let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal ImageFrame into image-rs data type.");
-	let dynamic_image: image::DynamicImage = image_buffer.into();
+	for mut image_frame_instance in image_frame.instance_iter() {
+		let image = image_frame_instance.instance;
+		// Prepare the image data for processing
+		let image_data = bytemuck::cast_vec(image.data.clone());
+		let image_buffer = image::Rgba32FImage::from_raw(image.width, image.height, image_data).expect("Failed to convert internal image format into image-rs data type.");
+		let dynamic_image: image::DynamicImage = image_buffer.into();
 
-	// Run the dehaze algorithm
-	let dehazed_dynamic_image = dehaze_image(dynamic_image, strength / 100.);
+		// Run the dehaze algorithm
+		let dehazed_dynamic_image = dehaze_image(dynamic_image, strength / 100.);
 
-	// Prepare the image data for returning
-	let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
-	let color_vec = bytemuck::cast_vec(buffer);
-	let dehazed_image = Image {
-		width: image.width,
-		height: image.height,
-		data: color_vec,
-		base64_string: None,
-	};
+		// Prepare the image data for returning
+		let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
+		let color_vec = bytemuck::cast_vec(buffer);
+		let dehazed_image = Image {
+			width: image.width,
+			height: image.height,
+			data: color_vec,
+			base64_string: None,
+		};
 
-	ImageFrame {
-		image: dehazed_image,
-		transform: image_frame.transform,
-		alpha_blending: image_frame.alpha_blending,
+		image_frame_instance.instance = dehazed_image;
+		image_frame_instance.source_node_id = None;
+		result_table.push(image_frame_instance);
 	}
+
+	result_table
 }
 
 // There is no real point in modifying these values because they do not change the final result all that much.

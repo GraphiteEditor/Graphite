@@ -13,7 +13,7 @@ impl Context {
 	pub async fn new() -> Option<Self> {
 		// Instantiates instance of WebGPU
 		let instance_descriptor = wgpu::InstanceDescriptor {
-			backends: wgpu::Backends::VULKAN | wgpu::Backends::BROWSER_WEBGPU,
+			backends: wgpu::Backends::all(),
 			..Default::default()
 		};
 		let instance = wgpu::Instance::new(instance_descriptor);
@@ -33,10 +33,12 @@ impl Context {
 			.request_device(
 				&wgpu::DeviceDescriptor {
 					label: None,
-					#[cfg(not(feature = "passthrough"))]
+					// #[cfg(not(feature = "passthrough"))]
 					required_features: wgpu::Features::empty(),
-					#[cfg(feature = "passthrough")]
-					required_features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
+					// Currently disabled because not all backend support passthrough.
+					// TODO: reenable only when vulkan adapter is available
+					// #[cfg(feature = "passthrough")]
+					// required_features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
 					required_limits,
 					memory_hints: Default::default(),
 				},

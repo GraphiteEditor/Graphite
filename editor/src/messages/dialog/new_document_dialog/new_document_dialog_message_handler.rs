@@ -1,9 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-
-use graph_craft::document::NodeId;
-
 use glam::{IVec2, UVec2};
+use graph_craft::document::NodeId;
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]
@@ -79,11 +77,13 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_holder(),
 		];
 
+		let mut checkbox_id = CheckboxId::default();
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).widget_holder(),
+			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).for_checkbox(&mut checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite(checkbox_input.checked).into())
+				.for_label(checkbox_id.clone())
 				.widget_holder(),
 		];
 

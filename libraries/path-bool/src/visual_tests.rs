@@ -1,6 +1,5 @@
 use crate::path_boolean::{self, FillRule, PathBooleanOperation};
 use crate::path_data::{path_from_path_data, path_to_path_data};
-
 use core::panic;
 use glob::glob;
 use image::{DynamicImage, GenericImageView, RgbaImage};

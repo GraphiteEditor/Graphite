@@ -22,7 +22,7 @@ Wraps the editor backend codebase (`/editor`) and provides a JS-centric API for 
 
 ## ESLint configurations: `.eslintrc.js`
 
-[ESLint](https://eslint.org/) is the tool which enforces style rules on the JS, TS, and Svelte files in our frontend codebase. As it is set up in this config file, ESLint will complain about bad practices and often help reformat code automatically when (in VS Code) the file is saved or `npm run lint` is executed. (If you don't use VS Code, remember to run this command before committing!) This config file for ESLint sets our style preferences and configures our usage of extensions/plugins for Svelte support, [Airbnb](https://github.com/airbnb/javascript)'s popular catalog of sane defaults, and [Prettier](https://prettier.io/)'s role as a code formatter.
+[ESLint](https://eslint.org/) is the tool which enforces style rules on the JS, TS, and Svelte files in our frontend codebase. As it is set up in this config file, ESLint will complain about bad practices and often help reformat code automatically when (in VS Code) the file is saved or `npm run lint` is executed. (If you don't use VS Code, remember to run this command before committing!) This config file for ESLint sets our style preferences and configures our usage of extensions/plugins for Svelte support and [Prettier](https://prettier.io/)'s role as a code formatter.
 
 ## npm ecosystem packages: `package.json`
 

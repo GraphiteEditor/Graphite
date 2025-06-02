@@ -91,9 +91,7 @@ impl Fsm for ImaginateToolFsmState {
 	) -> Self {
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Imaginate(event) = event else {
-			return self;
-		};
+		let ToolMessage::Imaginate(event) = event else { return self };
 		match (self, event) {
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
 				shape_data.start(document, input);

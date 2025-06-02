@@ -2,7 +2,7 @@
 title = "Graphite features"
 
 [extra]
-css = ["features.css"]
+css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css"]
 +++
 
 <section>
@@ -10,9 +10,9 @@ css = ["features.css"]
 
 # Graphite features
 
-The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and nondestructive editing workflow which is a unique feature among vector editing software.
+The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. This tooling is built around a procedural graphics engine, letting artists build complex graphics and animations in its visual scripting language.
 
-Throughout 2024, stay tuned for major performance improvements, a multiplatform desktop app with native rendering speed, and the beginnings of a full suite of raster editing tools.
+In 2025, stay tuned for performance improvements, native multiplatform desktop apps, and the beginnings of a full raster editing tool suite.
 
 </div>
 </section>
@@ -58,7 +58,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 
 ## Powered by Graphene
 
-**Graphene** is the node graph engine that powers Graphite's compositor and procedural graphics pipeline. It's a visual scripting environment built upon the high-performance Rust programming language. Its runtime is [designed](/blog/distributed-computing-in-the-graphene-runtime/) to distribute rendering across CPU cores, GPUs, and network/cloud machines while optimizing for interactive frame rates.
+**Graphene** is the purpose-built node graph engine that powers Graphite's compositor and procedural graphics pipeline. It's a visual scripting environment built upon the high-performance Rust programming language. Its runtime is [designed](/blog/distributed-computing-in-the-graphene-runtime/) to distribute rendering across CPU cores, GPUs, and network/cloud machines while optimizing for interactive frame rates.
 
 <!-- Rust programmers may find the following technical details to be of interest. Graphene node graphs are programs built out of reusable Rust functions using Graphite as a visual "code" editor. New nodes and data types can be implemented by writing custom Rust code with a built-in text editor. `no_std` code also gets compiled to GPU compute shaders using [`rust-gpu`](https://github.com/EmbarkStudios/rust-gpu). Each node is independently pre-compiled by `rustc` into portable WASM binaries and linked at runtime. Groups of nodes may be compiled into one unit of execution, utilizing Rust's zero-cost abstractions and optimizations to run with less overhead. And whole node graphs can be compiled into standalone executables for use outside Graphite. -->
 
@@ -66,7 +66,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 <div class="block">
 
 <!-- ## Proudly written in Rust -->
-## Written in Rust
+## Built with Rust
 
 Always on the bleeding edge and built to last— Graphite is written on a robust foundation with Rust, a modern programming language optimized for creating fast, reliable, future-proof software. Even the GPU compute shaders are written in Rust, enabling reuse of CPU code implementations for nodes.
 
@@ -110,68 +110,72 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Node graph integration in documents</span>
 		</div>
 		<!-- Alpha 3 -->
-		<div class="feature-icon ongoing heading" title="Began February 2024" data-year="2024">
+		<div class="feature-icon complete heading" title="Began February 2024" data-year="2024">
 			<h3>— Alpha 3 —</h3>
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Stackable adjustment layers</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Boolean operations for shapes</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Editable nested node subgraphs</span>
+			<span>Procedural vector editing and usability</span>
 		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Procedurally alterable vector data</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>New vector 2D renderer (with <a target="_blank" href="https://github.com/linebender/vello">Vello</a>)</span>
-		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 26" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Interactive graph auto-layout</span>
-		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
+		<!-- <div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Imaginate tool</span>
+		</div> -->
+		<!-- Alpha 4 -->
+		<div class="feature-icon ongoing heading" title="Began February 2025" data-year="2025">
+			<h3>— Alpha 4 —</h3>
+		</div>
+		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 46" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Parametric animation</span>
+		</div>
+		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
+			<span>Instancer repeat nodes</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Infinitely zoomable/panable content</span>
+			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Graph data attribute spreadsheets</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Robust vector mesh editing/rendering</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Desktop app (Windows, Mac, Linux)</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Simplified main properties panel</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>GPU-accelerated raster rendering</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Lightweight desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
-		</div>
-		<!-- Alpha 4 -->
-		<div class="feature-icon heading" title="Expected to begin February 2025" data-year="2025">
-			<h3>— Alpha 4 —</h3>
+			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Infinitely zoomable/panable raster</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Graph data attribute spreadsheets</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Local file browser for saving/loading</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Local fonts access</span>
+			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Select mode (marquee masking)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Timeline with animation channels</span>
+			<span>Timeline panel for animation curves</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Node version management</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Brush tool rewrite</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 57" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Signed distance field rendering</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -182,24 +186,20 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Command palette and context menus</span>
 		</div>
 		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Local fonts access</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Local file browser for saving/loading</span>
+		</div>
+		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 19" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Raw photo processing</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 57" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Signed distance fields</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 43" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Stylus and touch interaction</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Brush tool rewrite</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Select mode (marquee masking)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -224,10 +224,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 49" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>AI nodes and tools (e.g. magic wand)</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>NURBS and mesh vector formats</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 25" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -282,10 +278,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<h3>— 1.0 Release —</h3>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Fully native UI rewrite (with <a target="_blank" href="https://github.com/linebender/xilem">Xilem</a>)</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 20" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Procedural styling of paint brushes</span>
 		</div>
@@ -330,7 +322,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Offline edit resolution with CRDTs</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 46" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
 			<span>Animated SVG creation</span>
 		</div>
 		<div class="feature-icon">

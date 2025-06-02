@@ -1,9 +1,7 @@
 use super::*;
-
 use crate::compare::compare_points;
-use crate::utils::{f64_compare, Cap, TValue};
+use crate::utils::{Cap, TValue, f64_compare};
 use crate::{AppendType, ManipulatorGroup, Subpath};
-
 use glam::DMat2;
 use std::f64::consts::PI;
 
@@ -476,11 +474,7 @@ impl Bezier {
 					error,
 					max_iterations,
 				});
-				if final_low_t != 1. {
-					[auto_arcs, arc_approximations].concat()
-				} else {
-					auto_arcs
-				}
+				if final_low_t != 1. { [auto_arcs, arc_approximations].concat() } else { auto_arcs }
 			}
 			ArcStrategy::FavorLargerArcs => self.approximate_curve_with_arcs(0., 1., error, max_iterations, false).0,
 			ArcStrategy::FavorCorrectness => self
@@ -620,9 +614,9 @@ impl Bezier {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::EmptyId;
 	use crate::compare::{compare_arcs, compare_points};
 	use crate::utils::{Cap, TValue};
-	use crate::EmptyId;
 
 	#[test]
 	fn test_split() {
@@ -777,14 +771,18 @@ mod tests {
 
 		// Check that the reduce helper is correct
 		let (helper_curves, helper_t_values) = bezier.reduced_curves_and_t_values(None);
-		assert!(reduced_curves
-			.iter()
-			.zip(helper_curves.iter())
-			.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(bezier2, MAX_ABSOLUTE_DIFFERENCE)));
-		assert!(reduced_curves
-			.iter()
-			.zip(helper_t_values.iter())
-			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
+		assert!(
+			reduced_curves
+				.iter()
+				.zip(helper_curves.iter())
+				.all(|(bezier1, bezier2)| bezier1.abs_diff_eq(bezier2, MAX_ABSOLUTE_DIFFERENCE))
+		);
+		assert!(
+			reduced_curves
+				.iter()
+				.zip(helper_t_values.iter())
+				.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE))
+		)
 	}
 
 	fn assert_valid_offset<PointId: crate::Identifier>(bezier: &Bezier, offset: &Subpath<PointId>, expected_distance: f64) {

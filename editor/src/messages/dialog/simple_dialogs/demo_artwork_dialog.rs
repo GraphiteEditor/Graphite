@@ -5,10 +5,11 @@ use crate::messages::prelude::*;
 pub struct DemoArtworkDialog;
 
 /// `(name, thumbnail, filename)`
-pub const ARTWORK: [(&str, &str, &str); 6] = [
+pub const ARTWORK: [(&str, &str, &str); 7] = [
 	("Isometric Fountain", "ThumbnailIsometricFountain", "isometric-fountain.graphite"),
 	("Changing Seasons", "ThumbnailChangingSeasons", "changing-seasons.graphite"),
 	("Painted Dreams", "ThumbnailPaintedDreams", "painted-dreams.graphite"),
+	("Parametric Dunescape", "ThumbnailParametricDunescape", "parametric-dunescape.graphite"),
 	("Red Dress", "ThumbnailRedDress", "red-dress.graphite"),
 	("Procedural String Lights", "ThumbnailProceduralStringLights", "procedural-string-lights.graphite"),
 	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
@@ -28,27 +29,29 @@ impl DialogLayoutHolder for DemoArtworkDialog {
 impl LayoutHolder for DemoArtworkDialog {
 	fn layout(&self) -> Layout {
 		let mut rows_of_images_with_buttons: Vec<_> = ARTWORK
-			.chunks(3)
+			.chunks(4)
 			.flat_map(|chunk| {
-				let images = chunk.iter().map(|(_, thumbnail, _)| ImageLabel::new(*thumbnail).width(Some("256px".into())).widget_holder()).collect();
+				fn make_dialog(name: &str, filename: &str) -> Message {
+					DialogMessage::CloseDialogAndThen {
+						followups: vec![
+							FrontendMessage::TriggerFetchAndOpenDocument {
+								name: name.to_string(),
+								filename: filename.to_string(),
+							}
+							.into(),
+						],
+					}
+					.into()
+				}
+
+				let images = chunk
+					.iter()
+					.map(|(name, thumbnail, filename)| ImageButton::new(*thumbnail).width(Some("256px".into())).on_update(|_| make_dialog(name, filename)).widget_holder())
+					.collect();
 
 				let buttons = chunk
 					.iter()
-					.map(|(name, _, filename)| {
-						TextButton::new(*name)
-							.min_width(256)
-							.on_update(|_| {
-								DialogMessage::CloseDialogAndThen {
-									followups: vec![FrontendMessage::TriggerFetchAndOpenDocument {
-										name: name.to_string(),
-										filename: filename.to_string(),
-									}
-									.into()],
-								}
-								.into()
-							})
-							.widget_holder()
-					})
+					.map(|(name, _, filename)| TextButton::new(*name).min_width(256).flush(true).on_update(|_| make_dialog(name, filename)).widget_holder())
 					.collect();
 
 				vec![LayoutGroup::Row { widgets: images }, LayoutGroup::Row { widgets: buttons }, LayoutGroup::Row { widgets: vec![] }]

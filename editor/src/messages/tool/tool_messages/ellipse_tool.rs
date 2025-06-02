@@ -3,13 +3,14 @@ use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -90,7 +91,7 @@ impl LayoutHolder for EllipseTool {
 			true,
 			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value.as_solid())).into(),
+			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -100,7 +101,7 @@ impl LayoutHolder for EllipseTool {
 			true,
 			|_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
+			|color: &ColorInput| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -188,9 +189,7 @@ impl Fsm for EllipseToolFsmState {
 
 		let shape_data = &mut tool_data.data;
 
-		let ToolMessage::Ellipse(event) = event else {
-			return self;
-		};
+		let ToolMessage::Ellipse(event) = event else { return self };
 		match (self, event) {
 			(_, EllipseToolMessage::Overlays(mut overlay_context)) => {
 				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -222,9 +221,21 @@ impl Fsm for EllipseToolFsmState {
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
+						let Some(node_id) = graph_modification_utils::get_ellipse_id(layer, &document.network_interface) else {
+							return self;
+						};
+
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 1),
+							input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
+						});
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(node_id, 2),
+							input: NodeInput::value(TaggedValue::F64(((start.y - end.y) / 2.).abs()), false),
+						});
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation((end - start).abs(), 0., (start + end) / 2.),
+							transform: DAffine2::from_translation((start + end) / 2.),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
@@ -302,5 +313,129 @@ impl Fsm for EllipseToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+	}
+}
+
+#[cfg(test)]
+mod test_ellipse {
+	pub use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graphene_core::vector::generator_nodes::ellipse;
+
+	#[derive(Debug, PartialEq)]
+	struct ResolvedEllipse {
+		radius_x: f64,
+		radius_y: f64,
+		transform: DAffine2,
+	}
+
+	async fn get_ellipse(editor: &mut EditorTestUtils) -> Vec<ResolvedEllipse> {
+		let instrumented = editor.eval_graph().await;
+
+		let document = editor.active_document();
+		let layers = document.metadata().all_layers();
+		layers
+			.filter_map(|layer| {
+				let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
+				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::protonode_identifier())?;
+				Some(ResolvedEllipse {
+					radius_x: instrumented.grab_protonode_input::<ellipse::RadiusXInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					radius_y: instrumented.grab_protonode_input::<ellipse::RadiusYInput>(&vec![ellipse_node], &editor.runtime).unwrap(),
+					transform: document.metadata().transform_to_document(layer),
+				})
+			})
+			.collect()
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_simple() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 10., 10., 19., 0., ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 1);
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		assert_eq!(
+			ellipse[0],
+			ResolvedEllipse {
+				radius_x: 4.5,
+				radius_y: 5.,
+				transform: DAffine2::from_translation(DVec2::new(14.5, 5.)) // Uses center
+			}
+		);
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_circle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Ellipse, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		assert_eq!(
+			ellipse[0],
+			ResolvedEllipse {
+				radius_x: 10.,
+				radius_y: 10.,
+				transform: DAffine2::from_translation(DVec2::new(0., 20.)) // Uses center
+			}
+		);
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_square_rotated() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await;
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT).await; // Viewport coordinates
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		println!("{ellipse:?}");
+		assert_eq!(ellipse[0].radius_x, 5.);
+		assert_eq!(ellipse[0].radius_y, 5.);
+
+		assert!(
+			ellipse[0]
+				.transform
+				.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001)
+		);
+	}
+
+	#[tokio::test]
+	async fn ellipse_draw_center_square_rotated() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(NavigationMessage::CanvasTiltSet {
+				// 45 degree rotation of content clockwise
+				angle_radians: f64::consts::FRAC_PI_4,
+			})
+			.await;
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 1., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await; // Viewport coordinates
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 1);
+		assert_eq!(ellipse[0].radius_x, 10.);
+		assert_eq!(ellipse[0].radius_y, 10.);
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
+	}
+
+	#[tokio::test]
+	async fn ellipse_cancel() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool_cancel_rmb(ToolType::Ellipse).await;
+
+		let ellipse = get_ellipse(&mut editor).await;
+		assert_eq!(ellipse.len(), 0);
 	}
 }

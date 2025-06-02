@@ -63,7 +63,7 @@
 <FieldInput
 	class={`text-input ${className}`.trim()}
 	classes={{ centered, ...classes }}
-	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined }}
+	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
 	{value}
 	on:value
 	on:textFocused={onTextFocused}

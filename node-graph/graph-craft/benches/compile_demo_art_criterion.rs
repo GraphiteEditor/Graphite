@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use graph_craft::util::DEMO_ART;
 fn compile_to_proto(c: &mut Criterion) {
 	use graph_craft::util::{compile, load_from_name};

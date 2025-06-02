@@ -1,10 +1,7 @@
 use super::Bezier;
-
 use glam::{DAffine2, DVec2};
-use std::{
-	fmt::{Debug, Formatter, Result},
-	hash::Hash,
-};
+use std::fmt::{Debug, Formatter, Result};
+use std::hash::Hash;
 
 /// An id type used for each [ManipulatorGroup].
 pub trait Identifier: Sized + Clone + PartialEq + Hash + 'static {
@@ -113,7 +110,7 @@ impl<PointId: crate::Identifier> ManipulatorGroup<PointId> {
 
 	/// Are all handles at finite positions
 	pub fn is_finite(&self) -> bool {
-		self.anchor.is_finite() && self.in_handle.map_or(true, |handle| handle.is_finite()) && self.out_handle.map_or(true, |handle| handle.is_finite())
+		self.anchor.is_finite() && self.in_handle.is_none_or(|handle| handle.is_finite()) && self.out_handle.is_none_or(|handle| handle.is_finite())
 	}
 
 	/// Reverse directions of handles
@@ -139,4 +136,11 @@ impl<PointId: crate::Identifier> ManipulatorGroup<PointId> {
 pub enum AppendType {
 	IgnoreStart,
 	SmoothJoin(f64),
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub enum ArcType {
+	Open,
+	Closed,
+	PieSlice,
 }

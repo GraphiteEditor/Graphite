@@ -2,6 +2,16 @@
 	"description": "A convenience package for calling the real package.json in ./frontend",
 	"private": true,
 	"scripts": {
-		"start": "cd frontend && npm start"
+		"---------- DEV SERVER ----------": "",
+		"start": "cd frontend && npm start",
+		"profiling": "cd frontend && npm run profiling",
+		"production": "cd frontend && npm run production",
+		"---------- BUILDS ----------": "",
+		"build-dev": "cd frontend && npm run build-dev",
+		"build-profiling": "cd frontend && npm run build-profiling",
+		"build": "cd frontend && npm run build",
+		"---------- UTILITIES ----------": "",
+		"lint": "cd frontend && npm run lint",
+		"lint-fix": "cd frontend && npm run lint-fix"
 	}
 }

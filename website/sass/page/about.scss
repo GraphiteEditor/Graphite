@@ -1,0 +1,47 @@
+.loading-data:empty::after {
+	content: "(loading...)";
+	font-style: italic;
+	opacity: 0;
+	animation: fadeInAfterWait 2s ease-in 2s forwards;
+
+	@keyframes fadeInAfterWait {
+		0% {
+			opacity: 0;
+		}
+		100% {
+			opacity: 1;
+		}
+	}
+}
+
+#core-team {
+	background-color: var(--color-parchment);
+
+	.block {
+		align-items: center;
+
+		img {
+			max-width: Min(100%, 320px);
+		}
+
+		h2 {
+			font-weight: 700;
+			text-align: center;
+			width: 100%;
+
+			.handle {
+				margin: 0 0.4em;
+				font-size: 0.5em;
+				font-style: italic;
+				vertical-align: middle;
+				color: var(--color-slate);
+			}
+
+			.flag {
+				width: 1em;
+				height: 1em;
+				vertical-align: middle;
+			}
+		}
+	}
+}

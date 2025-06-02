@@ -3,7 +3,6 @@ use super::utility_types::misc::Mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
-
 use std::fmt::Write;
 
 pub struct InputMapperMessageData<'a> {
@@ -92,11 +91,9 @@ impl InputMapperMessageHandler {
 					.collect::<Vec<_>>();
 
 				// Append the key button for the entry
+				use InputMapperMessage as IMM;
 				match entry.input {
-					InputMapperMessage::KeyDown(key) => keys.push(key),
-					InputMapperMessage::KeyUp(key) => keys.push(key),
-					InputMapperMessage::KeyDownNoRepeat(key) => keys.push(key),
-					InputMapperMessage::KeyUpNoRepeat(key) => keys.push(key),
+					IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) => keys.push(key),
 					_ => (),
 				}
 
