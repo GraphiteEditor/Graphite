@@ -10,6 +10,7 @@ use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
+use graphene_std::transform::Transform;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
@@ -660,7 +661,8 @@ impl OverlayContext {
 	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
-		self.render_context.set_line_width(width_for_inner_boundary.unwrap_or(1.) * self.device_pixel_ratio);
+		self.render_context
+			.set_line_width(width_for_inner_boundary.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
 		self.draw_path(subpaths, transform);
 
 		if with_pattern {
@@ -705,7 +707,7 @@ impl OverlayContext {
 	}
 
 	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, width: Option<f64>) {
-		self.render_context.set_line_width(width.unwrap_or(1.) * self.device_pixel_ratio);
+		self.render_context.set_line_width(width.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
 		self.draw_path(subpaths, transform);
 
 		const PATTERN_WIDTH: usize = 4;
