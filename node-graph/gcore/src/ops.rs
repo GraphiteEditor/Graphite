@@ -570,6 +570,68 @@ where
 		Box::pin(async move { input.into() })
 	}
 }
+pub trait Convert<T>: Sized {
+	/// Converts this type into the (usually inferred) input type.
+	#[must_use]
+	fn convert(self) -> T;
+}
+
+macro_rules! impl_convert {
+	($from:ty,$to:ty) => {
+		impl Convert<$to> for $from {
+			fn convert(self) -> $to {
+				self as $to
+			}
+		}
+	};
+	($to:ty) => {
+		impl_convert!(i8, $to);
+		impl_convert!(u8, $to);
+		impl_convert!(u16, $to);
+		impl_convert!(i16, $to);
+		impl_convert!(i32, $to);
+		impl_convert!(u32, $to);
+		impl_convert!(i64, $to);
+		impl_convert!(u64, $to);
+		impl_convert!(f32, $to);
+		impl_convert!(f64, $to);
+	};
+}
+impl_convert!(i8);
+impl_convert!(u8);
+impl_convert!(u16);
+impl_convert!(i16);
+impl_convert!(i32);
+impl_convert!(u32);
+impl_convert!(i64);
+impl_convert!(u64);
+impl_convert!(f32);
+impl_convert!(f64);
+
+// Convert
+pub struct ConvertNode<O>(PhantomData<O>);
+impl<_O> ConvertNode<_O> {
+	#[cfg(feature = "alloc")]
+	pub const fn new() -> Self {
+		Self(core::marker::PhantomData)
+	}
+}
+impl<_O> Default for ConvertNode<_O> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+impl<'input, I: 'input, _O: 'input> Node<'input, I> for ConvertNode<_O>
+where
+	I: Convert<_O> + Sync + Send,
+{
+	type Output = ::dyn_any::DynFuture<'input, _O>;
+
+	#[inline]
+	fn eval(&'input self, input: I) -> Self::Output {
+		Box::pin(async move { input.convert() })
+	}
+}
 
 #[cfg(test)]
 mod test {
