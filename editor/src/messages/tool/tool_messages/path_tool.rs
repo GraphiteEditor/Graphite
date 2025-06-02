@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::shape_editor::{
-	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState
+	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_best_approximate};
@@ -351,7 +351,7 @@ pub struct SlidingPointInfo {
 	anchor: PointId,
 	initial_position: DVec2,
 	layer: LayerNodeIdentifier,
-	connected_segments: [SlidingSegmentData;2],
+	connected_segments: [SlidingSegmentData; 2],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -936,18 +936,14 @@ impl PathToolData {
 				return false;
 			};
 
-			let Some(pointid) = anchor.as_anchor() else {return false};
+			let Some(pointid) = anchor.as_anchor() else { return false };
 
 			let Some(position) = anchor.get_position(&vector_data) else { return false };
 
 			let mut segments_vec = vec![];
 			for (segment, bezier, start, end) in vector_data.segment_bezier_iter() {
-				if start == pointid || end==pointid {
-					segments_vec.push(SlidingSegmentData {
-						segment_id: segment,
-						bezier,
-						start,
-					});
+				if start == pointid || end == pointid {
+					segments_vec.push(SlidingSegmentData { segment_id: segment, bezier, start });
 				}
 			}
 
@@ -957,7 +953,7 @@ impl PathToolData {
 			}
 
 			let connected_segments = [segments_vec[0], segments_vec[1]];
-		
+
 			self.sliding_point_info = Some(SlidingPointInfo {
 				anchor: pointid,
 				initial_position: position,
@@ -970,22 +966,20 @@ impl PathToolData {
 	}
 
 	fn slide_point(&mut self, target_position: DVec2, responses: &mut VecDeque<Message>, network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) {
-		
-		let Some(sliding_point_info) = self.sliding_point_info else {return};
+		let Some(sliding_point_info) = self.sliding_point_info else { return };
 		let anchor = sliding_point_info.anchor;
 		let initial_position = sliding_point_info.initial_position;
 		let layer = sliding_point_info.layer;
 
-		let Some(vector_data) = network_interface.compute_modified_vector(layer) else {return };
+		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
 		let transform = network_interface.document_metadata().transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(target_position);
 
 		let segments = sliding_point_info.connected_segments;
 
-
 		let t1 = segments[0].bezier.project(layer_pos);
 		let position1 = segments[0].bezier.evaluate(TValue::Parametric(t1));
-		
+
 		let t2 = segments[1].bezier.project(layer_pos);
 		let position2 = segments[1].bezier.evaluate(TValue::Parametric(t2));
 
@@ -996,7 +990,9 @@ impl PathToolData {
 		};
 
 		// Move the anchor to the new position
-		let Some(current_position) = ManipulatorPointId::Anchor(anchor).get_position(&vector_data) else {return};
+		let Some(current_position) = ManipulatorPointId::Anchor(anchor).get_position(&vector_data) else {
+			return;
+		};
 		let delta = new_position - current_position;
 
 		shape_editor.move_anchor(anchor, &vector_data, delta, layer, None, responses);
@@ -1005,7 +1001,6 @@ impl PathToolData {
 		let [first, second] = closer_segment.bezier.split(TValue::Parametric(t_value));
 		let closer_segment_other_point = if anchor == closer_segment.start { closer_segment.bezier.end } else { closer_segment.bezier.start };
 
-		
 		let (split_segment, other_segment) = if first.start == closer_segment_other_point { (first, second) } else { (second, first) };
 
 		// Primary handle maps to primary handle and secondary maps to secondary
@@ -1013,28 +1008,37 @@ impl PathToolData {
 		let Some(handle_position) = split_segment.handle_start() else { return };
 		let relative_position1 = handle_position - split_segment.start;
 		let modification_type = closer_primary_handle.set_relative_position(relative_position1);
-		responses.add(GraphOperationMessage::Vector { layer, modification_type});
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		let closer_secondary_handle = HandleId::end(closer_segment.segment_id);
 		let Some(handle_position) = split_segment.handle_end() else { return };
 		let relative_position2 = handle_position - split_segment.end;
 		let modification_type = closer_secondary_handle.set_relative_position(relative_position2);
-		responses.add(GraphOperationMessage::Vector { layer, modification_type});
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		let end_handle_direction = if anchor == closer_segment.start { -1. * relative_position1 } else { -1. * relative_position2 };
 
-
 		let (farther_other_point, start_handle, end_handle, start_handle_pos) = if anchor == farther_segment.start {
-			(farther_segment.bezier.end, HandleId::end(farther_segment.segment_id), HandleId::primary(farther_segment.segment_id), farther_segment.bezier.handle_end())
+			(
+				farther_segment.bezier.end,
+				HandleId::end(farther_segment.segment_id),
+				HandleId::primary(farther_segment.segment_id),
+				farther_segment.bezier.handle_end(),
+			)
 		} else {
-			(farther_segment.bezier.start, HandleId::primary(farther_segment.segment_id), HandleId::end(farther_segment.segment_id), farther_segment.bezier.handle_start())
+			(
+				farther_segment.bezier.start,
+				HandleId::primary(farther_segment.segment_id),
+				HandleId::end(farther_segment.segment_id),
+				farther_segment.bezier.handle_start(),
+			)
 		};
-		let Some(start_handle_position) = start_handle_pos else {return};
+		let Some(start_handle_position) = start_handle_pos else { return };
 		let start_handle_direction = start_handle_position - farther_other_point;
 
 		// Get the normalized direction vectors
 		let Some(d1) = start_handle_direction.try_normalize() else { return };
-		let Some(d2) = end_handle_direction.try_normalize() else  { return };
+		let Some(d2) = end_handle_direction.try_normalize() else { return };
 
 		let min_len1 = start_handle_direction.length() * 0.1;
 		let min_len2 = start_handle_direction.length() * 0.1;
@@ -1043,10 +1047,10 @@ impl PathToolData {
 
 		// Now set those handles to these handle lengths keeping the directions d1, d2
 		let modification_type = start_handle.set_relative_position(relative_pos1);
-		responses.add(GraphOperationMessage::Vector { layer, modification_type});
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		let modification_type = end_handle.set_relative_position(relative_pos2);
-		responses.add(GraphOperationMessage::Vector { layer, modification_type});
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -1492,15 +1496,12 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
-					// let shape_editor = tool_action_data.shape_editor;
-
 					if snap_angle_state && lock_angle_state {
-						// Set the slidingpointinfo and move to the new state of sliding segment
 						if tool_data.start_sliding_point(tool_action_data.shape_editor, &tool_action_data.document) {
 							return PathToolFsmState::SlidingPoint;
 						}
 					}
-					
+
 					tool_data.drag(
 						equidistant_state,
 						lock_angle_state,
@@ -1538,23 +1539,8 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
-			(
-				PathToolFsmState::SlidingPoint,
-				PathToolMessage::PointerMove {
-					// equidistant,
-					// toggle_colinear,
-					// move_anchor_with_handles,
-					// snap_angle,
-					// lock_angle,
-					// delete_segment,
-					..
-				},
-			) => {
-				// log::info!("entered sliding point state and moving pointer");
-
-				//call a function that will first calculate the new anchor position
-				// let pos = input.mouse.position;
-				tool_data.slide_point( input.mouse.position, responses, &document.network_interface, &shape_editor);
+			(PathToolFsmState::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
+				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, &shape_editor);
 				PathToolFsmState::SlidingPoint
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
@@ -1818,9 +1804,8 @@ impl Fsm for PathToolFsmState {
 					shape_editor.deselect_all_points();
 				}
 
-				if tool_data.snapping_axis.is_some() {
-					tool_data.snapping_axis = None;
-				}
+				tool_data.snapping_axis = None;
+				tool_data.sliding_point_info = None;
 
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
