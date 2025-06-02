@@ -1781,7 +1781,6 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			}
 
 			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
-			let inverse_transform = DAffine2::IDENTITY;
 
 			let original_length = bezier.perimeter(DEFAULT_ACCURACY);
 			let mut length = original_length;
@@ -1850,7 +1849,6 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 			}
 
 			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
-			let inverse_transform = DAffine2::IDENTITY;
 
 			// Only split if the length is big enough to make it worthwhile
 			let valid_length = prev_length > 1e-10;
@@ -1908,7 +1906,7 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 	for source_instance in source.instance_iter() {
 		result_table.push(Instance {
 			instance: bevel_algorithm(source_instance.instance, source_instance.transform, distance),
-			..Default::default()
+			..source_instance
 		});
 	}
 
