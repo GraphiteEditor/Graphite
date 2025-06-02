@@ -1,12 +1,14 @@
 use super::poisson_disk::poisson_disk_sample;
 use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
-use kurbo::{BezPath, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, Rect, Shape};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, QuadBez, Rect, Shape};
 
 /// Accuracy to find the position on [kurbo::Bezpath].
 const POSITION_ACCURACY: f64 = 1e-5;
 /// Accuracy to find the length of the [kurbo::PathSeg].
 pub const PERIMETER_ACCURACY: f64 = 1e-5;
+/// Constant used to determine if `f64`s are equivalent.
+pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
@@ -240,4 +242,17 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	let height = this_bbox.height();
 
 	poisson_disk_sample(offset, width, height, separation_disk_diameter, point_in_shape_checker, line_intersect_shape_checker, rng)
+}
+
+/// Returns true if the Bezier curve is equivalent to a line.
+///
+/// **NOTE**: This is different from simply checking if the segment is [`PathSeg::Line`] or [`PathSeg::Quad`] or [`PathSeg::Cubic`]. Bezier curve can also be a line if the control points are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
+pub fn is_linear(segment: &PathSeg) -> bool {
+	let is_colinear = |a: Point, b: Point, c: Point| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
+
+	match *segment {
+		PathSeg::Line(_) => true,
+		PathSeg::Quad(QuadBez { p0, p1, p2 }) => is_colinear(p0, p1, p2),
+		PathSeg::Cubic(CubicBez { p0, p1, p2, p3 }) => is_colinear(p0, p1, p3) && is_colinear(p0, p2, p3),
+	}
 }
