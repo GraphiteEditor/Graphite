@@ -12,8 +12,6 @@ use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::transform::TransformMut;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
 
@@ -177,6 +175,8 @@ async fn rasterize<T: WasmNotSend + 'n>(
 where
 	Instances<T>: GraphicElementRendered,
 {
+	use graphene_core::instances::Instance;
+
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrameTable::empty();
@@ -218,8 +218,12 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = ImageFrameTable::new(Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32));
-	*result.transform_mut() = footprint.transform;
+	let mut result = ImageFrameTable::empty();
+	result.push(Instance {
+		instance: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
+		transform: footprint.transform,
+		..Default::default()
+	});
 
 	result
 }

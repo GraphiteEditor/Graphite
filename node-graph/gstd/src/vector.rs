@@ -48,10 +48,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 
 	let mut result_vector_data_table = VectorDataTable::empty();
 	result_vector_data_table.push(vector_data_reversed.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table
-		.instance_mut_iter()
-		.next()
-		.unwrap_or_else(|| panic!("Expected the one instance we just pushed"));
+	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	// Loop over all vector data and union it with the result
 	let default = Instance::default();
@@ -84,10 +81,7 @@ fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) 
 
 	let mut result_vector_data_table = VectorDataTable::empty();
 	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table
-		.instance_mut_iter()
-		.next()
-		.unwrap_or_else(|| panic!("Expected the one instance we just pushed"));
+	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	let mut next_vector_data = vector_data.next();
 
@@ -119,10 +113,7 @@ fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Ve
 
 	let mut result_vector_data_table = VectorDataTable::empty();
 	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
-	let mut first_instance = result_vector_data_table
-		.instance_mut_iter()
-		.next()
-		.unwrap_or_else(|| panic!("Expected the one instance we just pushed"));
+	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
 	let default = Instance::default();
 	let mut second_vector_data = Some(vector_data.next().unwrap_or(default.to_instance_ref()));
@@ -160,7 +151,7 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 	while let Some(lower_vector_data) = second_vector_data {
 		let filtered_vector_data = vector_data.clone().filter(|v| *v != lower_vector_data).collect::<Vec<_>>().into_iter();
 		let unioned = boolean_operation_on_vector_data_table(filtered_vector_data, BooleanOperation::Union);
-		let first_instance = unioned.instance_ref_iter().next().unwrap_or_else(|| panic!("Expected at least one instance after the boolean union"));
+		let first_instance = unioned.instance_ref_iter().next().expect("Expected at least one instance after the boolean union");
 
 		let transform_of_lower_into_space_of_upper = first_instance.transform.inverse() * *lower_vector_data.transform;
 

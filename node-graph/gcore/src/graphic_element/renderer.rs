@@ -906,14 +906,15 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
-		let instance_transform = self.transform();
-
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		metadata.local_transforms.insert(element_id, instance_transform);
+		// TODO: Find a way to handle more than one row of the graphical data table
+		if let Some(image) = self.instance_ref_iter().next() {
+			metadata.local_transforms.insert(element_id, *image.transform);
+		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -934,8 +935,8 @@ impl GraphicElementRendered for RasterFrame {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
-		let mut render_stuff = |image: vello::peniko::Image, blend_mode: crate::AlphaBlending| {
-			let image_transform = transform * self.transform() * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let mut render_stuff = |image: vello::peniko::Image, instance_transform: DAffine2, blend_mode: crate::AlphaBlending| {
+			let image_transform = transform * instance_transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			let layer = blend_mode != Default::default();
 
 			let Some(bounds) = self.bounding_box(transform, true) else { return };
@@ -961,7 +962,7 @@ impl GraphicElementRendered for RasterFrame {
 
 					let image = vello::peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 
-					render_stuff(image, *instance.alpha_blending);
+					render_stuff(image, *instance.transform, *instance.alpha_blending);
 				}
 			}
 			RasterFrame::TextureFrame(image_texture) => {
@@ -972,15 +973,22 @@ impl GraphicElementRendered for RasterFrame {
 					let id = image.data.id();
 					context.resource_overrides.insert(id, instance.instance.texture.clone());
 
-					render_stuff(image, *instance.alpha_blending);
+					render_stuff(image, *instance.transform, *instance.alpha_blending);
 				}
 			}
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		let transform = transform * self.transform();
-		(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+		let calculate_transform = |instance_transform| {
+			let transform: DAffine2 = transform * instance_transform;
+			(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+		};
+
+		match self {
+			RasterFrame::ImageFrame(instances) => instances.instance_ref_iter().flat_map(|instance| calculate_transform(*instance.transform)).reduce(Quad::combine_bounds),
+			RasterFrame::TextureFrame(instances) => instances.instance_ref_iter().flat_map(|instance| calculate_transform(*instance.transform)).reduce(Quad::combine_bounds),
+		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
@@ -989,7 +997,21 @@ impl GraphicElementRendered for RasterFrame {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
-		metadata.local_transforms.insert(element_id, self.transform());
+
+		match self {
+			RasterFrame::ImageFrame(instances) => {
+				// TODO: Find a way to handle more than one row of the graphical data table
+				if let Some(image) = instances.instance_ref_iter().next() {
+					metadata.local_transforms.insert(element_id, *image.transform);
+				}
+			}
+			RasterFrame::TextureFrame(instances) => {
+				// TODO: Find a way to handle more than one row of the graphical data table
+				if let Some(image_texture) = instances.instance_ref_iter().next() {
+					metadata.local_transforms.insert(element_id, *image_texture.transform);
+				}
+			}
+		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
@@ -1032,7 +1054,7 @@ impl GraphicElementRendered for GraphicElement {
 				}
 				GraphicElement::VectorData(vector_data) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
-					// TODO: Find a way to handle more than one row of vector data
+					// TODO: Find a way to handle more than one row of the graphical data table
 					if let Some(vector_data) = vector_data.instance_ref_iter().next() {
 						metadata.local_transforms.insert(element_id, *vector_data.transform);
 					}

@@ -513,9 +513,12 @@ fn noise_pattern(
 				}
 			}
 
-			let mut result = ImageFrameTable::new(image);
-			*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-			*result.one_instance_mut().alpha_blending = AlphaBlending::default();
+			let mut result = ImageFrameTable::empty();
+			result.push(Instance {
+				instance: image,
+				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+				..Default::default()
+			});
 
 			return result;
 		}
@@ -575,9 +578,12 @@ fn noise_pattern(
 		}
 	}
 
-	let mut result = ImageFrameTable::new(image);
-	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
+	let mut result = ImageFrameTable::empty();
+	result.push(Instance {
+		instance: image,
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		..Default::default()
+	});
 
 	result
 }
@@ -623,9 +629,12 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 		data,
 		..Default::default()
 	};
-	let mut result = ImageFrameTable::new(image);
-	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	*result.one_instance_mut().alpha_blending = Default::default();
+	let mut result = ImageFrameTable::empty();
+	result.push(Instance {
+		instance: image,
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		..Default::default()
+	});
 
 	result
 }

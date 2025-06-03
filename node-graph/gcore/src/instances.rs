@@ -265,14 +265,6 @@ where
 		*self.one_instance_ref().transform
 	}
 }
-impl<P: Pixel> TransformMut for ImageFrameTable<P>
-where
-	GraphicElement: From<Image<P>>,
-{
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		self.one_instance_mut().transform
-	}
-}
 
 // RASTER FRAME
 impl Transform for RasterFrame {
