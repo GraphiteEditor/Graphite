@@ -61,28 +61,16 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powf(rhs),
-					BinaryOp::Leq => {
-						if lhs > rhs {
-							1.0
-						} else {
-							0.0
-						}
+					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
+					BinaryOp::Lt => {
+						println!("{lhs} < {rhs}: {}", (lhs < rhs) as u8);
+						(lhs < rhs) as u8 as f64
 					}
-					BinaryOp::Geq => {
-						if lhs < rhs {
-							1.0
-						} else {
-							0.0
-						}
-					}
-					BinaryOp::Eq => {
-						if lhs == rhs {
-							1.0
-						} else {
-							0.0
-						}
-					}
+					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
+					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
+					BinaryOp::Eq => (lhs == rhs) as u8 as f64,
 				};
+
 				Some(Number::Real(result))
 			}
 
@@ -93,10 +81,7 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
-					BinaryOp::Leq => {
-						return None;
-					}
-					BinaryOp::Geq => {
+					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
 						return None;
 					}
 					BinaryOp::Eq => {
