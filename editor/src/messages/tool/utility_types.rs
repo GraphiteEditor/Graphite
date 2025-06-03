@@ -406,10 +406,10 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 			ToolAvailability::Available(Box::<pen_tool::PenTool>::default()),
 			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
 			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
-			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
+			ToolAvailability::AvailableAsShape(ShapeType::Line),
 			ToolAvailability::AvailableAsShape(ShapeType::Rectangle),
 			ToolAvailability::AvailableAsShape(ShapeType::Ellipse),
-			ToolAvailability::AvailableAsShape(ShapeType::Line),
+			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
 			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
 		],
 		vec![

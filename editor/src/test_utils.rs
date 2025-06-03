@@ -211,7 +211,10 @@ impl EditorTestUtils {
 	}
 
 	pub async fn select_tool(&mut self, tool_type: ToolType) {
-		self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await;
+		match tool_type {
+			ToolType::Line => self.handle_message(Message::Tool(ToolMessage::ActivateShapeLine)).await,
+			_ => self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await,
+		}
 	}
 
 	pub async fn select_primary_color(&mut self, color: Color) {

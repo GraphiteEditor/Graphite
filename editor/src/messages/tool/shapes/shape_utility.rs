@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage, Responses};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -66,10 +66,6 @@ impl ShapeType {
 	}
 }
 
-pub struct LineInitData {
-	pub drag_start: DVec2,
-}
-
 // Center, Lock Ratio, Lock Angle, Snap Angle
 pub type ShapeToolModifierKey = [Key; 4];
 
@@ -106,7 +102,6 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 		.network_interface
 		.selected_nodes()
 		.selected_visible_and_unlocked_layers(&document.network_interface)
-		.filter(|layer| graph_modification_utils::get_line_id(*layer, &document.network_interface).is_none())
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
 		.unwrap_or_default();
@@ -122,7 +117,6 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 		.network_interface
 		.selected_nodes()
 		.selected_visible_and_unlocked_layers(&document.network_interface)
-		.filter(|layer| graph_modification_utils::get_line_id(*layer, &document.network_interface).is_none())
 		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 		.filter_map(|layer| {
 			document
