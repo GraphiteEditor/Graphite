@@ -99,7 +99,7 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 }
 
 #[node_macro::node(category("Raster"))]
-fn combine_channels<_I, Red, Green, Blue, Alpha>(
+fn combine_channels<I, Red, Green, Blue, Alpha>(
 	_: impl Ctx,
 	_primary: (),
 	#[implementations(ImageFrameTable<Color>)] red: Red,
@@ -108,11 +108,11 @@ fn combine_channels<_I, Red, Green, Blue, Alpha>(
 	#[implementations(ImageFrameTable<Color>)] alpha: Alpha,
 ) -> ImageFrameTable<Color>
 where
-	_I: Pixel + Luminance,
-	Red: Bitmap<Pixel = _I>,
-	Green: Bitmap<Pixel = _I>,
-	Blue: Bitmap<Pixel = _I>,
-	Alpha: Bitmap<Pixel = _I>,
+	I: Pixel + Luminance,
+	Red: Bitmap<Pixel = I>,
+	Green: Bitmap<Pixel = I>,
+	Blue: Bitmap<Pixel = I>,
+	Alpha: Bitmap<Pixel = I>,
 {
 	let dimensions = [red.dim(), green.dim(), blue.dim(), alpha.dim()];
 	if dimensions.iter().any(|&(x, y)| x == 0 || y == 0) || dimensions.iter().any(|&(x, y)| dimensions.iter().any(|&(other_x, other_y)| x != other_x || y != other_y)) {
@@ -143,7 +143,7 @@ where
 }
 
 #[node_macro::node(category("Raster"))]
-fn mask<_P, _S, Input, Stencil>(
+fn mask<P, S, Input, Stencil>(
 	_: impl Ctx,
 	/// The image to be masked.
 	#[implementations(ImageFrameTable<Color>)]
@@ -154,14 +154,14 @@ fn mask<_P, _S, Input, Stencil>(
 	stencil: Stencil,
 ) -> Input
 where
-	// _P is the color of the input image. It must have an alpha channel because that is going to be modified by the mask.
-	_P: Alpha,
-	// _S is the color of the stencil. It must have a luminance channel because that is used to mask the input image.
-	_S: Luminance,
+	// P is the color of the input image. It must have an alpha channel because that is going to be modified by the mask.
+	P: Alpha,
+	// S is the color of the stencil. It must have a luminance channel because that is used to mask the input image.
+	S: Luminance,
 	// Input image
-	Input: Transform + BitmapMut<Pixel = _P>,
+	Input: Transform + BitmapMut<Pixel = P>,
 	// Stencil
-	Stencil: Transform + Sample<Pixel = _S>,
+	Stencil: Transform + Sample<Pixel = S>,
 {
 	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
 	let mask_size = stencil.transform().decompose_scale();
