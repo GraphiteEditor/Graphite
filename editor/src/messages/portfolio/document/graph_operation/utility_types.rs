@@ -453,7 +453,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
 		let Some(brush_node_id) = self.existing_node_id("Brush", true) else { return };
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {

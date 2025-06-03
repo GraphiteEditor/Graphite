@@ -1,8 +1,8 @@
 use crate::raster::Pixel;
 use crate::raster::image::{Image, ImageFrameTable};
-use crate::transform::{Transform, TransformMut};
+use crate::transform::Transform;
 use crate::uuid::NodeId;
-use crate::{AlphaBlending, GraphicElement, RasterFrame};
+use crate::{AlphaBlending, GraphicElement};
 use dyn_any::StaticType;
 use glam::DAffine2;
 use std::hash::Hash;
@@ -216,7 +216,7 @@ pub struct InstanceMut<'a, T> {
 	pub source_node_id: &'a mut Option<NodeId>,
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Instance<T> {
 	pub instance: T,
 	pub transform: DAffine2,
@@ -254,6 +254,15 @@ impl<T> Instance<T> {
 			source_node_id: &mut self.source_node_id,
 		}
 	}
+
+	pub fn to_table(self) -> Instances<T> {
+		Instances {
+			instance: vec![self.instance],
+			transform: vec![self.transform],
+			alpha_blending: vec![self.alpha_blending],
+			source_node_id: vec![self.source_node_id],
+		}
+	}
 }
 
 // IMAGE FRAME TABLE
@@ -263,15 +272,5 @@ where
 {
 	fn transform(&self) -> DAffine2 {
 		*self.one_instance_ref().transform
-	}
-}
-
-// RASTER FRAME
-impl Transform for RasterFrame {
-	fn transform(&self) -> DAffine2 {
-		match self {
-			RasterFrame::ImageFrame(image_frame) => *image_frame.one_instance_ref().transform,
-			RasterFrame::TextureFrame(texture_frame) => *texture_frame.one_instance_ref().transform,
-		}
 	}
 }

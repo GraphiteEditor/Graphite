@@ -1,14 +1,16 @@
-use crate::raster::{BlendImageTupleNode, blend_image_closure, extend_image_to_bounds};
+use crate::raster::{empty_image, extend_image_to_bounds};
 use glam::{DAffine2, DVec2};
 use graph_craft::generic::FnNode;
 use graph_craft::proto::FutureWrapperNode;
+use graphene_core::instances::Instance;
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::image::{Image, ImageFrameTable};
-use graphene_core::raster::{Alpha, Bitmap, BlendMode, Color, Pixel, Sample};
-use graphene_core::transform::{Transform, TransformMut};
-use graphene_core::value::{ClonedNode, ValueNode};
+use graphene_core::raster::{Alpha, BitmapMut, BlendMode, Color, Pixel, Sample};
+use graphene_core::renderer::GraphicElementRendered;
+use graphene_core::transform::Transform;
+use graphene_core::value::ClonedNode;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
@@ -28,12 +30,6 @@ pub struct BrushStampGenerator<P: Pixel + Alpha> {
 impl<P: Pixel + Alpha> Transform for BrushStampGenerator<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
-	}
-}
-
-impl<P: Pixel + Alpha> TransformMut for BrushStampGenerator<P> {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
 	}
 }
 
@@ -139,91 +135,66 @@ where
 pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	use crate::raster::empty_image;
 	let blank_texture = empty_image((), transform, Color::TRANSPARENT);
-	let image = crate::raster::blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
+	let image = blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
 	image.one_instance_ref().instance.clone()
 }
 
-macro_rules! inline_blend_funcs {
-	($bg:ident, $fg:ident, $blend_mode:ident, $opacity:ident, [$($mode:path,)*]) => {
-		match std::hint::black_box($blend_mode) {
-			$(
-				$mode => {
-					blend_image_closure($fg, $bg, |a, b| blend_colors(a, b, $mode, $opacity))
-				}
-			)*
-		}
-	};
-}
-
 pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
 	let opacity = opacity / 100.;
-	inline_blend_funcs!(
-		background,
-		foreground,
-		blend_mode,
-		opacity,
-		[
-			// Normal group
-			BlendMode::Normal,
-			// Darken group
-			BlendMode::Darken,
-			BlendMode::Multiply,
-			BlendMode::ColorBurn,
-			BlendMode::LinearBurn,
-			BlendMode::DarkerColor,
-			// Lighten group
-			BlendMode::Lighten,
-			BlendMode::Screen,
-			BlendMode::ColorDodge,
-			BlendMode::LinearDodge,
-			BlendMode::LighterColor,
-			// Contrast group
-			BlendMode::Overlay,
-			BlendMode::SoftLight,
-			BlendMode::HardLight,
-			BlendMode::VividLight,
-			BlendMode::LinearLight,
-			BlendMode::PinLight,
-			BlendMode::HardMix,
-			// Inversion group
-			BlendMode::Difference,
-			BlendMode::Exclusion,
-			BlendMode::Subtract,
-			BlendMode::Divide,
-			// Component group
-			BlendMode::Hue,
-			BlendMode::Saturation,
-			BlendMode::Color,
-			BlendMode::Luminosity,
-			// Other utility blend modes (hidden from the normal list)
-			BlendMode::Erase,
-			BlendMode::Restore,
-			BlendMode::MultiplyAlpha,
-		]
-	)
+	match std::hint::black_box(blend_mode) {
+		// Normal group
+		BlendMode::Normal => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Normal, opacity)),
+		// Darken group
+		BlendMode::Darken => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Darken, opacity)),
+		BlendMode::Multiply => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Multiply, opacity)),
+		BlendMode::ColorBurn => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::ColorBurn, opacity)),
+		BlendMode::LinearBurn => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::LinearBurn, opacity)),
+		BlendMode::DarkerColor => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::DarkerColor, opacity)),
+		// Lighten group
+		BlendMode::Lighten => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Lighten, opacity)),
+		BlendMode::Screen => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Screen, opacity)),
+		BlendMode::ColorDodge => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::ColorDodge, opacity)),
+		BlendMode::LinearDodge => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::LinearDodge, opacity)),
+		BlendMode::LighterColor => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::LighterColor, opacity)),
+		// Contrast group
+		BlendMode::Overlay => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Overlay, opacity)),
+		BlendMode::SoftLight => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::SoftLight, opacity)),
+		BlendMode::HardLight => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::HardLight, opacity)),
+		BlendMode::VividLight => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::VividLight, opacity)),
+		BlendMode::LinearLight => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::LinearLight, opacity)),
+		BlendMode::PinLight => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::PinLight, opacity)),
+		BlendMode::HardMix => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::HardMix, opacity)),
+		// Inversion group
+		BlendMode::Difference => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Difference, opacity)),
+		BlendMode::Exclusion => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Exclusion, opacity)),
+		BlendMode::Subtract => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Subtract, opacity)),
+		BlendMode::Divide => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Divide, opacity)),
+		// Component group
+		BlendMode::Hue => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Hue, opacity)),
+		BlendMode::Saturation => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Saturation, opacity)),
+		BlendMode::Color => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Color, opacity)),
+		BlendMode::Luminosity => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Luminosity, opacity)),
+		// Other utility blend modes (hidden from the normal list)
+		BlendMode::Erase => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Erase, opacity)),
+		BlendMode::Restore => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Restore, opacity)),
+		BlendMode::MultiplyAlpha => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::MultiplyAlpha, opacity)),
+	}
 }
 
-#[node_macro::node(category(""))]
-async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+#[node_macro::node(category("Raster"))]
+async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+	let [start, end] = image_frame_table.bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+	let image_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
-	let image_bbox = Bbox::from_transform(image_frame_table.transform()).to_axis_aligned_bbox();
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
+	let background_bounds = bbox.to_transform();
 
 	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 	let erase_restore_strokes: Vec<_> = strokes.iter().filter(|&s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
 	let mut brush_plan = cache.compute_brush_plan(image_frame_table, &draw_strokes);
-
-	let mut background_bounds = bbox.to_transform();
-
-	// If the bounds are empty (no size on images or det(transform) = 0), keep the target bounds
-	let bounds_empty = bounds.instance_ref_iter().all(|bounds| bounds.instance.width() == 0 || bounds.instance.height() == 0);
-	if bounds.transform().matrix2.determinant() != 0. && !bounds_empty {
-		background_bounds = bounds.transform();
-	}
 
 	let mut actual_image = extend_image_to_bounds((), brush_plan.background, background_bounds);
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
@@ -284,9 +255,12 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 	let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
 	if has_erase_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = ImageFrameTable::new(opaque_image);
-		*erase_restore_mask.transform_mut() = background_bounds;
-		*erase_restore_mask.one_instance_mut().alpha_blending = Default::default();
+		let mut erase_restore_mask = ImageFrameTable::empty();
+		erase_restore_mask.push(Instance {
+			instance: opaque_image,
+			transform: background_bounds,
+			..Default::default()
+		});
 
 		for stroke in erase_restore_strokes {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -323,12 +297,67 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, bounds: I
 		}
 
 		let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));
-		let blend_executor = BlendImageTupleNode::new(FutureWrapperNode::new(ValueNode::new(blend_params)));
-		actual_image = blend_executor.eval((actual_image, erase_restore_mask)).await;
+		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
 	actual_image
 }
+
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+// Git diff hint 1
+
+pub fn blend_image_closure<P, Foreground, Background>(foreground: Foreground, mut background: Background, map_fn: impl Fn(P, P) -> P) -> Background
+where
+	P: Pixel + Alpha,
+	Foreground: Sample<Pixel = P> + Transform,
+	Background: BitmapMut<Pixel = P> + Transform,
+{
+	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
+
+	// Transforms a point from the background image to the foreground image
+	let background_to_foreground = background.transform() * DAffine2::from_scale(1. / background_size);
+
+	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
+	let background_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
+
+	// Clamp the foreground image to the background image
+	let start = (background_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
+	let end = (background_aabb.end * background_size).min(background_size).as_uvec2();
+
+	let area = background_to_foreground.transform_point2(DVec2::new(1., 1.)) - background_to_foreground.transform_point2(DVec2::ZERO);
+	for y in start.y..end.y {
+		for x in start.x..end.x {
+			let background_point = DVec2::new(x as f64, y as f64);
+			let foreground_point = background_to_foreground.transform_point2(background_point);
+
+			let Some(source_pixel) = foreground.sample(foreground_point, area) else { continue };
+			let Some(destination_pixel) = background.get_pixel_mut(x, y) else { continue };
+
+			*destination_pixel = map_fn(source_pixel, *destination_pixel);
+		}
+	}
+
+	background
+}
+
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
+// Git diff hint 2
 
 #[cfg(test)]
 mod test {
@@ -350,7 +379,6 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
-			ImageFrameTable::<Color>::default(),
 			ImageFrameTable::<Color>::default(),
 			vec![BrushStroke {
 				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],

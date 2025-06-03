@@ -1019,6 +1019,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		// TODO: Remove this and just use the proto node definition directly
 		DocumentNodeDefinition {
 			identifier: "Brush",
 			category: "Raster",
@@ -1029,9 +1030,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![DocumentNode {
 							inputs: vec![
 								NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
-								NodeInput::network(concrete!(ImageFrameTable<Color>), 1),
-								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 2),
-								NodeInput::network(concrete!(BrushCache), 3),
+								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 1),
+								NodeInput::network(concrete!(BrushCache), 2),
 							],
 							manual_composition: Some(concrete!(Context)),
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::brush::BrushNode")),
@@ -1045,14 +1045,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), false),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::new_proto()), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Background", "TODO").into(), ("Bounds", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
+					input_properties: vec![("Background", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {

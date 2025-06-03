@@ -278,7 +278,7 @@ impl BrushToolData {
 			};
 
 			if *reference == Some("Brush".to_string()) && node_id != layer.to_node() {
-				let points_input = node.inputs.get(2)?;
+				let points_input = node.inputs.get(1)?;
 				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
 				self.strokes.clone_from(strokes);
 

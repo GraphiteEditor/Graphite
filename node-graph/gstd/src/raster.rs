@@ -1,13 +1,14 @@
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::instances::Instance;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{
 	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Sample,
 };
-use graphene_core::transform::{Transform, TransformMut};
-use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
+use graphene_core::transform::Transform;
+use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -189,72 +190,6 @@ where
 	}
 
 	image
-}
-
-// #[derive(Debug, Clone, Copy)]
-// pub struct BlendImageTupleNode<P, Fg, MapFn> {
-// 	map_fn: MapFn,
-// 	_p: PhantomData<P>,
-// 	_fg: PhantomData<Fg>,
-// }
-
-#[node_macro::node(skip_impl)]
-async fn blend_image_tuple<_P, MapFn, _Fg>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'n MapFn) -> ImageFrameTable<_P>
-where
-	_P: Alpha + Pixel + Debug + Send,
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'n + Clone,
-	_Fg: Sample<Pixel = _P> + Transform + Clone + Send + 'n,
-	GraphicElement: From<Image<_P>>,
-{
-	let (background, foreground) = images;
-
-	blend_image(foreground, background, map_fn)
-}
-
-fn blend_image<'input, _P, MapFn, Frame, Background>(foreground: Frame, background: Background, map_fn: &'input MapFn) -> Background
-where
-	MapFn: Node<'input, (_P, _P), Output = _P>,
-	_P: Pixel + Alpha + Debug,
-	Frame: Sample<Pixel = _P> + Transform,
-	Background: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
-{
-	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
-}
-
-pub fn blend_image_closure<_P, MapFn, Frame, Background>(foreground: Frame, mut background: Background, map_fn: MapFn) -> Background
-where
-	MapFn: Fn(_P, _P) -> _P,
-	_P: Pixel + Alpha + Debug,
-	Frame: Sample<Pixel = _P> + Transform,
-	Background: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
-{
-	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
-
-	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
-
-	// Footprint of the foreground image (0,0) (1, 1) in the background image space
-	let bg_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
-
-	// Clamp the foreground image to the background image
-	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
-	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
-
-	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
-	for y in start.y..end.y {
-		for x in start.x..end.x {
-			let bg_point = DVec2::new(x as f64, y as f64);
-			let fg_point = bg_to_fg.transform_point2(bg_point);
-
-			if let Some(src_pixel) = foreground.sample(fg_point, area) {
-				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
-					*dst_pixel = map_fn(src_pixel, *dst_pixel);
-				}
-			}
-		}
-	}
-
-	background
 }
 
 #[node_macro::node(category(""))]

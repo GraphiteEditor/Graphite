@@ -3,7 +3,6 @@ use super::discrete_srgb::float_to_srgb_u8;
 use crate::AlphaBlending;
 use crate::GraphicElement;
 use crate::instances::{Instance, Instances};
-use crate::transform::TransformMut;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
