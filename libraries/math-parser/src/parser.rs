@@ -84,12 +84,27 @@ pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Er
 
 		let atom = choice((conditional, float, constant, call, parens, var)).boxed();
 
-		let unary = choice((just('-').to(UnaryOp::Neg), just("sqrt").to(UnaryOp::Sqrt)))
-			.padded()
-			.repeated()
-			.foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
+		let add_op = choice((just('+').to(BinaryOp::Add), just('-').to(BinaryOp::Sub))).padded();
+		let mul_op = choice((just('*').to(BinaryOp::Mul), just('/').to(BinaryOp::Div))).padded();
+		let pow_op = just('^').to(BinaryOp::Pow).padded();
+		let unary_op = choice((just('-').to(UnaryOp::Neg), just("sqrt").to(UnaryOp::Sqrt))).padded();
+		let cmp_op = choice((
+			just("<").to(BinaryOp::Lt),
+			just("<=").to(BinaryOp::Leq),
+			just(">").to(BinaryOp::Gt),
+			just(">=").to(BinaryOp::Geq),
+			just("==").to(BinaryOp::Eq),
+		));
 
-		let pow = unary.clone().foldl(just('^').to(BinaryOp::Pow).padded().then(unary).repeated(), |lhs, (op, rhs)| Node::BinOp {
+		let unary = unary_op.repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
+
+		let cmp = unary.clone().foldl(cmp_op.padded().then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
+
+		let pow = cmp.clone().foldl(pow_op.then(cmp).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
 			op,
 			rhs: Box::new(rhs),
@@ -97,37 +112,20 @@ pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Er
 
 		let product = pow
 			.clone()
-			.foldl(choice((just('*').to(BinaryOp::Mul), just('/').to(BinaryOp::Div))).padded().then(pow).repeated(), |lhs, (op, rhs)| {
-				Node::BinOp {
-					lhs: Box::new(lhs),
-					op,
-					rhs: Box::new(rhs),
-				}
+			.foldl(mul_op.then(pow).repeated(), |lhs, (op, rhs)| Node::BinOp {
+				lhs: Box::new(lhs),
+				op,
+				rhs: Box::new(rhs),
 			})
 			.boxed();
 
-		let sum = product.clone().foldl(
-			choice((just('+').to(BinaryOp::Add), just('-').to(BinaryOp::Sub))).padded().then(product).repeated(),
-			|lhs, (op, rhs)| Node::BinOp {
-				lhs: Box::new(lhs),
-				op,
-				rhs: Box::new(rhs),
-			},
-		);
+		let sum = product.clone().foldl(add_op.then(product).repeated(), |lhs, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
 
-		let cmp = sum.clone().foldl(
-			choice((just("<").to(BinaryOp::Lt), just(">").to(BinaryOp::Gt), just("==").to(BinaryOp::Eq)))
-				.padded()
-				.then(sum)
-				.repeated(),
-			|lhs: Node, (op, rhs)| Node::BinOp {
-				lhs: Box::new(lhs),
-				op,
-				rhs: Box::new(rhs),
-			},
-		);
-
-		cmp.padded()
+		sum.padded()
 	})
 }
 
