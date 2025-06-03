@@ -12,3 +12,6 @@ pub mod filter;
 pub mod image_color_palette;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
+
+#[macro_use]
+extern crate log;
