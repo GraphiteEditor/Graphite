@@ -16,7 +16,7 @@ macro_rules! generate_benchmarks {
 
 		fn evaluation_bench(c: &mut Criterion) {
 			$(
-				let expr = ast::Node::try_parse_from_str($input).unwrap().0;
+				let expr = ast::Node::try_parse_from_str($input).unwrap();
 				let context = EvalContext::default();
 
 				c.bench_function(concat!("eval ", $input), |b| {
