@@ -6,8 +6,6 @@ use std::{
 use crate::value::{Number, Value};
 use lazy_static::lazy_static;
 use num_complex::{Complex, ComplexFloat};
-use std::collections::HashMap;
-use std::f64::consts::PI;
 
 type FunctionImplementation = Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>;
 lazy_static! {

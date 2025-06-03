@@ -1,16 +1,14 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp, Unit};
 use crate::context::EvalContext;
 use crate::value::{Complex, Number, Value};
+use chumsky::container::Seq;
+use chumsky::{Parser, prelude::*};
 use lazy_static::lazy_static;
 use num_complex::ComplexFloat;
-use pest::Parser;
-use pest::iterators::{Pair, Pairs};
-use pest::pratt_parser::{Assoc, Op, PrattParser};
-use pest_derive::Parser;
 use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
 
-#[derive(Parser)]
+/*#[derive(Parser)]
 #[grammar = "./grammer.pest"]
 struct ExprParser;
 
@@ -25,7 +23,7 @@ lazy_static! {
 			.op(Op::prefix(Rule::sqrt))
 			.op(Op::prefix(Rule::neg))
 	};
-}
+}*/
 
 #[derive(Error, Debug)]
 pub enum TypeError {
@@ -37,25 +35,126 @@ pub enum TypeError {
 }
 
 #[derive(Error, Debug)]
-pub enum ParseError {
-	#[error("ParseIntError: {0}")]
-	ParseInt(#[from] ParseIntError),
-	#[error("ParseFloatError: {0}")]
-	ParseFloat(#[from] ParseFloatError),
-
-	#[error("TypeError: {0}")]
-	Type(#[from] TypeError),
-
-	#[error("PestError: {0}")]
-	Pest(#[from] Box<pest::error::Error<Rule>>),
+pub enum ParseError<'src> {
+	/// One or more syntax/lexing errors produced by Chumsky.
+	#[error("Syntax error(s): {0:#?}")]
+	Syntax(Vec<Rich<'src, char>>),
 }
 
 impl Node {
-	pub fn try_parse_from_str(s: &str) -> Result<(Node, Unit), ParseError> {
-		let pairs = ExprParser::parse(Rule::program, s).map_err(Box::new)?;
-		let (node, metadata) = parse_expr(pairs)?;
-		Ok((node, metadata.unit))
+	pub fn try_parse_from_str(s: &str) -> Result<Node, ParseError> {
+		let parsed = chumsky_parser().parse(s);
+		if parsed.has_output() {
+			Ok(parsed.into_output().unwrap())
+		} else {
+			Err(ParseError::Syntax(parsed.into_errors()))
+		}
 	}
+}
+
+pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Err<chumsky::error::Rich<'a, char>>> {
+	recursive(|expr| {
+		let float = text::int(10)
+			.then(just('.').map(|c: char| c).then(text::int(10)).or_not())
+			.then(just('e').or(just('E')).then(one_of("+-").or_not()).then(text::int(10)).or_not())
+			.map(|((int_part, opt_frac), opt_exp): ((&str, _), _)| {
+				let mut s: String = int_part.to_string();
+				if let Some((dot, frac)) = opt_frac {
+					s.push(dot);
+					s.push_str(frac);
+				}
+				if let Some(((e, sign), exp)) = opt_exp {
+					s.push(e);
+					if let Some(sign) = sign {
+						s.push(sign);
+					}
+					s.push_str(exp);
+				}
+				Node::Lit(Literal::Float(s.parse().unwrap()))
+			});
+
+		let constant = choice((
+			just("pi").or(just("π")).map(|_| Node::Lit(Literal::Float(std::f64::consts::PI))),
+			just("tau").or(just("τ")).map(|_| Node::Lit(Literal::Float(std::f64::consts::TAU))),
+			just("e").map(|_| Node::Lit(Literal::Float(std::f64::consts::E))),
+			just("phi").or(just("φ")).map(|_| Node::Lit(Literal::Float(1.618_033_988_75))),
+			just("inf").or(just("∞")).map(|_| Node::Lit(Literal::Float(f64::INFINITY))),
+			just("i").map(|_| Node::Lit(Literal::Complex(Complex::new(0.0, 1.0)))), // Assuming Complex impl
+			just("G").map(|_| Node::Lit(Literal::Float(9.80665))),                  // gravity
+		));
+
+		let ident = text::ident().padded();
+
+		let var = ident.map(|s: &str| Node::Var(s.to_string()));
+
+		let args = expr.clone().separated_by(just(',')).collect::<Vec<_>>().delimited_by(just('('), just(')'));
+
+		let call = ident.then(args).map(|(name, args): (&str, Vec<Node>)| Node::FnCall { name: name.to_string(), expr: args });
+
+		let parens = expr.clone().clone().delimited_by(just('('), just(')'));
+
+		let conditional = just("if")
+			.padded()
+			.ignore_then(expr.clone().delimited_by(just('('), just(')')))
+			.padded()
+			.then(expr.clone().delimited_by(just('{'), just('}')))
+			.padded()
+			.then_ignore(just("else"))
+			.padded()
+			.then(expr.clone().delimited_by(just('{'), just('}')))
+			.padded()
+			.map(|((cond, if_b), else_b): ((Node, _), _)| Node::Conditional {
+				condition: Box::new(cond),
+				if_block: Box::new(if_b),
+				else_block: Box::new(else_b),
+			});
+
+		let atom = choice((conditional, float, constant, call, parens, var));
+
+		let unary = choice((just('-').to(UnaryOp::Neg), just("sqrt").to(UnaryOp::Sqrt)))
+			.padded()
+			.repeated()
+			.foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
+
+		let pow = unary.clone().foldl(just('^').to(BinaryOp::Pow).padded().then(unary).repeated(), |lhs, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
+
+		let product = pow
+			.clone()
+			.foldl(choice((just('*').to(BinaryOp::Mul), just('/').to(BinaryOp::Div))).padded().then(pow).repeated(), |lhs, (op, rhs)| {
+				Node::BinOp {
+					lhs: Box::new(lhs),
+					op,
+					rhs: Box::new(rhs),
+				}
+			});
+
+		let sum = product.clone().foldl(
+			choice((just('+').to(BinaryOp::Add), just('-').to(BinaryOp::Sub))).padded().then(product).repeated(),
+			|lhs, (op, rhs)| Node::BinOp {
+				lhs: Box::new(lhs),
+				op,
+				rhs: Box::new(rhs),
+			},
+		);
+
+		let cmp = sum.clone().foldl(
+			choice((just("<").to(BinaryOp::Lt), just(">").to(BinaryOp::Gt), just("==").to(BinaryOp::Eq)))
+				.padded()
+				.then(sum)
+				.repeated(),
+			|lhs: Node, (op, rhs)| Node::BinOp {
+				lhs: Box::new(lhs),
+				op,
+				rhs: Box::new(rhs),
+			},
+		);
+
+		cmp.padded()
+	})
 }
 
 struct NodeMetadata {
@@ -68,7 +167,7 @@ impl NodeMetadata {
 	}
 }
 
-fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
+/*fn parse_unit(pairs: Pairs<Rule>) -> Result<(Unit, f64), ParseError> {
 	let mut scale = 1.0;
 	let mut length = 0;
 	let mut mass = 0;
@@ -326,7 +425,7 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<(Node, NodeMetadata), ParseError> {
 			Ok((node, NodeMetadata::new(unit)))
 		})
 		.parse(pairs)
-}
+}*/
 
 //TODO: set up Unit test for Units
 #[cfg(test)]
@@ -338,7 +437,7 @@ mod tests {
 				#[test]
 				fn $name() {
 					let result = Node::try_parse_from_str($input).unwrap();
-					assert_eq!(result.0, $expected);
+					assert_eq!(result, $expected);
 				}
 			)*
 		};
@@ -376,7 +475,7 @@ mod tests {
 			 expr: vec![Node::Lit(Literal::Float(16.0))]
 		},
 
-		test_parse_complex_expr: "(1 + 2)  3 - 4 ^ 2" => Node::BinOp {
+		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {
 					lhs: Box::new(Node::Lit(Literal::Float(1.0))),
