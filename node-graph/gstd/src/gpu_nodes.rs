@@ -241,7 +241,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // #[node_macro::old_node_impl(MapGpuNode)]
 // async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
 // 	let image_frame_table = &image;
-// 	let image = image.one_instance_ref().instance;
+// 	let image = image.instance_ref_iter().next().unwrap().instance;
 
 // 	log::debug!("Executing gpu node");
 // 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
@@ -292,7 +292,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 	};
 // 	let mut result = ImageFrameTable::new(new_image);
 // 	*result.transform_mut() = image_frame_table.transform();
-// 	*result.one_instance_mut().alpha_blending = *image_frame_table.one_instance_ref().alpha_blending;
+// 	*result.one_instance_mut().alpha_blending = *image_frame_table.instance_ref_iter().next().unwrap().alpha_blending;
 
 // 	result
 // }
@@ -312,7 +312,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 	GraphicElement: From<Image<T>>,
 // 	T::Static: Pixel,
 // {
-// 	let image = image.one_instance_ref().instance;
+// 	let image = image.instance_ref_iter().next().unwrap().instance;
 
 // 	let compiler = graph_craft::graphene_compiler::Compiler {};
 // 	let inner_network = NodeNetwork::value_network(node);

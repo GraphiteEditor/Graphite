@@ -231,7 +231,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
-					image: image.one_instance_ref().instance.clone(),
+					image: image.instance_ref_iter().next().unwrap().instance.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -273,7 +273,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 			*image_frame_table.one_instance_mut().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.one_instance_ref().instance.image.clone()),
+		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),
 		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table,
 	})
 }
@@ -296,7 +296,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
-					image: image.one_instance_ref().instance.clone(),
+					image: image.instance_ref_iter().next().unwrap().instance.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -342,7 +342,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 			source_node_id: None,
 		},
 		FormatVersions::ImageFrame(image_frame) => Instance {
-			instance: image_frame.one_instance_ref().instance.image.clone(),
+			instance: image_frame.instance_ref_iter().next().unwrap().instance.image.clone(),
 			..Default::default()
 		},
 		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table.instance_iter().next().unwrap_or_default(),
@@ -377,26 +377,6 @@ impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 			return None;
 		}
 		self.get_pixel(pos.x as u32, pos.y as u32)
-	}
-}
-
-impl<P> Sample for ImageFrameTable<P>
-where
-	P: Debug + Copy + Pixel,
-	GraphicElement: From<Image<P>>,
-{
-	type Pixel = P;
-
-	// TODO: Improve sampling logic
-	#[inline(always)]
-	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
-		let image_transform = self.one_instance_ref().transform;
-		let image = self.one_instance_ref().instance;
-
-		let image_size = DVec2::new(image.width() as f64, image.height() as f64);
-		let pos = (DAffine2::from_scale(image_size) * image_transform.inverse()).transform_point2(pos);
-
-		Sample::sample(image, pos, area)
 	}
 }
 
