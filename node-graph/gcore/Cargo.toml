@@ -47,7 +47,7 @@ num-traits = { workspace = true, default-features = false, features = ["i128"] }
 usvg = { workspace = true }
 rand = { workspace = true, default-features = false, features = ["std_rng"] }
 glam = { workspace = true, default-features = false, features = [
-	"scalar-math",
+	"scalar-math", "serde"
 ] }
 serde_json = { workspace = true }
 petgraph = { workspace = true, default-features = false, features = [

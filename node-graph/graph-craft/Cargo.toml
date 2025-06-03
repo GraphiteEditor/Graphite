@@ -26,7 +26,7 @@ graphene-core = { workspace = true, features = ["std"] }
 num-traits = { workspace = true }
 log = { workspace = true }
 futures = { workspace = true }
-glam = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
 base64 = { workspace = true }
 bezier-rs = { workspace = true }
 specta = { workspace = true }

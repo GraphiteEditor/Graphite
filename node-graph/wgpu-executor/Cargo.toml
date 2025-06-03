@@ -19,7 +19,7 @@ dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 node-macro = { workspace = true }
 num-traits = { workspace = true }
 log = { workspace = true }
-glam = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
 base64 = { workspace = true }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }

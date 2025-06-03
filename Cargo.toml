@@ -85,7 +85,7 @@ resvg = "0.44"
 usvg = "0.44"
 rand = { version = "0.9", default-features = false }
 rand_chacha = "0.9"
-glam = { version = "0.29", default-features = false, features = ["serde"] }
+glam = { version = "0.29", default-features = false }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rustybuzz = "0.20"
