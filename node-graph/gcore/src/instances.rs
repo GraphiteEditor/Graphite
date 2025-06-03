@@ -1,8 +1,5 @@
-use crate::raster::Pixel;
-use crate::raster::image::{Image, ImageFrameTable};
-use crate::transform::Transform;
+use crate::AlphaBlending;
 use crate::uuid::NodeId;
-use crate::{AlphaBlending, GraphicElement};
 use dyn_any::StaticType;
 use glam::DAffine2;
 use std::hash::Hash;
@@ -262,15 +259,5 @@ impl<T> Instance<T> {
 			alpha_blending: vec![self.alpha_blending],
 			source_node_id: vec![self.source_node_id],
 		}
-	}
-}
-
-// IMAGE FRAME TABLE
-impl<P: Pixel> Transform for ImageFrameTable<P>
-where
-	GraphicElement: From<Image<P>>,
-{
-	fn transform(&self) -> DAffine2 {
-		*self.one_instance_ref().transform
 	}
 }

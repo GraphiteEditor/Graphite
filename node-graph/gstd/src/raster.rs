@@ -4,9 +4,7 @@ use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
-use graphene_core::raster::{
-	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Sample,
-};
+use graphene_core::raster::{Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut};
 use graphene_core::transform::Transform;
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
 use rand::prelude::*;
@@ -143,53 +141,53 @@ where
 }
 
 #[node_macro::node(category("Raster"))]
-fn mask<P, S, Input, Stencil>(
+fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	#[implementations(ImageFrameTable<Color>)]
-	mut image: Input,
+	image: ImageFrameTable<Color>,
 	/// The stencil to be used for masking.
-	#[implementations(ImageFrameTable<Color>)]
 	#[expose]
-	stencil: Stencil,
-) -> Input
-where
-	// P is the color of the input image. It must have an alpha channel because that is going to be modified by the mask.
-	P: Alpha,
-	// S is the color of the stencil. It must have a luminance channel because that is used to mask the input image.
-	S: Luminance,
-	// Input image
-	Input: Transform + BitmapMut<Pixel = P>,
-	// Stencil
-	Stencil: Transform + Sample<Pixel = S>,
-{
-	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
-	let mask_size = stencil.transform().decompose_scale();
-
-	if mask_size == DVec2::ZERO {
+	stencil: ImageFrameTable<Color>,
+) -> ImageFrameTable<Color> {
+	// TODO: Support multiple stencil instances
+	let Some(stencil_instance) = stencil.instance_iter().next() else {
+		// No stencil provided so we return the original image
 		return image;
-	}
+	};
+	let stencil_size = DVec2::new(stencil_instance.instance.width as f64, stencil_instance.instance.height as f64);
 
-	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
-	let stencil_transform_inverse = stencil.transform().inverse();
+	let mut result_table = ImageFrameTable::empty();
 
-	let area = bg_to_fg.transform_vector2(DVec2::ONE);
-	for y in 0..image.height() {
-		for x in 0..image.width() {
-			let image_point = DVec2::new(x as f64, y as f64);
-			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+	for mut image_instance in image.instance_iter() {
+		let image_size = DVec2::new(image_instance.instance.width as f64, image_instance.instance.height as f64);
+		let mask_size = stencil_instance.transform.decompose_scale();
 
-			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
+		if mask_size == DVec2::ZERO {
+			continue;
+		}
+
+		// Transforms a point from the background image to the foreground image
+		let bg_to_fg = image_instance.transform * DAffine2::from_scale(1. / image_size);
+		let stencil_transform_inverse = stencil_instance.transform.inverse();
+
+		for y in 0..image_instance.instance.height {
+			for x in 0..image_instance.instance.width {
+				let image_point = DVec2::new(x as f64, y as f64);
+				let mask_point = bg_to_fg.transform_point2(image_point);
+				let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
+				let mask_point = stencil_instance.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+				let mask_point = (DAffine2::from_scale(stencil_size) * stencil_instance.transform.inverse()).transform_point2(mask_point);
+
+				let image_pixel = image_instance.instance.get_pixel_mut(x, y).unwrap();
+				let mask_pixel = stencil_instance.instance.sample(mask_point);
 				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 			}
 		}
+
+		result_table.push(image_instance);
 	}
 
-	image
+	result_table
 }
 
 #[node_macro::node(category(""))]
