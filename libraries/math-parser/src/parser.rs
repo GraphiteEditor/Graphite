@@ -12,22 +12,6 @@ use thiserror::Error;
 pub enum ParseError<'src> {
 	#[error("Syntax error(s): {0:#?}")]
 	Syntax(Vec<Rich<'src, char>>),
-	#[error("nig")]
-	Nigga(),
-}
-
-#[cfg(not(debug_assertions))] // In release build: skip boxing
-macro_rules! maybe_boxed {
-	($p:expr) => {
-		$p
-	};
-}
-
-#[cfg(debug_assertions)] // In debug build: box for faster compilation
-macro_rules! maybe_boxed {
-	($p:expr) => {
-		$p.boxed()
-	};
 }
 
 impl Node {
@@ -98,7 +82,7 @@ pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Er
 				else_block: Box::new(else_b),
 			});
 
-		let atom = maybe_boxed!(choice((conditional, float, constant, call, parens, var)));
+		let atom = choice((conditional, float, constant, call, parens, var)).boxed();
 
 		let unary = choice((just('-').to(UnaryOp::Neg), just("sqrt").to(UnaryOp::Sqrt)))
 			.padded()
@@ -111,16 +95,16 @@ pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Er
 			rhs: Box::new(rhs),
 		});
 
-		let product = maybe_boxed!(
-			pow.clone()
-				.foldl(choice((just('*').to(BinaryOp::Mul), just('/').to(BinaryOp::Div))).padded().then(pow).repeated(), |lhs, (op, rhs)| {
-					Node::BinOp {
-						lhs: Box::new(lhs),
-						op,
-						rhs: Box::new(rhs),
-					}
-				})
-		);
+		let product = pow
+			.clone()
+			.foldl(choice((just('*').to(BinaryOp::Mul), just('/').to(BinaryOp::Div))).padded().then(pow).repeated(), |lhs, (op, rhs)| {
+				Node::BinOp {
+					lhs: Box::new(lhs),
+					op,
+					rhs: Box::new(rhs),
+				}
+			})
+			.boxed();
 
 		let sum = product.clone().foldl(
 			choice((just('+').to(BinaryOp::Add), just('-').to(BinaryOp::Sub))).padded().then(product).repeated(),
