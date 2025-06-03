@@ -135,13 +135,13 @@ where
 pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
-	let blank_texture = empty_image((), transform, Color::TRANSPARENT);
-	let image = blend_image_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
+	let blank_texture = empty_image((), transform, Color::TRANSPARENT).instance_iter().next().unwrap_or_default();
+	let image = blend_stamp_closure(stamp, blank_texture, |a, b| blend_colors(a, b, BlendMode::Normal, 1.));
 
-	image.one_instance_ref().instance.clone()
+	image.instance
 }
 
-pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
+pub fn blend_with_mode(background: Instance<Image<Color>>, foreground: Instance<Image<Color>>, blend_mode: BlendMode, opacity: f64) -> Instance<Image<Color>> {
 	let opacity = opacity / 100.;
 	match std::hint::black_box(blend_mode) {
 		// Normal group
@@ -184,8 +184,14 @@ pub fn blend_with_mode(background: ImageFrameTable<Color>, foreground: ImageFram
 }
 
 #[node_macro::node(category("Raster"))]
-async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
-	let [start, end] = image_frame_table.bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
+async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+	// TODO: Find a way to handle more than one instance
+	let Some(image_frame_instance) = image_frame_table.instance_ref_iter().next() else {
+		return ImageFrameTable::default();
+	};
+	let image_frame_instance = image_frame_instance.to_instance_cloned();
+
+	let [start, end] = image_frame_instance.clone().to_table().bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let image_bbox = AxisAlignedBbox { start, end };
 	let stroke_bbox = strokes.iter().map(|s| s.bounding_box()).reduce(|a, b| a.union(&b)).unwrap_or(AxisAlignedBbox::ZERO);
 	let bbox = if image_bbox.size().length() < 0.1 { stroke_bbox } else { stroke_bbox.union(&image_bbox) };
@@ -194,9 +200,13 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 	let erase_restore_strokes: Vec<_> = strokes.iter().filter(|&s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
-	let mut brush_plan = cache.compute_brush_plan(image_frame_table, &draw_strokes);
+	let mut brush_plan = cache.compute_brush_plan(image_frame_instance, &draw_strokes);
 
-	let mut actual_image = extend_image_to_bounds((), brush_plan.background, background_bounds);
+	// TODO: Find a way to handle more than one instance
+	let Some(mut actual_image) = extend_image_to_bounds((), brush_plan.background.to_table(), background_bounds).instance_iter().next() else {
+		return ImageFrameTable::default();
+	};
+
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
 	for (idx, stroke) in brush_plan.strokes.into_iter().enumerate() {
 		// Create brush texture.
@@ -233,14 +243,14 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 			);
 			let blit_target = if idx == 0 {
 				let target = core::mem::take(&mut brush_plan.first_stroke_texture);
-				extend_image_to_bounds((), target, stroke_to_layer)
+				extend_image_to_bounds((), target.to_table(), stroke_to_layer)
 			} else {
 				use crate::raster::empty_image;
 				empty_image((), stroke_to_layer, Color::TRANSPARENT)
 				// EmptyImageNode::new(CopiedNode::new(stroke_to_layer), CopiedNode::new(Color::TRANSPARENT)).eval(())
 			};
 
-			blit_node.eval(blit_target).await
+			blit_node.eval(blit_target).await.instance_iter().next().unwrap_or_default()
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
@@ -255,12 +265,11 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 	let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
 	if has_erase_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
-		let mut erase_restore_mask = ImageFrameTable::empty();
-		erase_restore_mask.push(Instance {
+		let mut erase_restore_mask = Instance {
 			instance: opaque_image,
 			transform: background_bounds,
 			..Default::default()
-		});
+		};
 
 		for stroke in erase_restore_strokes {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
@@ -280,7 +289,7 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 						FutureWrapperNode::new(ClonedNode::new(positions)),
 						FutureWrapperNode::new(ClonedNode::new(blend_params)),
 					);
-					erase_restore_mask = blit_node.eval(erase_restore_mask).await;
+					erase_restore_mask = blit_node.eval(erase_restore_mask.to_table()).await.instance_iter().next().unwrap_or_default();
 				}
 				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
 				BlendMode::Restore => {
@@ -290,7 +299,7 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 						FutureWrapperNode::new(ClonedNode::new(positions)),
 						FutureWrapperNode::new(ClonedNode::new(blend_params)),
 					);
-					erase_restore_mask = blit_node.eval(erase_restore_mask).await;
+					erase_restore_mask = blit_node.eval(erase_restore_mask.to_table()).await.instance_iter().next().unwrap_or_default();
 				}
 				_ => unreachable!(),
 			}
@@ -300,7 +309,13 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
-	actual_image
+	let first_row = image_frame_table.instance_mut_iter().next().unwrap();
+	*first_row.instance = actual_image.instance;
+	*first_row.transform = actual_image.transform;
+	*first_row.alpha_blending = actual_image.alpha_blending;
+	*first_row.source_node_id = actual_image.source_node_id;
+
+	image_frame_table
 }
 
 // Git diff hint 1
@@ -314,32 +329,26 @@ async fn brush(_: impl Ctx, image_frame_table: ImageFrameTable<Color>, strokes: 
 // Git diff hint 1
 // Git diff hint 1
 
-pub fn blend_image_closure<P, Foreground, Background>(foreground: Foreground, mut background: Background, map_fn: impl Fn(P, P) -> P) -> Background
-where
-	P: Pixel + Alpha,
-	Foreground: Sample<Pixel = P> + Transform,
-	Background: BitmapMut<Pixel = P> + Transform,
-{
-	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
+pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: Instance<Image<Color>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Image<Color>> {
+	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
 
 	// Transforms a point from the background image to the foreground image
-	let background_to_foreground = background.transform() * DAffine2::from_scale(1. / background_size);
+	let background_to_foreground = background.transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
-	let background_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform.inverse() * foreground.transform).to_axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
 	let start = (background_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
 	let end = (background_aabb.end * background_size).min(background_size).as_uvec2();
 
-	let area = background_to_foreground.transform_point2(DVec2::new(1., 1.)) - background_to_foreground.transform_point2(DVec2::ZERO);
 	for y in start.y..end.y {
 		for x in start.x..end.x {
 			let background_point = DVec2::new(x as f64, y as f64);
 			let foreground_point = background_to_foreground.transform_point2(background_point);
 
-			let Some(source_pixel) = foreground.sample(foreground_point, area) else { continue };
-			let Some(destination_pixel) = background.get_pixel_mut(x, y) else { continue };
+			let source_pixel = foreground.instance.sample(foreground_point);
+			let Some(destination_pixel) = background.instance.get_pixel_mut(x, y) else { continue };
 
 			*destination_pixel = map_fn(source_pixel, *destination_pixel);
 		}
@@ -358,6 +367,35 @@ where
 // Git diff hint 2
 // Git diff hint 2
 // Git diff hint 2
+
+pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: Instance<Image<Color>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Image<Color>> {
+	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
+
+	// Transforms a point from the background image to the foreground image
+	let background_to_foreground = background.transform * DAffine2::from_scale(1. / background_size);
+
+	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
+	let background_aabb = Bbox::unit().affine_transform(background.transform.inverse() * foreground.transform).to_axis_aligned_bbox();
+
+	// Clamp the foreground image to the background image
+	let start = (background_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
+	let end = (background_aabb.end * background_size).min(background_size).as_uvec2();
+
+	let area = background_to_foreground.transform_point2(DVec2::new(1., 1.)) - background_to_foreground.transform_point2(DVec2::ZERO);
+	for y in start.y..end.y {
+		for x in start.x..end.x {
+			let background_point = DVec2::new(x as f64, y as f64);
+			let foreground_point = background_to_foreground.transform_point2(background_point);
+
+			let Some(source_pixel) = foreground.sample(foreground_point, area) else { continue };
+			let Some(destination_pixel) = background.instance.get_pixel_mut(x, y) else { continue };
+
+			*destination_pixel = map_fn(source_pixel, *destination_pixel);
+		}
+	}
+
+	background
+}
 
 #[cfg(test)]
 mod test {
