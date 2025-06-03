@@ -124,8 +124,6 @@ impl BrushStroke {
 			cur_pos = sample.position;
 		}
 
-		info!("Blit points {result:#?}");
-
 		result
 	}
 }

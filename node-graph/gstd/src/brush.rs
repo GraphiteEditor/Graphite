@@ -252,7 +252,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strok
 
 			let instances = blit_node.eval(blit_target).await;
 			assert_eq!(instances.len(), 1);
-			instances.instance_iter().last().unwrap_or_default()
+			instances.instance_iter().next().unwrap_or_default()
 		};
 
 		// Cache image before doing final blend, and store final stroke texture.
@@ -339,13 +339,11 @@ pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: I
 	let background_to_foreground = DAffine2::from_scale(foreground_size) * foreground.transform.inverse() * background.transform * DAffine2::from_scale(1. / background_size);
 
 	// Footprint of the foreground image (0, 0)..(1, 1) in the background image space
-	let background_aabb = Bbox::unit()
-		.affine_transform(DAffine2::from_scale(background_size) * background.transform.inverse() * foreground.transform)
-		.to_axis_aligned_bbox();
+	let background_aabb = Bbox::unit().affine_transform(background.transform.inverse() * foreground.transform).to_axis_aligned_bbox();
 
 	// Clamp the foreground image to the background image
-	let start = (background_aabb.start).max(DVec2::ZERO).as_uvec2();
-	let end = (background_aabb.end).min(background_size).as_uvec2();
+	let start = (background_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
+	let end = (background_aabb.end * background_size).min(background_size).as_uvec2();
 
 	for y in start.y..end.y {
 		for x in start.x..end.x {
