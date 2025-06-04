@@ -320,17 +320,6 @@ async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strok
 	image_frame_table
 }
 
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-// Git diff hint 1
-
 pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: Instance<Image<Color>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Image<Color>> {
 	let foreground_size = DVec2::new(foreground.instance.width as f64, foreground.instance.height as f64);
 	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
@@ -359,17 +348,6 @@ pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: I
 
 	background
 }
-
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
-// Git diff hint 2
 
 pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: Instance<Image<Color>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Image<Color>> {
 	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
@@ -404,7 +382,6 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 mod test {
 	use super::*;
 	use glam::DAffine2;
-	use graphene_core::raster::Bitmap;
 	use graphene_core::transform::Transform;
 
 	#[test]
@@ -435,6 +412,6 @@ mod test {
 			BrushCache::new_proto(),
 		)
 		.await;
-		assert_eq!(image.width(), 20);
+		assert_eq!(image.instance_ref_iter().next().unwrap().instance.width, 20);
 	}
 }
