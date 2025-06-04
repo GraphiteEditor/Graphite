@@ -353,19 +353,6 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 // TODO: Rename to ImageTable
 pub type ImageFrameTable<P> = Instances<Image<P>>;
 
-/// Construct a 0x0 image frame table. This is useful if you don't want ImageFrameTable::default() to return its 1x1 image frame table.
-impl ImageFrameTable<Color> {
-	pub fn one_empty_image() -> Self {
-		let mut result = Self::empty();
-		result.push(Instance {
-			instance: Image::default(),
-			transform: DAffine2::ZERO,
-			..Default::default()
-		});
-		result
-	}
-}
-
 impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;
 

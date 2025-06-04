@@ -303,7 +303,7 @@ impl NodeRuntime {
 					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).instance.clone(),
 				);
 			} else {
-				log::warn!("failed to downcast monitor node output {parent_network_node_id:?}");
+				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}
 		}
 	}

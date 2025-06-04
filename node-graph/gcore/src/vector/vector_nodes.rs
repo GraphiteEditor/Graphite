@@ -1193,11 +1193,16 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 		}
 	}
 
-	let mut output_table = VectorDataTable::default();
-	let Some(mut output) = output_table.instance_mut_iter().next() else { return output_table };
+	// Create a table with one instance of an empty VectorData, then get a mutable reference to it which we append flattened subpaths to
+	let mut output_table = VectorDataTable::new(VectorData::default());
+	let Some(mut output) = output_table.instance_mut_iter().next() else {
+		return output_table;
+	};
 
+	// Flatten the graphic group input into the output VectorData instance
 	flatten_group(&graphic_group_input, &mut output);
 
+	// Return the single-row VectorDataTable containing the flattened VectorData subpaths
 	output_table
 }
 
@@ -1457,11 +1462,6 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 
 		vector_data_instance.instance.segment_domain = segment_domain;
 		result_table.push(vector_data_instance);
-	}
-
-	// TODO: remove after pt6 of instance table refactor
-	if result_table.is_empty() {
-		return VectorDataTable::new(VectorData::empty());
 	}
 
 	result_table

@@ -397,7 +397,7 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
-			ImageFrameTable::<Color>::default(),
+			ImageFrameTable::<Color>::new(Image::<Color>::default()),
 			vec![BrushStroke {
 				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {

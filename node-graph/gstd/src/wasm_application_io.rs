@@ -78,7 +78,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 #[node_macro::node(category("Network"))]
 fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return ImageFrameTable::one_empty_image();
+		return ImageFrameTable::default();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {

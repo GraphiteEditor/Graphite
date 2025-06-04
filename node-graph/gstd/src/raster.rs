@@ -88,11 +88,6 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 		result_table.push(image_frame_instance)
 	}
 
-	// TODO: Remove when we've completed part 6 of the instance tables refactor
-	if result_table.is_empty() {
-		return ImageFrameTable::one_empty_image();
-	}
-
 	result_table
 }
 
@@ -447,7 +442,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::one_empty_image();
+		return ImageFrameTable::default();
 	}
 
 	let footprint_scale = footprint.scale();
@@ -579,7 +574,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::one_empty_image();
+		return ImageFrameTable::default();
 	}
 
 	let scale = footprint.scale();
