@@ -42,15 +42,6 @@ impl<T> Instances<T> {
 		self.source_node_id.push(instance.source_node_id);
 	}
 
-	pub fn one_instance_ref(&self) -> InstanceRef<T> {
-		InstanceRef {
-			instance: self.instance.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
-			transform: self.transform.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
-			alpha_blending: self.alpha_blending.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
-			source_node_id: self.source_node_id.first().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", self.instance.len())),
-		}
-	}
-
 	pub fn one_instance_mut(&mut self) -> InstanceMut<T> {
 		let length = self.instance.len();
 

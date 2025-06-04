@@ -380,42 +380,6 @@ impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	}
 }
 
-impl<P> Bitmap for ImageFrameTable<P>
-where
-	P: Copy + Pixel,
-	GraphicElement: From<Image<P>>,
-{
-	type Pixel = P;
-
-	fn width(&self) -> u32 {
-		let image = self.one_instance_ref().instance;
-
-		image.width()
-	}
-
-	fn height(&self) -> u32 {
-		let image = self.one_instance_ref().instance;
-
-		image.height()
-	}
-
-	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
-		let image = self.one_instance_ref().instance;
-
-		image.get_pixel(x, y)
-	}
-}
-
-impl<P> BitmapMut for ImageFrameTable<P>
-where
-	P: Copy + Pixel,
-	GraphicElement: From<Image<P>>,
-{
-	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
-		self.one_instance_mut().instance.get_pixel_mut(x, y)
-	}
-}
-
 impl<P: Copy + Pixel> Image<P> {
 	pub fn get_mut(&mut self, x: usize, y: usize) -> &mut P {
 		&mut self.data[y * (self.width as usize) + x]

@@ -4,7 +4,7 @@ use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::image::{Image, ImageFrameTable};
-use graphene_core::raster::{Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut};
+use graphene_core::raster::{Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, Channel, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, RGBMut};
 use graphene_core::transform::Transform;
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
 use rand::prelude::*;
@@ -97,47 +97,92 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 }
 
 #[node_macro::node(category("Raster"))]
-fn combine_channels<I, Red, Green, Blue, Alpha>(
+fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
-	#[implementations(ImageFrameTable<Color>)] red: Red,
-	#[implementations(ImageFrameTable<Color>)] green: Green,
-	#[implementations(ImageFrameTable<Color>)] blue: Blue,
-	#[implementations(ImageFrameTable<Color>)] alpha: Alpha,
-) -> ImageFrameTable<Color>
-where
-	I: Pixel + Luminance,
-	Red: Bitmap<Pixel = I>,
-	Green: Bitmap<Pixel = I>,
-	Blue: Bitmap<Pixel = I>,
-	Alpha: Bitmap<Pixel = I>,
-{
-	let dimensions = [red.dim(), green.dim(), blue.dim(), alpha.dim()];
-	if dimensions.iter().any(|&(x, y)| x == 0 || y == 0) || dimensions.iter().any(|&(x, y)| dimensions.iter().any(|&(other_x, other_y)| x != other_x || y != other_y)) {
-		return ImageFrameTable::one_empty_image();
-	}
+	#[expose] red: ImageFrameTable<Color>,
+	#[expose] green: ImageFrameTable<Color>,
+	#[expose] blue: ImageFrameTable<Color>,
+	#[expose] alpha: ImageFrameTable<Color>,
+) -> ImageFrameTable<Color> {
+	let mut result_table = ImageFrameTable::empty();
 
-	let mut image = Image::new(red.width(), red.height(), Color::TRANSPARENT);
+	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
+	let red = red.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let green = green.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let blue = blue.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let alpha = alpha.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
 
-	for y in 0..image.height() {
-		for x in 0..image.width() {
-			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			if let Some(r) = red.get_pixel(x, y) {
-				image_pixel.set_red(r.l().cast_linear_channel());
-			}
-			if let Some(g) = green.get_pixel(x, y) {
-				image_pixel.set_green(g.l().cast_linear_channel());
-			}
-			if let Some(b) = blue.get_pixel(x, y) {
-				image_pixel.set_blue(b.l().cast_linear_channel());
-			}
-			if let Some(a) = alpha.get_pixel(x, y) {
-				image_pixel.set_alpha(a.l().cast_linear_channel());
+	for (((red, green), blue), alpha) in red.zip(green).zip(blue).zip(alpha) {
+		// Turn any default zero-sized image instances into None
+		let red = red.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+		let green = green.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+		let blue = blue.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+		let alpha = alpha.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+
+		// Get this instance's transform and alpha blending mode from the first non-empty channel
+		let Some((transform, alpha_blending)) = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| (i.transform, i.alpha_blending)) else {
+			continue;
+		};
+
+		// Get the common width and height of the channels, which must have equal dimensions
+		let channel_dimensions = [
+			red.as_ref().map(|r| (r.instance.width, r.instance.height)),
+			green.as_ref().map(|g| (g.instance.width, g.instance.height)),
+			blue.as_ref().map(|b| (b.instance.width, b.instance.height)),
+			alpha.as_ref().map(|a| (a.instance.width, a.instance.height)),
+		];
+		if channel_dimensions.iter().all(Option::is_none)
+			|| channel_dimensions
+				.iter()
+				.flatten()
+				.any(|&(x, y)| channel_dimensions.iter().flatten().any(|&(other_x, other_y)| x != other_x || y != other_y))
+		{
+			continue;
+		}
+		let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else { continue };
+
+		// Create a new image for this instance output
+		let mut image = Image::new(width, height, Color::TRANSPARENT);
+
+		// Iterate over all pixels in the image and set the color channels
+		for y in 0..image.height() {
+			for x in 0..image.width() {
+				let image_pixel = image.get_pixel_mut(x, y).unwrap();
+
+				if let Some(r) = red.as_ref().and_then(|r| r.instance.get_pixel(x, y)) {
+					image_pixel.set_red(r.l().cast_linear_channel());
+				} else {
+					image_pixel.set_red(Channel::from_linear(0.));
+				}
+				if let Some(g) = green.as_ref().and_then(|g| g.instance.get_pixel(x, y)) {
+					image_pixel.set_green(g.l().cast_linear_channel());
+				} else {
+					image_pixel.set_green(Channel::from_linear(0.));
+				}
+				if let Some(b) = blue.as_ref().and_then(|b| b.instance.get_pixel(x, y)) {
+					image_pixel.set_blue(b.l().cast_linear_channel());
+				} else {
+					image_pixel.set_blue(Channel::from_linear(0.));
+				}
+				if let Some(a) = alpha.as_ref().and_then(|a| a.instance.get_pixel(x, y)) {
+					image_pixel.set_alpha(a.l().cast_linear_channel());
+				} else {
+					image_pixel.set_alpha(Channel::from_linear(1.));
+				}
 			}
 		}
+
+		// Add this instance to the result table
+		result_table.push(Instance {
+			instance: image,
+			transform,
+			alpha_blending,
+			source_node_id: None,
+		});
 	}
 
-	ImageFrameTable::new(image)
+	result_table
 }
 
 #[node_macro::node(category("Raster"))]
