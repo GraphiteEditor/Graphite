@@ -260,7 +260,7 @@ pub fn skew_bounds(
 	}
 }
 
-pub fn transforming_tranform_cage(
+pub fn transforming_transform_cage(
 	document: &DocumentMessageHandler,
 	mut bounding_box_manager: &mut Option<BoundingBoxManager>,
 	input: &InputPreprocessorMessageHandler,

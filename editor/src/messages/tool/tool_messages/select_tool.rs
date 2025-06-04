@@ -2,8 +2,8 @@
 
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE,
-	SELECTION_DRAG_ANGLE, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
+	SELECTION_TOLERANCE,
 };
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -21,7 +21,7 @@ use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_tranform_cage};
+use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
@@ -868,13 +868,7 @@ impl Fsm for SelectToolFsmState {
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
-				let (resize, rotate, skew) = transforming_tranform_cage(
-					document,
-					&mut tool_data.bounding_box_manager,
-					input,
-					responses,
-					&mut tool_data.layers_dragging,
-				);
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -894,9 +888,9 @@ impl Fsm for SelectToolFsmState {
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 
-				let state =
+				let state = if is_over_pivot
 				// Dragging the pivot
-				if is_over_pivot {
+				{
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
@@ -905,13 +899,12 @@ impl Fsm for SelectToolFsmState {
 					SelectToolFsmState::DraggingPivot
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if resize {			
+				else if resize {
 					tool_data.get_snap_candidates(document, input);
 					SelectToolFsmState::ResizingBounds
-				}else if skew{
+				} else if skew {
 					tool_data.get_snap_candidates(document, input);
 					SelectToolFsmState::SkewingBounds { skew: Key::Control }
-
 				}
 				// Dragging the selected layers around to transform them
 				else if can_grab_compass_rose || intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
@@ -930,7 +923,13 @@ impl Fsm for SelectToolFsmState {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
 					};
-					SelectToolFsmState::Dragging { axis, using_compass, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
+					SelectToolFsmState::Dragging {
+						axis,
+						using_compass,
+						has_dragged: false,
+						deepest: input.keyboard.key(select_deepest),
+						remove: input.keyboard.key(extend_selection),
+					}
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotate {
@@ -956,7 +955,13 @@ impl Fsm for SelectToolFsmState {
 						tool_data.get_snap_candidates(document, input);
 
 						responses.add(DocumentMessage::StartTransaction);
-						SelectToolFsmState::Dragging { axis: Axis::None, using_compass: false, has_dragged: false, deepest: input.keyboard.key(select_deepest), remove: input.keyboard.key(extend_selection) }
+						SelectToolFsmState::Dragging {
+							axis: Axis::None,
+							using_compass: false,
+							has_dragged: false,
+							deepest: input.keyboard.key(select_deepest),
+							remove: input.keyboard.key(extend_selection),
+						}
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
