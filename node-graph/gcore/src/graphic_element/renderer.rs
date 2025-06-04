@@ -558,8 +558,8 @@ impl GraphicElementRendered for VectorDataTable {
 					fill_instance.instance.style.set_fill(Fill::solid(Color::BLACK));
 					vector_data.render_svg(&mut svg, render_params);
 
-					let weight = instance.instance.style.stroke().unwrap().weight;
-					let quad = Quad::from_box(transformed_bounds).inflate(weight * element_transform.matrix2.determinant());
+					let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
+					let quad = Quad::from_box(transformed_bounds).inflate(weight);
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
 					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
