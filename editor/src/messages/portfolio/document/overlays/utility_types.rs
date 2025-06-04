@@ -698,12 +698,20 @@ impl OverlayContext {
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
 		self.render_context
-			.set_line_width(width_for_inner_boundary.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
+			.set_line_width(width_for_inner_boundary.unwrap_or(1.) * (transform.decompose_scale().length() * 0.75));
 		self.draw_path_from_subpaths(subpaths, transform);
 
 		if with_pattern {
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+			self.render_context.set_stroke_style_str(&"#000000");
 			self.render_context.fill();
+
+			// Erase the part over the stroke area
+			self.render_context.save();
+			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
+			self.render_context.stroke();
+
+			self.render_context.restore();
 		} else {
 			self.render_context.set_fill_style_str(color.to_rgba_hex_srgb().as_str());
 			self.render_context.fill();
@@ -713,7 +721,7 @@ impl OverlayContext {
 	}
 
 	pub fn fill_stroke(&mut self, vector_data: &VectorData, transform: DAffine2, color: &Color, width: Option<f64>) {
-		self.render_context.set_line_width(width.unwrap_or(1.) * (transform.decompose_scale().length() * 0.7));
+		self.render_context.set_line_width(width.unwrap_or(1.) * (transform.decompose_scale().length() * 0.75));
 		self.draw_path_from_vector_data(vector_data, transform);
 
 		self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
