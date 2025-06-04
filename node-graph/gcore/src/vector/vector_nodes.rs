@@ -1546,11 +1546,11 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 
 			// Align point counts by inserting mid‐segment points until their counts match
 			while source_path.manipulator_groups().len() < target_path.manipulator_groups().len() {
-				let last = source_path.len() - 1;
+				let last = source_path.len_segments() - 1;
 				source_path.insert(SubpathTValue::Parametric { segment_index: last, t: 0.5 });
 			}
 			while target_path.manipulator_groups().len() < source_path.manipulator_groups().len() {
-				let last = target_path.len() - 1;
+				let last = target_path.len_segments() - 1;
 				target_path.insert(SubpathTValue::Parametric { segment_index: last, t: 0.5 });
 			}
 
