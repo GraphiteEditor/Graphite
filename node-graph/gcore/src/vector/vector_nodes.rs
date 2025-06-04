@@ -1222,6 +1222,8 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			style: std::mem::take(&mut vector_data_instance.instance.style),
 			upstream_graphic_group: std::mem::take(&mut vector_data_instance.instance.upstream_graphic_group),
 		};
+		// Transfer the stroke transform from the input vector data to the result.
+		result.style.set_stroke_transform(vector_data_instance.transform);
 
 		// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
 		// So we can index into `subpath_segment_lengths` to get the length of the segments.
@@ -1253,10 +1255,6 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			// Append the bezpath (subpath) that connects generated points by lines.
 			result.append_bezpath(sample_bezpath);
 		}
-
-		// Transfer the style from the input vector data to the result.
-		result.style = vector_data_instance.instance.style;
-		result.style.set_stroke_transform(vector_data_instance.transform);
 
 		vector_data_instance.instance = result;
 		result_table.push(vector_data_instance);
@@ -1732,14 +1730,14 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
-	let mut new_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::empty();
 
 	for mut source_instance in source.instance_iter() {
 		source_instance.instance.close_subpaths();
-		new_table.push(source_instance);
+		result_table.push(source_instance);
 	}
 
-	new_table
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
