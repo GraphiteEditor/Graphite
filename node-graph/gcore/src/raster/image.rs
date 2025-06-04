@@ -269,8 +269,8 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => {
 			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
 			let mut image_frame_table = ImageFrameTable::new(image);
-			*image_frame_table.one_instance_mut().transform = transform;
-			*image_frame_table.one_instance_mut().alpha_blending = alpha_blending;
+			*image_frame_table.instance_mut_iter().next().unwrap().transform = transform;
+			*image_frame_table.instance_mut_iter().next().unwrap().alpha_blending = alpha_blending;
 			image_frame_table
 		}
 		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),

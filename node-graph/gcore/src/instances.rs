@@ -42,17 +42,6 @@ impl<T> Instances<T> {
 		self.source_node_id.push(instance.source_node_id);
 	}
 
-	pub fn one_instance_mut(&mut self) -> InstanceMut<T> {
-		let length = self.instance.len();
-
-		InstanceMut {
-			instance: self.instance.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
-			transform: self.transform.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
-			alpha_blending: self.alpha_blending.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
-			source_node_id: self.source_node_id.first_mut().unwrap_or_else(|| panic!("ONE INSTANCE EXPECTED, FOUND {}", length)),
-		}
-	}
-
 	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = Instance<T>> {
 		self.instance
 			.into_iter()

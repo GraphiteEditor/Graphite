@@ -292,7 +292,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 	};
 // 	let mut result = ImageFrameTable::new(new_image);
 // 	*result.transform_mut() = image_frame_table.transform();
-// 	*result.one_instance_mut().alpha_blending = *image_frame_table.instance_ref_iter().next().unwrap().alpha_blending;
+// 	*result.instance_mut_iter().next().unwrap().alpha_blending = *image_frame_table.instance_ref_iter().next().unwrap().alpha_blending;
 
 // 	result
 // }
