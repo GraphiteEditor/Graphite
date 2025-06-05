@@ -61,6 +61,7 @@ pub enum PenToolMessage {
 	Confirm,
 	DragStart {
 		append_to_selected: Key,
+		start_on_segment: Key,
 	},
 	DragStop,
 	PointerMove {
@@ -361,6 +362,9 @@ struct PenToolData {
 	current_layer: Option<LayerNodeIdentifier>,
 	prior_segment_endpoint: Option<PointId>,
 	prior_segment: Option<SegmentId>,
+
+	/// For vector meshes, storing all the previous segments the last anchor point was connected to
+	prior_segments: Option<Vec<SegmentId>>,
 	handle_type: TargetHandle,
 	handle_start_offset: Option<DVec2>,
 	handle_end_offset: Option<DVec2>,
@@ -1129,7 +1133,9 @@ impl PenToolData {
 		responses: &mut VecDeque<Message>,
 		tool_options: &PenOptions,
 		append: bool,
+		start_on_segment: bool,
 		preferences: &PreferencesMessageHandler,
+		shape_editor: &mut ShapeState,
 	) {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -1145,6 +1151,22 @@ impl PenToolData {
 			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
 			return;
+		} else if preferences.vector_meshes && start_on_segment {
+			if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+				let (point, segments) = closest_segment.adjusted_insert(responses);
+				let layer = closest_segment.layer();
+				let position = closest_segment.closest_point();
+
+				// Setting any one of the new segments created as the previous segment
+				self.prior_segment_endpoint = Some(point);
+				self.prior_segment_layer = Some(layer);
+
+				// This does not work as vector data is not updated yet
+				self.prior_segments = Some(segments.to_vec());
+
+				self.extend_existing_path(document, layer, point, position);
+				return;
+			}
 		}
 
 		if append {
@@ -1186,6 +1208,7 @@ impl PenToolData {
 		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 		self.prior_segment = None;
+		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
@@ -1266,6 +1289,7 @@ impl PenToolData {
 		self.prior_segment = None;
 		self.prior_segment_endpoint = None;
 		self.prior_segment_layer = None;
+		self.prior_segments = None;
 
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			self.prior_segment_endpoint = Some(point);
@@ -1537,6 +1561,12 @@ impl Fsm for PenToolFsmState {
 					PenOverlayMode::FrontierHandles => {
 						if let Some(latest_segment) = tool_data.prior_segment {
 							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
+						}
+						// If a vector mesh then there can be more than one prior segments
+						else if preferences.vector_meshes {
+							if let Some(segments) = tool_data.prior_segments.clone() {
+								path_overlays(document, DrawHandles::SelectedAnchors(segments), shape_editor, &mut overlay_context);
+							}
 						} else {
 							path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
 						};
@@ -1658,13 +1688,16 @@ impl Fsm for PenToolFsmState {
 				)));
 				self
 			}
-			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected }) => {
+			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected, start_on_segment }) => {
 				responses.add(DocumentMessage::StartTransaction);
 				tool_data.handle_mode = HandleMode::Free;
 
 				// Get the closest point and the segment it is on
+				let append = input.keyboard.key(append_to_selected);
+				let start_on_segment = input.keyboard.key(start_on_segment);
+
 				tool_data.store_clicked_endpoint(document, &transform, input, preferences);
-				tool_data.create_initial_point(document, input, responses, tool_options, input.keyboard.key(append_to_selected), preferences);
+				tool_data.create_initial_point(document, input, responses, tool_options, append, start_on_segment, preferences, shape_editor);
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle(tool_data.handle_mode)
@@ -1678,7 +1711,7 @@ impl Fsm for PenToolFsmState {
 				tool_data.recalculate_latest_points_position(document);
 				state
 			}
-			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected, start_on_segment }) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
@@ -1717,7 +1750,7 @@ impl Fsm for PenToolFsmState {
 
 					// Even if no buffer was started, the message still has to be run again in order to call bend_from_previous_point
 					tool_data.buffering_merged_vector = true;
-					responses.add(PenToolMessage::DragStart { append_to_selected });
+					responses.add(PenToolMessage::DragStart { append_to_selected, start_on_segment });
 					PenToolFsmState::PlacingAnchor
 				}
 			}
