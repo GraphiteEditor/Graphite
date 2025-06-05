@@ -1,0 +1,27 @@
+[package]
+name = "graphene-core-shader"
+version = "0.1.0"
+edition = "2024"
+description = "Graphene nodes compiled to shaders"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+gpu = ["glam/libm"]
+
+[dependencies]
+# Workspace dependencies
+spirv-std = { workspace = true }
+bytemuck = { workspace = true }
+glam = { workspace = true, features = [
+	"scalar-math", "bytemuck"
+] }
+
+[lints.rust]
+# the spirv target is not in the list of common cfgs so must be added manually
+unexpected_cfgs = { level = "warn", check-cfg = [
+	'cfg(target_arch, values("spirv"))',
+] }
