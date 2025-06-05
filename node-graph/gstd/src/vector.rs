@@ -216,17 +216,8 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 				};
 
 				// Apply the parent group's transform to each element of raster data
-				match image {
-					RasterFrame::ImageFrame(image) => {
-						for instance in image.instance_ref_iter() {
-							result_table.push(make_instance(*element.transform * *instance.transform));
-						}
-					}
-					RasterFrame::TextureFrame(image) => {
-						for instance in image.instance_ref_iter() {
-							result_table.push(make_instance(*element.transform * *instance.transform));
-						}
-					}
+				for instance in image.instance_ref_iter() {
+					result_table.push(make_instance(*element.transform * *instance.transform));
 				}
 			}
 			GraphicElement::GraphicGroup(mut graphic_group) => {

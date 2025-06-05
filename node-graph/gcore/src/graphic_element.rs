@@ -127,19 +127,9 @@ impl From<Image<Color>> for GraphicGroupTable {
 		Self::new(GraphicElement::RasterData(RasterDataTable::<Color>::new(image)))
 	}
 }
-impl From<ImageFrameTable<Color>> for GraphicGroupTable {
-	fn from(image_frame: ImageFrameTable<Color>) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame)))
-	}
-}
-impl From<ImageTexture> for GraphicGroupTable {
-	fn from(image_texture: ImageTexture) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(image_texture))))
-	}
-}
-impl From<TextureFrameTable> for GraphicGroupTable {
-	fn from(texture_frame: TextureFrameTable) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture_frame)))
+impl From<RasterDataTable<Color>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<Color>) -> Self {
+		Self::new(GraphicElement::RasterData(raster_data_table))
 	}
 }
 
@@ -204,36 +194,11 @@ impl GraphicElement {
 	}
 }
 
-// TODO: Rename to Raster
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-pub enum RasterFrame {
+pub enum RasterTexture {
 	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	// TODO: Rename to ImageTable
-	ImageFrame(ImageFrameTable<Color>),
+	Image(Image<Color>),
 	/// A GPU texture with a finite position and extent
-	// TODO: Rename to ImageTextureTable
-	TextureFrame(TextureFrameTable),
-}
-
-impl<'de> serde::Deserialize<'de> for RasterFrame {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'de>,
-	{
-		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
-	}
-}
-
-impl serde::Serialize for RasterFrame {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		match self {
-			RasterFrame::ImageFrame(_) => self.serialize(serializer),
-			RasterFrame::TextureFrame(_) => todo!(),
-		}
-	}
+	Texture(ImageTexture),
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
@@ -324,8 +289,7 @@ async fn to_element<Data: Into<GraphicElement> + 'n>(
 	#[implementations(
 		GraphicGroupTable,
 	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
+		RasterDataTable<Color>,
 	)]
 	data: Data,
 ) -> GraphicElement {
@@ -338,8 +302,7 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		GraphicGroupTable,
 		VectorDataTable,
-		ImageFrameTable<Color>,
-		TextureFrameTable,
+		RasterDataTable<Color>,
 	)]
 	element: Data,
 ) -> GraphicGroupTable {
@@ -391,8 +354,7 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> ImageFrameTable<Color>,
-		Context -> TextureFrameTable,
+		Context -> RasterDataTable<Color>,
 	)]
 	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
@@ -435,32 +397,9 @@ async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artb
 	artboards
 }
 
-// TODO: Remove this one
-impl From<Image<Color>> for GraphicElement {
-	fn from(image_frame: Image<Color>) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
-	}
-}
-impl From<ImageFrameTable<Color>> for GraphicElement {
-	fn from(image_frame: ImageFrameTable<Color>) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))
-	}
-}
-// TODO: Remove this one
-impl From<ImageTexture> for GraphicElement {
-	fn from(texture: ImageTexture) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture)))
-	}
-}
-impl From<TextureFrameTable> for GraphicElement {
-	fn from(texture: TextureFrameTable) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture))
-	}
-}
-// TODO: Remove this one
-impl From<VectorData> for GraphicElement {
-	fn from(vector_data: VectorData) -> Self {
-		GraphicElement::VectorData(VectorDataTable::new(vector_data))
+impl From<GraphicGroupTable> for GraphicElement {
+	fn from(graphic_group: GraphicGroupTable) -> Self {
+		GraphicElement::GraphicGroup(graphic_group)
 	}
 }
 impl From<VectorDataTable> for GraphicElement {
@@ -468,8 +407,20 @@ impl From<VectorDataTable> for GraphicElement {
 		GraphicElement::VectorData(vector_data)
 	}
 }
-impl From<GraphicGroupTable> for GraphicElement {
-	fn from(graphic_group: GraphicGroupTable) -> Self {
-		GraphicElement::GraphicGroup(graphic_group)
+impl From<RasterDataTable<Color>> for GraphicElement {
+	fn from(image_frame: RasterDataTable<Color>) -> Self {
+		GraphicElement::RasterData(image_frame)
+	}
+}
+// TODO: Remove this one
+impl From<Image<Color>> for GraphicElement {
+	fn from(image_frame: Image<Color>) -> Self {
+		GraphicElement::RasterData(RasterDataTable::<Color>::new(image_frame))
+	}
+}
+// TODO: Remove this one
+impl From<VectorData> for GraphicElement {
+	fn from(vector_data: VectorData) -> Self {
+		GraphicElement::VectorData(VectorDataTable::new(vector_data))
 	}
 }

@@ -189,7 +189,7 @@ pub(crate) fn property_from_type(
 						// GRAPHICAL DATA TYPES
 						// ====================
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<RasterFrame>() || x == TypeId::of::<ImageFrameTable<Color>>() || x == TypeId::of::<TextureFrameTable>() => raster_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<RasterDataTable<Color>>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES

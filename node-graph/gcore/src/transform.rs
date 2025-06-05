@@ -161,8 +161,7 @@ async fn transform<T: 'n + 'static>(
 	#[implementations(
 		Context -> VectorDataTable,
 		Context -> GraphicGroupTable,
-		Context -> ImageFrameTable<Color>,
-		Context -> TextureFrameTable,
+		Context -> RasterDataTable<Color>,
 	)]
 	transform_target: impl Node<Context<'static>, Output = Instances<T>>,
 	translate: DVec2,
@@ -208,8 +207,7 @@ async fn boundless_footprint<T: 'n + 'static>(
 	#[implementations(
 		Context -> VectorDataTable,
 		Context -> GraphicGroupTable,
-		Context -> ImageFrameTable<Color>,
-		Context -> TextureFrameTable,
+		Context -> RasterDataTable<Color>,
 		Context -> String,
 		Context -> f64,
 	)]
@@ -225,8 +223,7 @@ async fn freeze_real_time<T: 'n + 'static>(
 	#[implementations(
 		Context -> VectorDataTable,
 		Context -> GraphicGroupTable,
-		Context -> ImageFrameTable<Color>,
-		Context -> TextureFrameTable,
+		Context -> RasterDataTable<Color>,
 		Context -> String,
 		Context -> f64,
 	)]
