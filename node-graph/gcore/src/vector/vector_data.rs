@@ -60,8 +60,8 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.one_instance_mut().transform = old.transform;
-			*vector_data_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			*vector_data_table.instance_mut_iter().next().unwrap().transform = old.transform;
+			*vector_data_table.instance_mut_iter().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,

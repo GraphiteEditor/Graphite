@@ -1,6 +1,6 @@
 use crate::instances::Instances;
 use crate::text::FontCache;
-use crate::transform::{Footprint, Transform, TransformMut};
+use crate::transform::Footprint;
 use crate::vector::style::ViewMode;
 use alloc::sync::Arc;
 use core::fmt::Debug;
@@ -34,17 +34,6 @@ impl Hash for SurfaceFrame {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.surface_id.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-	}
-}
-
-impl Transform for SurfaceFrame {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for SurfaceFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
 	}
 }
 
@@ -150,18 +139,6 @@ pub struct SurfaceHandleFrame<Surface> {
 #[cfg(feature = "dyn-any")]
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
 	type Static = SurfaceHandleFrame<T>;
-}
-
-impl<T> Transform for SurfaceHandleFrame<T> {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-
-impl<T> TransformMut for SurfaceHandleFrame<T> {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
 }
 
 // TODO: think about how to automatically clean up memory

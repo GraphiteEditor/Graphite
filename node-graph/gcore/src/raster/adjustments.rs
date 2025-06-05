@@ -665,9 +665,9 @@ impl Blend<Color> for Option<Color> {
 }
 impl Blend<Color> for ImageFrameTable<Color> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut result = self.clone();
+		let mut result_table = self.clone();
 
-		for (over, under) in result.instance_mut_iter().zip(under.instance_ref_iter()) {
+		for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
 			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
 			*over.instance = Image {
@@ -678,7 +678,7 @@ impl Blend<Color> for ImageFrameTable<Color> {
 			};
 		}
 
-		result
+		result_table
 	}
 }
 impl Blend<Color> for GradientStops {

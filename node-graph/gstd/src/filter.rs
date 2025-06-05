@@ -19,6 +19,7 @@ async fn blur(
 	gamma: bool,
 ) -> ImageFrameTable<Color> {
 	let mut result_table = ImageFrameTable::empty();
+
 	for mut image_instance in image_frame.instance_iter() {
 		let image = image_instance.instance.clone();
 
@@ -36,6 +37,7 @@ async fn blur(
 		image_instance.source_node_id = None;
 		result_table.push(image_instance);
 	}
+
 	result_table
 }
 

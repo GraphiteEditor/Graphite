@@ -413,13 +413,10 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn transform_set_direct(&mut self, transform: DAffine2, skip_rerender: bool, transform_node_id: Option<NodeId>) {
 		// If the Transform node didn't exist yet, create it now
 		let Some(transform_node_id) = transform_node_id.or_else(|| {
-			// Check if the transform is the identity transform and if so, don't create a new Transform node
-			if let Some((scale, angle, translation)) = (transform.matrix2.determinant() != 0.).then(|| transform.to_scale_angle_translation()) {
-				// Check if the transform is the identity transform within an epsilon
-				if scale.x.abs() < 1e-6 && scale.y.abs() < 1e-6 && angle.abs() < 1e-6 && translation.x.abs() < 1e-6 && translation.y.abs() < 1e-6 {
-					// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
-					return None;
-				}
+			// Check if the transform is the identity transform (within an epsilon) and if so, don't create a new Transform node
+			if transform.abs_diff_eq(DAffine2::IDENTITY, 1e-6) {
+				// We don't want to pollute the graph with an unnecessary Transform node, so we avoid creating and setting it by returning None
+				return None;
 			}
 
 			// Create the Transform node
@@ -453,7 +450,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {
 		let Some(brush_node_id) = self.existing_node_id("Brush", true) else { return };
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 2), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {

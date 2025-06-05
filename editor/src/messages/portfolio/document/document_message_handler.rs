@@ -3292,7 +3292,7 @@ mod document_message_handler_tests {
 		let document = editor.active_document();
 		let rect_bbox_before = document.metadata().bounding_box_viewport(rect_layer).unwrap();
 
-		// Moving rectangle from folder1 --> folder2
+		// Moving rectangle from folder1 to folder2
 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
 
 		// Rectangle's viewport position after moving
@@ -3304,6 +3304,10 @@ mod document_message_handler_tests {
 		let after_center = (rect_bbox_after[0] + rect_bbox_after[1]) / 2.;
 		let distance = before_center.distance(after_center);
 
-		assert!(distance < 1., "Rectangle should maintain its viewport position after moving between transformed groups");
+		assert!(
+			distance < 1.,
+			"Rectangle should maintain its viewport position after moving between transformed groups\n\
+			Before: {before_center:?}, After: {after_center:?}, Distance: {distance} (should be < 1)"
+		);
 	}
 }

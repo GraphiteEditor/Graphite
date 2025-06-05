@@ -109,9 +109,7 @@ macro_rules! tagged_value {
 			}
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
-					Type::Generic(_) => {
-						None
-					}
+					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
 						let internal_id = concrete_type.id?;
 						use std::any::TypeId;

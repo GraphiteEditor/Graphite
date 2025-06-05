@@ -1193,11 +1193,16 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 		}
 	}
 
-	let mut output_table = VectorDataTable::default();
-	let Some(mut output) = output_table.instance_mut_iter().next() else { return output_table };
+	// Create a table with one instance of an empty VectorData, then get a mutable reference to it which we append flattened subpaths to
+	let mut output_table = VectorDataTable::new(VectorData::default());
+	let Some(mut output) = output_table.instance_mut_iter().next() else {
+		return output_table;
+	};
 
+	// Flatten the graphic group input into the output VectorData instance
 	flatten_group(&graphic_group_input, &mut output);
 
+	// Return the single-row VectorDataTable containing the flattened VectorData subpaths
 	output_table
 }
 
@@ -1217,6 +1222,8 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			style: std::mem::take(&mut vector_data_instance.instance.style),
 			upstream_graphic_group: std::mem::take(&mut vector_data_instance.instance.upstream_graphic_group),
 		};
+		// Transfer the stroke transform from the input vector data to the result.
+		result.style.set_stroke_transform(vector_data_instance.transform);
 
 		// Using `stroke_bezpath_iter` so that the `subpath_segment_lengths` is aligned to the segments of each bezpath.
 		// So we can index into `subpath_segment_lengths` to get the length of the segments.
@@ -1248,10 +1255,6 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			// Append the bezpath (subpath) that connects generated points by lines.
 			result.append_bezpath(sample_bezpath);
 		}
-
-		// Transfer the style from the input vector data to the result.
-		result.style = vector_data_instance.instance.style;
-		result.style.set_stroke_transform(vector_data_instance.transform);
 
 		vector_data_instance.instance = result;
 		result_table.push(vector_data_instance);
@@ -1457,11 +1460,6 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 
 		vector_data_instance.instance.segment_domain = segment_domain;
 		result_table.push(vector_data_instance);
-	}
-
-	// TODO: remove after pt6 of instance table refactor
-	if result_table.is_empty() {
-		return VectorDataTable::new(VectorData::empty());
 	}
 
 	result_table
@@ -1732,14 +1730,14 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
-	let mut new_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::empty();
 
 	for mut source_instance in source.instance_iter() {
 		source_instance.instance.close_subpaths();
-		new_table.push(source_instance);
+		result_table.push(source_instance);
 	}
 
-	new_table
+	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]

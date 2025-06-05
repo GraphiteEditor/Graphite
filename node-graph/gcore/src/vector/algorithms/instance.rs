@@ -129,7 +129,9 @@ mod test {
 				.instance
 				.as_vector_data()
 				.unwrap()
-				.one_instance_ref()
+				.instance_ref_iter()
+				.next()
+				.unwrap()
 				.instance
 				.bounding_box_with_transform(*instanced.transform)
 				.unwrap();
