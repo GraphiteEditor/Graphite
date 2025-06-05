@@ -6,6 +6,7 @@ use graphene_core::raster::image::{Image, ImageFrameTable};
 use graphene_core::raster::{
 	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Sample,
 };
+use graphene_core::raster::{BlendMode, blend_colors};
 use graphene_core::transform::{Transform, TransformMut};
 use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
 use rand::prelude::*;
@@ -189,6 +190,35 @@ where
 	}
 
 	image
+}
+
+#[node_macro::node(category("Raster"))]
+async fn mix(ctx: impl Ctx + Clone, modified_image: ImageFrameTable<Color>, original_image: ImageFrameTable<Color>, mask: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
+	let mut inverted_mask_table = mask.clone();
+	for instance_wrapper in inverted_mask_table.instance_mut_iter() {
+		for pixel_color in instance_wrapper.instance.data.iter_mut() {
+			let color = pixel_color.to_gamma_srgb();
+			let color = color.map_rgb(|c| color.a() - c);
+			*pixel_color = color.to_linear_srgb();
+		}
+	}
+
+	let background_layer_table = crate::raster::mask(ctx.clone(), original_image, inverted_mask_table);
+	let foreground_layer_table = crate::raster::mask(ctx.clone(), modified_image, mask);
+
+	let mut final_blended_table = foreground_layer_table.clone();
+	for (over_instance_wrapper, under_instance_wrapper) in final_blended_table.instance_mut_iter().zip(background_layer_table.instance_ref_iter()) {
+		let over_image_data = &mut over_instance_wrapper.instance.data;
+		let under_image_data = &under_instance_wrapper.instance.data;
+
+		if over_image_data.len() == under_image_data.len() {
+			for (over_pixel, under_pixel) in over_image_data.iter_mut().zip(under_image_data.iter()) {
+				*over_pixel = blend_colors(*over_pixel, *under_pixel, BlendMode::Normal, 1.);
+			}
+		}
+	}
+
+	final_blended_table
 }
 
 // #[derive(Debug, Clone, Copy)]

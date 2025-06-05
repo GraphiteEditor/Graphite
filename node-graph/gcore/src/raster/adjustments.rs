@@ -646,7 +646,7 @@ async fn threshold<T: Adjust<Color>>(
 	image
 }
 
-trait Blend<P: Pixel> {
+pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
 }
 impl Blend<Color> for Color {
