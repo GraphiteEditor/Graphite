@@ -26,15 +26,6 @@ impl<T> Instances<T> {
 		}
 	}
 
-	pub fn empty() -> Self {
-		Self {
-			instance: Vec::new(),
-			transform: Vec::new(),
-			alpha_blending: Vec::new(),
-			source_node_id: Vec::new(),
-		}
-	}
-
 	pub fn push(&mut self, instance: Instance<T>) {
 		self.instance.push(instance.instance);
 		self.transform.push(instance.transform);
@@ -119,14 +110,13 @@ impl<T> Instances<T> {
 	}
 }
 
-impl<T: Default + Hash + 'static> Default for Instances<T> {
+impl<T> Default for Instances<T> {
 	fn default() -> Self {
-		use core::any::TypeId;
-		if TypeId::of::<T>() != TypeId::of::<crate::vector::VectorData>() {
-			// TODO: Remove the 'static trait bound when this special casing is removed by making all types return empty
-			Self::empty()
-		} else {
-			Self::new(T::default())
+		Self {
+			instance: Vec::new(),
+			transform: Vec::new(),
+			alpha_blending: Vec::new(),
+			source_node_id: Vec::new(),
 		}
 	}
 }

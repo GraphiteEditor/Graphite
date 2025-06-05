@@ -46,7 +46,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 	// Reverse vector data so that the result style is the style of the first vector data
 	let mut vector_data_reversed = vector_data.rev();
 
-	let mut result_vector_data_table = VectorDataTable::empty();
+	let mut result_vector_data_table = VectorDataTable::default();
 	result_vector_data_table.push(vector_data_reversed.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
@@ -79,7 +79,7 @@ fn union<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, Vector
 fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.into_iter();
 
-	let mut result_vector_data_table = VectorDataTable::empty();
+	let mut result_vector_data_table = VectorDataTable::default();
 	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
@@ -111,7 +111,7 @@ fn subtract<'a>(vector_data: impl Iterator<Item = InstanceRef<'a, VectorData>>) 
 fn intersect<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, VectorData>>) -> VectorDataTable {
 	let mut vector_data = vector_data.rev();
 
-	let mut result_vector_data_table = VectorDataTable::empty();
+	let mut result_vector_data_table = VectorDataTable::default();
 	result_vector_data_table.push(vector_data.next().map(|x| x.to_instance_cloned()).unwrap_or_default());
 	let mut first_instance = result_vector_data_table.instance_mut_iter().next().expect("Expected the one instance we just pushed");
 
@@ -191,7 +191,7 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 }
 
 fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for element in graphic_group_table.instance_ref_iter() {
 		match element.instance.clone() {

@@ -401,7 +401,7 @@ impl From<Image<Color>> for Image<SRGBA8> {
 
 impl From<ImageFrameTable<Color>> for ImageFrameTable<SRGBA8> {
 	fn from(image_frame_table: ImageFrameTable<Color>) -> Self {
-		let mut result_table = ImageFrameTable::<SRGBA8>::empty();
+		let mut result_table = ImageFrameTable::<SRGBA8>::default();
 
 		for image_frame_instance in image_frame_table.instance_iter() {
 			result_table.push(Instance {

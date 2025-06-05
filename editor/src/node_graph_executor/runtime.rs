@@ -294,10 +294,7 @@ impl NodeRuntime {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
-				let default = Instance {
-					instance: VectorData::empty(),
-					..Default::default()
-				};
+				let default = Instance::default();
 				self.vector_modify.insert(
 					parent_network_node_id,
 					record.output.instance_ref_iter().next().unwrap_or_else(|| default.to_instance_ref()).instance.clone(),

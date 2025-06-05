@@ -74,7 +74,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::OldGraphicGroup(old) => {
-			let mut graphic_group_table = GraphicGroupTable::empty();
+			let mut graphic_group_table = GraphicGroupTable::default();
 			for (graphic_element, source_node_id) in old.elements {
 				graphic_group_table.push(Instance {
 					instance: graphic_element,
@@ -88,7 +88,7 @@ pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) 
 		EitherFormat::InstanceTable(value) => {
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<OldGraphicGroupTable>(value.clone()) {
-				let mut graphic_group_table = GraphicGroupTable::empty();
+				let mut graphic_group_table = GraphicGroupTable::default();
 				for instance in old_table.instance_ref_iter() {
 					for (graphic_element, source_node_id) in &instance.instance.elements {
 						graphic_group_table.push(Instance {
@@ -154,10 +154,9 @@ pub enum GraphicElement {
 	RasterFrame(RasterFrame),
 }
 
-// TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
 impl Default for GraphicElement {
 	fn default() -> Self {
-		Self::VectorData(VectorDataTable::default())
+		Self::GraphicGroup(GraphicGroupTable::default())
 	}
 }
 
@@ -287,7 +286,7 @@ pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D)
 
 	Ok(match EitherFormat::deserialize(deserializer)? {
 		EitherFormat::ArtboardGroup(artboard_group) => {
-			let mut table = ArtboardGroupTable::empty();
+			let mut table = ArtboardGroupTable::default();
 			for (artboard, source_node_id) in artboard_group.artboards {
 				table.push(Instance {
 					instance: artboard,

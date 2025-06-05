@@ -164,7 +164,7 @@ fn grid<T: GridSpacing>(
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
-	let mut vector_data = VectorData::empty();
+	let mut vector_data = VectorData::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 

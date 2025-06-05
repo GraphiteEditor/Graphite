@@ -18,7 +18,7 @@ async fn blur(
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
 ) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	for mut image_instance in image_frame.instance_iter() {
 		let image = image_instance.instance.clone();

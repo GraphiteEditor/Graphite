@@ -35,7 +35,7 @@ async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	for (foreground_instance, mut background_instance) in foreground.instance_iter().zip(background.instance_iter()) {
 		let foreground_transform = foreground_instance.transform;
