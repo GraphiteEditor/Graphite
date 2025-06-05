@@ -18,11 +18,24 @@ pub struct Instances<T> {
 
 impl<T> Instances<T> {
 	pub fn new(instance: T) -> Self {
+		Self::from(Instance::new(instance))
+	}
+
+	pub fn empty() -> Self {
 		Self {
-			instance: vec![instance],
-			transform: vec![DAffine2::IDENTITY],
-			alpha_blending: vec![AlphaBlending::default()],
-			source_node_id: vec![None],
+			instance: Vec::new(),
+			transform: Vec::new(),
+			alpha_blending: Vec::new(),
+			source_node_id: Vec::new(),
+		}
+	}
+
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self {
+			instance: Vec::with_capacity(capacity),
+			transform: Vec::with_capacity(capacity),
+			alpha_blending: Vec::with_capacity(capacity),
+			source_node_id: Vec::with_capacity(capacity),
 		}
 	}
 
@@ -121,7 +134,7 @@ impl<T> Default for Instances<T> {
 	}
 }
 
-impl<T: Hash> core::hash::Hash for Instances<T> {
+impl<T: Hash> Hash for Instances<T> {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		for instance in &self.instance {
 			instance.hash(state);
@@ -138,6 +151,29 @@ impl<T: PartialEq> PartialEq for Instances<T> {
 #[cfg(feature = "dyn-any")]
 unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
+}
+
+impl<T> From<Instance<T>> for Instances<T> {
+	fn from(instance: Instance<T>) -> Self {
+		Self {
+			instance: vec![instance.instance],
+			transform: vec![instance.transform],
+			alpha_blending: vec![instance.alpha_blending],
+			source_node_id: vec![instance.source_node_id],
+		}
+	}
+}
+
+impl<T> FromIterator<Instance<T>> for Instances<T> {
+	fn from_iter<I: IntoIterator<Item = Instance<T>>>(iter: I) -> Self {
+		let iter = iter.into_iter();
+		let (lower, _) = iter.size_hint();
+		let mut instances = Self::with_capacity(lower);
+		for instance in iter {
+			instances.push(instance);
+		}
+		instances
+	}
 }
 
 fn one_daffine2_default() -> Vec<DAffine2> {
@@ -189,6 +225,15 @@ pub struct Instance<T> {
 }
 
 impl<T> Instance<T> {
+	pub fn new(instance: T) -> Self {
+		Self {
+			instance,
+			transform: DAffine2::IDENTITY,
+			alpha_blending: AlphaBlending::default(),
+			source_node_id: None,
+		}
+	}
+
 	pub fn to_graphic_element<U>(self) -> Instance<U>
 	where
 		T: Into<U>,
