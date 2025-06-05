@@ -35,7 +35,8 @@ async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
+
 	for (foreground_instance, mut background_instance) in foreground.instance_iter().zip(background.instance_iter()) {
 		let foreground_transform = foreground_instance.transform;
 		let background_transform = background_instance.transform;
@@ -94,7 +95,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 		let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
 		let Ok(proto_networks_result) = proto_networks else {
 			log::error!("Error compiling network in 'blend_gpu_image()");
-			return ImageFrameTable::one_empty_image();
+			return ImageFrameTable::default();
 		};
 		let proto_networks = proto_networks_result;
 		log::debug!("compiling shader");
@@ -215,6 +216,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 		background_instance.source_node_id = None;
 		result_table.push(background_instance);
 	}
+
 	result_table
 }
 
@@ -241,7 +243,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // #[node_macro::old_node_impl(MapGpuNode)]
 // async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
 // 	let image_frame_table = &image;
-// 	let image = image.one_instance_ref().instance;
+// 	let image = image.instance_ref_iter().next().unwrap().instance;
 
 // 	log::debug!("Executing gpu node");
 // 	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
@@ -256,7 +258,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 		let name = "placeholder".to_string();
 // 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, image_frame_table, executor).await else {
 // 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
-// 			return ImageFrameTable::one_empty_image();
+// 			return ImageFrameTable::default();
 // 		};
 // 		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 // 		log::error!("created compute pass");
@@ -292,7 +294,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 	};
 // 	let mut result = ImageFrameTable::new(new_image);
 // 	*result.transform_mut() = image_frame_table.transform();
-// 	*result.one_instance_mut().alpha_blending = *image_frame_table.one_instance_ref().alpha_blending;
+// 	*result.instance_mut_iter().next().unwrap().alpha_blending = *image_frame_table.instance_ref_iter().next().unwrap().alpha_blending;
 
 // 	result
 // }
@@ -312,7 +314,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 	GraphicElement: From<Image<T>>,
 // 	T::Static: Pixel,
 // {
-// 	let image = image.one_instance_ref().instance;
+// 	let image = image.instance_ref_iter().next().unwrap().instance;
 
 // 	let compiler = graph_craft::graphene_compiler::Compiler {};
 // 	let inner_network = NodeNetwork::value_network(node);

@@ -60,8 +60,8 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.one_instance_mut().transform = old.transform;
-			*vector_data_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			*vector_data_table.instance_mut_iter().next().unwrap().transform = old.transform;
+			*vector_data_table.instance_mut_iter().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
@@ -102,19 +102,6 @@ impl core::hash::Hash for VectorData {
 }
 
 impl VectorData {
-	/// An empty subpath with no data, an identity transform, and a black fill.
-	// TODO: Replace with just `Default`
-	pub const fn empty() -> Self {
-		Self {
-			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
-			colinear_manipulators: Vec::new(),
-			point_domain: PointDomain::new(),
-			segment_domain: SegmentDomain::new(),
-			region_domain: RegionDomain::new(),
-			upstream_graphic_group: None,
-		}
-	}
-
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
@@ -185,7 +172,7 @@ impl VectorData {
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
-		let mut vector_data = Self::empty();
+		let mut vector_data = Self::default();
 
 		for subpath in subpaths.into_iter() {
 			vector_data.append_subpath(subpath, preserve_id);
@@ -465,7 +452,14 @@ impl VectorData {
 
 impl Default for VectorData {
 	fn default() -> Self {
-		Self::empty()
+		Self {
+			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
+			colinear_manipulators: Vec::new(),
+			point_domain: PointDomain::new(),
+			segment_domain: SegmentDomain::new(),
+			region_domain: RegionDomain::new(),
+			upstream_graphic_group: None,
+		}
 	}
 }
 

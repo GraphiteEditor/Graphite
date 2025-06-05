@@ -3,7 +3,6 @@ use super::discrete_srgb::float_to_srgb_u8;
 use crate::AlphaBlending;
 use crate::GraphicElement;
 use crate::instances::{Instance, Instances};
-use crate::transform::TransformMut;
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -232,7 +231,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		fn from(element: GraphicElement) -> Self {
 			match element {
 				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
-					image: image.one_instance_ref().instance.clone(),
+					image: image.instance_ref_iter().next().unwrap().instance.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
 			}
@@ -270,26 +269,89 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => {
 			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
 			let mut image_frame_table = ImageFrameTable::new(image);
-			*image_frame_table.one_instance_mut().transform = transform;
-			*image_frame_table.one_instance_mut().alpha_blending = alpha_blending;
+			*image_frame_table.instance_mut_iter().next().unwrap().transform = transform;
+			*image_frame_table.instance_mut_iter().next().unwrap().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.one_instance_ref().instance.image.clone()),
+		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),
 		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table,
+	})
+}
+
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Instance<Image<Color>>, D::Error> {
+	use serde::Deserialize;
+
+	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct ImageFrame<P: Pixel> {
+		pub image: Image<P>,
+	}
+	impl From<ImageFrame<Color>> for GraphicElement {
+		fn from(image_frame: ImageFrame<Color>) -> Self {
+			GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(ImageFrameTable::new(image_frame.image)))
+		}
+	}
+	impl From<GraphicElement> for ImageFrame<Color> {
+		fn from(element: GraphicElement) -> Self {
+			match element {
+				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
+					image: image.instance_ref_iter().next().unwrap().instance.clone(),
+				},
+				_ => panic!("Expected Image, found {:?}", element),
+			}
+		}
+	}
+
+	#[cfg(feature = "dyn-any")]
+	unsafe impl<P> StaticType for ImageFrame<P>
+	where
+		P: dyn_any::StaticTypeSized + Pixel,
+		P::Static: Pixel,
+	{
+		type Static = ImageFrame<P::Static>;
+	}
+
+	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub struct OldImageFrame<P: Pixel> {
+		image: Image<P>,
+		transform: DAffine2,
+		alpha_blending: AlphaBlending,
+	}
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum FormatVersions {
+		Image(Image<Color>),
+		OldImageFrame(OldImageFrame<Color>),
+		ImageFrame(Instances<ImageFrame<Color>>),
+		ImageFrameTable(ImageFrameTable<Color>),
+		ImageInstance(Instance<Image<Color>>),
+	}
+
+	Ok(match FormatVersions::deserialize(deserializer)? {
+		FormatVersions::Image(image) => Instance {
+			instance: image,
+			..Default::default()
+		},
+		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => Instance {
+			instance: image_frame_with_transform_and_blending.image,
+			transform: image_frame_with_transform_and_blending.transform,
+			alpha_blending: image_frame_with_transform_and_blending.alpha_blending,
+			source_node_id: None,
+		},
+		FormatVersions::ImageFrame(image_frame) => Instance {
+			instance: image_frame.instance_ref_iter().next().unwrap().instance.image.clone(),
+			..Default::default()
+		},
+		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table.instance_iter().next().unwrap_or_default(),
+		FormatVersions::ImageInstance(image_instance) => image_instance,
 	})
 }
 
 // TODO: Rename to ImageTable
 pub type ImageFrameTable<P> = Instances<Image<P>>;
-
-/// Construct a 0x0 image frame table. This is useful because ImageFrameTable::default() will return a 1x1 image frame table.
-impl ImageFrameTable<Color> {
-	pub fn one_empty_image() -> Self {
-		let mut result = Self::new(Image::default());
-		*result.transform_mut() = DAffine2::ZERO;
-		result
-	}
-}
 
 impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;
@@ -302,62 +364,6 @@ impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 			return None;
 		}
 		self.get_pixel(pos.x as u32, pos.y as u32)
-	}
-}
-
-impl<P> Sample for ImageFrameTable<P>
-where
-	P: Debug + Copy + Pixel,
-	GraphicElement: From<Image<P>>,
-{
-	type Pixel = P;
-
-	// TODO: Improve sampling logic
-	#[inline(always)]
-	fn sample(&self, pos: DVec2, area: DVec2) -> Option<Self::Pixel> {
-		let image_transform = self.one_instance_ref().transform;
-		let image = self.one_instance_ref().instance;
-
-		let image_size = DVec2::new(image.width() as f64, image.height() as f64);
-		let pos = (DAffine2::from_scale(image_size) * image_transform.inverse()).transform_point2(pos);
-
-		Sample::sample(image, pos, area)
-	}
-}
-
-impl<P> Bitmap for ImageFrameTable<P>
-where
-	P: Copy + Pixel,
-	GraphicElement: From<Image<P>>,
-{
-	type Pixel = P;
-
-	fn width(&self) -> u32 {
-		let image = self.one_instance_ref().instance;
-
-		image.width()
-	}
-
-	fn height(&self) -> u32 {
-		let image = self.one_instance_ref().instance;
-
-		image.height()
-	}
-
-	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel> {
-		let image = self.one_instance_ref().instance;
-
-		image.get_pixel(x, y)
-	}
-}
-
-impl<P> BitmapMut for ImageFrameTable<P>
-where
-	P: Copy + Pixel,
-	GraphicElement: From<Image<P>>,
-{
-	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
-		self.one_instance_mut().instance.get_pixel_mut(x, y)
 	}
 }
 
@@ -395,7 +401,7 @@ impl From<Image<Color>> for Image<SRGBA8> {
 
 impl From<ImageFrameTable<Color>> for ImageFrameTable<SRGBA8> {
 	fn from(image_frame_table: ImageFrameTable<Color>) -> Self {
-		let mut result_table = ImageFrameTable::<SRGBA8>::empty();
+		let mut result_table = ImageFrameTable::<SRGBA8>::default();
 
 		for image_frame_instance in image_frame_table.instance_iter() {
 			result_table.push(Instance {
