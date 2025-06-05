@@ -1,7 +1,6 @@
-use crate::application_io::TextureFrameTable;
 use crate::instances::Instances;
 use crate::raster::bbox::AxisAlignedBbox;
-use crate::raster::image::ImageFrameTable;
+use crate::raster::image::RasterDataTable;
 use crate::vector::VectorDataTable;
 use crate::{Artboard, CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};
 use core::f64;
@@ -194,7 +193,7 @@ async fn transform<T: 'n + 'static>(
 #[node_macro::node(category(""))]
 fn replace_transform<Data, TransformInput: Transform>(
 	_: impl Ctx,
-	#[implementations(VectorDataTable, ImageFrameTable<Color>, GraphicGroupTable)] mut data: Instances<Data>,
+	#[implementations(VectorDataTable, RasterDataTable<Color>, GraphicGroupTable)] mut data: Instances<Data>,
 	#[implementations(DAffine2)] transform: TransformInput,
 ) -> Instances<Data> {
 	for data_transform in data.instance_mut_iter() {

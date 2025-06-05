@@ -12,7 +12,7 @@ use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::raster::curve::Curve;
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
@@ -22,14 +22,13 @@ use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
-use graphene_std::application_io::TextureFrameTable;
 use graphene_std::ops::XY;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterFrame};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -198,7 +197,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
 						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
 						// ===============================

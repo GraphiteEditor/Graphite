@@ -1,6 +1,5 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
-use graphene_core::RasterFrame;
 use graphene_core::instances::{Instance, InstanceRef};
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
@@ -203,7 +202,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 					result_table.push(sub_vector_data);
 				}
 			}
-			GraphicElement::RasterFrame(image) => {
+			GraphicElement::RasterData(image) => {
 				let make_instance = |transform| {
 					// Convert the image frame into a rectangular subpath with the image's transform
 					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);

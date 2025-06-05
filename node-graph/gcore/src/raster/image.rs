@@ -1,12 +1,10 @@
 use super::Color;
 use super::discrete_srgb::float_to_srgb_u8;
-use crate::AlphaBlending;
-use crate::GraphicElement;
 use crate::instances::{Instance, Instances};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 
 #[cfg(feature = "serde")]
 mod base64_serde {
@@ -16,19 +14,13 @@ mod base64_serde {
 	use base64::Engine;
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
+	pub fn as_base64<S: Serializer, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error> {
 		let u8_data = bytemuck::cast_slice(key);
 		let string = base64::engine::general_purpose::STANDARD.encode(u8_data);
 		(key.len() as u64, string).serialize(serializer)
 	}
 
-	pub fn from_base64<'a, D, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error>
-	where
-		D: Deserializer<'a>,
-	{
+	pub fn from_base64<'a, D: Deserializer<'a>, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error> {
 		use serde::de::Error;
 		<(u64, &[u8])>::deserialize(deserializer)
 			.and_then(|(len, str)| {
@@ -351,7 +343,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 }
 
 // TODO: Rename to ImageTable
-pub type ImageFrameTable<P> = Instances<Image<P>>;
+pub type RasterDataTable<P> = Instances<Image<P>>;
 
 impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;
@@ -399,9 +391,9 @@ impl From<Image<Color>> for Image<SRGBA8> {
 	}
 }
 
-impl From<ImageFrameTable<Color>> for ImageFrameTable<SRGBA8> {
-	fn from(image_frame_table: ImageFrameTable<Color>) -> Self {
-		let mut result_table = ImageFrameTable::<SRGBA8>::default();
+impl From<RasterDataTable<Color>> for RasterDataTable<SRGBA8> {
+	fn from(image_frame_table: RasterDataTable<Color>) -> Self {
+		let mut result_table = RasterDataTable::<SRGBA8>::default();
 
 		for image_frame_instance in image_frame_table.instance_iter() {
 			result_table.push(Instance {

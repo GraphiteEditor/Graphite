@@ -1,7 +1,7 @@
-use crate::application_io::{ImageTexture, TextureFrameTable};
+use crate::application_io::ImageTexture;
 use crate::instances::{Instance, Instances};
 use crate::raster::BlendMode;
-use crate::raster::image::{Image, ImageFrameTable};
+use crate::raster::image::{Image, RasterDataTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
@@ -124,7 +124,7 @@ impl From<VectorDataTable> for GraphicGroupTable {
 }
 impl From<Image<Color>> for GraphicGroupTable {
 	fn from(image: Image<Color>) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image))))
+		Self::new(GraphicElement::RasterData(RasterDataTable::<Color>::new(image)))
 	}
 }
 impl From<ImageFrameTable<Color>> for GraphicGroupTable {
@@ -151,7 +151,7 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
-	RasterFrame(RasterFrame),
+	RasterData(RasterDataTable<Color>),
 }
 
 impl Default for GraphicElement {
@@ -189,16 +189,16 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&RasterFrame> {
+	pub fn as_raster(&self) -> Option<&RasterDataTable<Color>> {
 		match self {
-			GraphicElement::RasterFrame(raster) => Some(raster),
+			GraphicElement::RasterData(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut RasterFrame> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut RasterDataTable<Color>> {
 		match self {
-			GraphicElement::RasterFrame(raster) => Some(raster),
+			GraphicElement::RasterData(raster) => Some(raster),
 			_ => None,
 		}
 	}
