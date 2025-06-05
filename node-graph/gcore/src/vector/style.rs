@@ -490,6 +490,14 @@ impl LineCap {
 			LineCap::Square => "square",
 		}
 	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			LineCap::Butt => String::from("butt"),
+			LineCap::Round => String::from("round"),
+			LineCap::Square => String::from("square"),
+		}
+	}
 }
 
 #[repr(C)]
@@ -508,6 +516,14 @@ impl LineJoin {
 			LineJoin::Bevel => "bevel",
 			LineJoin::Miter => "miter",
 			LineJoin::Round => "round",
+		}
+	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			LineJoin::Bevel => String::from("bevel"),
+			LineJoin::Miter => String::from("miter"),
+			LineJoin::Round => String::from("round"),
 		}
 	}
 }

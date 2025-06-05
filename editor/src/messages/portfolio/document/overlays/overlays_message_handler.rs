@@ -58,13 +58,13 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessag
 							device_pixel_ratio,
 							visibility_settings: visibility_settings.clone(),
 						}));
-						responses.add(DocumentMessage::GridOverlays(OverlayContext {
-							render_context: context.clone(),
-							size: size.as_dvec2(),
-							device_pixel_ratio,
-							visibility_settings: visibility_settings.clone(),
-						}));
 					}
+					responses.add(DocumentMessage::GridOverlays(OverlayContext {
+						render_context: context.clone(),
+						size: size.as_dvec2(),
+						device_pixel_ratio,
+						visibility_settings: visibility_settings.clone(),
+					}));
 				}
 			}
 			#[cfg(not(target_arch = "wasm32"))]

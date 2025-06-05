@@ -11,6 +11,7 @@ use glam::{DAffine2, DVec2};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_std::transform::Transform;
+use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
@@ -698,33 +699,39 @@ impl OverlayContext {
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
 		self.render_context.save();
-		self.render_context
-			.set_line_width(width_for_inner_boundary.unwrap_or(1.) * (transform.decompose_scale().length() * 0.75));
+		let transform_scale = transform.decompose_scale().x.max(transform.decompose_scale().y);
+		self.render_context.set_line_width(width_for_inner_boundary.unwrap_or(1.) * transform_scale);
 		self.draw_path_from_subpaths(subpaths, transform);
 
 		if with_pattern {
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-			self.render_context.set_stroke_style_str(&"#000000");
 			self.render_context.fill();
 
-			// Erase the part over the stroke area
+			// Make the stroke transparent and erase the fill area overlapping the stroke.
 			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
+			self.render_context.set_stroke_style_str(&"#000000");
 			self.render_context.stroke();
 		} else {
-			let color_str = "#".to_owned() + color.to_rgba_hex_srgb().as_str();
-			self.render_context.set_fill_style_str(&color_str);
+			let color_str = format!("#{:?}", color.to_rgba_hex_srgb());
+			self.render_context.set_fill_style_str(&color_str.as_str());
 			self.render_context.fill();
 		}
 
 		self.render_context.restore();
 	}
 
-	pub fn fill_stroke(&mut self, vector_data: &VectorData, transform: DAffine2, color: &Color, width: Option<f64>) {
+	pub fn fill_stroke(&mut self, vector_data: &VectorData, overlay_stroke: &Stroke) {
 		self.render_context.save();
-		self.render_context.set_line_width(width.unwrap_or(1.) * (transform.decompose_scale().length() * 0.75));
-		self.draw_path_from_vector_data(vector_data, transform);
 
-		self.render_context.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(color));
+		let transform_scale = overlay_stroke.transform.decompose_scale().x.max(overlay_stroke.transform.decompose_scale().y);
+		self.render_context.set_line_width(overlay_stroke.weight * transform_scale);
+		self.draw_path_from_vector_data(vector_data, overlay_stroke.transform);
+
+		self.render_context
+			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
+		self.render_context.set_line_cap(overlay_stroke.line_cap.html_canvas_name().as_str());
+		self.render_context.set_line_join(overlay_stroke.line_join.html_canvas_name().as_str());
+		self.render_context.set_miter_limit(overlay_stroke.line_join_miter_limit);
 		self.render_context.stroke();
 
 		self.render_context.restore();

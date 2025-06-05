@@ -369,7 +369,7 @@ impl TaggedValue {
 	pub fn to_u32(&self) -> u32 {
 		match self {
 			TaggedValue::U32(x) => *x,
-			_ => panic!("Passed value is not of type u32"),
+			_ => panic!("Cannot convert to u32"),
 		}
 	}
 }

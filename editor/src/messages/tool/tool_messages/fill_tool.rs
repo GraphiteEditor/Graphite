@@ -1,8 +1,10 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
+use graph_craft::document::value::TaggedValue;
 use graphene_core::vector::style::Fill;
 use graphene_std::renderer::ClickTarget;
+use graphene_std::vector::style::Stroke;
 
 #[derive(Default)]
 pub struct FillTool {
@@ -73,7 +75,7 @@ impl ToolTransition for FillTool {
 	}
 }
 
-pub fn close_to_stroke(mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2) -> bool {
+pub fn close_to_subpath(mouse_pos: DVec2, click_target: &ClickTarget, to_viewport_transform: DAffine2) -> bool {
 	let subpath = click_target.subpath().clone();
 	let lookup = subpath.compute_lookup_table(Some(25), None);
 
@@ -111,17 +113,27 @@ impl Fsm for FillToolFsmState {
 					let _ = document.metadata().click_targets(layer).is_some_and(|targets| {
 						targets
 							.iter()
-							.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)))
+							.any(|click_target| close_to_subpath(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)))
 							.then(|| {
-								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
-									return;
+								let overlay_stroke = || {
+									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+									let mut stroke = Stroke::new(Some(preview_color), get_stroke_width(layer, &document.network_interface).unwrap());
+
+									stroke.transform = document.metadata().transform_to_viewport(layer);
+									let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
+									stroke.line_cap = if let TaggedValue::LineCap(line_cap) = line_cap { *line_cap } else { return None };
+									let line_join = graph_layer.find_input("Stroke", 6).unwrap();
+									stroke.line_join = if let TaggedValue::LineJoin(line_join) = line_join { *line_join } else { return None };
+									let miter_limit = graph_layer.find_input("Stroke", 7).unwrap();
+									stroke.line_join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { return None };
+
+									Some(stroke)
 								};
-								overlay_context.fill_stroke(
-									&vector_data,
-									document.metadata().transform_to_viewport(layer),
-									&preview_color,
-									get_stroke_width(layer, &document.network_interface),
-								);
+								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+
+								if let Some(stroke) = overlay_stroke() {
+									overlay_context.fill_stroke(&vector_data, &stroke);
+								}
 							})
 							.or_else(|| {
 								overlay_context.fill_path(
@@ -167,7 +179,7 @@ impl Fsm for FillToolFsmState {
 				let _ = document.metadata().click_targets(layer_identifier).is_some_and(|target| {
 					target
 						.iter()
-						.any(|click_target| close_to_stroke(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer_identifier)))
+						.any(|click_target| close_to_subpath(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer_identifier)))
 						.then(|| {
 							responses.add(GraphOperationMessage::StrokeColorSet {
 								layer: layer_identifier,
