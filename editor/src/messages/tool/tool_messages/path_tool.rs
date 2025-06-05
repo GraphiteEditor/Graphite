@@ -15,7 +15,7 @@ use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_best_approximate};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, TValue};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
@@ -349,7 +349,6 @@ pub struct SlidingSegmentData {
 #[derive(Clone, Copy)]
 pub struct SlidingPointInfo {
 	anchor: PointId,
-	initial_position: DVec2,
 	layer: LayerNodeIdentifier,
 	connected_segments: [SlidingSegmentData; 2],
 }
@@ -938,8 +937,6 @@ impl PathToolData {
 
 			let Some(pointid) = anchor.as_anchor() else { return false };
 
-			let Some(position) = anchor.get_position(&vector_data) else { return false };
-
 			let mut segments_vec = vec![];
 			for (segment, bezier, start, end) in vector_data.segment_bezier_iter() {
 				if start == pointid || end == pointid {
@@ -956,7 +953,6 @@ impl PathToolData {
 
 			self.sliding_point_info = Some(SlidingPointInfo {
 				anchor: pointid,
-				initial_position: position,
 				layer,
 				connected_segments,
 			});
@@ -968,7 +964,7 @@ impl PathToolData {
 	fn slide_point(&mut self, target_position: DVec2, responses: &mut VecDeque<Message>, network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) {
 		let Some(sliding_point_info) = self.sliding_point_info else { return };
 		let anchor = sliding_point_info.anchor;
-		let initial_position = sliding_point_info.initial_position;
+		// let initial_position = sliding_point_info.initial_position;
 		let layer = sliding_point_info.layer;
 
 		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
@@ -1018,13 +1014,12 @@ impl PathToolData {
 
 		let end_handle_direction = if anchor == closer_segment.start { -1. * relative_position1 } else { -1. * relative_position2 };
 
-		let (farther_other_point, start_handle, end_handle, start_handle_pos, start_t) = if anchor == farther_segment.start {
+		let (farther_other_point, start_handle, end_handle, start_handle_pos) = if anchor == farther_segment.start {
 			(
 				farther_segment.bezier.end,
 				HandleId::end(farther_segment.segment_id),
 				HandleId::primary(farther_segment.segment_id),
 				farther_segment.bezier.handle_end(),
-				0.99,
 			)
 		} else {
 			(
@@ -1032,21 +1027,26 @@ impl PathToolData {
 				HandleId::primary(farther_segment.segment_id),
 				HandleId::end(farther_segment.segment_id),
 				farther_segment.bezier.handle_start(),
-				0.11,
 			)
 		};
 		let Some(start_handle_position) = start_handle_pos else { return };
 		let start_handle_direction = start_handle_position - farther_other_point;
 
-		// Get the normalized direction vectors (or case if cubic with only one handle)
-		// TODO: Extend to quadratic segment logic
-		let d1 = start_handle_direction.try_normalize().unwrap_or(farther_segment.bezier.tangent(TValue::Parametric(start_t)));
+		// Get normalized direction vectors, if cubic handle is zero then we consider corresponding tangent
+		let d1 = start_handle_direction.try_normalize().unwrap_or({
+			if anchor == farther_segment.start {
+				-1. * farther_segment.bezier.tangent(TValue::Parametric(0.99))
+			} else {
+				farther_segment.bezier.tangent(TValue::Parametric(0.01))
+			}
+		});
+
 		let d2 = end_handle_direction.try_normalize().unwrap_or_default();
 
-		let min_len1 = start_handle_direction.length() * 0.1;
-		let min_len2 = start_handle_direction.length() * 0.1;
+		let min_len1 = start_handle_direction.length() * 0.4;
+		let min_len2 = end_handle_direction.length() * 0.4;
 
-		let (relative_pos1, relative_pos2) = find_best_approximate(farther_other_point, initial_position, new_position, d1, d2, min_len1, min_len2, farther_segment.bezier, other_segment);
+		let (relative_pos1, relative_pos2) = find_two_param_best_approximate(farther_other_point, new_position, d1, d2, min_len1, min_len2, farther_segment.bezier, other_segment);
 
 		// Now set those handles to these handle lengths keeping the directions d1, d2
 		let modification_type = start_handle.set_relative_position(relative_pos1);
