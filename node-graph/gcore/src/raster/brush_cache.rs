@@ -16,8 +16,11 @@ struct BrushCacheImpl {
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
 	background: Instance<Image<Color>>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
 	blended_image: Instance<Image<Color>>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
 	last_stroke_texture: Instance<Image<Color>>,
 
 	// A cache for brush textures.
