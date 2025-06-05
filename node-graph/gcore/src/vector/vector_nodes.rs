@@ -445,7 +445,7 @@ async fn round_corners(
 	#[default(5.)]
 	min_angle_threshold: Angle,
 ) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for source in source.instance_ref_iter() {
 		let source_transform = *source.transform;
@@ -459,8 +459,10 @@ async fn round_corners(
 		// Convert 0-100 to 0-0.5
 		let edge_length_limit = edge_length_limit * 0.005;
 
-		let mut result = VectorData::empty();
-		result.style = source.style.clone();
+		let mut result = VectorData {
+			style: source.style.clone(),
+			..Default::default()
+		};
 
 		// Grab the initial point ID as a stable starting point
 		let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
@@ -557,7 +559,7 @@ async fn spatial_merge_by_distance(
 	#[hard_min(0.0001)]
 	distance: f64,
 ) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let vector_data_transform = vector_data_instance.transform;
@@ -689,7 +691,7 @@ async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle
 		return vector_data;
 	};
 
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let vector_data_transform = vector_data_instance.transform;
@@ -779,7 +781,7 @@ async fn remove_handles(
 	#[soft_min(0.)]
 	max_handle_distance: f64,
 ) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let mut vector_data = vector_data_instance.instance;
@@ -830,14 +832,16 @@ async fn generate_handles(
 	#[range((0., 1.))]
 	curvature: f64,
 ) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for source in source.instance_ref_iter() {
 		let source_transform = *source.transform;
 		let source = source.instance;
 
-		let mut result = VectorData::empty();
-		result.style = source.style.clone();
+		let mut result = VectorData {
+			style: source.style.clone(),
+			..Default::default()
+		};
 
 		for mut subpath in source.stroke_bezier_paths() {
 			subpath.apply_transform(source_transform);
@@ -988,7 +992,7 @@ async fn generate_handles(
 // 		Subpath::new(new_groups, is_closed)
 // 	}
 
-// 	let mut result_table = VectorDataTable::empty();
+// 	let mut result_table = VectorDataTable::default();
 
 // 	for source_vector_data in source.instances() {
 // 		let source_transform = *source_vector_data.transform;
@@ -996,8 +1000,10 @@ async fn generate_handles(
 
 // 		let subdivisions = subdivisions as usize;
 
-// 		let mut result = VectorData::empty();
-// 		result.style = source_vector_data.style.clone();
+//		let mut result = VectorData {
+//			style: source_vector_data.style.clone(),
+//			..Default::default()
+//		};
 
 // 		for mut subpath in source_vector_data.stroke_bezier_paths() {
 // 			subpath.apply_transform(source_transform);
@@ -1027,7 +1033,7 @@ async fn generate_handles(
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let vector_data = vector_data_instance.instance;
@@ -1059,15 +1065,17 @@ async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let vector_data_transform = vector_data_instance.transform;
 		let vector_data = vector_data_instance.instance;
 
 		let subpaths = vector_data.stroke_bezier_paths();
-		let mut result = VectorData::empty();
-		result.style = vector_data.style.clone();
+		let mut result = VectorData {
+			style: vector_data.style.clone(),
+			..Default::default()
+		};
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 
 		// Perform operation on all subpaths in this shape.
@@ -1101,14 +1109,14 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let vector_data = vector_data_instance.instance;
 
 		let stroke = vector_data.style.stroke().clone().unwrap_or_default();
 		let bezpaths = vector_data.stroke_bezpath_iter();
-		let mut result = VectorData::empty();
+		let mut result = VectorData::default();
 
 		// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
 		let join = match stroke.line_join {
@@ -1211,7 +1219,7 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	// Limit the smallest spacing to something sensible to avoid freezing the application.
 	let spacing = spacing.max(0.01);
 
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let mut result = VectorData {
@@ -1355,10 +1363,10 @@ async fn poisson_disk_points(
 ) -> VectorDataTable {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
-		let mut result = VectorData::empty();
+		let mut result = VectorData::default();
 
 		let path_with_bounding_boxes: Vec<_> = vector_data_instance
 			.instance
@@ -1421,7 +1429,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 
 #[node_macro::node(name("Spline"), category("Vector"), path(graphene_core::vector))]
 async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		// Exit early if there are no points to generate splines from.
@@ -1467,7 +1475,7 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
 		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
@@ -1522,7 +1530,7 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction) -> VectorDataTable {
 	let time = time.clamp(0., 1.);
 
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for (source_instance, target_instance) in source.instance_iter().zip(target.instance_iter()) {
 		let mut vector_data_instance = VectorData::default();
@@ -1716,7 +1724,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for source_instance in source.instance_iter() {
 		result_table.push(Instance {
@@ -1730,7 +1738,7 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut source_instance in source.instance_iter() {
 		source_instance.instance.close_subpaths();
@@ -1747,7 +1755,7 @@ fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 
 #[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
 fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
-	let mut result_table = VectorDataTable::empty();
+	let mut result_table = VectorDataTable::default();
 
 	for mut source_instance in source.instance_iter() {
 		source_instance.instance.merge_by_distance(distance);

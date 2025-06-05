@@ -912,7 +912,7 @@ async fn render_texture<'a: 'n>(
 
 #[node_macro::node(category(""))]
 async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrameTable {
-	let mut result_table = TextureFrameTable::empty();
+	let mut result_table = TextureFrameTable::default();
 
 	for instance in input.instance_ref_iter() {
 		let image = instance.instance;

@@ -179,7 +179,7 @@ where
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return ImageFrameTable::empty();
+		return ImageFrameTable::default();
 	}
 
 	let mut render = SvgRender::new();
@@ -218,7 +218,7 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = ImageFrameTable::empty();
+	let mut result = ImageFrameTable::default();
 	result.push(Instance {
 		instance: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
 		transform: footprint.transform,

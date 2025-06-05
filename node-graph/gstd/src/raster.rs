@@ -26,7 +26,7 @@ impl From<std::io::Error> for Error {
 
 #[node_macro::node(category("Debug: Raster"))]
 fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
 		let image_frame_transform = image_frame_instance.transform;
@@ -100,7 +100,7 @@ fn combine_channels(
 	#[expose] blue: ImageFrameTable<Color>,
 	#[expose] alpha: ImageFrameTable<Color>,
 ) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
 	let red = red.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
@@ -196,7 +196,7 @@ fn mask(
 	};
 	let stencil_size = DVec2::new(stencil_instance.instance.width as f64, stencil_instance.instance.height as f64);
 
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	for mut image_instance in image.instance_iter() {
 		let image_size = DVec2::new(image_instance.instance.width as f64, image_instance.instance.height as f64);
@@ -232,7 +232,7 @@ fn mask(
 
 #[node_macro::node(category(""))]
 fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	for mut image_instance in image.instance_iter() {
 		let image_aabb = Bbox::unit().affine_transform(image_instance.transform).to_axis_aligned_bbox();
@@ -486,7 +486,7 @@ fn noise_pattern(
 				}
 			}
 
-			let mut result = ImageFrameTable::empty();
+			let mut result = ImageFrameTable::default();
 			result.push(Instance {
 				instance: image,
 				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
@@ -551,7 +551,7 @@ fn noise_pattern(
 		}
 	}
 
-	let mut result = ImageFrameTable::empty();
+	let mut result = ImageFrameTable::default();
 	result.push(Instance {
 		instance: image,
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
@@ -602,7 +602,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 		data,
 		..Default::default()
 	};
-	let mut result = ImageFrameTable::empty();
+	let mut result = ImageFrameTable::default();
 	result.push(Instance {
 		instance: image,
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),

@@ -7,7 +7,7 @@ use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster"))]
 async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+	let mut result_table = ImageFrameTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
 		let image = image_frame_instance.instance;

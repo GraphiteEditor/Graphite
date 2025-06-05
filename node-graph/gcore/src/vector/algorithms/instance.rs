@@ -13,7 +13,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Clone + 'static>
 	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> ImageFrameTable<Color>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	reverse: bool,
 ) -> GraphicGroupTable {
-	let mut result_table = GraphicGroupTable::empty();
+	let mut result_table = GraphicGroupTable::default();
 
 	for InstanceRef { instance: points, transform, .. } in points.instance_ref_iter() {
 		let mut iteration = async |index, point| {
@@ -52,7 +52,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Clone + 'static>(
 ) -> GraphicGroupTable {
 	let count = count.max(1) as usize;
 
-	let mut result_table = GraphicGroupTable::empty();
+	let mut result_table = GraphicGroupTable::default();
 
 	for index in 0..count {
 		let index = if reverse { count - index - 1 } else { index };

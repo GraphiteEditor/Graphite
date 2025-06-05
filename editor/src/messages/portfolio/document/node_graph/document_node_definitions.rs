@@ -1882,7 +1882,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 		document_node: DocumentNode {
 		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
 		// 			inputs: vec![
-		// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::empty()), true),
+		// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::default()), true),
 		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
 		// 			],
 		// 			..Default::default()

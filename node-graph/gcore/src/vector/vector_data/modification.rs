@@ -424,8 +424,8 @@ impl core::hash::Hash for VectorModification {
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
-	for mut vector_data_instance in vector_data.instance_mut_iter() {
-		modification.apply(&mut vector_data_instance.instance);
+	for vector_data_instance in vector_data.instance_mut_iter() {
+		modification.apply(vector_data_instance.instance);
 	}
 	vector_data
 }
@@ -439,7 +439,7 @@ fn modify_new() {
 
 	let modify = VectorModification::create_from_vector(&vector_data);
 
-	let mut new = VectorData::empty();
+	let mut new = VectorData::default();
 	modify.apply(&mut new);
 	assert_eq!(vector_data, new);
 }
@@ -470,7 +470,7 @@ fn modify_existing() {
 		modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X });
 	}
 
-	let mut new = VectorData::empty();
+	let mut new = VectorData::default();
 	modify_new.apply(&mut new);
 
 	modify_original.apply(&mut vector_data);
