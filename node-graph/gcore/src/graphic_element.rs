@@ -205,16 +205,104 @@ impl GraphicElement {
 	}
 }
 
-// TODO: Rename to Raster
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-pub enum RasterFrame {
-	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	// TODO: Rename to ImageTable
-	ImageFrame(ImageFrameTable<Color>),
-	/// A GPU texture with a finite position and extent
-	// TODO: Rename to ImageTextureTable
-	TextureFrame(TextureFrameTable),
+mod raster {
+	use core::{marker::PhantomData, mem::ManuallyDrop, ops::Deref};
+	use std::sync::Arc;
+
+	use crate::{
+		instances::Instances,
+		raster::{Image, Pixel},
+	};
+	trait Storage {}
+
+	pub struct CPU;
+	pub struct GPU;
+	impl Storage for CPU {}
+	impl Storage for GPU {}
+
+	struct DropRaster<C: Pixel, T: DropHelper> {
+		union: Raster<C, T>,
+		drop: T,
+	}
+	pub union Raster<C: Pixel, T> {
+		cpu: ManuallyDrop<Image<C>>,
+		#[cfg(feature = "wgpu")]
+		gpu: ManuallyDrop<Arc<wgpu::Texture>>,
+		#[cfg(not(feature = "wgpu"))]
+		gpu: (),
+		phantom: PhantomData<T>,
+	}
+	impl<C: Pixel> DropRaster<C, CPU> {
+		pub fn new(image: Image<C>) -> Self {
+			Self {
+				union: Raster { cpu: ManuallyDrop::new(image) },
+				drop: CPU,
+			}
+		}
+		pub fn data(&self) -> &Image<C> {
+			unsafe { &self.union.cpu }.as_ref()
+		}
+	}
+	impl<C: Pixel> Deref for DropRaster<C, CPU> {
+		type Target = Image<C>;
+
+		fn deref(&self) -> &Self::Target {
+			self.data()
+		}
+	}
+	impl<C: Pixel> DropRaster<C, GPU> {
+		pub fn new(image: Arc<wgpu::Texture>) -> Self {
+			Self {
+				union: Raster { gpu: ManuallyDrop::new(image) },
+				drop: GPU,
+			}
+		}
+		pub fn data(&self) -> &wgpu::Texture {
+			unsafe { &self.union.gpu }.as_ref()
+		}
+	}
+	impl<C: Pixel> Deref for DropRaster<C, GPU> {
+		type Target = wgpu::Texture;
+
+		fn deref(&self) -> &Self::Target {
+			self.data()
+		}
+	}
+	trait DropHelper: Sized {
+		fn drop_impl<C: Pixel>(data: &mut DropRaster<C, Self>);
+	}
+	impl DropHelper for CPU {
+		fn drop_impl<C: Pixel>(data: &mut DropRaster<C, Self>) {
+			unsafe { core::ptr::drop_in_place(&mut data.union.cpu as *mut _) };
+
+			data.union = Raster { phantom: PhantomData };
+		}
+	}
+	impl DropHelper for GPU {
+		fn drop_impl<C: Pixel>(data: &mut DropRaster<C, Self>) {
+			unsafe { core::ptr::drop_in_place(&mut data.union.gpu as *mut _) };
+
+			data.union = Raster { phantom: PhantomData };
+		}
+	}
+	impl<C: Pixel, T: DropHelper> Drop for DropRaster<C, T> {
+		fn drop(&mut self) {
+			T::drop_impl(self);
+		}
+	}
+	pub type RasterDataTable<Color, Storage> = Instances<Raster<Color, Storage>>;
 }
+pub type RasterFrame<T> = raster::RasterDataTable<Color, T>;
+// // TODO: Rename to Raster
+// #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+// pub enum RasterFrame {
+// 	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+// 	// TODO: Rename to ImageTable
+// 	ImageFrame(ImageFrameTable<Color>),
+// 	/// A GPU texture with a finite position and extent
+// 	// TODO: Rename to ImageTextureTable
+// 	TextureFrame(TextureFrameTable),
+// }
 
 impl<'de> serde::Deserialize<'de> for RasterFrame {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
