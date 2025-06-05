@@ -8,6 +8,7 @@ use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, IVec2};
+use raster::CPU;
 use std::hash::Hash;
 
 pub mod renderer;
@@ -151,7 +152,8 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
-	RasterFrame(RasterFrame),
+	RasterFrameCPU(RasterFrame<raster::CPU>),
+	RasterFrameGPU(RasterFrame<raster::GPU>),
 }
 
 // TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
@@ -209,7 +211,10 @@ mod raster {
 	use core::{marker::PhantomData, mem::ManuallyDrop, ops::Deref};
 	use std::sync::Arc;
 
+	use dyn_any::DynAny;
+
 	use crate::{
+		Color,
 		instances::Instances,
 		raster::{Image, Pixel},
 	};
@@ -220,79 +225,64 @@ mod raster {
 	impl Storage for CPU {}
 	impl Storage for GPU {}
 
-	struct DropRaster<C: Pixel, T: DropHelper> {
-		union: Raster<C, T>,
-		drop: T,
+	#[derive(Clone, Debug, Hash, PartialEq)]
+	struct DropRaster<T: 'static> {
+		data: Raster,
+		storage: T,
 	}
-	pub union Raster<C: Pixel, T> {
-		cpu: ManuallyDrop<Image<C>>,
+
+	unsafe impl<T: 'static> dyn_any::StaticType for DropRaster<T> {
+		type Static = DropRaster<T>;
+	}
+	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	pub enum Raster {
+		Cpu(Image<Color>),
 		#[cfg(feature = "wgpu")]
-		gpu: ManuallyDrop<Arc<wgpu::Texture>>,
+		Gpu(Arc<wgpu::Texture>),
 		#[cfg(not(feature = "wgpu"))]
-		gpu: (),
-		phantom: PhantomData<T>,
+		Gpu(()),
 	}
-	impl<C: Pixel> DropRaster<C, CPU> {
-		pub fn new(image: Image<C>) -> Self {
+	impl DropRaster<CPU> {
+		pub fn new(image: Image<Color>) -> Self {
 			Self {
-				union: Raster { cpu: ManuallyDrop::new(image) },
-				drop: CPU,
+				data: Raster::Cpu(image),
+				storage: CPU,
 			}
 		}
-		pub fn data(&self) -> &Image<C> {
-			unsafe { &self.union.cpu }.as_ref()
+		pub fn data(&self) -> &Image<Color> {
+			let Raster::Cpu(cpu) = &self.data else { unreachable!() };
+			cpu
 		}
 	}
-	impl<C: Pixel> Deref for DropRaster<C, CPU> {
-		type Target = Image<C>;
+	impl Deref for DropRaster<CPU> {
+		type Target = Image<Color>;
 
 		fn deref(&self) -> &Self::Target {
 			self.data()
 		}
 	}
-	impl<C: Pixel> DropRaster<C, GPU> {
+	impl DropRaster<GPU> {
 		pub fn new(image: Arc<wgpu::Texture>) -> Self {
 			Self {
-				union: Raster { gpu: ManuallyDrop::new(image) },
-				drop: GPU,
+				data: Raster::Gpu(image),
+				storage: GPU,
 			}
 		}
 		pub fn data(&self) -> &wgpu::Texture {
-			unsafe { &self.union.gpu }.as_ref()
+			let Raster::Gpu(gpu) = &self.data else { unreachable!() };
+			gpu
 		}
 	}
-	impl<C: Pixel> Deref for DropRaster<C, GPU> {
+	impl Deref for DropRaster<GPU> {
 		type Target = wgpu::Texture;
 
 		fn deref(&self) -> &Self::Target {
 			self.data()
 		}
 	}
-	trait DropHelper: Sized {
-		fn drop_impl<C: Pixel>(data: &mut DropRaster<C, Self>);
-	}
-	impl DropHelper for CPU {
-		fn drop_impl<C: Pixel>(data: &mut DropRaster<C, Self>) {
-			unsafe { core::ptr::drop_in_place(&mut data.union.cpu as *mut _) };
-
-			data.union = Raster { phantom: PhantomData };
-		}
-	}
-	impl DropHelper for GPU {
-		fn drop_impl<C: Pixel>(data: &mut DropRaster<C, Self>) {
-			unsafe { core::ptr::drop_in_place(&mut data.union.gpu as *mut _) };
-
-			data.union = Raster { phantom: PhantomData };
-		}
-	}
-	impl<C: Pixel, T: DropHelper> Drop for DropRaster<C, T> {
-		fn drop(&mut self) {
-			T::drop_impl(self);
-		}
-	}
-	pub type RasterDataTable<Color, Storage> = Instances<Raster<Color, Storage>>;
+	pub type RasterDataTable<Storage> = Instances<DropRaster<Storage>>;
 }
-pub type RasterFrame<T> = raster::RasterDataTable<Color, T>;
+pub type RasterFrame<T> = raster::RasterDataTable<T>;
 // // TODO: Rename to Raster
 // #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 // pub enum RasterFrame {
@@ -304,24 +294,21 @@ pub type RasterFrame<T> = raster::RasterDataTable<Color, T>;
 // 	TextureFrame(TextureFrameTable),
 // }
 
-impl<'de> serde::Deserialize<'de> for RasterFrame {
+impl<'de> serde::Deserialize<'de> for RasterFrame<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
 	{
-		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
+		Ok(RasterFrame::new(Image::deserialize(deserializer)?))
 	}
 }
 
-impl serde::Serialize for RasterFrame {
+impl serde::Serialize for RasterFrame<CPU> {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
 	{
-		match self {
-			RasterFrame::ImageFrame(_) => self.serialize(serializer),
-			RasterFrame::TextureFrame(_) => todo!(),
-		}
+		self.data().serialize(serializer)
 	}
 }
 
