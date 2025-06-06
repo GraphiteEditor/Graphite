@@ -405,8 +405,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 	})
 }
 
-// TODO: Rename to ImageTable
-pub type RasterDataTable<P> = Instances<Image<P>>;
+// pub type RasterDataTable<P> = Instances<Image<P>>;
 
 impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;

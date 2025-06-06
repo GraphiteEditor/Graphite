@@ -1,14 +1,12 @@
-use crate::application_io::ImageTexture;
 use crate::instances::{Instance, Instances};
 use crate::raster::BlendMode;
-use crate::raster::image::{Image, RasterDataTable};
+use crate::raster::image::Image;
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, IVec2};
-use raster::CPU;
 use std::hash::Hash;
 
 pub mod renderer;
@@ -132,12 +130,17 @@ impl From<VectorDataTable> for GraphicGroupTable {
 }
 impl From<Image<Color>> for GraphicGroupTable {
 	fn from(image: Image<Color>) -> Self {
-		Self::new(GraphicElement::RasterData(RasterDataTable::<Color>::new(image)))
+		Self::new(GraphicElement::RasterDataCPU(RasterDataTable::<raster::CPU>::new(raster::DropRaster::<raster::CPU>::new(image))))
 	}
 }
-impl From<RasterDataTable<Color>> for GraphicGroupTable {
-	fn from(raster_data_table: RasterDataTable<Color>) -> Self {
-		Self::new(GraphicElement::RasterData(raster_data_table))
+impl From<RasterDataTable<raster::CPU>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<raster::CPU>) -> Self {
+		Self::new(GraphicElement::RasterDataCPU(raster_data_table))
+	}
+}
+impl From<RasterDataTable<raster::GPU>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<raster::GPU>) -> Self {
+		Self::new(GraphicElement::RasterDataGPU(raster_data_table))
 	}
 }
 
@@ -149,8 +152,8 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
-	RasterFrameCPU(RasterFrame<raster::CPU>),
-	RasterFrameGPU(RasterFrame<raster::GPU>),
+	RasterDataCPU(RasterDataTable<raster::CPU>),
+	RasterDataGPU(RasterDataTable<raster::GPU>),
 }
 
 impl Default for GraphicElement {
@@ -188,16 +191,16 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&RasterDataTable<Color>> {
+	pub fn as_raster(&self) -> Option<&RasterDataTable<raster::CPU>> {
 		match self {
-			GraphicElement::RasterData(raster) => Some(raster),
+			GraphicElement::RasterDataCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut RasterDataTable<Color>> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut RasterDataTable<raster::CPU>> {
 		match self {
-			GraphicElement::RasterData(raster) => Some(raster),
+			GraphicElement::RasterDataCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
@@ -206,9 +209,7 @@ impl GraphicElement {
 mod raster {
 	use crate::Color;
 	use crate::instances::Instances;
-	use crate::raster::{Image, Pixel};
-	use core::marker::PhantomData;
-	use core::mem::ManuallyDrop;
+	use crate::raster::Image;
 	use core::ops::Deref;
 	use dyn_any::DynAny;
 	use std::sync::Arc;
@@ -221,7 +222,7 @@ mod raster {
 	impl Storage for GPU {}
 
 	#[derive(Clone, Debug, Hash, PartialEq)]
-	struct DropRaster<T: 'static> {
+	pub struct DropRaster<T: 'static> {
 		data: Raster,
 		storage: T,
 	}
@@ -277,7 +278,7 @@ mod raster {
 	}
 	pub type RasterDataTable<Storage> = Instances<DropRaster<Storage>>;
 }
-pub type RasterFrame<T> = raster::RasterDataTable<T>;
+pub use raster::RasterDataTable;
 
 // pub enum RasterTexture {
 // 	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
@@ -285,6 +286,24 @@ pub type RasterFrame<T> = raster::RasterDataTable<T>;
 // 	/// A GPU texture with a finite position and extent
 // 	Texture(ImageTexture),
 // }
+
+impl<'de> serde::Deserialize<'de> for RasterDataTable<raster::CPU> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		Ok(RasterDataTable::new(raster::DropRaster::<raster::CPU>::new(Image::deserialize(deserializer)?)))
+	}
+}
+
+impl serde::Serialize for RasterDataTable<raster::CPU> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		self.data().serialize(serializer)
+	}
+}
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
@@ -535,15 +554,15 @@ impl From<VectorDataTable> for GraphicElement {
 		GraphicElement::VectorData(vector_data)
 	}
 }
-impl From<RasterDataTable<Color>> for GraphicElement {
-	fn from(image_frame: RasterDataTable<Color>) -> Self {
-		GraphicElement::RasterData(image_frame)
+impl From<RasterDataTable<raster::CPU>> for GraphicElement {
+	fn from(raster_data: RasterDataTable<raster::CPU>) -> Self {
+		GraphicElement::RasterDataCPU(raster_data)
 	}
 }
 // TODO: Remove this one
 impl From<Image<Color>> for GraphicElement {
-	fn from(image_frame: Image<Color>) -> Self {
-		GraphicElement::RasterData(RasterDataTable::<Color>::new(image_frame))
+	fn from(raster_data: Image<Color>) -> Self {
+		GraphicElement::RasterDataCPU(RasterDataTable::<raster::CPU>::new(raster::DropRaster::<raster::CPU>::new(raster_data)))
 	}
 }
 // TODO: Remove this one
