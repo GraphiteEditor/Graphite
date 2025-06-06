@@ -185,10 +185,11 @@ pub fn blend_with_mode(background: Instance<Image<Color>>, foreground: Instance<
 
 #[node_macro::node(category("Raster"))]
 async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> RasterDataTable<Color> {
+	if image_frame_table.is_empty() {
+		image_frame_table.push(Instance::default());
+	}
 	// TODO: Find a way to handle more than one instance
-	let Some(image_frame_instance) = image_frame_table.instance_ref_iter().next() else {
-		return RasterDataTable::default();
-	};
+	let image_frame_instance = image_frame_table.instance_ref_iter().next().expect("Expected the one instance we just pushed");
 	let image_frame_instance = image_frame_instance.to_instance_cloned();
 
 	let [start, end] = image_frame_instance.clone().to_table().bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
