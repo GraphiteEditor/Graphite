@@ -6,7 +6,7 @@ use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster"))]
-async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<Color>, strength: Percentage) -> RasterDataTable<Color> {
+async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percentage) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {

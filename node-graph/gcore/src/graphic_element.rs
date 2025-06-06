@@ -7,7 +7,7 @@ use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, IVec2};
-use raster::{CPU, GPU};
+pub use raster::{CPU, GPU, Raster};
 use std::hash::Hash;
 
 pub mod renderer;
@@ -245,7 +245,7 @@ mod raster {
 
 	impl RasterStorage {}
 	impl Raster<CPU> {
-		pub fn new(image: Image<Color>) -> Self {
+		pub fn new_cpu(image: Image<Color>) -> Self {
 			Self {
 				data: RasterStorage::Cpu(image),
 				storage: CPU,
@@ -264,7 +264,7 @@ mod raster {
 		}
 	}
 	impl Raster<GPU> {
-		pub fn new(image: Arc<wgpu::Texture>) -> Self {
+		pub fn new_gpu(image: Arc<wgpu::Texture>) -> Self {
 			Self {
 				data: RasterStorage::Gpu(image),
 				storage: GPU,

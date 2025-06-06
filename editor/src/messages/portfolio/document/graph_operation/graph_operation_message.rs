@@ -66,7 +66,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image_frame: RasterDataTable<Color>,
+		image_frame: RasterDataTable<CPU>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

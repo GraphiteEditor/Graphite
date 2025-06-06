@@ -992,7 +992,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<CPU> {
 				// Implementation details...
 			}
 		);
@@ -1016,7 +1016,7 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(RasterDataTable<Color>),
+			output_type: parse_quote!(RasterDataTable<CPU>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
@@ -1132,7 +1132,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<CPU>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1158,10 +1158,10 @@ mod tests {
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> RasterDataTable<Color>,
+				() -> RasterDataTable<CPU>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> RasterDataTable<Color>,
+				Footprint -> RasterDataTable<CPU>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

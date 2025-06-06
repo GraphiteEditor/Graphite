@@ -184,7 +184,7 @@ pub fn blend_with_mode(background: Instance<Image<Color>>, foreground: Instance<
 }
 
 #[node_macro::node(category("Raster"))]
-async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> RasterDataTable<Color> {
+async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes: Vec<BrushStroke>, cache: BrushCache) -> RasterDataTable<CPU> {
 	if image_frame_table.is_empty() {
 		image_frame_table.push(Instance::default());
 	}

@@ -7,7 +7,7 @@ use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
+use crate::{Artboard, ArtboardGroupTable, CPU, Color, GPU, GraphicElement, GraphicGroupTable};
 use base64::Engine;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -843,7 +843,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 	}
 }
 
-impl GraphicElementRendered for RasterDataTable<Color> {
+impl GraphicElementRendered for RasterDataTable<CPU> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
@@ -926,12 +926,113 @@ impl GraphicElementRendered for RasterDataTable<Color> {
 		GraphicElement::RasterData(self.clone())
 	}
 }
+impl GraphicElementRendered for RasterDataTable<GPU> {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		for instance in self.instance_ref_iter() {
+			let transform = *instance.transform * render.transform;
+
+			let image = &instance.instance;
+			if image.data.is_empty() {
+				return;
+			}
+
+			let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+				let output = image.to_png();
+				let preamble = "data:image/png;base64,";
+				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+				base64_string.push_str(preamble);
+				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+				base64_string
+			});
+			render.leaf_tag("image", |attributes| {
+				attributes.push("width", 1.to_string());
+				attributes.push("height", 1.to_string());
+				attributes.push("preserveAspectRatio", "none");
+				attributes.push("href", base64_string);
+				let matrix = format_transform_matrix(transform);
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
+				if instance.alpha_blending.opacity < 1. {
+					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				}
+				if instance.alpha_blending.blend_mode != BlendMode::default() {
+					attributes.push("style", instance.alpha_blending.blend_mode.render());
+				}
+			});
+		}
+	}
+
+	#[cfg(feature = "vello")]
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
+		use vello::peniko;
+
+		let mut render_stuff = |image: vello::peniko::Image, instance_transform: DAffine2, blend_mode: crate::AlphaBlending| {
+			let image_transform = transform * instance_transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+			let layer = blend_mode != Default::default();
+
+			let Some(bounds) = self.bounding_box(transform, true) else { return };
+
+			let blending = vello::peniko::BlendMode::new(blend_mode.blend_mode.into(), vello::peniko::Compose::SrcOver);
+
+			if layer {
+				let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+			}
+
+			scene.draw_image(&image, vello::kurbo::Affine::new(image_transform.to_cols_array()));
+
+			if layer {
+				scene.pop_layer()
+			}
+		};
+
+		for instance in self.instance_ref_iter() {
+			let image = vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.texture.width(), instance.instance.texture.height()).with_extend(peniko::Extend::Repeat);
+
+			let id = image.data.id();
+
+			context.resource_overrides.insert(id, instance.instance.texture.clone());
+
+			render_stuff(image, *instance.transform, *instance.alpha_blending);
+		}
+	}
+
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
+		self.instance_ref_iter()
+			.flat_map(|instance| {
+				let transform = transform * *instance.transform;
+				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+			})
+			.reduce(Quad::combine_bounds)
+	}
+
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+		let Some(element_id) = element_id else { return };
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new(subpath, 0.)]);
+		metadata.upstream_footprints.insert(element_id, footprint);
+		// TODO: Find a way to handle more than one row of the graphical data table
+		if let Some(image) = self.instance_ref_iter().next() {
+			metadata.local_transforms.insert(element_id, *image.transform);
+		}
+	}
+
+	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		click_targets.push(ClickTarget::new(subpath, 0.));
+	}
+}
 
 impl GraphicElementRendered for GraphicElement {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
-			GraphicElement::RasterData(raster) => raster.render_svg(render, render_params),
+			GraphicElement::RasterDataCPU(raster) => raster.render_svg(render, render_params),
+			GraphicElement::RasterDataGPU(raster) => (),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
 		}
 	}
@@ -941,14 +1042,16 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
-			GraphicElement::RasterData(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			GraphicElement::RasterDataCPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			GraphicElement::RasterDataGPU(raster) => raster.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
-			GraphicElement::RasterData(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataCPU(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataGPU(raster) => raster.bounding_box(transform, include_stroke),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}
@@ -966,7 +1069,15 @@ impl GraphicElementRendered for GraphicElement {
 						metadata.local_transforms.insert(element_id, *vector_data.transform);
 					}
 				}
-				GraphicElement::RasterData(raster_frame) => {
+				GraphicElement::RasterDataCPU(raster_frame) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than one row of images
+					if let Some(image) = raster_frame.instance_ref_iter().next() {
+						metadata.local_transforms.insert(element_id, *image.transform);
+					}
+				}
+				GraphicElement::RasterDataGPU(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than one row of images
@@ -979,7 +1090,8 @@ impl GraphicElementRendered for GraphicElement {
 
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
-			GraphicElement::RasterData(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::RasterDataCPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::RasterDataGPU(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
@@ -987,7 +1099,8 @@ impl GraphicElementRendered for GraphicElement {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
-			GraphicElement::RasterData(raster) => raster.add_upstream_click_targets(click_targets),
+			GraphicElement::RasterDataCPU(raster) => raster.add_upstream_click_targets(click_targets),
+			GraphicElement::RasterDataGPU(raster) => raster.add_upstream_click_targets(click_targets),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
 		}
 	}
@@ -996,7 +1109,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::RasterData(raster) => raster.contains_artboard(),
+			GraphicElement::RasterDataCPU(raster) => raster.contains_artboard(),
+			GraphicElement::RasterDataGPU(raster) => raster.contains_artboard(),
 		}
 	}
 
@@ -1004,7 +1118,8 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.new_ids_from_hash(reference),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
-			GraphicElement::RasterData(_) => (),
+			GraphicElement::RasterDataCPU(_) => (),
+			GraphicElement::RasterDataGPU(_) => (),
 		}
 	}
 }

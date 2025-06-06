@@ -8,7 +8,7 @@ use graphene_core::{Color, Ctx};
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: RasterDataTable<Color>,
+	image_frame: RasterDataTable<CPU>,
 	/// The radius of the blur kernel.
 	#[range((0., 100.))]
 	#[hard_min(0.)]
@@ -17,7 +17,7 @@ async fn blur(
 	box_blur: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
-) -> RasterDataTable<Color> {
+) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for mut image_instance in image_frame.instance_iter() {

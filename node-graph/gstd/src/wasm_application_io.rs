@@ -76,7 +76,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 }
 
 #[node_macro::node(category("Network"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return RasterDataTable::default();
 	};
@@ -165,13 +165,13 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GraphicGroupTable,
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> RasterDataTable<Color>
+) -> RasterDataTable<CPU>
 where
 	Instances<T>: GraphicElementRendered,
 {
@@ -234,7 +234,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>,
+		Context -> RasterDataTable<CPU>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
 		Context -> graphene_core::ArtboardGroupTable,

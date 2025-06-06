@@ -207,7 +207,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: RasterDataTable<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image_frame: RasterDataTable<CPU>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id,

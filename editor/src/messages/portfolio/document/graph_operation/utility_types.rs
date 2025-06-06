@@ -209,7 +209,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<CPU>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image")
 			.expect("Image node does not exist")

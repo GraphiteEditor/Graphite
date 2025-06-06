@@ -1,8 +1,7 @@
 use crate::instances::{InstanceRef, Instances};
-use crate::raster::Color;
 use crate::raster::image::RasterDataTable;
 use crate::vector::VectorDataTable;
-use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use crate::{CPU, CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use glam::DVec2;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
@@ -12,7 +11,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + '
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>
+		Context -> RasterDataTable<CPU>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	reverse: bool,
@@ -53,7 +52,7 @@ async fn instance_repeat<T: Into<GraphicElement> + Default + Send + Clone + 'sta
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>
+		Context -> RasterDataTable<CPU>,
 	)]
 	instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	#[default(1)] count: u64,

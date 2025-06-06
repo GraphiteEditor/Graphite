@@ -1,7 +1,8 @@
 use super::Color;
 use super::discrete_srgb::float_to_srgb_u8;
-use crate::AlphaBlending;
+pub use crate::RasterDataTable;
 use crate::instances::{Instance, Instances};
+use crate::{AlphaBlending, CPU, Raster};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
@@ -207,7 +208,7 @@ impl<P: Pixel> IntoIterator for Image<P> {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<RasterDataTable<Color>, D::Error> {
+pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<RasterDataTable<CPU>, D::Error> {
 	use serde::Deserialize;
 
 	type ImageFrameTable<P> = Instances<Image<P>>;
@@ -285,17 +286,17 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		OldImageFrame(OldImageFrame<Color>),
 		ImageFrame(Instances<ImageFrame<Color>>),
 		ImageFrameTable(ImageFrameTable<Color>),
-		RasterDataTable(RasterDataTable<Color>),
+		RasterDataTable(RasterDataTable<CPU>),
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
-		FormatVersions::Image(image) => ImageFrameTable::new(image),
+		FormatVersions::Image(image) => ImageFrameTable::new(Raster::new_cpu(image)),
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => {
 			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
 			let mut image_frame_table = ImageFrameTable::new(image);
 			*image_frame_table.instance_mut_iter().next().unwrap().transform = transform;
 			*image_frame_table.instance_mut_iter().next().unwrap().alpha_blending = alpha_blending;
-			image_frame_table
+			ImageFrameTable::new(Raster::new_cpu(image_frame_table))
 		}
 		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),
 		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table,
@@ -453,8 +454,8 @@ impl From<Image<Color>> for Image<SRGBA8> {
 	}
 }
 
-impl From<RasterDataTable<Color>> for RasterDataTable<SRGBA8> {
-	fn from(image_frame_table: RasterDataTable<Color>) -> Self {
+impl From<RasterDataTable<CPU>> for RasterDataTable<SRGBA8> {
+	fn from(image_frame_table: RasterDataTable<CPU>) -> Self {
 		let mut result_table = RasterDataTable::<SRGBA8>::default();
 
 		for image_frame_instance in image_frame_table.instance_iter() {

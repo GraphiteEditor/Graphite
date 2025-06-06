@@ -34,7 +34,7 @@ async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context
 }
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn blend_gpu_image(_: impl Ctx, foreground: RasterDataTable<Color>, background: RasterDataTable<Color>, blend_mode: BlendMode, opacity: f64) -> RasterDataTable<Color> {
+async fn blend_gpu_image(_: impl Ctx, foreground: RasterDataTable<CPU>, background: RasterDataTable<CPU>, blend_mode: BlendMode, opacity: f64) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 
 	for (foreground_instance, mut background_instance) in foreground.instance_iter().zip(background.instance_iter()) {
@@ -241,7 +241,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: RasterDataTable<Color>, backgr
 // }
 
 // #[node_macro::old_node_impl(MapGpuNode)]
-// async fn map_gpu<'a: 'input>(image: RasterDataTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> RasterDataTable<Color> {
+// async fn map_gpu<'a: 'input>(image: RasterDataTable<CPU>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> RasterDataTable<CPU> {
 // 	let image_frame_table = &image;
 // 	let image = image.instance_ref_iter().next().unwrap().instance;
 

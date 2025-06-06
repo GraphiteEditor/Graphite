@@ -608,7 +608,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0)],
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, RasterDataTable<SRGBA8>>")),
 								..Default::default()
 							},
@@ -852,7 +852,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -861,7 +861,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -870,7 +870,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -879,7 +879,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -959,13 +959,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
@@ -1029,7 +1029,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {
 							inputs: vec![
-								NodeInput::network(concrete!(RasterDataTable<Color>), 0),
+								NodeInput::network(concrete!(RasterDataTable<CPU>), 0),
 								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 1),
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
@@ -1784,7 +1784,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 						..Default::default()
 		// 					},
 		// 					DocumentNode {
-		// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0), NodeInput::node(NodeId(0), 0)],
+		// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0), NodeInput::node(NodeId(0), 0)],
 		// 						manual_composition: Some(generic!(T)),
 		// 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UploadTextureNode")),
 		// 						..Default::default()
@@ -2646,7 +2646,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 // 				exports: vec![NodeInput::node(NodeId(1), 0)],
 // 				nodes: [
 // 					DocumentNode {
-// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0)],
+// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<CPU>), 0)],
 // 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 // 						manual_composition: Some(concrete!(Context)),
 // 						skip_deduplication: true,

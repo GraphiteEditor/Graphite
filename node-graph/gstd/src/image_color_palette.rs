@@ -1,10 +1,10 @@
 use graphene_core::raster::image::RasterDataTable;
-use graphene_core::{Color, Ctx};
+use graphene_core::{CPU, Color, Ctx};
 
 #[node_macro::node(category("Raster"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: RasterDataTable<Color>,
+	image: RasterDataTable<CPU>,
 	#[hard_min(1.)]
 	#[soft_max(28.)]
 	max_size: u32,

@@ -908,7 +908,7 @@ async fn render_texture<'a: 'n>(
 }
 
 // #[node_macro::node(category(""))]
-// async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: RasterDataTable<Color>, executor: &'a WgpuExecutor) -> TextureFrameTable {
+// async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: RasterDataTable<CPU>, executor: &'a WgpuExecutor) -> TextureFrameTable {
 // 	let mut result_table = TextureFrameTable::default();
 
 // 	for instance in input.instance_ref_iter() {
