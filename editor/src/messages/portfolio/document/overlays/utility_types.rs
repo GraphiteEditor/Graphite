@@ -26,33 +26,47 @@ pub fn empty_provider() -> OverlayProvider {
 // Types of overlays used by DocumentMessage to enable/disable select group of overlays in the frontend
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
+	// =======
+	// General
+	// =======
 	ArtboardName,
-	CompassRose,
-	QuickMeasurement,
 	TransformMeasurement,
+	// ===========
+	// Select Tool
+	// ===========
+	QuickMeasurement,
 	TransformCage,
+	CompassRose,
+	Pivot,
 	HoverOutline,
 	SelectionOutline,
-	Pivot,
+	// ================
+	// Pen & Path Tools
+	// ================
 	Path,
 	Anchors,
 	Handles,
+	// =========
+	// Fill Tool
+	// =========
+	FillableIndicator,
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
-	pub compass_rose: bool,
-	pub quick_measurement: bool,
 	pub transform_measurement: bool,
+	pub quick_measurement: bool,
 	pub transform_cage: bool,
+	pub compass_rose: bool,
+	pub pivot: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
-	pub pivot: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub fillable_indicator: bool,
 }
 
 impl Default for OverlaysVisibilitySettings {
@@ -70,6 +84,7 @@ impl Default for OverlaysVisibilitySettings {
 			path: true,
 			anchors: true,
 			handles: true,
+			fillable_indicator: true,
 		}
 	}
 }
@@ -121,6 +136,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn fillable_indicator(&self) -> bool {
+		self.all && self.fillable_indicator
 	}
 }
 
@@ -697,10 +716,10 @@ impl OverlayContext {
 
 	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, width_for_inner_boundary: Option<f64>) {
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, stroke_width: Option<f64>) {
 		self.render_context.save();
 		let transform_scale = transform.decompose_scale().x.max(transform.decompose_scale().y);
-		self.render_context.set_line_width(width_for_inner_boundary.unwrap_or(1.) * transform_scale);
+		self.render_context.set_line_width(stroke_width.unwrap_or(1.) * transform_scale);
 		self.draw_path_from_subpaths(subpaths, transform);
 
 		if with_pattern {

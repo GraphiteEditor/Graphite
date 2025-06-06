@@ -109,44 +109,45 @@ impl Fsm for FillToolFsmState {
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
 				// Get the layer the user is hovering over
+				if !overlay_context.visibility_settings.fillable_indicator() {
+					return self;
+				};
 				if let Some(layer) = document.click(input) {
-					let _ = document.metadata().click_targets(layer).is_some_and(|targets| {
-						targets
+					if let Some(targets) = document.metadata().click_targets(layer) {
+						let close_to_stroke = targets
 							.iter()
-							.any(|click_target| close_to_subpath(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)))
-							.then(|| {
-								let overlay_stroke = || {
-									let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-									let mut stroke = Stroke::new(Some(preview_color), get_stroke_width(layer, &document.network_interface).unwrap());
+							.any(|click_target| close_to_subpath(input.mouse.position, click_target, document.metadata().transform_to_viewport(layer)));
+						if close_to_stroke {
+							let overlay_stroke = || {
+								let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+								let mut stroke = Stroke::new(Some(preview_color), get_stroke_width(layer, &document.network_interface).unwrap());
 
-									stroke.transform = document.metadata().transform_to_viewport(layer);
-									let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
-									stroke.line_cap = if let TaggedValue::LineCap(line_cap) = line_cap { *line_cap } else { return None };
-									let line_join = graph_layer.find_input("Stroke", 6).unwrap();
-									stroke.line_join = if let TaggedValue::LineJoin(line_join) = line_join { *line_join } else { return None };
-									let miter_limit = graph_layer.find_input("Stroke", 7).unwrap();
-									stroke.line_join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { return None };
+								stroke.transform = document.metadata().transform_to_viewport(layer);
+								let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
+								stroke.line_cap = if let TaggedValue::LineCap(line_cap) = line_cap { *line_cap } else { return None };
+								let line_join = graph_layer.find_input("Stroke", 6).unwrap();
+								stroke.line_join = if let TaggedValue::LineJoin(line_join) = line_join { *line_join } else { return None };
+								let miter_limit = graph_layer.find_input("Stroke", 7).unwrap();
+								stroke.line_join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { return None };
 
-									Some(stroke)
-								};
-								let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+								Some(stroke)
+							};
 
+							if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 								if let Some(stroke) = overlay_stroke() {
 									overlay_context.fill_stroke(&vector_data, &stroke);
 								}
-							})
-							.or_else(|| {
-								overlay_context.fill_path(
-									document.metadata().layer_outline(layer),
-									document.metadata().transform_to_viewport(layer),
-									&preview_color,
-									true,
-									get_stroke_width(layer, &document.network_interface),
-								);
-								Some(())
-							});
-						true
-					});
+							}
+						} else {
+							overlay_context.fill_path(
+								document.metadata().layer_outline(layer),
+								document.metadata().transform_to_viewport(layer),
+								&preview_color,
+								true,
+								get_stroke_width(layer, &document.network_interface),
+							);
+						}
+					}
 				}
 
 				self
