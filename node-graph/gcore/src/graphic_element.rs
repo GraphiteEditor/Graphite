@@ -7,6 +7,7 @@ use crate::vector::{VectorData, VectorDataTable};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, IVec2};
+use raster::{CPU, GPU};
 use std::hash::Hash;
 
 pub mod renderer;
@@ -130,16 +131,16 @@ impl From<VectorDataTable> for GraphicGroupTable {
 }
 impl From<Image<Color>> for GraphicGroupTable {
 	fn from(image: Image<Color>) -> Self {
-		Self::new(GraphicElement::RasterDataCPU(RasterDataTable::<raster::CPU>::new(raster::DropRaster::<raster::CPU>::new(image))))
+		Self::new(GraphicElement::RasterDataCPU(RasterDataTable::<CPU>::new(raster::Raster::<CPU>::new(image))))
 	}
 }
-impl From<RasterDataTable<raster::CPU>> for GraphicGroupTable {
-	fn from(raster_data_table: RasterDataTable<raster::CPU>) -> Self {
+impl From<RasterDataTable<CPU>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<CPU>) -> Self {
 		Self::new(GraphicElement::RasterDataCPU(raster_data_table))
 	}
 }
-impl From<RasterDataTable<raster::GPU>> for GraphicGroupTable {
-	fn from(raster_data_table: RasterDataTable<raster::GPU>) -> Self {
+impl From<RasterDataTable<GPU>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<GPU>) -> Self {
 		Self::new(GraphicElement::RasterDataGPU(raster_data_table))
 	}
 }
@@ -152,8 +153,8 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
-	RasterDataCPU(RasterDataTable<raster::CPU>),
-	RasterDataGPU(RasterDataTable<raster::GPU>),
+	RasterDataCPU(RasterDataTable<CPU>),
+	RasterDataGPU(RasterDataTable<GPU>),
 }
 
 impl Default for GraphicElement {
@@ -191,14 +192,14 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&RasterDataTable<raster::CPU>> {
+	pub fn as_raster(&self) -> Option<&RasterDataTable<CPU>> {
 		match self {
 			GraphicElement::RasterDataCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut RasterDataTable<raster::CPU>> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut RasterDataTable<CPU>> {
 		match self {
 			GraphicElement::RasterDataCPU(raster) => Some(raster),
 			_ => None,
@@ -216,67 +217,72 @@ mod raster {
 
 	trait Storage {}
 
+	#[derive(Clone, Debug, Hash, PartialEq, Eq, Copy)]
 	pub struct CPU;
+	#[derive(Clone, Debug, Hash, PartialEq, Eq, Copy)]
 	pub struct GPU;
+
 	impl Storage for CPU {}
 	impl Storage for GPU {}
 
 	#[derive(Clone, Debug, Hash, PartialEq)]
-	pub struct DropRaster<T: 'static> {
-		data: Raster,
+	pub struct Raster<T: 'static> {
+		data: RasterStorage,
 		storage: T,
 	}
 
-	unsafe impl<T: 'static> dyn_any::StaticType for DropRaster<T> {
-		type Static = DropRaster<T>;
+	unsafe impl<T: 'static> dyn_any::StaticType for Raster<T> {
+		type Static = Raster<T>;
 	}
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-	pub enum Raster {
+	pub enum RasterStorage {
 		Cpu(Image<Color>),
 		#[cfg(feature = "wgpu")]
 		Gpu(Arc<wgpu::Texture>),
 		#[cfg(not(feature = "wgpu"))]
 		Gpu(()),
 	}
-	impl DropRaster<CPU> {
+
+	impl RasterStorage {}
+	impl Raster<CPU> {
 		pub fn new(image: Image<Color>) -> Self {
 			Self {
-				data: Raster::Cpu(image),
+				data: RasterStorage::Cpu(image),
 				storage: CPU,
 			}
 		}
 		pub fn data(&self) -> &Image<Color> {
-			let Raster::Cpu(cpu) = &self.data else { unreachable!() };
+			let RasterStorage::Cpu(cpu) = &self.data else { unreachable!() };
 			cpu
 		}
 	}
-	impl Deref for DropRaster<CPU> {
+	impl Deref for Raster<CPU> {
 		type Target = Image<Color>;
 
 		fn deref(&self) -> &Self::Target {
 			self.data()
 		}
 	}
-	impl DropRaster<GPU> {
+	impl Raster<GPU> {
 		pub fn new(image: Arc<wgpu::Texture>) -> Self {
 			Self {
-				data: Raster::Gpu(image),
+				data: RasterStorage::Gpu(image),
 				storage: GPU,
 			}
 		}
 		pub fn data(&self) -> &wgpu::Texture {
-			let Raster::Gpu(gpu) = &self.data else { unreachable!() };
+			let RasterStorage::Gpu(gpu) = &self.data else { unreachable!() };
 			gpu
 		}
 	}
-	impl Deref for DropRaster<GPU> {
+	impl Deref for Raster<GPU> {
 		type Target = wgpu::Texture;
 
 		fn deref(&self) -> &Self::Target {
 			self.data()
 		}
 	}
-	pub type RasterDataTable<Storage> = Instances<DropRaster<Storage>>;
+	pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
 }
 pub use raster::RasterDataTable;
 
@@ -287,21 +293,38 @@ pub use raster::RasterDataTable;
 // 	Texture(ImageTexture),
 // }
 
-impl<'de> serde::Deserialize<'de> for RasterDataTable<raster::CPU> {
+impl<'de> serde::Deserialize<'de> for raster::Raster<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
 	{
-		Ok(RasterDataTable::new(raster::DropRaster::<raster::CPU>::new(Image::deserialize(deserializer)?)))
+		Ok(raster::Raster::<CPU>::new(Image::deserialize(deserializer)?))
 	}
 }
 
-impl serde::Serialize for RasterDataTable<raster::CPU> {
+impl serde::Serialize for raster::Raster<CPU> {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
 	{
 		self.data().serialize(serializer)
+	}
+}
+impl<'de> serde::Deserialize<'de> for raster::Raster<GPU> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		unimplemented!()
+	}
+}
+
+impl serde::Serialize for raster::Raster<GPU> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		unimplemented!()
 	}
 }
 
@@ -393,7 +416,8 @@ async fn to_element<Data: Into<GraphicElement> + 'n>(
 	#[implementations(
 		GraphicGroupTable,
 	 	VectorDataTable,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
+		RasterDataTable<GPU>,
 	)]
 	data: Data,
 ) -> GraphicElement {
@@ -406,7 +430,8 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		GraphicGroupTable,
 		VectorDataTable,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
+		RasterDataTable<GPU>,
 	)]
 	element: Data,
 ) -> GraphicGroupTable {
@@ -501,7 +526,8 @@ async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>,
+		Context -> RasterDataTable<CPU>,
+		Context -> RasterDataTable<GPU>,
 	)]
 	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
@@ -554,15 +580,20 @@ impl From<VectorDataTable> for GraphicElement {
 		GraphicElement::VectorData(vector_data)
 	}
 }
-impl From<RasterDataTable<raster::CPU>> for GraphicElement {
-	fn from(raster_data: RasterDataTable<raster::CPU>) -> Self {
+impl From<RasterDataTable<CPU>> for GraphicElement {
+	fn from(raster_data: RasterDataTable<CPU>) -> Self {
 		GraphicElement::RasterDataCPU(raster_data)
+	}
+}
+impl From<RasterDataTable<GPU>> for GraphicElement {
+	fn from(raster_data: RasterDataTable<GPU>) -> Self {
+		GraphicElement::RasterDataGPU(raster_data)
 	}
 }
 // TODO: Remove this one
 impl From<Image<Color>> for GraphicElement {
 	fn from(raster_data: Image<Color>) -> Self {
-		GraphicElement::RasterDataCPU(RasterDataTable::<raster::CPU>::new(raster::DropRaster::<raster::CPU>::new(raster_data)))
+		GraphicElement::RasterDataCPU(RasterDataTable::<CPU>::new(raster::Raster::<CPU>::new(raster_data)))
 	}
 }
 // TODO: Remove this one
