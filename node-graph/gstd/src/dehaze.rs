@@ -1,13 +1,13 @@
 use graph_craft::proto::types::Percentage;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::{Image, RasterDataTable};
 use graphene_core::{Color, Ctx};
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
 #[node_macro::node(category("Raster"))]
-async fn dehaze(_: impl Ctx, image_frame: ImageFrameTable<Color>, strength: Percentage) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::default();
+async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<Color>, strength: Percentage) -> RasterDataTable<Color> {
+	let mut result_table = RasterDataTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
 		let image = image_frame_instance.instance;

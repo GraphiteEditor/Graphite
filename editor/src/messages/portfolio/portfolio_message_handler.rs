@@ -485,7 +485,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
 					("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
 					("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
-					// ("graphene_core::raster::IndexNode", "graphene_core::raster::adjustments::IndexNode"),
 					("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
 					("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
 					("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),
