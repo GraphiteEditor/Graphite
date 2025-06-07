@@ -160,6 +160,20 @@ impl core::hash::Hash for Gradient {
 	}
 }
 
+impl std::fmt::Display for Gradient {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let round = |x: f64| (x * 1e3).round() / 1e3;
+		let stops = self
+			.stops
+			.0
+			.iter()
+			.map(|(position, color)| format!("[{}%: #{}]", round(position * 100.), color.to_rgba_hex_srgb()))
+			.collect::<Vec<_>>()
+			.join(", ");
+		write!(f, "{} Gradient: {stops}", self.gradient_type)
+	}
+}
+
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
 	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, gradient_type: GradientType) -> Self {
@@ -306,6 +320,16 @@ pub enum Fill {
 	None,
 	Solid(Color),
 	Gradient(Gradient),
+}
+
+impl std::fmt::Display for Fill {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::None => write!(f, "None"),
+			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", color.to_rgb_hex_srgb(), color.a() * 100.),
+			Self::Gradient(gradient) => write!(f, "{}", gradient),
+		}
+	}
 }
 
 impl Fill {
@@ -749,6 +773,19 @@ impl core::hash::Hash for PathStyle {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.stroke.hash(state);
 		self.fill.hash(state);
+	}
+}
+
+impl std::fmt::Display for PathStyle {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let fill = &self.fill;
+
+		let stroke = match &self.stroke {
+			Some(stroke) => format!("#{} (Weight: {} px)", stroke.color.map_or("None".to_string(), |c| c.to_rgba_hex_srgb()), stroke.weight),
+			None => "None".to_string(),
+		};
+
+		write!(f, "Fill: {fill}\nStroke: {stroke}")
 	}
 }
 

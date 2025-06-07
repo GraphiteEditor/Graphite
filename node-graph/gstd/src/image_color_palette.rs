@@ -1,10 +1,10 @@
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::{Color, Ctx};
 
 #[node_macro::node(category("Raster"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: ImageFrameTable<Color>,
+	image: RasterDataTable<Color>,
 	#[hard_min(1.)]
 	#[soft_max(28.)]
 	max_size: u32,
@@ -64,13 +64,13 @@ async fn image_color_palette(
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::raster::image::{Image, ImageFrameTable};
+	use graphene_core::raster::image::{Image, RasterDataTable};
 
 	#[test]
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			ImageFrameTable::new(Image {
+			RasterDataTable::new(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],
