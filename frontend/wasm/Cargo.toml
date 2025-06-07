@@ -36,7 +36,7 @@ serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 bezier-rs = { workspace = true }
-glam = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 math-parser = { workspace = true }
 wgpu = { workspace = true, features = [

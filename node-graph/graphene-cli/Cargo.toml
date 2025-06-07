@@ -31,7 +31,7 @@ bitflags = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
-glam = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
 graph-craft = { workspace = true, features = ["loading"] }
 dyn-any = { workspace = true }
 graphene-core = { workspace = true }

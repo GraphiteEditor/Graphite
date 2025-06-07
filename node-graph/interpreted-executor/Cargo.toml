@@ -22,7 +22,7 @@ dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
 num-traits = { workspace = true }
 log = { workspace = true }
 wgpu = { workspace = true }
-glam = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 once_cell = { workspace = true }
 
