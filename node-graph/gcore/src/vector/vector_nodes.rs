@@ -366,11 +366,11 @@ async fn mirror<I: 'n + Send + Clone>(
 	offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> GraphicGroupTable
+) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
 {
-	let mut result_table = GraphicGroupTable::default();
+	let mut result_table = Instances::default();
 
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
@@ -401,21 +401,16 @@ where
 
 	// Add original instance depending on the keep_original flag
 	if keep_original {
-		result_table.push(Instance {
-			instance: instance.to_graphic_element().clone(),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		for instance in instance.clone().instance_iter() {
+			result_table.push(instance);
+		}
 	}
 
 	// Create and add mirrored instance
-	result_table.push(Instance {
-		instance: instance.to_graphic_element(),
-		transform,
-		alpha_blending: Default::default(),
-		source_node_id: None,
-	});
+	for mut instance in instance.instance_iter() {
+		instance.transform = transform * instance.transform;
+		result_table.push(instance);
+	}
 
 	result_table
 }
