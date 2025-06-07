@@ -563,7 +563,10 @@ mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
 
 	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_core::Artboard> {
-		let instrumented = editor.eval_graph().await;
+		let instrumented = match editor.eval_graph().await {
+			Ok(instrumented) => instrumented,
+			Err(e) => panic!("Failed to evaluate graph: {}", e),
+		};
 		instrumented.grab_all_input::<graphene_core::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
