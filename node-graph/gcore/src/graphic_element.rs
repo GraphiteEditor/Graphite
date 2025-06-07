@@ -355,6 +355,49 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 	output
 }
 
+#[node_macro::node(category("General"))]
+async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTable {
+	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
+	fn flatten_group(output_group_table: &mut VectorDataTable, current_group_table: GraphicGroupTable) {
+		for current_instance in current_group_table.instance_ref_iter() {
+			let current_element = current_instance.instance.clone();
+			let reference = *current_instance.source_node_id;
+
+			match current_element {
+				// If we're allowed to recurse, flatten any GraphicGroups we encounter
+				GraphicElement::GraphicGroup(mut current_element) => {
+					// Apply the parent group's transform to all child elements
+					for graphic_element in current_element.instance_mut_iter() {
+						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
+					}
+
+					flatten_group(output_group_table, current_element);
+				}
+				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
+				GraphicElement::VectorData(vector_instance) => {
+					for current_element in vector_instance.instance_ref_iter() {
+						output_group_table.push(Instance {
+							instance: current_element.instance.clone(),
+							transform: *current_instance.transform * *current_element.transform,
+							alpha_blending: AlphaBlending {
+								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
+								blend_mode: current_element.alpha_blending.blend_mode,
+							},
+							source_node_id: reference,
+						});
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+
+	let mut output = VectorDataTable::default();
+	flatten_group(&mut output, group);
+
+	output
+}
+
 #[node_macro::node(category(""))]
 async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,

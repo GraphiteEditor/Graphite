@@ -19,6 +19,7 @@ use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::f64::consts::TAU;
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -201,7 +202,7 @@ where
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<I: 'n + Send>(
+async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
@@ -210,78 +211,72 @@ async fn repeat<I: 'n + Send>(
 	direction: PixelSize,
 	angle: Angle,
 	#[default(4)] instances: IntegerCount,
-) -> GraphicGroupTable
+) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
 {
 	let angle = angle.to_radians();
-	let instances = instances.max(1);
-	let total = (instances - 1) as f64;
+	let count = instances.max(1);
+	let total = (count - 1) as f64;
 
-	let mut result_table = GraphicGroupTable::default();
+	let mut result_table = Instances::<I>::default();
 
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
-		return result_table;
-	};
-
-	let center = (bounding_box[0] + bounding_box[1]) / 2.;
-
-	for index in 0..instances {
+	for index in 0..count {
 		let angle = index as f64 * angle / total;
 		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
+		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
-		result_table.push(Instance {
-			instance: instance.to_graphic_element().clone(),
-			transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		for instance in instance.instance_ref_iter() {
+			let mut instance = instance.to_instance_cloned();
+
+			let local_translation = DAffine2::from_translation(instance.transform.translation);
+			let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
+			instance.transform = local_translation * transform * local_matrix;
+
+			result_table.push(instance);
+		}
 	}
 
 	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<I: 'n + Send>(
+async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
-) -> GraphicGroupTable
+) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
 {
-	let instances = instances.max(1);
+	let count = instances.max(1);
 
-	let mut result_table = GraphicGroupTable::default();
+	let mut result_table = Instances::<I>::default();
 
-	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
-		return result_table;
-	};
+	for index in 0..count {
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
+		let translation = DAffine2::from_translation(radius * DVec2::Y);
+		let transform = angle * translation;
 
-	let center = (bounding_box[0] + bounding_box[1]) / 2.;
-	let base_transform = DVec2::new(0., radius) - center;
+		for instance in instance.instance_ref_iter() {
+			let mut instance = instance.to_instance_cloned();
 
-	for index in 0..instances {
-		let rotation = DAffine2::from_angle((std::f64::consts::TAU / instances as f64) * index as f64 + angle_offset.to_radians());
-		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
+			let local_translation = DAffine2::from_translation(instance.transform.translation);
+			let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
+			instance.transform = local_translation * transform * local_matrix;
 
-		result_table.push(Instance {
-			instance: instance.to_graphic_element().clone(),
-			transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+			result_table.push(instance);
+		}
 	}
 
 	result_table
 }
 
 #[node_macro::node(name("Copy to Points"), category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<I: 'n + Send>(
+async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: VectorDataTable,
 	#[expose]
@@ -308,16 +303,13 @@ async fn copy_to_points<I: 'n + Send>(
 	random_rotation: Angle,
 	/// Seed to determine unique variations on all the randomized instance angles.
 	random_rotation_seed: SeedValue,
-) -> GraphicGroupTable
+) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
 {
-	let mut result_table = GraphicGroupTable::default();
+	let mut result_table = Instances::<I>::default();
 
 	let random_scale_difference = random_scale_max - random_scale_min;
-
-	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY, false).unwrap_or_default();
-	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
 	for point_instance in points.instance_iter() {
 		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
@@ -328,13 +320,11 @@ where
 
 		let points_transform = point_instance.transform;
 		for &point in point_instance.instance.point_domain.positions() {
-			let center_transform = DAffine2::from_translation(instance_center);
-
 			let translation = points_transform.transform_point2(point);
 
 			let rotation = if do_rotation {
 				let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
-				degrees / 360. * std::f64::consts::TAU
+				degrees / 360. * TAU
 			} else {
 				0.
 			};
@@ -353,22 +343,23 @@ where
 				random_scale_min
 			};
 
-			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform;
+			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
 
-			result_table.push(Instance {
-				instance: instance.to_graphic_element().clone(),
-				transform,
-				alpha_blending: Default::default(),
-				source_node_id: None,
-			});
+			for mut instance in instance.instance_ref_iter().map(|instance| instance.to_instance_cloned()) {
+				let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
+				instance.transform = transform * local_matrix;
+
+				result_table.push(instance);
+			}
 		}
 	}
 
 	result_table
 }
 
+// TODO: Make this node return Instances<I> instead of GraphicGroupTable, while preserving the current transform behavior as the `reference_point` and `offset` parameters are varied
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn mirror<I: 'n + Send>(
+async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
 	#[default(ReferencePoint::Center)] reference_point: ReferencePoint,
@@ -388,10 +379,13 @@ where
 	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
 		return result_table;
 	};
-	let mirror_reference_point = reference_point
-		.point_in_bounding_box((bounding_box[0], bounding_box[1]).into())
-		.unwrap_or_else(|| (bounding_box[0] + bounding_box[1]) / 2.)
-		+ normal * offset;
+
+	// TODO: If the reference point is not None, use the current behavior but make it work correctly with local pivot origins of each Instances<I> row
+	let reference_point_location = reference_point.point_in_bounding_box((bounding_box[0], bounding_box[1]).into()).unwrap_or_else(|| {
+		// TODO: In this None case, use the input's local pivot origin point instead of a point relative to its bounding box
+		(bounding_box[0] + bounding_box[1]) / 2.
+	});
+	let mirror_reference_point = reference_point_location + normal * offset;
 
 	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
@@ -1164,9 +1158,12 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupTable) -> VectorDataTable {
+async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable)] graphic_group_input: Instances<I>) -> VectorDataTable
+where
+	Instances<I>: GraphicElementRendered,
+{
 	// A node based solution to support passing through vector data could be a network node with a cache node connected to
-	// a flatten vector elements connected to an if else node, another connection from the cache directly
+	// a Flatten Path connected to an if else node, another connection from the cache directly
 	// To the if else node, and another connection from the cache to a matches type node connected to the if else node.
 	fn flatten_group(graphic_group_table: &GraphicGroupTable, output: &mut InstanceMut<VectorData>) {
 		for (group_index, current_element) in graphic_group_table.instance_ref_iter().enumerate() {
@@ -1208,7 +1205,8 @@ async fn flatten_vector_elements(_: impl Ctx, graphic_group_input: GraphicGroupT
 	};
 
 	// Flatten the graphic group input into the output VectorData instance
-	flatten_group(&graphic_group_input, &mut output);
+	let base_graphic_group = GraphicGroupTable::new(graphic_group_input.to_graphic_element());
+	flatten_group(&base_graphic_group, &mut output);
 
 	// Return the single-row VectorDataTable containing the flattened VectorData subpaths
 	output_table
@@ -1485,7 +1483,7 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 		let deltas = (0..vector_data_instance.instance.point_domain.positions().len())
 			.map(|_| {
-				let angle = rng.random::<f64>() * std::f64::consts::TAU;
+				let angle = rng.random::<f64>() * TAU;
 
 				inverse_transform.transform_vector2(DVec2::from_angle(angle) * rng.random::<f64>() * amount)
 			})
@@ -1859,7 +1857,7 @@ mod test {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
+		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 3);
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
@@ -1871,7 +1869,7 @@ mod test {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
 		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
+		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
@@ -1881,7 +1879,7 @@ mod test {
 	#[tokio::test]
 	async fn circular_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		let vector_data = super::flatten_vector_elements(Footprint::default(), repeated).await;
+		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 
@@ -1927,8 +1925,8 @@ mod test {
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
 
 		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		let flatten_vector_elements = super::flatten_vector_elements(Footprint::default(), copy_to_points).await;
-		let flattened_copy_to_points = flatten_vector_elements.instance_ref_iter().next().unwrap().instance;
+		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
+		let flattened_copy_to_points = flatten_path.instance_ref_iter().next().unwrap().instance;
 
 		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
 
