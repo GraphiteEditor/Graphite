@@ -8,12 +8,10 @@ use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::{Image, RasterDataTable};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::transform::TransformMut;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, GraphicGroupTable, OwnedContextImpl, WasmNotSend};
 
@@ -30,9 +28,10 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	return Arc::new(editor.application_io.as_ref().unwrap().create_window());
+	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
+// TODO: Fix and reenable in order to get the 'Draw Canvas' node working again.
 // #[cfg(target_arch = "wasm32")]
 // use wasm_bindgen::Clamped;
 //
@@ -40,10 +39,10 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // #[cfg(target_arch = "wasm32")]
 // async fn draw_image_frame(
 // 	_: impl Ctx,
-// 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
+// 	image: RasterDataTable<graphene_core::raster::SRGBA8>,
 // 	surface_handle: Arc<WasmSurfaceHandle>,
 // ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
-// 	let image = image.one_instance_ref().instance;
+// 	let image = image.instance_ref_iter().next().unwrap().instance;
 // 	let image_data = image.image.data;
 // 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 // 	if image.image.width > 0 && image.image.height > 0 {
@@ -77,9 +76,9 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 }
 
 #[node_macro::node(category("Network"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return ImageFrameTable::one_empty_image();
+		return RasterDataTable::default();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -92,7 +91,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 		..Default::default()
 	};
 
-	ImageFrameTable::new(image)
+	RasterDataTable::new(image)
 }
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
@@ -166,19 +165,21 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
-		ImageFrameTable<Color>,
+		RasterDataTable<Color>,
 		GraphicGroupTable,
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> ImageFrameTable<Color>
+) -> RasterDataTable<Color>
 where
 	Instances<T>: GraphicElementRendered,
 {
+	use graphene_core::instances::Instance;
+
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return ImageFrameTable::empty();
+		return RasterDataTable::default();
 	}
 
 	let mut render = SvgRender::new();
@@ -217,8 +218,12 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = ImageFrameTable::new(Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32));
-	*result.transform_mut() = footprint.transform;
+	let mut result = RasterDataTable::default();
+	result.push(Instance {
+		instance: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
+		transform: footprint.transform,
+		..Default::default()
+	});
 
 	result
 }
@@ -229,7 +234,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> VectorDataTable,
-		Context -> ImageFrameTable<Color>,
+		Context -> RasterDataTable<Color>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
 		Context -> graphene_core::ArtboardGroupTable,
