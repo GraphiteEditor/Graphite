@@ -20,7 +20,7 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
-use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
+use graphene_core::vector::style::{GradientType, LineAlignment, LineCap, LineJoin, PaintOrder};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::ops::XY;
 use graphene_std::transform::{Footprint, ReferencePoint};
@@ -223,6 +223,8 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<GridType>() => enum_choice::<GridType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LineCap>() => enum_choice::<LineCap>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LineJoin>() => enum_choice::<LineJoin>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<LineAlignment>() => enum_choice::<LineAlignment>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
@@ -1668,6 +1670,8 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	let line_cap_index = 5;
 	let line_join_index = 6;
 	let miter_limit_index = 7;
+	let line_alignment_index = 8;
+	let paint_order_index = 9;
 
 	let color = color_widget(ParameterWidgetsInfo::from_index(document_node, node_id, color_index, true, context), ColorInput::default());
 	let weight = number_widget(
@@ -1699,15 +1703,23 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context),
 		NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter),
 	);
+	let line_alignment = enum_choice::<LineAlignment>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_alignment_index, true, context))
+		.property_row();
+	let paint_order = enum_choice::<PaintOrder>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, paint_order_index, true, context))
+		.property_row();
 
 	vec![
 		color,
 		LayoutGroup::Row { widgets: weight },
 		LayoutGroup::Row { widgets: dash_lengths },
 		LayoutGroup::Row { widgets: dash_offset },
+		line_alignment,
 		line_cap,
 		line_join,
 		LayoutGroup::Row { widgets: miter_limit },
+		paint_order,
 	]
 }
 

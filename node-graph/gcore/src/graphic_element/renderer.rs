@@ -1,11 +1,12 @@
 mod quad;
 mod rect;
 
+use crate::instances::Instance;
 use crate::raster::image::RasterDataTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::style::{Fill, Stroke, ViewMode};
+use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
 use base64::Engine;
@@ -26,6 +27,29 @@ pub struct ClickTarget {
 	subpath: bezier_rs::Subpath<PointId>,
 	stroke_width: f64,
 	bounding_box: Option<[DVec2; 2]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+enum MaskType {
+	Clip,
+	Mask,
+}
+
+impl MaskType {
+	fn to_attribute(self) -> String {
+		match self {
+			Self::Mask => "mask".to_string(),
+			Self::Clip => "clip-path".to_string(),
+		}
+	}
+
+	fn write_to_defs(self, svg_defs: &mut String, uuid: u64, svg_string: String) {
+		let id = format!("mask-{}", uuid);
+		match self {
+			Self::Clip => write!(svg_defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg_string).unwrap(),
+			Self::Mask => write!(svg_defs, r##"<mask id="{id}" mask-type="alpha">{}</mask>"##, svg_string).unwrap(),
+		}
+	}
 }
 
 impl ClickTarget {
@@ -226,17 +250,23 @@ pub struct RenderParams {
 	pub hide_artboards: bool,
 	/// Are we exporting? Causes the text above an artboard to be hidden.
 	pub for_export: bool,
+	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
+	pub for_mask: bool,
 }
 
 impl RenderParams {
-	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool) -> Self {
+	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool, for_mask: bool) -> Self {
 		Self {
 			view_mode,
 			culling_bounds,
 			thumbnail,
 			hide_artboards,
 			for_export,
+			for_mask,
 		}
+	}
+	pub fn for_clipper(&self) -> Self {
+		Self { for_mask: true, ..*self }
 	}
 }
 
@@ -299,7 +329,9 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		for instance in self.instance_ref_iter() {
+		let mut iter = self.instance_ref_iter().peekable();
+		let mut mask_state = None;
+		while let Some(instance) = iter.next() {
 			render.parent_tag(
 				"g",
 				|attributes| {
@@ -308,12 +340,36 @@ impl GraphicElementRendered for GraphicGroupTable {
 						attributes.push("transform", matrix);
 					}
 
-					if instance.alpha_blending.opacity < 1. {
-						attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+					let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+					let opacity = instance.alpha_blending.opacity * factor;
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
 					}
 
 					if instance.alpha_blending.blend_mode != BlendMode::default() {
 						attributes.push("style", instance.alpha_blending.blend_mode.render());
+					}
+
+					let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
+
+					if next_clips && mask_state.is_none() {
+						let uuid = generate_uuid();
+						let mask_type = if instance.instance.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
+						mask_state = Some((uuid, mask_type));
+						let mut svg = SvgRender::new();
+						instance.instance.render_svg(&mut svg, &render_params.for_clipper());
+
+						write!(&mut attributes.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+						mask_type.write_to_defs(&mut attributes.0.svg_defs, uuid, svg.svg.to_svg_string());
+					} else if let Some((uuid, mask_type)) = mask_state {
+						if !next_clips {
+							mask_state = None;
+						}
+
+						let id = format!("mask-{}", uuid);
+						let selector = format!("url(#{id})");
+
+						attributes.push(mask_type.to_attribute(), selector);
 					}
 				},
 				|render| {
@@ -325,25 +381,30 @@ impl GraphicElementRendered for GraphicGroupTable {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		for instance in self.instance_ref_iter() {
+		let mut iter = self.instance_ref_iter().peekable();
+		let mut mask_instance_state = None;
+		while let Some(instance) = iter.next() {
 			let transform = transform * *instance.transform;
 			let alpha_blending = *instance.alpha_blending;
 
 			let mut layer = false;
-			if let Some(bounds) = self
+
+			let bounds = self
 				.instance_ref_iter()
 				.filter_map(|element| element.instance.bounding_box(transform, true))
-				.reduce(Quad::combine_bounds)
-			{
+				.reduce(Quad::combine_bounds);
+			if let Some(bounds) = bounds {
 				let blend_mode = match render_params.view_mode {
 					ViewMode::Outline => peniko::Mix::Normal,
 					_ => alpha_blending.blend_mode.into(),
 				};
 
-				if alpha_blending.opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
+				let factor = if render_params.for_mask { 1. } else { alpha_blending.fill };
+				let opacity = alpha_blending.opacity * factor;
+				if opacity < 1. || (render_params.view_mode != ViewMode::Outline && alpha_blending.blend_mode != BlendMode::default()) {
 					scene.push_layer(
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-						alpha_blending.opacity,
+						opacity,
 						kurbo::Affine::IDENTITY,
 						&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 					);
@@ -351,7 +412,30 @@ impl GraphicElementRendered for GraphicGroupTable {
 				}
 			}
 
-			instance.instance.render_to_vello(scene, transform, context, render_params);
+			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
+			if next_clips && mask_instance_state.is_none() {
+				mask_instance_state = Some((instance.instance, transform));
+				instance.instance.render_to_vello(scene, transform, context, render_params);
+			} else if let Some((instance_mask, transform_mask)) = mask_instance_state {
+				if !next_clips {
+					mask_instance_state = None;
+				}
+
+				if let Some(bounds) = bounds {
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					instance_mask.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+				}
+				instance.instance.render_to_vello(scene, transform, context, render_params);
+				if bounds.is_some() {
+					scene.pop_layer();
+					scene.pop_layer();
+				}
+			} else {
+				instance.instance.render_to_vello(scene, transform, context, render_params);
+			}
 
 			if layer {
 				scene.pop_layer();
@@ -449,14 +533,69 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let defs = &mut attributes.0.svg_defs;
 
-				let fill_and_stroke = instance
+				let can_draw_aligned_stroke = instance
 					.instance
 					.style
-					.render(render_params.view_mode, defs, element_transform, applied_stroke_transform, layer_bounds, transformed_bounds);
+					.stroke()
+					.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.line_alignment.is_not_centered())
+					&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
+				let mut push_id = None;
+				if can_draw_aligned_stroke {
+					let id = format!("alignment-{}", generate_uuid());
+					let selector = format!("url(#{id})");
+					let mask_type = if instance.instance.style.stroke().unwrap().line_alignment == LineAlignment::Inside {
+						MaskType::Clip
+					} else {
+						MaskType::Mask
+					};
+					push_id = Some((selector, mask_type));
+
+					let mut vector_data = VectorDataTable::default();
+
+					let mut fill_instance = instance.instance.clone();
+					fill_instance.style.clear_stroke();
+					fill_instance.style.set_fill(Fill::solid(Color::BLACK));
+
+					vector_data.push(Instance {
+						instance: fill_instance,
+						alpha_blending: *instance.alpha_blending,
+						..Default::default()
+					});
+
+					let mut svg = SvgRender::new();
+					vector_data.render_svg(&mut svg, render_params);
+
+					let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
+					let quad = Quad::from_box(transformed_bounds).inflate(weight);
+					let (x, y) = quad.top_left().into();
+					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
+					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white"/>"##, x, y);
+					match mask_type {
+						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
+						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
+					}
+				}
+
+				let fill_and_stroke = instance.instance.style.render(
+					defs,
+					element_transform,
+					applied_stroke_transform,
+					layer_bounds,
+					transformed_bounds,
+					can_draw_aligned_stroke,
+					render_params,
+				);
+
+				if let Some((selector, mask_type)) = push_id {
+					attributes.push(mask_type.to_attribute(), selector);
+				}
 				attributes.push_val(fill_and_stroke);
 
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
@@ -467,7 +606,7 @@ impl GraphicElementRendered for VectorDataTable {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 		use crate::vector::style::{GradientType, LineCap, LineJoin};
 		use vello::kurbo::{Cap, Join};
@@ -494,14 +633,50 @@ impl GraphicElementRendered for VectorDataTable {
 				_ => instance.alpha_blending.blend_mode.into(),
 			};
 			let mut layer = false;
-			if instance.alpha_blending.opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
+			let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+			let opacity = instance.alpha_blending.opacity * factor;
+			if opacity < 1. || instance.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
 				scene.push_layer(
 					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-					instance.alpha_blending.opacity,
+					opacity,
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
 					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
 				);
+			}
+
+			let can_draw_aligned_stroke = instance
+				.instance
+				.style
+				.stroke()
+				.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.line_alignment.is_not_centered())
+				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
+			if can_draw_aligned_stroke {
+				let mut vector_data = VectorDataTable::default();
+
+				let mut fill_instance = instance.instance.clone();
+				fill_instance.style.clear_stroke();
+				fill_instance.style.set_fill(Fill::solid(Color::BLACK));
+
+				vector_data.push(Instance {
+					instance: fill_instance,
+					alpha_blending: *instance.alpha_blending,
+					..Default::default()
+				});
+
+				let weight = instance.instance.style.stroke().unwrap().weight;
+				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
+				let rect = vello::kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
+
+				let inside = instance.instance.style.stroke().unwrap().line_alignment == LineAlignment::Inside;
+				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
+				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+				vector_data.render_to_vello(scene, element_transform, _context, render_params);
+				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
+			}
+			enum Op {
+				Fill,
+				Stroke,
 			}
 
 			// Render the path
@@ -526,88 +701,105 @@ impl GraphicElementRendered for VectorDataTable {
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
 				_ => {
-					match instance.instance.style.fill() {
-						Fill::Solid(color) => {
-							let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
-						}
-						Fill::Gradient(gradient) => {
-							let mut stops = peniko::ColorStops::new();
-							for &(offset, color) in &gradient.stops {
-								stops.push(peniko::ColorStop {
-									offset: offset as f32,
-									color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
-								});
-							}
-							// Compute bounding box of the shape to determine the gradient start and end points
-							let bounds = instance.instance.nonzero_bounding_box();
-							let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-
-							let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
-							let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
-
-							let start = mod_points.transform_point2(gradient.start);
-							let end = mod_points.transform_point2(gradient.end);
-
-							let fill = peniko::Brush::Gradient(peniko::Gradient {
-								kind: match gradient.gradient_type {
-									GradientType::Linear => peniko::GradientKind::Linear {
-										start: to_point(start),
-										end: to_point(end),
-									},
-									GradientType::Radial => {
-										let radius = start.distance(end);
-										peniko::GradientKind::Radial {
-											start_center: to_point(start),
-											start_radius: 0.,
-											end_center: to_point(start),
-											end_radius: radius as f32,
-										}
-									}
-								},
-								stops,
-								..Default::default()
-							});
-							// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
-							// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
-							let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
-							let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-							scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
-						}
-						Fill::None => {}
+					let order = if instance.instance.style.stroke().is_none_or(|stroke| stroke.paint_order.is_default()) {
+						[Op::Fill, Op::Stroke]
+					} else {
+						[Op::Stroke, Op::Fill]
 					};
+					for operation in order {
+						match operation {
+							Op::Fill => {
+								match instance.instance.style.fill() {
+									Fill::Solid(color) => {
+										let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
+										scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
+									}
+									Fill::Gradient(gradient) => {
+										let mut stops = peniko::ColorStops::new();
+										for &(offset, color) in &gradient.stops {
+											stops.push(peniko::ColorStop {
+												offset: offset as f32,
+												color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+											});
+										}
+										// Compute bounding box of the shape to determine the gradient start and end points
+										let bounds = instance.instance.nonzero_bounding_box();
+										let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-					if let Some(stroke) = instance.instance.style.stroke() {
-						let color = match stroke.color {
-							Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
-							None => peniko::Color::TRANSPARENT,
-						};
-						let cap = match stroke.line_cap {
-							LineCap::Butt => Cap::Butt,
-							LineCap::Round => Cap::Round,
-							LineCap::Square => Cap::Square,
-						};
-						let join = match stroke.line_join {
-							LineJoin::Miter => Join::Miter,
-							LineJoin::Bevel => Join::Bevel,
-							LineJoin::Round => Join::Round,
-						};
-						let stroke = kurbo::Stroke {
-							width: stroke.weight,
-							miter_limit: stroke.line_join_miter_limit,
-							join,
-							start_cap: cap,
-							end_cap: cap,
-							dash_pattern: stroke.dash_lengths.into(),
-							dash_offset: stroke.dash_offset,
-						};
+										let inverse_parent_transform = (parent_transform.matrix2.determinant() != 0.).then(|| parent_transform.inverse()).unwrap_or_default();
+										let mod_points = inverse_parent_transform * multiplied_transform * bound_transform;
 
-						// Draw the stroke if it's visible
-						if stroke.width > 0. {
-							scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+										let start = mod_points.transform_point2(gradient.start);
+										let end = mod_points.transform_point2(gradient.end);
+
+										let fill = peniko::Brush::Gradient(peniko::Gradient {
+											kind: match gradient.gradient_type {
+												GradientType::Linear => peniko::GradientKind::Linear {
+													start: to_point(start),
+													end: to_point(end),
+												},
+												GradientType::Radial => {
+													let radius = start.distance(end);
+													peniko::GradientKind::Radial {
+														start_center: to_point(start),
+														start_radius: 0.,
+														end_center: to_point(start),
+														end_radius: radius as f32,
+													}
+												}
+											},
+											stops,
+											..Default::default()
+										});
+										// Vello does `element_transform * brush_transform` internally. We don't want element_transform to have any impact so we need to left multiply by the inverse.
+										// This makes the final internal brush transform equal to `parent_transform`, allowing you to stretch a gradient by transforming the parent folder.
+										let inverse_element_transform = (element_transform.matrix2.determinant() != 0.).then(|| element_transform.inverse()).unwrap_or_default();
+										let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
+										scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+									}
+									Fill::None => {}
+								};
+							}
+							Op::Stroke => {
+								if let Some(stroke) = instance.instance.style.stroke() {
+									let color = match stroke.color {
+										Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
+										None => peniko::Color::TRANSPARENT,
+									};
+									let cap = match stroke.line_cap {
+										LineCap::Butt => Cap::Butt,
+										LineCap::Round => Cap::Round,
+										LineCap::Square => Cap::Square,
+									};
+									let join = match stroke.line_join {
+										LineJoin::Miter => Join::Miter,
+										LineJoin::Bevel => Join::Bevel,
+										LineJoin::Round => Join::Round,
+									};
+									let stroke = kurbo::Stroke {
+										width: stroke.weight * if can_draw_aligned_stroke { 2. } else { 1. },
+										miter_limit: stroke.line_join_miter_limit,
+										join,
+										start_cap: cap,
+										end_cap: cap,
+										dash_pattern: stroke.dash_lengths.into(),
+										dash_offset: stroke.dash_offset,
+									};
+
+									// Draw the stroke if it's visible
+									if stroke.width > 0. {
+										scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+									}
+								}
+							}
 						}
 					}
 				}
+			}
+
+			if can_draw_aligned_stroke {
+				scene.pop_layer();
+				scene.pop_layer();
 			}
 
 			// If we pushed a layer for opacity or a blend mode, we need to pop it
@@ -753,13 +945,13 @@ impl GraphicElementRendered for Artboard {
 		let color = peniko::Color::new([self.background.r(), self.background.g(), self.background.b(), self.background.a()]);
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-		let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 
 		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
 		scene.pop_layer();
 
 		if self.clip {
+			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
 			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the graphic group's transform is right multiplied in when rendering the graphic group, we just need to right multiply by the offset here.
@@ -844,7 +1036,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 }
 
 impl GraphicElementRendered for RasterDataTable<Color> {
-	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
 
@@ -870,8 +1062,10 @@ impl GraphicElementRendered for RasterDataTable<Color> {
 				if !matrix.is_empty() {
 					attributes.push("transform", matrix);
 				}
-				if instance.alpha_blending.opacity < 1. {
-					attributes.push("opacity", instance.alpha_blending.opacity.to_string());
+				let factor = if render_params.for_mask { 1. } else { instance.alpha_blending.fill };
+				let opacity = instance.alpha_blending.opacity * factor;
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
 				}
 				if instance.alpha_blending.blend_mode != BlendMode::default() {
 					attributes.push("style", instance.alpha_blending.blend_mode.render());
