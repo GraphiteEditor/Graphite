@@ -6,7 +6,7 @@ use graphene_core::instances::Instance;
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::{Image, RasterDataTable};
 use graphene_core::raster::{Alpha, BitmapMut, BlendMode, Color, Pixel, Sample};
 use graphene_core::renderer::GraphicElementRendered;
 use graphene_core::transform::Transform;
@@ -80,7 +80,7 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 }
 
 #[node_macro::node(skip_impl)]
-fn blit<P, BlendFn>(mut target: ImageFrameTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrameTable<P>
+fn blit<P, BlendFn>(mut target: RasterDataTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> RasterDataTable<P>
 where
 	P: Pixel + Alpha + std::fmt::Debug,
 	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
@@ -184,11 +184,12 @@ pub fn blend_with_mode(background: Instance<Image<Color>>, foreground: Instance<
 }
 
 #[node_macro::node(category("Raster"))]
-async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> RasterDataTable<Color> {
+	if image_frame_table.is_empty() {
+		image_frame_table.push(Instance::default());
+	}
 	// TODO: Find a way to handle more than one instance
-	let Some(image_frame_instance) = image_frame_table.instance_ref_iter().next() else {
-		return ImageFrameTable::default();
-	};
+	let image_frame_instance = image_frame_table.instance_ref_iter().next().expect("Expected the one instance we just pushed");
 	let image_frame_instance = image_frame_instance.to_instance_cloned();
 
 	let [start, end] = image_frame_instance.clone().to_table().bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
@@ -204,7 +205,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strok
 
 	// TODO: Find a way to handle more than one instance
 	let Some(mut actual_image) = extend_image_to_bounds((), brush_plan.background.to_table(), background_bounds).instance_iter().next() else {
-		return ImageFrameTable::default();
+		return RasterDataTable::default();
 	};
 
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
@@ -397,7 +398,7 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
-			ImageFrameTable::<Color>::new(Image::<Color>::default()),
+			RasterDataTable::<Color>::new(Image::<Color>::default()),
 			vec![BrushStroke {
 				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {

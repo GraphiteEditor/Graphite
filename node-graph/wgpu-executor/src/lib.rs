@@ -8,12 +8,9 @@ pub use executor::GpuExecutor;
 use futures::Future;
 use glam::{DAffine2, UVec2};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::application_io::{ApplicationIo, EditorApi, ImageTexture, SurfaceHandle, TextureFrameTable};
-use graphene_core::instances::Instance;
-use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::raster::{Image, SRGBA8};
+use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::transform::{Footprint, Transform};
-use graphene_core::{Color, Cow, Ctx, ExtractFootprint, Node, SurfaceFrame, Type};
+use graphene_core::{Color, Cow, Ctx, Node, SurfaceFrame, Type};
 use std::pin::Pin;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
@@ -910,34 +907,34 @@ async fn render_texture<'a: 'n>(
 	}
 }
 
-#[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrameTable {
-	let mut result_table = TextureFrameTable::default();
+// #[node_macro::node(category(""))]
+// async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: RasterDataTable<Color>, executor: &'a WgpuExecutor) -> TextureFrameTable {
+// 	let mut result_table = TextureFrameTable::default();
 
-	for instance in input.instance_ref_iter() {
-		let image = instance.instance;
-		let new_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
-		let new_image = Image {
-			width: image.width,
-			height: image.height,
-			data: new_data,
-			base64_string: None,
-		};
+// 	for instance in input.instance_ref_iter() {
+// 		let image = instance.instance;
+// 		let new_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
+// 		let new_image = Image {
+// 			width: image.width,
+// 			height: image.height,
+// 			data: new_data,
+// 			base64_string: None,
+// 		};
 
-		let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
-		let texture = match shader_input {
-			ShaderInput::TextureBuffer(buffer, _) => buffer,
-			ShaderInput::StorageTextureBuffer(buffer, _) => buffer,
-			_ => unreachable!("Unsupported ShaderInput type"),
-		};
+// 		let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
+// 		let texture = match shader_input {
+// 			ShaderInput::TextureBuffer(buffer, _) => buffer,
+// 			ShaderInput::StorageTextureBuffer(buffer, _) => buffer,
+// 			_ => unreachable!("Unsupported ShaderInput type"),
+// 		};
 
-		result_table.push(Instance {
-			instance: ImageTexture { texture: texture.into() },
-			transform: *instance.transform,
-			alpha_blending: *instance.alpha_blending,
-			source_node_id: *instance.source_node_id,
-		});
-	}
+// 		result_table.push(Instance {
+// 			instance: ImageTexture { texture: texture.into() },
+// 			transform: *instance.transform,
+// 			alpha_blending: *instance.alpha_blending,
+// 			source_node_id: *instance.source_node_id,
+// 		});
+// 	}
 
-	result_table
-}
+// 	result_table
+// }

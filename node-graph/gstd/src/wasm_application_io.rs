@@ -8,7 +8,7 @@ use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::{Image, RasterDataTable};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
@@ -39,7 +39,7 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 // #[cfg(target_arch = "wasm32")]
 // async fn draw_image_frame(
 // 	_: impl Ctx,
-// 	image: ImageFrameTable<graphene_core::raster::SRGBA8>,
+// 	image: RasterDataTable<graphene_core::raster::SRGBA8>,
 // 	surface_handle: Arc<WasmSurfaceHandle>,
 // ) -> graphene_core::application_io::SurfaceHandleFrame<HtmlCanvasElement> {
 // 	let image = image.instance_ref_iter().next().unwrap().instance;
@@ -76,9 +76,9 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 }
 
 #[node_macro::node(category("Network"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return ImageFrameTable::default();
+		return RasterDataTable::default();
 	};
 	let image = image.to_rgba32f();
 	let image = Image {
@@ -91,7 +91,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> ImageFrameTable<Color> {
 		..Default::default()
 	};
 
-	ImageFrameTable::new(image)
+	RasterDataTable::new(image)
 }
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
@@ -165,13 +165,13 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
-		ImageFrameTable<Color>,
+		RasterDataTable<Color>,
 		GraphicGroupTable,
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> ImageFrameTable<Color>
+) -> RasterDataTable<Color>
 where
 	Instances<T>: GraphicElementRendered,
 {
@@ -179,7 +179,7 @@ where
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
-		return ImageFrameTable::default();
+		return RasterDataTable::default();
 	}
 
 	let mut render = SvgRender::new();
@@ -218,7 +218,7 @@ where
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let mut result = ImageFrameTable::default();
+	let mut result = RasterDataTable::default();
 	result.push(Instance {
 		instance: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
 		transform: footprint.transform,
@@ -234,7 +234,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> VectorDataTable,
-		Context -> ImageFrameTable<Color>,
+		Context -> RasterDataTable<Color>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
 		Context -> graphene_core::ArtboardGroupTable,

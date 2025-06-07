@@ -33,6 +33,13 @@ impl<T> Instances<T> {
 		self.source_node_id.push(instance.source_node_id);
 	}
 
+	pub fn extend(&mut self, instances: Instances<T>) {
+		self.instance.extend(instances.instance);
+		self.transform.extend(instances.transform);
+		self.alpha_blending.extend(instances.alpha_blending);
+		self.source_node_id.extend(instances.source_node_id);
+	}
+
 	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = Instance<T>> {
 		self.instance
 			.into_iter()
