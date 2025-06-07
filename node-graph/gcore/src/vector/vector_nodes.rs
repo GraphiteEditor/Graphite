@@ -9,14 +9,15 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
-use crate::vector::misc::dvec2_to_point;
+use crate::vector::algorithms::bezpath_algorithms::{eval_pathseg_euclidean, is_linear};
+use crate::vector::misc::{dvec2_to_point, handles_to_segment, segment_to_handles};
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
+use bezier_rs::{BezierHandles, Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1617,10 +1618,9 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 
 fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2, distance: f64) -> VectorData {
 	// Splits a bézier curve based on a distance measurement
-	fn split_distance(bezier: bezier_rs::Bezier, distance: f64, length: f64) -> bezier_rs::Bezier {
-		const EUCLIDEAN_ERROR: f64 = 0.001;
-		let parametric = bezier.euclidean_to_parametric_with_total_length((distance / length).clamp(0., 1.), EUCLIDEAN_ERROR, length);
-		bezier.split(bezier_rs::TValue::Parametric(parametric))[1]
+	fn split_distance(bezier: PathSeg, distance: f64, length: f64) -> PathSeg {
+		let parametric = eval_pathseg_euclidean(bezier, (distance / length).clamp(0., 1.), DEFAULT_ACCURACY);
+		bezier.subsegment(parametric..1.)
 	}
 
 	/// Produces a list that corresponds with the point ID. The value is how many segments are connected.
@@ -1659,65 +1659,248 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 		}
 	}
 
+	fn calculate_distance_to_spilt(bezier1: PathSeg, bezier2: PathSeg, bevel_length: f64) -> f64 {
+		if is_linear(&bezier1) && is_linear(&bezier2) {
+			let v1 = (bezier1.end() - bezier1.start()).normalize();
+			let v2 = (bezier1.end() - bezier2.end()).normalize();
+
+			let dot_product = v1.dot(v2);
+
+			let angle_rad = dot_product.acos();
+
+			bevel_length / ((angle_rad / 2.0).sin())
+		} else {
+			let length1 = bezier1.perimeter(DEFAULT_ACCURACY);
+			let length2 = bezier2.perimeter(DEFAULT_ACCURACY);
+
+			let max_split = length1.min(length2);
+
+			let mut split_distance = 0.0;
+			let mut best_diff = f64::MAX;
+			let mut current_best_distance = 0.0;
+
+			let clamp_and_round = |value: f64| ((value * 1000.0).round() / 1000.0).clamp(0.0, 1.0);
+
+			const INITIAL_SAMPLES: usize = 50;
+			for i in 0..=INITIAL_SAMPLES {
+				let distance_sample = max_split * (i as f64 / INITIAL_SAMPLES as f64);
+
+				let x_point_t = eval_pathseg_euclidean(bezier1, 1.0 - clamp_and_round(distance_sample / length1), DEFAULT_ACCURACY);
+				let y_point_t = eval_pathseg_euclidean(bezier2, clamp_and_round(distance_sample / length2), DEFAULT_ACCURACY);
+
+				let x_point = bezier1.eval(x_point_t);
+				let y_point = bezier2.eval(y_point_t);
+
+				let distance = x_point.distance(y_point);
+				let diff = (bevel_length - distance).abs();
+
+				if diff < best_diff {
+					best_diff = diff;
+					current_best_distance = distance_sample;
+				}
+
+				if bevel_length - distance < 0.0 {
+					split_distance = distance_sample;
+
+					if i > 0 {
+						let prev_sample = max_split * ((i - 1) as f64 / INITIAL_SAMPLES as f64);
+
+						const REFINE_STEPS: usize = 10;
+						for j in 1..=REFINE_STEPS {
+							let refined_sample = prev_sample + (distance_sample - prev_sample) * (j as f64 / REFINE_STEPS as f64);
+
+							let x_point_t = eval_pathseg_euclidean(bezier1, 1.0 - (refined_sample / length1).clamp(0.0, 1.0), DEFAULT_ACCURACY);
+							let y_point_t = eval_pathseg_euclidean(bezier2, (refined_sample / length2).clamp(0.0, 1.0), DEFAULT_ACCURACY);
+
+							let x_point = bezier1.eval(x_point_t);
+							let y_point = bezier2.eval(y_point_t);
+
+							let distance = x_point.distance(y_point);
+
+							if bevel_length - distance < 0.0 {
+								split_distance = refined_sample;
+								break;
+							}
+						}
+					}
+					break;
+				}
+			}
+
+			if split_distance == 0.0 && current_best_distance > 0.0 {
+				split_distance = current_best_distance;
+			}
+
+			split_distance
+		}
+	}
+
 	fn update_existing_segments(vector_data: &mut VectorData, vector_data_transform: DAffine2, distance: f64, segments_connected: &mut [usize]) -> Vec<[usize; 2]> {
 		let mut next_id = vector_data.point_domain.next_id();
 		let mut new_segments = Vec::new();
 
-		for (handles, start_point_index, end_point_index) in vector_data.segment_domain.handles_and_points_mut() {
-			// Convert the original segment to a bezier
-			let mut bezier = bezier_rs::Bezier {
-				start: vector_data.point_domain.positions()[*start_point_index],
-				end: vector_data.point_domain.positions()[*end_point_index],
-				handles: *handles,
-			};
+		let mut first_bezier_bool = true;
 
-			if bezier.is_linear() {
-				bezier.handles = bezier_rs::BezierHandles::Linear;
+		let mut iter = vector_data.segment_domain.handles_and_points_mut();
+
+		let mut first_bezier = handles_to_segment(DVec2::ZERO, BezierHandles::Linear, DVec2::ZERO);
+
+		let mut first_start_point_index = &mut 0xffffffff;
+		let mut first_handles = &mut bezier_rs::BezierHandles::Linear;
+
+		let Some((handles, start_point_index, end_point_index)) = iter.next() else { unreachable!() };
+
+		let start = vector_data.point_domain.positions()[*start_point_index];
+		let end = vector_data.point_domain.positions()[*end_point_index];
+
+		let mut prev_bezier = handles_to_segment(start, *handles, end);
+
+		prev_bezier = Affine::new(vector_data_transform.to_cols_array()) * prev_bezier;
+
+		let mut prev_handles = handles;
+		let mut prev_start_point_index = start_point_index;
+		let mut prev_end_point_index = end_point_index;
+		let mut prev_original_length = prev_bezier.perimeter(DEFAULT_ACCURACY);
+		let mut prev_length = prev_original_length;
+		let mut first_original_length = prev_original_length;
+		let mut first_length = prev_original_length;
+
+		while let Some((handles, start_point_index, end_point_index)) = iter.next() {
+			let start = vector_data.point_domain.positions()[*start_point_index];
+			let end = vector_data.point_domain.positions()[*end_point_index];
+			let mut bezier = handles_to_segment(start, *handles, end);
+
+			bezier = Affine::new(vector_data_transform.to_cols_array()) * bezier;
+
+			let spilt_distance = calculate_distance_to_spilt(prev_bezier, bezier, distance);
+
+			if is_linear(&prev_bezier) {
+				let start = point_to_dvec2(prev_bezier.start());
+				let end = point_to_dvec2(prev_bezier.end());
+				prev_bezier = handles_to_segment(start, BezierHandles::Linear, end);
 			}
-			bezier = bezier.apply_transformation(|p| vector_data_transform.transform_point2(p));
+
+			if is_linear(&bezier) {
+				let start = point_to_dvec2(bezier.start());
+				let end = point_to_dvec2(bezier.end());
+				bezier = handles_to_segment(start, BezierHandles::Linear, end);
+			}
+
 			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
 
-			let original_length = bezier.length(None);
+			let original_length = bezier.perimeter(DEFAULT_ACCURACY);
 			let mut length = original_length;
+
+			// Only split if the length is big enough to make it worthwhile
+			let valid_length = prev_length > 1e-10;
+			if segments_connected[*prev_end_point_index] > 0 && valid_length {
+				// Apply the bevel to the end
+				let distance = spilt_distance.min(prev_original_length.min(original_length) / 2.);
+				prev_bezier = split_distance(prev_bezier.reverse(), distance, prev_length).reverse();
+				if first_bezier_bool {
+					first_length = (first_length - distance).max(0.);
+				}
+				// Update the end position
+				let pos = inverse_transform.transform_point2(point_to_dvec2(prev_bezier.end()));
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, prev_end_point_index, &mut next_id, &mut new_segments);
+			}
+			// Update the handles
+			*prev_handles = segment_to_handles(&prev_bezier).apply_transformation(|p| inverse_transform.transform_point2(p));
 
 			// Only split if the length is big enough to make it worthwhile
 			let valid_length = length > 1e-10;
 			if segments_connected[*start_point_index] > 0 && valid_length {
 				// Apply the bevel to the start
-				let distance = distance.min(original_length / 2.);
+				let distance = spilt_distance.min(original_length.min(prev_original_length) / 2.);
 				bezier = split_distance(bezier, distance, length);
 				length = (length - distance).max(0.);
 				// Update the start position
-				let pos = inverse_transform.transform_point2(bezier.start);
+				let pos = inverse_transform.transform_point2(point_to_dvec2(bezier.start()));
+
 				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, start_point_index, &mut next_id, &mut new_segments);
+
+				// Update the handles
+				*handles = segment_to_handles(&bezier).apply_transformation(|p| inverse_transform.transform_point2(p));
 			}
 
+			if first_bezier_bool {
+				first_bezier = prev_bezier;
+				first_start_point_index = prev_start_point_index;
+				first_handles = prev_handles;
+				first_original_length = prev_original_length;
+				first_bezier_bool = false;
+			}
+
+			prev_bezier = bezier;
+			prev_start_point_index = start_point_index;
+			prev_end_point_index = end_point_index;
+			prev_handles = handles;
+			prev_original_length = original_length;
+			prev_length = length;
+		}
+
+		if prev_end_point_index == first_start_point_index {
+			let spilt_distance = calculate_distance_to_spilt(prev_bezier, first_bezier, distance);
+
+			if is_linear(&prev_bezier) {
+				let start = point_to_dvec2(prev_bezier.start());
+				let end = point_to_dvec2(prev_bezier.end());
+				prev_bezier = handles_to_segment(start, BezierHandles::Linear, end);
+			}
+
+			if is_linear(&first_bezier) {
+				let start = point_to_dvec2(first_bezier.start());
+				let end = point_to_dvec2(first_bezier.end());
+				first_bezier = handles_to_segment(start, BezierHandles::Linear, end);
+			}
+
+			let inverse_transform = (vector_data_transform.matrix2.determinant() != 0.).then(|| vector_data_transform.inverse()).unwrap_or_default();
+
 			// Only split if the length is big enough to make it worthwhile
-			let valid_length = length > 1e-10;
-			if segments_connected[*end_point_index] > 0 && valid_length {
+			let valid_length = prev_length > 1e-10;
+			if segments_connected[*prev_end_point_index] > 0 && valid_length {
 				// Apply the bevel to the end
-				let distance = distance.min(original_length / 2.);
-				bezier = split_distance(bezier.reversed(), distance, length).reversed();
+				let distance = spilt_distance.min(prev_original_length.min(first_original_length) / 2.);
+				prev_bezier = split_distance(prev_bezier.reverse(), distance, prev_length).reverse();
 				// Update the end position
-				let pos = inverse_transform.transform_point2(bezier.end);
-				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, end_point_index, &mut next_id, &mut new_segments);
+				let pos = inverse_transform.transform_point2(point_to_dvec2(prev_bezier.end()));
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, prev_end_point_index, &mut next_id, &mut new_segments);
 			}
 			// Update the handles
-			*handles = bezier.handles.apply_transformation(|p| inverse_transform.transform_point2(p));
+			*prev_handles = segment_to_handles(&prev_bezier).apply_transformation(|p| inverse_transform.transform_point2(p));
+
+			// Only split if the length is big enough to make it worthwhile
+			let valid_length = first_length > 1e-10;
+			if segments_connected[*first_start_point_index] > 0 && valid_length {
+				// Apply the bevel to the start
+				let distance = spilt_distance.min(first_original_length.min(prev_original_length) / 2.);
+				first_bezier = split_distance(first_bezier, distance, first_length);
+				// Update the start position
+				let pos = inverse_transform.transform_point2(point_to_dvec2(first_bezier.start()));
+
+				create_or_modify_point(&mut vector_data.point_domain, segments_connected, pos, first_start_point_index, &mut next_id, &mut new_segments);
+
+				// Update the handles
+				*first_handles = segment_to_handles(&first_bezier).apply_transformation(|p| inverse_transform.transform_point2(p));
+			}
 		}
 		new_segments
 	}
 
 	fn insert_new_segments(vector_data: &mut VectorData, new_segments: &[[usize; 2]]) {
 		let mut next_id = vector_data.segment_domain.next_id();
+
 		for &[start, end] in new_segments {
-			vector_data.segment_domain.push(next_id.next_id(), start, end, bezier_rs::BezierHandles::Linear, StrokeId::ZERO);
+			let handles = bezier_rs::BezierHandles::Linear;
+			vector_data.segment_domain.push(next_id.next_id(), start, end, handles, StrokeId::ZERO);
 		}
 	}
 
-	let mut segments_connected = segments_connected_count(&vector_data);
-	let new_segments = update_existing_segments(&mut vector_data, vector_data_transform, distance, &mut segments_connected);
-	insert_new_segments(&mut vector_data, &new_segments);
+	if distance > 1.0 {
+		let mut segments_connected = segments_connected_count(&vector_data);
+		let new_segments = update_existing_segments(&mut vector_data, vector_data_transform, distance, &mut segments_connected);
+		insert_new_segments(&mut vector_data, &new_segments);
+	}
 
 	vector_data
 }
@@ -1729,7 +1912,7 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 	for source_instance in source.instance_iter() {
 		result_table.push(Instance {
 			instance: bevel_algorithm(source_instance.instance, source_instance.transform, distance),
-			..Default::default()
+			..source_instance
 		});
 	}
 
@@ -1774,7 +1957,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 		.instance_ref_iter()
 		.map(|vector_data_instance| {
 			let scale = vector_data_instance.transform.decompose_scale();
-			vector_data_instance.instance.stroke_bezier_paths().map(|subpath| subpath.area(Some(1e-3), Some(1e-3))).sum::<f64>() * scale.x * scale.y
+			vector_data_instance.instance.stroke_bezpath_iter().map(|subpath| subpath.area() * scale.x * scale.y).sum::<f64>()
 		})
 		.sum()
 }
