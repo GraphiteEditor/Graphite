@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -582,11 +582,9 @@ impl PenToolData {
 		if !closing_path_on_point && preferences.vector_meshes {
 			// Attempt to find nearest segment and close path on segment by creating an anchor point on it
 			let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-			log::info!("reached here only");
 			if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, transform.transform_point2(self.next_point), tolerance) {
 				let (point, _) = closest_segment.adjusted_insert(responses);
 
-				log::info!("reached here for sure");
 				self.update_handle_type(TargetHandle::PreviewInHandle);
 				self.handle_end_offset = None;
 				self.path_closed = true;
@@ -594,8 +592,10 @@ impl PenToolData {
 
 				self.prior_segment_endpoint = Some(point);
 				self.prior_segment_layer = Some(closest_segment.layer());
+				self.prior_segments = None;
+				self.prior_segment = None;
 
-				// Should also update the SnapCache here
+				// Should also update the SnapCache here?
 
 				self.handle_mode = HandleMode::Free;
 				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
@@ -1205,8 +1205,6 @@ impl PenToolData {
 				// Setting any one of the new segments created as the previous segment
 				self.prior_segment_endpoint = Some(point);
 				self.prior_segment_layer = Some(layer);
-
-				// This does not work as vector data is not updated yet
 				self.prior_segments = Some(segments.to_vec());
 
 				self.extend_existing_path(document, layer, point, position);
@@ -1562,6 +1560,18 @@ impl Fsm for PenToolFsmState {
 						path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
 					}
 				}
+				// Check if there is an anchor within threshold
+				// If not check if there is a closest segment within threshold, if yes then draw overlay
+				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+				let close_to_point = closest_point(document, input.mouse.position, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
+				if preferences.vector_meshes && !close_to_point {
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, tolerance) {
+						let pos = closest_segment.closest_point_to_viewport();
+						let perp = closest_segment.calculate_perp(&document);
+						overlay_context.manipulator_anchor(pos, true, None);
+						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+					}
+				}
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
@@ -1607,9 +1617,9 @@ impl Fsm for PenToolFsmState {
 						if let Some(latest_segment) = tool_data.prior_segment {
 							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
 						}
-						// If a vector mesh then there can be more than one prior segments
-						else if preferences.vector_meshes {
-							if let Some(segments) = tool_data.prior_segments.clone() {
+						// // If a vector mesh then there can be more than one prior segments
+						else if let Some(segments) = tool_data.prior_segments.clone() {
+							if preferences.vector_meshes {
 								path_overlays(document, DrawHandles::SelectedAnchors(segments), shape_editor, &mut overlay_context);
 							}
 						} else {
@@ -1671,6 +1681,16 @@ impl Fsm for PenToolFsmState {
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && display_anchors {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
+				}
+
+				if self == PenToolFsmState::PlacingAnchor && preferences.vector_meshes {
+					let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, tolerance) {
+						let pos = closest_segment.closest_point_to_viewport();
+						let perp = closest_segment.calculate_perp(&document);
+						overlay_context.manipulator_anchor(pos, true, None);
+						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+					}
 				}
 
 				// Display a filled overlay of the shape if the new point closes the path
