@@ -357,12 +357,11 @@ where
 	result_table
 }
 
-// TODO: Make this node return Instances<I> instead of GraphicGroupTable, while preserving the current transform behavior as the `reference_point` and `offset` parameters are varied
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
-	#[default(ReferencePoint::Center)] reference_point: ReferencePoint,
+	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
@@ -380,12 +379,8 @@ where
 		return result_table;
 	};
 
-	// TODO: If the reference point is not None, use the current behavior but make it work correctly with local pivot origins of each Instances<I> row
-	let reference_point_location = reference_point.point_in_bounding_box((bounding_box[0], bounding_box[1]).into()).unwrap_or_else(|| {
-		// TODO: In this None case, use the input's local pivot origin point instead of a point relative to its bounding box
-		(bounding_box[0] + bounding_box[1]) / 2.
-	});
-	let mirror_reference_point = reference_point_location + normal * offset;
+	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
+	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
 
 	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
@@ -397,7 +392,11 @@ where
 	);
 
 	// Apply reflection around the reference point
-	let transform = DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point);
+	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
+		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
+	} else {
+		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
+	};
 
 	// Add original instance depending on the keep_original flag
 	if keep_original {
@@ -408,7 +407,8 @@ where
 
 	// Create and add mirrored instance
 	for mut instance in instance.instance_iter() {
-		instance.transform = transform * instance.transform;
+		instance.transform = reflected_transform * instance.transform;
+		instance.source_node_id = None;
 		result_table.push(instance);
 	}
 
