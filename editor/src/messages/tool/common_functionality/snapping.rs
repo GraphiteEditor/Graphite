@@ -250,6 +250,10 @@ impl SnapManager {
 		self.update_indicator(snapped);
 	}
 
+	pub fn indicator_pos(&self) -> Option<DVec2> {
+		self.indicator.as_ref().map(|point| point.snapped_point_document)
+	}
+
 	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, constrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
 		let mut snapped_points = Vec::new();
 		let document = snap_data.document;

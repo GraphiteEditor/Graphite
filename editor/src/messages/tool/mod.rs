@@ -2,6 +2,7 @@ mod tool_message;
 mod tool_message_handler;
 
 pub mod common_functionality;
+pub mod shapes;
 pub mod tool_messages;
 pub mod transform_layer;
 pub mod utility_types;
