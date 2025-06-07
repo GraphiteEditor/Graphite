@@ -4,24 +4,26 @@ WHITESPACE    =  _{ " " | "\t" }
 program       =  _{ SOI ~ expr ~ EOI }
 
 expr          =  { atom ~ (infix ~ atom)* }
-atom          =  _{ prefix? ~ primary ~ postfix? }
-infix         =  _{ add | sub | mul | div | pow | paren }
+atom          =  _{ prefix? ~ primary }
+infix         =  _{ add | sub | mul | div | pow | leq | geq | eq | paren }
 add           =  { "+" }    // Addition
 sub           =  { "-" }    // Subtraction
 mul           =  { "*" }    // Multiplication
 div           =  { "/" }    // Division
 mod           =  { "%" }    // Modulo
 pow           =  { "^" }    // Exponentiation
+leq           =  { "<" }
+geq           =  { ">" }
+eq            =  { "=="}
 paren         =  { ""  }    // Implicit multiplication operator
 
 prefix        =  _{ neg | sqrt }
 neg           =  { "-" }    // Negation
 sqrt          =  { "sqrt" }
 
-postfix       =  _{ fac }
-fac           =  { "!" }    // Factorial
 
-primary       =  _{ ("(" ~ expr ~ ")") | lit | constant | fn_call | ident  }
+primary       =  _{ ("(" ~ expr ~ ")") | conditional | lit | constant | fn_call | ident  }
+conditional   =  { "if" ~ "(" ~ expr ~ ")" ~ "{" ~ expr ~ "}" ~ "else" ~ "{" ~ expr ~ "}"}
 fn_call       =  { ident ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 ident           =  @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 lit           =  { unit | ((float | int) ~ unit?) }
