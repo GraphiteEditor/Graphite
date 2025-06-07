@@ -426,6 +426,7 @@ impl Fsm for ShapeToolFsmState {
 						return ShapeToolFsmState::ResizingBounds;
 					}
 					(false, true, false) => {
+						tool_data.data.drag_start = mouse_pos;
 						return ShapeToolFsmState::RotatingBounds;
 					}
 					(false, false, true) => {
