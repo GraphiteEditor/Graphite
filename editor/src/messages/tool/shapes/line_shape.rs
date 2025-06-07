@@ -103,34 +103,11 @@ impl Line {
 			})
 			.collect::<HashMap<LayerNodeIdentifier, [DVec2; 2]>>();
 	}
-	pub fn dragging_endpoints(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, line_data: &mut LineToolData) -> bool {
-		for (layer, [document_start, document_end]) in line_data.selected_layers_with_position.iter() {
-			let transform = document.metadata().transform_to_viewport(*layer);
-			let viewport_x = transform.transform_vector2(DVec2::X).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-			let viewport_y = transform.transform_vector2(DVec2::Y).normalize_or_zero() * BOUNDS_SELECT_THRESHOLD;
-			let threshold_x = transform.inverse().transform_vector2(viewport_x).length();
-			let threshold_y = transform.inverse().transform_vector2(viewport_y).length();
-
-			let drag_start = input.mouse.position;
-			let [start, end] = [document_start, document_end].map(|point| transform.transform_point2(*point));
-
-			let start_click = (drag_start.y - start.y).abs() < threshold_y && (drag_start.x - start.x).abs() < threshold_x;
-			let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
-
-			if start_click || end_click {
-				line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-				line_data.drag_start = if end_click { *document_start } else { *document_end };
-				line_data.editing_layer = Some(*layer);
-				return true;
-			}
-		}
-		false
-	}
 }
 
 fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-	let mut document_points = [tool_data.line_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
+	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
@@ -154,8 +131,8 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.data.snap_manager;
 
-	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.line_data.drag_start]);
-	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.line_data.drag_start]);
+	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.data.drag_start]);
+	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.data.drag_start]);
 	let config = SnapTypeConfiguration::default();
 
 	if constrained {
@@ -191,7 +168,7 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 	document_points
 }
 
-pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, line_data: &mut LineToolData) -> bool {
+pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
 	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line") else {
 		return false;
 	};
@@ -213,9 +190,9 @@ pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &Document
 	let end_click = (drag_start.y - end.y).abs() < threshold_y && (drag_start.x - end.x).abs() < threshold_x;
 
 	if start_click || end_click {
-		line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-		line_data.drag_start = if end_click { document_start } else { document_end };
-		line_data.editing_layer = Some(layer);
+		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
+		shape_tool_data.data.drag_start = if end_click { document_start } else { document_end };
+		shape_tool_data.line_data.editing_layer = Some(layer);
 		return true;
 	}
 	false

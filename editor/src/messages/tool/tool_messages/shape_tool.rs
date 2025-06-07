@@ -9,11 +9,11 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
-use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_tranform_cage};
+use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
 use crate::messages::tool::shapes::convex_shape::Convex;
 use crate::messages::tool::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
-use crate::messages::tool::shapes::star_shape::Star;
+use crate::messages::tool::shapes::star_shape::{Star, StarShapeData};
 use crate::messages::tool::shapes::{Ellipse, Line, Rectangle};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
@@ -206,6 +206,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ShapeTo
 			| ShapeToolFsmState::ResizingBounds
 			| ShapeToolFsmState::DraggingLineEndpoints
 			| ShapeToolFsmState::RotatingBounds
+			| ShapeToolFsmState::DraggingStarInnerRadius
 			| ShapeToolFsmState::SkewingBounds { .. } => {
 				actions!(ShapeToolMessageDiscriminant;
 					DragStop,
@@ -247,6 +248,7 @@ pub enum ShapeToolFsmState {
 	Ready(ShapeType),
 	Drawing(ShapeType),
 	DraggingLineEndpoints,
+	DraggingStarInnerRadius,
 	ResizingBounds,
 	RotatingBounds,
 	SkewingBounds { skew: Key },
@@ -262,15 +264,23 @@ impl Default for ShapeToolFsmState {
 pub struct ShapeToolData {
 	pub data: Resize,
 	auto_panning: AutoPanning,
+
+	// in viewport space
+	pub last_mouse_position: DVec2,
+
+	// Hide the dropdown menu when using line,rectangle or ellipse aliases
 	pub hide_shape_option_widget: bool,
 	pub line_data: LineToolData,
+	pub star_data: StarShapeData,
+
+	// Used for by transform cage
 	pub bounding_box_manager: Option<BoundingBoxManager>,
 	layers_dragging: Vec<LayerNodeIdentifier>,
 	snap_candidates: Vec<SnapCandidatePoint>,
-	cursor: MouseCursorIcon,
-	drag_start: DVec2,
-	drag_current: DVec2,
 	skew_edge: EdgeBool,
+	cursor: MouseCursorIcon,
+
+	// Current shape which is being drawn
 	current_shape: ShapeType,
 }
 
@@ -307,25 +317,38 @@ impl Fsm for ShapeToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let shape_data = &mut tool_data.data;
-		let line_data = &mut tool_data.line_data;
-
 		let ToolMessage::Shape(event) = event else {
 			return self;
 		};
 		match (self, event) {
 			(_, ShapeToolMessage::Overlays(mut overlay_context)) => {
+				let mouse_pos = tool_data
+					.data
+					.snap_manager
+					.indicator_pos()
+					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
+					.unwrap_or(input.mouse.position);
 				let is_resizing_or_rotating = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. } | ShapeToolFsmState::RotatingBounds);
+				let dragging_start_gizmos = matches!(self, Self::DraggingStarInnerRadius);
 
-				if !is_resizing_or_rotating {
-					shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				if !is_resizing_or_rotating && !dragging_start_gizmos {
+					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				}
 
-				Line::overlays(document, tool_data, &mut overlay_context);
+				if matches!(self, ShapeToolFsmState::DraggingStarInnerRadius) {
+					Star::inner_gizmo_overlays(document, tool_data, &mut overlay_context);
+				}
 
 				if input.keyboard.key(Key::Control) && matches!(self, ShapeToolFsmState::Ready(_)) {
 					anchor_overlays(document, &mut overlay_context);
-				} else {
+				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
+					Line::overlays(document, tool_data, &mut overlay_context);
+
+					// if hovered over vertices of the star show the gizmos
+					if Star::hover_point_radius_handle(document, mouse_pos, &mut overlay_context) {
+						return self;
+					}
+
 					if document
 						.network_interface
 						.selected_nodes()
@@ -360,20 +383,39 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
+				tool_data.line_data.drag_start = input.mouse.position;
+
+				// Snapped position in viewport-space.
+				let mouse_pos = tool_data
+					.data
+					.snap_manager
+					.indicator_pos()
+					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
+					.unwrap_or(input.mouse.position);
+
+				tool_data.line_data.drag_current = mouse_pos;
+
+				// Check if dragging the inner vertices of a star
+
+				if Star::set_point_radius_handle(document, mouse_pos, tool_data) {
+					tool_data.last_mouse_position = mouse_pos;
+					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
+					responses.add(DocumentMessage::StartTransaction);
+					return ShapeToolFsmState::DraggingStarInnerRadius;
+				}
+
 				// If clicked on endpoints of a selected line, drag its endpoints
 				if let Some((layer, _, _)) = closest_point(
 					document,
-					input.mouse.position,
+					mouse_pos,
 					SNAP_POINT_TOLERANCE,
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
 					preferences,
 				) {
-					if clicked_on_line_endpoints(layer, document, input, line_data) && !input.keyboard.key(Key::Control) {
+					if clicked_on_line_endpoints(layer, document, input, tool_data) && !input.keyboard.key(Key::Control) {
 						return ShapeToolFsmState::DraggingLineEndpoints;
-					}
+					};
 				}
 
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging);
@@ -394,11 +436,11 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				match tool_data.current_shape {
-					ShapeType::Convex | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle => shape_data.start(document, input),
+					ShapeType::Convex | ShapeType::Star | ShapeType::Ellipse | ShapeType::Rectangle => tool_data.data.start(document, input),
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-						let snapped = shape_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
-						line_data.drag_start = snapped.snapped_point_document;
+						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+						tool_data.data.drag_start = snapped.snapped_point_document;
 					}
 				}
 
@@ -409,7 +451,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
-					ShapeType::Line => Line::create_node(&document, line_data.drag_start),
+					ShapeType::Line => Line::create_node(&document, tool_data.data.drag_start),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -430,18 +472,18 @@ impl Fsm for ShapeToolFsmState {
 						tool_options.fill.apply_fill(layer, responses);
 					}
 					ShapeType::Line => {
-						line_data.angle = 0.0;
-						line_data.weight = tool_options.line_weight;
-						line_data.editing_layer = Some(layer);
+						tool_data.line_data.angle = 0.0;
+						tool_data.line_data.weight = tool_options.line_weight;
+						tool_data.line_data.editing_layer = Some(layer);
 					}
 				}
 
-				shape_data.layer = Some(layer);
+				tool_data.data.layer = Some(layer);
 
 				ShapeToolFsmState::Drawing(tool_data.current_shape)
 			}
 			(ShapeToolFsmState::Drawing(shape), ShapeToolMessage::PointerMove(modifier)) => {
-				let Some(layer) = shape_data.layer else {
+				let Some(layer) = tool_data.data.layer else {
 					return ShapeToolFsmState::Ready(shape);
 				};
 				if match tool_data.current_shape {
@@ -461,7 +503,7 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::PointerMove(modifier)) => {
-				let Some(layer) = line_data.editing_layer else {
+				let Some(layer) = tool_data.line_data.editing_layer else {
 					return ShapeToolFsmState::Ready(tool_data.current_shape);
 				};
 
@@ -472,6 +514,15 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
+			(ShapeToolFsmState::DraggingStarInnerRadius, ShapeToolMessage::PointerMove(..)) => {
+				if let Some(layer) = tool_data.data.layer {
+					Star::update_inner_radius(document, input, layer, responses, tool_data);
+				}
+
+				responses.add(OverlaysMessage::Draw);
+
+				ShapeToolFsmState::DraggingStarInnerRadius
+			}
 			(ShapeToolFsmState::ResizingBounds, ShapeToolMessage::PointerMove(modifier)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let messages = [ShapeToolMessage::PointerOutsideViewport(modifier.clone()).into(), ShapeToolMessage::PointerMove(modifier).into()];
@@ -480,7 +531,7 @@ impl Fsm for ShapeToolFsmState {
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
-						&mut shape_data.snap_manager,
+						&mut tool_data.data.snap_manager,
 						&mut tool_data.snap_candidates,
 						input,
 						input.keyboard.key(Key::Shift),
@@ -500,7 +551,7 @@ impl Fsm for ShapeToolFsmState {
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
-						tool_data.drag_start,
+						tool_data.data.drag_start,
 						input.mouse.position,
 						input.keyboard.key(Key::Shift),
 						ToolType::Shape,
@@ -526,7 +577,13 @@ impl Fsm for ShapeToolFsmState {
 			}
 
 			(_, ShapeToolMessage::PointerMove { .. }) => {
-				log::info!("reaching here");
+				// Snapped position in viewport-space.
+				let mouse_pos = tool_data
+					.data
+					.snap_manager
+					.indicator_pos()
+					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
+					.unwrap_or(input.mouse.position);
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
@@ -544,14 +601,18 @@ impl Fsm for ShapeToolFsmState {
 				// }
 
 				// Generate the hover outline
-				responses.add(OverlaysMessage::Draw);
+				let inner_gizmo_points = Star::points_on_inner_circle(document, mouse_pos).is_empty();
 
-				if tool_data.cursor != cursor {
+				if tool_data.cursor != cursor && !input.keyboard.key(Key::Control) && inner_gizmo_points {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				if !inner_gizmo_points {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+				}
+
+				tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -566,6 +627,7 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
+			(ShapeToolFsmState::Ready(_), ShapeToolMessage::PointerOutsideViewport(..)) => self,
 			(_, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
@@ -576,20 +638,25 @@ impl Fsm for ShapeToolFsmState {
 				| ShapeToolFsmState::DraggingLineEndpoints
 				| ShapeToolFsmState::ResizingBounds
 				| ShapeToolFsmState::RotatingBounds
-				| ShapeToolFsmState::SkewingBounds { .. },
+				| ShapeToolFsmState::SkewingBounds { .. }
+				| ShapeToolFsmState::DraggingStarInnerRadius,
 				ShapeToolMessage::DragStop,
 			) => {
-				input.mouse.finish_transaction(tool_data.drag_start, responses);
-				shape_data.cleanup(responses);
+				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
+				tool_data.data.cleanup(responses);
+
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
 
+				tool_data.line_data.dragging_endpoint = None;
+
 				ShapeToolFsmState::Ready(tool_data.current_shape)
 			}
 			(ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::Abort) => {
+				tool_data.line_data.dragging_endpoint = None;
 				responses.add(DocumentMessage::AbortTransaction);
-				shape_data.cleanup(responses);
+				tool_data.data.cleanup(responses);
 
 				ShapeToolFsmState::Ready(tool_data.current_shape)
 			}
@@ -602,7 +669,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(_, ShapeToolMessage::SetShape(shape)) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				shape_data.cleanup(responses);
+				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
 
 				ShapeToolFsmState::Ready(shape)
@@ -667,7 +734,7 @@ impl Fsm for ShapeToolFsmState {
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
 			]),
-			ShapeToolFsmState::ResizingBounds => HintData(vec![
+			ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::DraggingStarInnerRadius => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
 			]),

@@ -1,5 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
-use super::shapes::shape_utility::ShapeType::{Ellipse, Line, Rectangle};
+use super::shapes::shape_utility::ShapeType::{self, Ellipse, Line, Rectangle};
 use super::utility_types::{ToolActionHandlerData, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -65,6 +65,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
 				}
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+				responses.add(ShapeToolMessage::SetShape(ShapeType::Convex));
 				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
 			}
 			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
