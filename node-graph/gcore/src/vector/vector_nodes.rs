@@ -12,7 +12,7 @@ use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
+use bezier_rs::{Join, ManipulatorGroup, Subpath};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -1523,11 +1523,12 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction) -> VectorDataTable {
 	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
-		if count == 0 {
+		let bezpath_segment_count = bezpath.segments().count();
+
+		if count == 0 || bezpath_segment_count == 0 {
 			return;
 		}
 
-		let bezpath_segment_count = bezpath.segments().count();
 		// Initially push the last segment of the bezpath
 		let mut new_segments = vec![bezpath.get_seg(bezpath_segment_count).unwrap()];
 
@@ -1580,6 +1581,10 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		let target_bezpaths = target_instance.instance.stroke_bezpath_iter();
 
 		for (mut source_bezpath, mut target_bezpath) in source_bezpaths.zip(target_bezpaths) {
+			if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
+				continue;
+			}
+
 			source_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
 			target_bezpath.apply_affine(Affine::new(target_transform.to_cols_array()));
 
