@@ -6,7 +6,7 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::PointId;
 use graphene_core::vector::VectorModificationType;
@@ -73,7 +73,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image_frame: ImageFrameTable<Color>,
+		image_frame: RasterDataTable<Color>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

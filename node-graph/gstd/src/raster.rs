@@ -1,13 +1,12 @@
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::instances::Instance;
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, ImageFrameTable};
-use graphene_core::raster::{
-	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Sample,
-};
-use graphene_core::transform::{Transform, TransformMut};
-use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint, GraphicElement, Node};
+use graphene_core::raster::image::{Image, RasterDataTable};
+use graphene_core::raster::{Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, Channel, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, RGBMut};
+use graphene_core::transform::Transform;
+use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -26,8 +25,8 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDataTable<Color>) -> RasterDataTable<Color> {
+	let mut result_table = RasterDataTable::default();
 
 	for mut image_frame_instance in image_frame.instance_iter() {
 		let image_frame_transform = image_frame_instance.transform;
@@ -89,177 +88,151 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: ImageFra
 		result_table.push(image_frame_instance)
 	}
 
-	// TODO: Remove when we've completed part 6 of the instance tables refactor
-	if result_table.is_empty() {
-		return ImageFrameTable::one_empty_image();
+	result_table
+}
+
+#[node_macro::node(category("Raster"))]
+fn combine_channels(
+	_: impl Ctx,
+	_primary: (),
+	#[expose] red: RasterDataTable<Color>,
+	#[expose] green: RasterDataTable<Color>,
+	#[expose] blue: RasterDataTable<Color>,
+	#[expose] alpha: RasterDataTable<Color>,
+) -> RasterDataTable<Color> {
+	let mut result_table = RasterDataTable::default();
+
+	let max_len = red.len().max(green.len()).max(blue.len()).max(alpha.len());
+	let red = red.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let green = green.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let blue = blue.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+	let alpha = alpha.instance_iter().map(Some).chain(std::iter::repeat(None)).take(max_len);
+
+	for (((red, green), blue), alpha) in red.zip(green).zip(blue).zip(alpha) {
+		// Turn any default zero-sized image instances into None
+		let red = red.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+		let green = green.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+		let blue = blue.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+		let alpha = alpha.filter(|i| i.instance.width > 0 && i.instance.height > 0);
+
+		// Get this instance's transform and alpha blending mode from the first non-empty channel
+		let Some((transform, alpha_blending)) = [&red, &green, &blue, &alpha].iter().find_map(|i| i.as_ref()).map(|i| (i.transform, i.alpha_blending)) else {
+			continue;
+		};
+
+		// Get the common width and height of the channels, which must have equal dimensions
+		let channel_dimensions = [
+			red.as_ref().map(|r| (r.instance.width, r.instance.height)),
+			green.as_ref().map(|g| (g.instance.width, g.instance.height)),
+			blue.as_ref().map(|b| (b.instance.width, b.instance.height)),
+			alpha.as_ref().map(|a| (a.instance.width, a.instance.height)),
+		];
+		if channel_dimensions.iter().all(Option::is_none)
+			|| channel_dimensions
+				.iter()
+				.flatten()
+				.any(|&(x, y)| channel_dimensions.iter().flatten().any(|&(other_x, other_y)| x != other_x || y != other_y))
+		{
+			continue;
+		}
+		let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else { continue };
+
+		// Create a new image for this instance output
+		let mut image = Image::new(width, height, Color::TRANSPARENT);
+
+		// Iterate over all pixels in the image and set the color channels
+		for y in 0..image.height() {
+			for x in 0..image.width() {
+				let image_pixel = image.get_pixel_mut(x, y).unwrap();
+
+				if let Some(r) = red.as_ref().and_then(|r| r.instance.get_pixel(x, y)) {
+					image_pixel.set_red(r.l().cast_linear_channel());
+				} else {
+					image_pixel.set_red(Channel::from_linear(0.));
+				}
+				if let Some(g) = green.as_ref().and_then(|g| g.instance.get_pixel(x, y)) {
+					image_pixel.set_green(g.l().cast_linear_channel());
+				} else {
+					image_pixel.set_green(Channel::from_linear(0.));
+				}
+				if let Some(b) = blue.as_ref().and_then(|b| b.instance.get_pixel(x, y)) {
+					image_pixel.set_blue(b.l().cast_linear_channel());
+				} else {
+					image_pixel.set_blue(Channel::from_linear(0.));
+				}
+				if let Some(a) = alpha.as_ref().and_then(|a| a.instance.get_pixel(x, y)) {
+					image_pixel.set_alpha(a.l().cast_linear_channel());
+				} else {
+					image_pixel.set_alpha(Channel::from_linear(1.));
+				}
+			}
+		}
+
+		// Add this instance to the result table
+		result_table.push(Instance {
+			instance: image,
+			transform,
+			alpha_blending,
+			source_node_id: None,
+		});
 	}
 
 	result_table
 }
 
 #[node_macro::node(category("Raster"))]
-fn combine_channels<_I, Red, Green, Blue, Alpha>(
-	_: impl Ctx,
-	_primary: (),
-	#[implementations(ImageFrameTable<Color>)] red: Red,
-	#[implementations(ImageFrameTable<Color>)] green: Green,
-	#[implementations(ImageFrameTable<Color>)] blue: Blue,
-	#[implementations(ImageFrameTable<Color>)] alpha: Alpha,
-) -> ImageFrameTable<Color>
-where
-	_I: Pixel + Luminance,
-	Red: Bitmap<Pixel = _I>,
-	Green: Bitmap<Pixel = _I>,
-	Blue: Bitmap<Pixel = _I>,
-	Alpha: Bitmap<Pixel = _I>,
-{
-	let dimensions = [red.dim(), green.dim(), blue.dim(), alpha.dim()];
-	if dimensions.iter().any(|&(x, y)| x == 0 || y == 0) || dimensions.iter().any(|&(x, y)| dimensions.iter().any(|&(other_x, other_y)| x != other_x || y != other_y)) {
-		return ImageFrameTable::one_empty_image();
-	}
-
-	let mut image = Image::new(red.width(), red.height(), Color::TRANSPARENT);
-
-	for y in 0..image.height() {
-		for x in 0..image.width() {
-			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			if let Some(r) = red.get_pixel(x, y) {
-				image_pixel.set_red(r.l().cast_linear_channel());
-			}
-			if let Some(g) = green.get_pixel(x, y) {
-				image_pixel.set_green(g.l().cast_linear_channel());
-			}
-			if let Some(b) = blue.get_pixel(x, y) {
-				image_pixel.set_blue(b.l().cast_linear_channel());
-			}
-			if let Some(a) = alpha.get_pixel(x, y) {
-				image_pixel.set_alpha(a.l().cast_linear_channel());
-			}
-		}
-	}
-
-	ImageFrameTable::new(image)
-}
-
-#[node_macro::node(category("Raster"))]
-fn mask<_P, _S, Input, Stencil>(
+fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
-	#[implementations(ImageFrameTable<Color>)]
-	mut image: Input,
+	image: RasterDataTable<Color>,
 	/// The stencil to be used for masking.
-	#[implementations(ImageFrameTable<Color>)]
 	#[expose]
-	stencil: Stencil,
-) -> Input
-where
-	// _P is the color of the input image. It must have an alpha channel because that is going to be modified by the mask.
-	_P: Alpha,
-	// _S is the color of the stencil. It must have a luminance channel because that is used to mask the input image.
-	_S: Luminance,
-	// Input image
-	Input: Transform + BitmapMut<Pixel = _P>,
-	// Stencil
-	Stencil: Transform + Sample<Pixel = _S>,
-{
-	let image_size = DVec2::new(image.width() as f64, image.height() as f64);
-	let mask_size = stencil.transform().decompose_scale();
-
-	if mask_size == DVec2::ZERO {
+	stencil: RasterDataTable<Color>,
+) -> RasterDataTable<Color> {
+	// TODO: Support multiple stencil instances
+	let Some(stencil_instance) = stencil.instance_iter().next() else {
+		// No stencil provided so we return the original image
 		return image;
-	}
+	};
+	let stencil_size = DVec2::new(stencil_instance.instance.width as f64, stencil_instance.instance.height as f64);
 
-	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = image.transform() * DAffine2::from_scale(1. / image_size);
-	let stencil_transform_inverse = stencil.transform().inverse();
+	let mut result_table = RasterDataTable::default();
 
-	let area = bg_to_fg.transform_vector2(DVec2::ONE);
-	for y in 0..image.height() {
-		for x in 0..image.width() {
-			let image_point = DVec2::new(x as f64, y as f64);
-			let mut mask_point = bg_to_fg.transform_point2(image_point);
-			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-			mask_point = stencil.transform().transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+	for mut image_instance in image.instance_iter() {
+		let image_size = DVec2::new(image_instance.instance.width as f64, image_instance.instance.height as f64);
+		let mask_size = stencil_instance.transform.decompose_scale();
 
-			let image_pixel = image.get_pixel_mut(x, y).unwrap();
-			if let Some(mask_pixel) = stencil.sample(mask_point, area) {
+		if mask_size == DVec2::ZERO {
+			continue;
+		}
+
+		// Transforms a point from the background image to the foreground image
+		let bg_to_fg = image_instance.transform * DAffine2::from_scale(1. / image_size);
+		let stencil_transform_inverse = stencil_instance.transform.inverse();
+
+		for y in 0..image_instance.instance.height {
+			for x in 0..image_instance.instance.width {
+				let image_point = DVec2::new(x as f64, y as f64);
+				let mask_point = bg_to_fg.transform_point2(image_point);
+				let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
+				let mask_point = stencil_instance.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
+				let mask_point = (DAffine2::from_scale(stencil_size) * stencil_instance.transform.inverse()).transform_point2(mask_point);
+
+				let image_pixel = image_instance.instance.get_pixel_mut(x, y).unwrap();
+				let mask_pixel = stencil_instance.instance.sample(mask_point);
 				*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 			}
 		}
+
+		result_table.push(image_instance);
 	}
 
-	image
-}
-
-// #[derive(Debug, Clone, Copy)]
-// pub struct BlendImageTupleNode<P, Fg, MapFn> {
-// 	map_fn: MapFn,
-// 	_p: PhantomData<P>,
-// 	_fg: PhantomData<Fg>,
-// }
-
-#[node_macro::node(skip_impl)]
-async fn blend_image_tuple<_P, MapFn, _Fg>(images: (ImageFrameTable<_P>, _Fg), map_fn: &'n MapFn) -> ImageFrameTable<_P>
-where
-	_P: Alpha + Pixel + Debug + Send,
-	MapFn: for<'any_input> Node<'any_input, (_P, _P), Output = _P> + 'n + Clone,
-	_Fg: Sample<Pixel = _P> + Transform + Clone + Send + 'n,
-	GraphicElement: From<Image<_P>>,
-{
-	let (background, foreground) = images;
-
-	blend_image(foreground, background, map_fn)
-}
-
-fn blend_image<'input, _P, MapFn, Frame, Background>(foreground: Frame, background: Background, map_fn: &'input MapFn) -> Background
-where
-	MapFn: Node<'input, (_P, _P), Output = _P>,
-	_P: Pixel + Alpha + Debug,
-	Frame: Sample<Pixel = _P> + Transform,
-	Background: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
-{
-	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
-}
-
-pub fn blend_image_closure<_P, MapFn, Frame, Background>(foreground: Frame, mut background: Background, map_fn: MapFn) -> Background
-where
-	MapFn: Fn(_P, _P) -> _P,
-	_P: Pixel + Alpha + Debug,
-	Frame: Sample<Pixel = _P> + Transform,
-	Background: BitmapMut<Pixel = _P> + Sample<Pixel = _P> + Transform,
-{
-	let background_size = DVec2::new(background.width() as f64, background.height() as f64);
-
-	// Transforms a point from the background image to the foreground image
-	let bg_to_fg = background.transform() * DAffine2::from_scale(1. / background_size);
-
-	// Footprint of the foreground image (0,0) (1, 1) in the background image space
-	let bg_aabb = Bbox::unit().affine_transform(background.transform().inverse() * foreground.transform()).to_axis_aligned_bbox();
-
-	// Clamp the foreground image to the background image
-	let start = (bg_aabb.start * background_size).max(DVec2::ZERO).as_uvec2();
-	let end = (bg_aabb.end * background_size).min(background_size).as_uvec2();
-
-	let area = bg_to_fg.transform_point2(DVec2::new(1., 1.)) - bg_to_fg.transform_point2(DVec2::ZERO);
-	for y in start.y..end.y {
-		for x in start.x..end.x {
-			let bg_point = DVec2::new(x as f64, y as f64);
-			let fg_point = bg_to_fg.transform_point2(bg_point);
-
-			if let Some(src_pixel) = foreground.sample(fg_point, area) {
-				if let Some(dst_pixel) = background.get_pixel_mut(x, y) {
-					*dst_pixel = map_fn(src_pixel, *dst_pixel);
-				}
-			}
-		}
-	}
-
-	background
+	result_table
 }
 
 #[node_macro::node(category(""))]
-fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DAffine2) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::empty();
+fn extend_image_to_bounds(_: impl Ctx, image: RasterDataTable<Color>, bounds: DAffine2) -> RasterDataTable<Color> {
+	let mut result_table = RasterDataTable::default();
 
 	for mut image_instance in image.instance_iter() {
 		let image_aabb = Bbox::unit().affine_transform(image_instance.transform).to_axis_aligned_bbox();
@@ -311,13 +284,13 @@ fn extend_image_to_bounds(_: impl Ctx, image: ImageFrameTable<Color>, bounds: DA
 }
 
 #[node_macro::node(category("Debug: Raster"))]
-fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> ImageFrameTable<Color> {
+fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTable<Color> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
 
-	let mut result_table = ImageFrameTable::new(image);
+	let mut result_table = RasterDataTable::new(image);
 	let image_instance = result_table.get_mut(0).unwrap();
 	*image_instance.transform = transform;
 	*image_instance.alpha_blending = AlphaBlending::default();
@@ -328,7 +301,7 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> ImageFrameTabl
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-fn image(_: impl Ctx, _primary: (), image: ImageFrameTable<Color>) -> ImageFrameTable<Color> {
+fn image(_: impl Ctx, _primary: (), image: RasterDataTable<Color>) -> RasterDataTable<Color> {
 	image
 }
 
@@ -451,7 +424,7 @@ fn noise_pattern(
 	cellular_distance_function: CellularDistanceFunction,
 	cellular_return_type: CellularReturnType,
 	cellular_jitter: f64,
-) -> ImageFrameTable<Color> {
+) -> RasterDataTable<Color> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -469,7 +442,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::one_empty_image();
+		return RasterDataTable::default();
 	}
 
 	let footprint_scale = footprint.scale();
@@ -513,9 +486,12 @@ fn noise_pattern(
 				}
 			}
 
-			let mut result = ImageFrameTable::new(image);
-			*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-			*result.one_instance_mut().alpha_blending = AlphaBlending::default();
+			let mut result = RasterDataTable::default();
+			result.push(Instance {
+				instance: image,
+				transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+				..Default::default()
+			});
 
 			return result;
 		}
@@ -575,15 +551,18 @@ fn noise_pattern(
 		}
 	}
 
-	let mut result = ImageFrameTable::new(image);
-	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	*result.one_instance_mut().alpha_blending = AlphaBlending::default();
+	let mut result = RasterDataTable::default();
+	result.push(Instance {
+		instance: image,
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		..Default::default()
+	});
 
 	result
 }
 
 #[node_macro::node(category("Raster"))]
-fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<Color> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -595,7 +574,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return ImageFrameTable::one_empty_image();
+		return RasterDataTable::default();
 	}
 
 	let scale = footprint.scale();
@@ -623,9 +602,12 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> ImageFrameTable<Color> {
 		data,
 		..Default::default()
 	};
-	let mut result = ImageFrameTable::new(image);
-	*result.transform_mut() = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	*result.one_instance_mut().alpha_blending = Default::default();
+	let mut result = RasterDataTable::default();
+	result.push(Instance {
+		instance: image,
+		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		..Default::default()
+	});
 
 	result
 }

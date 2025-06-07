@@ -3813,6 +3813,15 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
+	pub fn replace_reference_name(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: String) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node metadata in replace_reference_name");
+			return;
+		};
+		node_metadata.persistent_metadata.reference = Some(reference_name);
+	}
+
+	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn set_manual_compostion(&mut self, node_id: &NodeId, network_path: &[NodeId], manual_composition: Option<Type>) {
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_implementation");
