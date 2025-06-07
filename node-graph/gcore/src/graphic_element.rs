@@ -29,6 +29,13 @@ impl core::hash::Hash for AlphaBlending {
 		self.blend_mode.hash(state);
 	}
 }
+impl std::fmt::Display for AlphaBlending {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let round = |x: f32| (x * 1e3).round() / 1e3;
+		write!(f, "Opacity: {}% — Blend Mode: {}", round(self.opacity * 100.), self.blend_mode)
+	}
+}
+
 impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
