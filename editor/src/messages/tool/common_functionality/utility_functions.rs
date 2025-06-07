@@ -1,7 +1,10 @@
+use core::f64;
+
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
+use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
@@ -136,4 +139,119 @@ pub fn is_visible_point(
 			}
 		}
 	}
+}
+
+/// Calculates similarity metric between new bezier curve and two old beziers by using sampled points
+pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, points1: &Vec<DVec2>, n: usize) -> f64 {
+	let start_handle_length = a.exp();
+	let end_handle_length = b.exp();
+
+	// Calculate the similairty somehow using the new bezier curve
+	let c1: DVec2 = p1 + d1 * start_handle_length;
+	let c2: DVec2 = p3 + d2 * end_handle_length;
+
+	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
+
+	let points = new_curve.compute_lookup_table(Some(2 * n), None).collect::<Vec<_>>();
+
+	let dist = points1.iter().zip(points.iter()).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
+	let dist = dist / (2. * (n as f64));
+
+	dist
+}
+
+/// Calculates the handles lengths for a bezier curve with fixed handle directions and passing through a given point p2 with parameter t
+pub fn calculate_curve_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2) -> (f64, f64) {
+	let a = 3. * (1. - t).powi(2) * t;
+	let b = 3. * (1. - t) * t.powi(2);
+
+	let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
+	let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
+
+	let cross_product = d1.x * d2.y - d1.y * d2.x;
+	let det = a * b * cross_product;
+
+	let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
+	let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
+
+	(start_handle_length, end_handle_length)
+}
+
+// Calculate optimal handle lengths with adam optimization
+pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
+	let h = 1e-6;
+	let tol = 1e-6;
+	let max_iter = 200;
+
+	let mut a = (5.0f64).ln();
+	let mut b = (5.0f64).ln();
+
+	let mut m_a = 0.0;
+	let mut v_a = 0.0;
+	let mut m_b = 0.0;
+	let mut v_b = 0.0;
+
+	let initial_alpha = 0.05;
+	let decay_rate: f64 = 0.99;
+
+	let beta1 = 0.9;
+	let beta2 = 0.999;
+	let epsilon = 1e-8;
+
+	let n = 20;
+
+	let farther_segment = if !(farther_segment.start.distance(p1) < f64::EPSILON) {
+		farther_segment.reverse()
+	} else {
+		farther_segment
+	};
+
+	let other_segment = if !(other_segment.end.distance(p3) < f64::EPSILON) {
+		other_segment.reverse()
+	} else {
+		other_segment
+	};
+
+	//Now we sample points proportional to the lengths of the beziers
+	let l1 = farther_segment.length(None);
+	let l2 = other_segment.length(None);
+	let ratio = l1 / (l1 + l2);
+	let n_points1 = ((2 * n) as f64 * ratio).floor() as usize;
+	let mut points1 = farther_segment.compute_lookup_table(Some(n_points1), None).collect::<Vec<_>>();
+	let mut points2 = other_segment.compute_lookup_table(Some(n), None).collect::<Vec<_>>();
+	points1.append(&mut points2);
+
+	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };
+
+	for t in 1..=max_iter {
+		let dfa = (f(a + h, b) - f(a - h, b)) / (2.0 * h);
+		let dfb = (f(a, b + h) - f(a, b - h)) / (2.0 * h);
+
+		m_a = beta1 * m_a + (1.0 - beta1) * dfa;
+		m_b = beta1 * m_b + (1.0 - beta1) * dfb;
+
+		v_a = beta2 * v_a + (1.0 - beta2) * dfa * dfa;
+		v_b = beta2 * v_b + (1.0 - beta2) * dfb * dfb;
+
+		let m_a_hat = m_a / (1.0 - beta1.powi(t));
+		let v_a_hat = v_a / (1.0 - beta2.powi(t));
+		let m_b_hat = m_b / (1.0 - beta1.powi(t));
+		let v_b_hat = v_b / (1.0 - beta2.powi(t));
+
+		let alpha_t = initial_alpha * decay_rate.powi(t);
+
+		// Update log-lengths
+		a -= alpha_t * m_a_hat / (v_a_hat.sqrt() + epsilon);
+		b -= alpha_t * m_b_hat / (v_b_hat.sqrt() + epsilon);
+
+		// Convergence check
+		if dfa.abs() < tol && dfb.abs() < tol {
+			break;
+		}
+	}
+
+	let len1 = a.exp().max(min_len1);
+	let len2 = b.exp().max(min_len2);
+
+	(d1 * len1, d2 * len2)
 }
