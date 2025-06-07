@@ -1522,6 +1522,7 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction) -> VectorDataTable {
+	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
 	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
 		let bezpath_segment_count = bezpath.segments().count();
 
@@ -1540,7 +1541,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			new_segments.push(second);
 		}
 
-		// Append new segments generated to match the number of segments to the target_bezpath
+		// Append the new segments.
 		if count != 0 {
 			// Remove the last segment as it is already appended to the new_segments.
 			let mut is_closed = false;
