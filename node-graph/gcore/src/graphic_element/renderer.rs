@@ -921,6 +921,10 @@ impl GraphicElementRendered for RasterDataTable<Color> {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new(subpath, 0.));
 	}
+
+	fn to_graphic_element(&self) -> GraphicElement {
+		GraphicElement::RasterData(self.clone())
+	}
 }
 
 impl GraphicElementRendered for GraphicElement {

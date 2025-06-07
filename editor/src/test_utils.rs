@@ -36,30 +36,35 @@ impl EditorTestUtils {
 		Self { editor, runtime }
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Instrumented> + 'a {
+	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
 		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Instrumented {
+		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
 			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 			let exector = &mut portfolio.executor;
 			let document = portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap();
 
-			let instrumented = exector.update_node_graph_instrumented(document).expect("update_node_graph_instrumented failed");
+			let instrumented = match exector.update_node_graph_instrumented(document) {
+				Ok(instrumented) => instrumented,
+				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
+			};
 
 			let viewport_resolution = glam::UVec2::ONE;
-			exector
-				.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default())
-				.expect("submit_current_node_graph_evaluation failed");
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, viewport_resolution, Default::default()) {
+				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+			}
 			runtime.run().await;
 
 			let mut messages = VecDeque::new();
-			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
+			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
+				return Err(format!("Graph should render\n\n{e}"));
+			}
 			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
 
 			for message in frontend_messages {
 				message.check_node_graph_error();
 			}
 
-			instrumented
+			Ok(instrumented)
 		}
 
 		run(&mut self.editor, &mut self.runtime)
@@ -69,7 +74,9 @@ impl EditorTestUtils {
 		self.editor.handle_message(message);
 
 		// Required to process any buffered messages
-		self.eval_graph().await;
+		if let Err(e) = self.eval_graph().await {
+			panic!("Failed to evaluate graph: {e}");
+		}
 	}
 
 	pub async fn new_document(&mut self) {
