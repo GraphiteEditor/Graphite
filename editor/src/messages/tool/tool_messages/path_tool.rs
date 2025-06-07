@@ -80,8 +80,8 @@ pub enum PathToolMessage {
 		snap_angle: Key,
 		lock_angle: Key,
 		delete_segment: Key,
-		temporary_toggle_colinear_molding: Key,
-		permanent_toggle_colinear_molding: Key,
+		momentary_colinear_molding: Key,
+		toggle_colinear_molding: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
@@ -90,8 +90,8 @@ pub enum PathToolMessage {
 		snap_angle: Key,
 		lock_angle: Key,
 		delete_segment: Key,
-		temporary_toggle_colinear_molding: Key,
-		permanent_toggle_colinear_molding: Key,
+		momentary_colinear_molding: Key,
+		toggle_colinear_molding: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -1256,8 +1256,8 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
-					temporary_toggle_colinear_molding,
-					permanent_toggle_colinear_molding,
+					momentary_colinear_molding,
+					toggle_colinear_molding,
 				},
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
@@ -1277,8 +1277,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
-						temporary_toggle_colinear_molding,
-						permanent_toggle_colinear_molding,
+						momentary_colinear_molding,
+						toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1288,8 +1288,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
-						temporary_toggle_colinear_molding,
-						permanent_toggle_colinear_molding,
+						momentary_colinear_molding,
+						toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1306,8 +1306,8 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
-					temporary_toggle_colinear_molding,
-					permanent_toggle_colinear_molding,
+					momentary_colinear_molding,
+					toggle_colinear_molding,
 				},
 			) => {
 				let mut selected_only_handles = true;
@@ -1379,8 +1379,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
-						temporary_toggle_colinear_molding,
-						permanent_toggle_colinear_molding,
+						momentary_colinear_molding,
+						toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1390,8 +1390,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
-						temporary_toggle_colinear_molding,
-						permanent_toggle_colinear_molding,
+						momentary_colinear_molding,
+						toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1402,8 +1402,8 @@ impl Fsm for PathToolFsmState {
 			(
 				PathToolFsmState::MoldingSegment,
 				PathToolMessage::PointerMove {
-					temporary_toggle_colinear_molding,
-					permanent_toggle_colinear_molding,
+					momentary_colinear_molding,
+					toggle_colinear_molding,
 					..
 				},
 			) => {
@@ -1411,17 +1411,17 @@ impl Fsm for PathToolFsmState {
 					tool_data.molding_segment = true;
 				}
 
-				let temporary_toggle_colinear_molding = input.keyboard.get(temporary_toggle_colinear_molding as usize);
-				let permanent_toggle_colinear_molding = input.keyboard.get(permanent_toggle_colinear_molding as usize);
+				let momentary_colinear_molding = input.keyboard.get(momentary_colinear_molding as usize);
+				let toggle_colinear_molding = input.keyboard.get(toggle_colinear_molding as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment {
 					if let Some(molding_segment_handles) = tool_data.molding_info {
-						if permanent_toggle_colinear_molding && !tool_data.previous_permanent_toggle_state {
+						if toggle_colinear_molding && !tool_data.previous_permanent_toggle_state {
 							tool_data.colinear_toggle_state = !tool_data.colinear_toggle_state;
 						}
 
-						tool_data.previous_permanent_toggle_state = permanent_toggle_colinear_molding;
+						tool_data.previous_permanent_toggle_state = toggle_colinear_molding;
 						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 							document,
 							responses,
@@ -1429,8 +1429,8 @@ impl Fsm for PathToolFsmState {
 							molding_segment_handles.1,
 							input.mouse.position,
 							MOLDING_FALLOFF,
-							permanent_toggle_colinear_molding,
-							temporary_toggle_colinear_molding,
+							toggle_colinear_molding,
+							momentary_colinear_molding,
 							tool_data.temporary_adjacent_handles_while_molding,
 							tool_data.colinear_toggle_state,
 						);
@@ -1505,8 +1505,8 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
-					temporary_toggle_colinear_molding,
-					permanent_toggle_colinear_molding,
+					momentary_colinear_molding,
+					toggle_colinear_molding,
 				},
 			) => {
 				// Auto-panning
@@ -1518,8 +1518,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
-						temporary_toggle_colinear_molding,
-						permanent_toggle_colinear_molding,
+						momentary_colinear_molding,
+						toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1529,8 +1529,8 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
-						temporary_toggle_colinear_molding,
-						permanent_toggle_colinear_molding,
+						momentary_colinear_molding,
+						toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1598,12 +1598,14 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::MoldingSegment, PathToolMessage::Escape | PathToolMessage::RightClick) => {
-				// Undo the moulding and go back to the state before
+				// Undo the molding and go back to the state before
 				tool_data.molding_info = None;
 				tool_data.molding_segment = false;
 				tool_data.temporary_adjacent_handles_while_molding = None;
+
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+
 				PathToolFsmState::Ready
 			}
 			// Mouse up
@@ -1951,13 +1953,8 @@ impl Fsm for PathToolFsmState {
 				]),
 			]),
 			PathToolFsmState::MoldingSegment => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment"),
-					HintInfo::keys([Key::KeyC], "Disable/ Enable Colinear Molding").prepend_plus(), //These should only occur
-					HintInfo::keys([Key::Alt], "Undo Colinear Molding").prepend_plus(),
-				]),
+				HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]),
 			]),
 		};
 

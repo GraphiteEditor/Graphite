@@ -277,8 +277,9 @@ impl ClosestSegment {
 		tangent.perp()
 	}
 
-	/// Molding the bezier curve
-	/// Returns adjacent handles' HandleId if colinearity is broken temporarily
+	/// Molding the bezier curve.
+	/// Returns adjacent handles' [`HandleId`] if colinearity is broken temporarily.
+	#[allow(clippy::too_many_arguments)]
 	pub fn mold_handle_positions(
 		&self,
 		document: &DocumentMessageHandler,
@@ -287,9 +288,9 @@ impl ClosestSegment {
 		c2: DVec2,
 		new_b: DVec2,
 		falloff: f64,
-		permanent_toggle_colinear: bool,
-		temporary_toggle_colinear: bool,
-		temporary_adjacent_handles: Option<[Option<HandleId>; 2]>,
+		toggle_colinear: bool,
+		momentary_colinear: bool,
+		momentary_adjacent_handles: Option<[Option<HandleId>; 2]>,
 		colinear_toggle_state: bool,
 	) -> Option<[Option<HandleId>; 2]> {
 		let t = self.t;
@@ -313,11 +314,9 @@ impl ClosestSegment {
 
 		// If adjacent segments have colinear handles, their direction is changed but their handle lengths is preserved
 		// TODO: Find something which is more appropriate
-		let Some(vector_data) = document.network_interface.compute_modified_vector(self.layer()) else {
-			return None;
-		};
+		let vector_data = document.network_interface.compute_modified_vector(self.layer())?;
 
-		if permanent_toggle_colinear && colinear_toggle_state {
+		if toggle_colinear && colinear_toggle_state {
 			let mut other_handles = [None, None];
 
 			other_handles[0] = vector_data.other_colinear_handle(handle1);
@@ -327,41 +326,32 @@ impl ClosestSegment {
 			disable_g1_continuity(handle1, &vector_data, layer, responses);
 			disable_g1_continuity(handle2, &vector_data, layer, responses);
 
-			if temporary_adjacent_handles.is_some() {
-				return temporary_adjacent_handles;
-			} else {
-				return Some(other_handles);
-			}
-		} else if temporary_toggle_colinear {
+			if momentary_adjacent_handles.is_some() { momentary_adjacent_handles } else { Some(other_handles) }
+		} else if momentary_colinear {
 			// Disable G1 continuity
 			let mut other_handles = [None, None];
 			other_handles[0] = restore_previous_handle_position(handle1, c1, start, &vector_data, layer, responses);
 			other_handles[1] = restore_previous_handle_position(handle2, c2, end, &vector_data, layer, responses);
 
 			// Store other HandleId in tool data to regain colinearity later
-			if temporary_adjacent_handles.is_some() {
-				return temporary_adjacent_handles;
-			} else {
-				return Some(other_handles);
-			}
+			if momentary_adjacent_handles.is_some() { momentary_adjacent_handles } else { Some(other_handles) }
 		} else {
 			// Move the colinear handles so that colinearity is maintained
 			adjust_handle_colinearity(handle1, start, nc1, &vector_data, layer, responses);
 			adjust_handle_colinearity(handle2, end, nc2, &vector_data, layer, responses);
 
-			if let Some(adj_handles) = temporary_adjacent_handles {
-				if !colinear_toggle_state {
-					if let Some(other_handle1) = adj_handles[0] {
-						restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
-					}
-
-					if let Some(other_handle2) = adj_handles[1] {
-						restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
-					}
-					return None;
+			if let Some(adj_handles) = (!colinear_toggle_state).then_some(momentary_adjacent_handles).flatten() {
+				if let Some(other_handle1) = adj_handles[0] {
+					restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
 				}
+				if let Some(other_handle2) = adj_handles[1] {
+					restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
+				}
+
+				None
+			} else {
+				momentary_adjacent_handles
 			}
-			return temporary_adjacent_handles;
 		}
 	}
 }
