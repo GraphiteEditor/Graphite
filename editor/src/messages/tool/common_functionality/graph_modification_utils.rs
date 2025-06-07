@@ -91,9 +91,9 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		delete_children: false,
 	});
 
-	// Add a flatten vector elements node after the merge
+	// Add a Flatten Path node after the merge
 	let flatten_node_id = NodeId::new();
-	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Vector Elements")
+	let flatten_node = document_node_definitions::resolve_document_node_type("Flatten Path")
 		.expect("Failed to create flatten node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {

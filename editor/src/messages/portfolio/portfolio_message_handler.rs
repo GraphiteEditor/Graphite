@@ -467,7 +467,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 36] = [
+				const REPLACEMENTS: [(&str, &str); 37] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -507,6 +507,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 					("graphene_core::transform::CullNode", "graphene_core::ops::IdentityNode"),
 					("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
+					("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
 				];
 				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
@@ -945,6 +946,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						// We have removed the second input ("bounds"), so we don't add index 1 and we shift the rest of the inputs down by one
 						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
+					}
+
+					if reference == "Flatten Vector Elements" {
+						let node_definition = resolve_document_node_type("Flatten Path").unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+
+						document.network_interface.replace_reference_name(node_id, network_path, "Flatten Path".to_string());
 					}
 				}
 

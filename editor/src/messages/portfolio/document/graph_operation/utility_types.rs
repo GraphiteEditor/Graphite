@@ -289,17 +289,17 @@ impl<'a> ModifyInputsContext<'a> {
 			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
 			return None;
 		};
-		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
+		// If inserting a path node, insert a Flatten Path if the type is a graphic group.
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(GraphicGroupTable) {
-				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
-					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
+				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
+					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
 				};
 				let node_id = NodeId::new();
-				self.network_interface.insert_node(node_id, flatten_vector_elements_definition.default_node_template(), &[]);
+				self.network_interface.insert_node(node_id, flatten_path_definition.default_node_template(), &[]);
 				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
 			}
 		}
