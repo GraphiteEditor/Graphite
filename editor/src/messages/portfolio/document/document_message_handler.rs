@@ -1202,8 +1202,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
+					OverlaysType::FillableIndicator => visibility_settings.fillable_indicator = visible,
 				}
-
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -2348,6 +2348,27 @@ impl DocumentMessageHandler {
 									.disabled(!self.overlays_visibility_settings.anchors)
 									.for_checkbox(&mut checkbox_id)
 									.widget_holder(),
+							]
+						},
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Fill Tool").widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: {
+							let mut checkbox_id = CheckboxId::default();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.fillable_indicator)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::FillableIndicator),
+										}
+										.into()
+									})
+									.for_label(checkbox_id.clone())
+									.widget_holder(),
+								TextLabel::new("Fillable Indicator".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
 							]
 						},
 					},
