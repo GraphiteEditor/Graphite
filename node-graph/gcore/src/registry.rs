@@ -266,11 +266,11 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, _I, _O, N> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
+impl<'input, I, O, N> Node<'input, Any<'input>> for DynAnyNode<I, O, N>
 where
-	_I: 'input + dyn_any::StaticType + WasmNotSend,
-	_O: 'input + dyn_any::StaticType + WasmNotSend,
-	N: 'input + Node<'input, _I, Output = DynFuture<'input, _O>>,
+	I: 'input + dyn_any::StaticType + WasmNotSend,
+	O: 'input + dyn_any::StaticType + WasmNotSend,
+	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	type Output = FutureAny<'input>;
 	#[inline]
@@ -294,11 +294,11 @@ where
 		self.node.serialize()
 	}
 }
-impl<'input, _I, _O, N> DynAnyNode<_I, _O, N>
+impl<'input, I, O, N> DynAnyNode<I, O, N>
 where
-	_I: 'input + dyn_any::StaticType,
-	_O: 'input + dyn_any::StaticType,
-	N: 'input + Node<'input, _I, Output = DynFuture<'input, _O>>,
+	I: 'input + dyn_any::StaticType,
+	O: 'input + dyn_any::StaticType,
+	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	pub const fn new(node: N) -> Self {
 		Self {

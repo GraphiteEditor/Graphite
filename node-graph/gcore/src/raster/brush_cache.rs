@@ -1,5 +1,5 @@
 use crate::Color;
-use crate::graphene_core::raster::image::ImageFrameTable;
+use crate::instances::Instance;
 use crate::raster::Image;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
@@ -16,12 +16,12 @@ struct BrushCacheImpl {
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
-	background: ImageFrameTable<Color>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
-	blended_image: ImageFrameTable<Color>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame"))]
-	last_stroke_texture: ImageFrameTable<Color>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	background: Instance<Image<Color>>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	blended_image: Instance<Image<Color>>,
+	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	last_stroke_texture: Instance<Image<Color>>,
 
 	// A cache for brush textures.
 	#[cfg_attr(feature = "serde", serde(skip))]
@@ -29,9 +29,9 @@ struct BrushCacheImpl {
 }
 
 impl BrushCacheImpl {
-	fn compute_brush_plan(&mut self, mut background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
+	fn compute_brush_plan(&mut self, mut background: Instance<Image<Color>>, input: &[BrushStroke]) -> BrushPlan {
 		// Do background invalidation.
-		if background.one_instance_ref().instance != self.background.one_instance_ref().instance {
+		if background != self.background {
 			self.background = background.clone();
 			return BrushPlan {
 				strokes: input.to_vec(),
@@ -56,7 +56,11 @@ impl BrushCacheImpl {
 		background = core::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = ImageFrameTable::one_empty_image();
+		let mut first_stroke_texture = Instance {
+			instance: Image::default(),
+			transform: glam::DAffine2::ZERO,
+			..Default::default()
+		};
 		let mut first_stroke_point_skip = 0;
 		let strokes = input[num_blended_strokes..].to_vec();
 		if !strokes.is_empty() && self.prev_input.len() > num_blended_strokes {
@@ -80,7 +84,7 @@ impl BrushCacheImpl {
 		}
 	}
 
-	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: ImageFrameTable<Color>, last_stroke_texture: ImageFrameTable<Color>) {
+	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: Instance<Image<Color>>, last_stroke_texture: Instance<Image<Color>>) {
 		self.prev_input = input;
 		self.blended_image = blended_image;
 		self.last_stroke_texture = last_stroke_texture;
@@ -95,8 +99,8 @@ impl Hash for BrushCacheImpl {
 #[derive(Clone, Debug, Default)]
 pub struct BrushPlan {
 	pub strokes: Vec<BrushStroke>,
-	pub background: ImageFrameTable<Color>,
-	pub first_stroke_texture: ImageFrameTable<Color>,
+	pub background: Instance<Image<Color>>,
+	pub first_stroke_texture: Instance<Image<Color>>,
 	pub first_stroke_point_skip: usize,
 }
 
@@ -160,12 +164,12 @@ impl BrushCache {
 		}
 	}
 
-	pub fn compute_brush_plan(&self, background: ImageFrameTable<Color>, input: &[BrushStroke]) -> BrushPlan {
+	pub fn compute_brush_plan(&self, background: Instance<Image<Color>>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.inner.lock().unwrap();
 		inner.compute_brush_plan(background, input)
 	}
 
-	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: ImageFrameTable<Color>, last_stroke_texture: ImageFrameTable<Color>) {
+	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: Instance<Image<Color>>, last_stroke_texture: Instance<Image<Color>>) {
 		let mut inner = self.inner.lock().unwrap();
 		inner.cache_results(input, blended_image, last_stroke_texture)
 	}
