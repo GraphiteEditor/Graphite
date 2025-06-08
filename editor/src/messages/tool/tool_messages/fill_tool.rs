@@ -114,20 +114,20 @@ impl Fsm for FillToolFsmState {
 				if let Some(layer) = document.click(input) {
 					if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 						let mut subpaths = vector_data.stroke_bezier_paths();
-						let close_to_stroke = subpaths.any(|subpath| {
-							close_to_subpath(
-								input.mouse.position,
-								subpath,
-								get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
-								document.metadata().transform_to_viewport(layer),
-							)
-						});
+						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+						let close_to_stroke = graph_layer.upstream_node_id_from_name("Stroke").is_some()
+							&& subpaths.any(|subpath| {
+								close_to_subpath(
+									input.mouse.position,
+									subpath,
+									get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
+									document.metadata().transform_to_viewport(layer),
+								)
+							});
 
 						if close_to_stroke {
 							let overlay_stroke = || {
-								let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 								let mut stroke = Stroke::new(Some(preview_color), get_stroke_width(layer, &document.network_interface).unwrap());
-
 								stroke.transform = document.metadata().transform_to_viewport(layer);
 								let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
 								stroke.line_cap = if let TaggedValue::LineCap(line_cap) = line_cap { *line_cap } else { return None };
@@ -182,14 +182,16 @@ impl Fsm for FillToolFsmState {
 				responses.add(DocumentMessage::AddTransaction);
 				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 					let mut subpaths = vector_data.stroke_bezier_paths();
-					let close_to_stroke = subpaths.any(|subpath| {
-						close_to_subpath(
-							input.mouse.position,
-							subpath,
-							get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
-							document.metadata().transform_to_viewport(layer),
-						)
-					});
+					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
+					let close_to_stroke = graph_layer.upstream_node_id_from_name("Stroke").is_some()
+						&& subpaths.any(|subpath| {
+							close_to_subpath(
+								input.mouse.position,
+								subpath,
+								get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
+								document.metadata().transform_to_viewport(layer),
+							)
+						});
 
 					if close_to_stroke {
 						responses.add(GraphOperationMessage::StrokeColorSet { layer, stroke_color });
