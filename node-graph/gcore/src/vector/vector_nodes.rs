@@ -1429,7 +1429,7 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 		let mut result_vector_data = VectorData::default();
 
 		for bezpath in vector_data_instance.instance.stroke_bezpath_iter() {
-			let positions = bezpath
+			let mut positions = bezpath
 				.elements()
 				.iter()
 				.filter_map(|element| element.end_point())
@@ -1437,6 +1437,10 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 				.collect::<Vec<_>>();
 
 			let closed = bezpath.elements().last().is_some_and(|element| *element == PathEl::ClosePath) && positions.len() > 2;
+
+			if closed && positions.first().zip(positions.last()).is_some_and(|(first, last)| *first == *last) {
+				_ = positions.pop();
+			}
 
 			// Compute control point handles for Bezier spline.
 			let first_handles = if closed {
@@ -1465,7 +1469,6 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 				bezpath.close_path();
 			}
 
-			info!("push a kurbo bezpath spline");
 			result_vector_data.append_bezpath(bezpath);
 		}
 
