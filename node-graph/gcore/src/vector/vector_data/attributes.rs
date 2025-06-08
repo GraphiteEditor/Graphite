@@ -751,51 +751,15 @@ impl VectorData {
 		}
 	}
 
-	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.
-	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, usize, usize)>) -> Option<bezier_rs::Subpath<PointId>> {
+	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point), optionally ignoring discontinuities.
+	/// Returns None if any ids are invalid or if the segments are not continuous.
+	pub fn subpath_from_segments(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, usize, usize)>, ignore_discontinuities: bool) -> Option<bezier_rs::Subpath<PointId>> {
 		let mut first_point = None;
 		let mut groups = Vec::new();
 		let mut last: Option<(usize, bezier_rs::BezierHandles)> = None;
 
 		for (handle, start, end) in segments {
-			first_point = Some(first_point.unwrap_or(start));
-
-			groups.push(bezier_rs::ManipulatorGroup {
-				anchor: self.point_domain.positions()[start],
-				in_handle: last.and_then(|(_, handle)| handle.end()),
-				out_handle: handle.start(),
-				id: self.point_domain.ids()[start],
-			});
-
-			last = Some((end, handle));
-		}
-
-		let closed = groups.len() > 1 && last.map(|(point, _)| point) == first_point;
-
-		if let Some((end, last_handle)) = last {
-			if closed {
-				groups[0].in_handle = last_handle.end();
-			} else {
-				groups.push(bezier_rs::ManipulatorGroup {
-					anchor: self.point_domain.positions()[end],
-					in_handle: last_handle.end(),
-					out_handle: None,
-					id: self.point_domain.ids()[end],
-				});
-			}
-		}
-
-		Some(bezier_rs::Subpath::new(groups, closed))
-	}
-
-	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the segments are not continuous.
-	fn subpath_from_segments(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, usize, usize)>) -> Option<bezier_rs::Subpath<PointId>> {
-		let mut first_point = None;
-		let mut groups = Vec::new();
-		let mut last: Option<(usize, bezier_rs::BezierHandles)> = None;
-
-		for (handle, start, end) in segments {
-			if last.is_some_and(|(previous_end, _)| previous_end != start) {
+			if !ignore_discontinuities && last.is_some_and(|(previous_end, _)| previous_end != start) {
 				warn!("subpath_from_segments that were not continuous");
 				return None;
 			}
@@ -845,7 +809,7 @@ impl VectorData {
 					.zip(self.segment_domain.end_point.get(range)?)
 					.map(|((&handles, &start), &end)| (handles, start, end));
 
-				self.subpath_from_segments(segments_iter).map(|subpath| (id, subpath))
+				self.subpath_from_segments(segments_iter, false).map(|subpath| (id, subpath))
 			})
 	}
 
