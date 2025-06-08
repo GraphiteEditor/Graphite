@@ -144,6 +144,7 @@ fn closed_spline() {
 	// These points are just chosen arbitrary
 	let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
 
+	// List of first handle or second point in a cubic bezier curve.
 	let first_handles = solve_spline_first_handle_closed(&points);
 
 	// Construct the Subpath
@@ -151,18 +152,18 @@ fn closed_spline() {
 	bezpath.move_to(dvec2_to_point(points[0]));
 
 	for i in 0..first_handles.len() {
-		// let p0 = points[i];
 		let next_i = i + 1;
 		let next_i = if next_i == first_handles.len() { 0 } else { next_i };
 
+		// First handle or second point of a cubic Bezier curve.
 		let p1 = dvec2_to_point(first_handles[i]);
+		// Second handle or third point of a cubic Bezier curve.
 		let p2 = dvec2_to_point(2. * points[next_i] - first_handles[next_i]);
+		// Endpoint or fourth point of a cubic Bezier curve.
 		let p3 = dvec2_to_point(points[next_i]);
 
 		bezpath.curve_to(p1, p2, p3);
-		// let in_handle = Some(2. * points[i] - first_handles[i]);
 	}
-	// let subpath = Subpath::new(manipulator_groups, true);
 
 	// For each pair of bézier curves, ensure that the second derivative is continuous
 	for (bézier_a, bézier_b) in bezpath.segments().zip(bezpath.segments().skip(1).chain(bezpath.segments().take(1))) {
