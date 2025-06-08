@@ -161,7 +161,10 @@ mod test_fill {
 	use graphene_std::vector::style::Fill;
 
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
-		let instrumented = editor.eval_graph().await;
+		let instrumented = match editor.eval_graph().await {
+			Ok(instrumented) => instrumented,
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
+		};
 
 		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
 	}
