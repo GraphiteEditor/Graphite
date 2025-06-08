@@ -135,7 +135,7 @@ impl ClickTarget {
 
 				// Check if shape is entirely within selection
 				let any_point_from_subpath = subpath.manipulator_groups().first().map(|group| group.anchor);
-				return any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0);
+				any_point_from_subpath.is_some_and(|shape_point| bezier_iter().map(|bezier| bezier.winding(shape_point)).sum::<i32>() != 0)
 			}
 			ClickTargetType::FreePoint(point) => bezier_iter().map(|bezier: bezier_rs::Bezier| bezier.winding(point.position)).sum::<i32>() != 0,
 		}
@@ -763,16 +763,16 @@ impl GraphicElementRendered for VectorDataTable {
 
 			// For free-floating anchors, we need to add a click target for each
 			let single_anchors_targets = instance.instance.point_domain.ids().iter().filter_map(|&point_id| {
-				if instance.instance.connected_count(point_id) == 0 {
-					let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
-					let point = FreePoint::new(point_id, anchor);
-
-					let mut click_target = ClickTarget::new_with_free_point(point);
-					click_target.apply_transform(*instance.transform);
-					Some(click_target)
-				} else {
-					None
+				if instance.instance.connected_count(point_id) > 0 {
+					return None;
 				}
+
+				let anchor = instance.instance.point_domain.position_from_id(point_id).unwrap_or_default();
+				let point = FreePoint::new(point_id, anchor);
+
+				let mut click_target = ClickTarget::new_with_free_point(point);
+				click_target.apply_transform(*instance.transform);
+				Some(click_target)
 			});
 			click_targets.extend(single_anchors_targets);
 		}

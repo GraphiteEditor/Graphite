@@ -52,6 +52,7 @@ enum TransformCageSizeCategory {
 	Narrow,
 	/// - ![Diagram](https://files.keavon.com/-/OpenPaleturquoiseArthropods/capture.png)
 	Flat,
+	/// A single point in space with no width or height.
 	Point,
 }
 
@@ -670,7 +671,7 @@ impl BoundingBoxManager {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).any()
 	}
 
-	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on points when an element is scaled to zero in both X and Y. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
+	/// Determine if these bounds are point ([`TransformCageSizeCategory::Point`]), which means that the width and height are essentially zero and the bounds are a point with no area. This can happen on points when an element is scaled to zero in both X and Y, or if an element is just a single anchor point. A point transform cage cannot be rotated by a transformation, and its local space remains a point.
 	fn is_bounds_point(&self) -> bool {
 		(self.bounds[0] - self.bounds[1]).abs().cmple(DVec2::splat(MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT)).all()
 	}
@@ -742,7 +743,6 @@ impl BoundingBoxManager {
 				}
 
 				// Prioritize single axis transformations on very small bounds
-				// debug!("check_selected_edges: corner_min_x: {}, corner_min_y: {}", corner_min_x, corner_min_y);
 				if height < corner_min_y && (left || right) {
 					top = false;
 					bottom = false;
@@ -783,7 +783,7 @@ impl BoundingBoxManager {
 		let point = self.is_bounds_point();
 		let within_square_bounds = |center: &DVec2| center.x - threshold_x < cursor.x && cursor.x < center.x + threshold_x && center.y - threshold_y < cursor.y && cursor.y < center.y + threshold_y;
 		if point {
-			return false;
+			false
 		} else if flat {
 			[self.bounds[0], self.bounds[1]].iter().any(within_square_bounds)
 		} else {
@@ -808,7 +808,6 @@ impl BoundingBoxManager {
 			};
 		}
 
-		// debug!("get_cursor: edges: {:?}, rotate: {}, dragging_bounds: {}, skew_edge: {:?}", edges, rotate, dragging_bounds, skew_edge);
 		match edges {
 			Some((top, bottom, left, right)) => match (top, bottom, left, right) {
 				(true, _, false, false) | (_, true, false, false) => MouseCursorIcon::NSResize,

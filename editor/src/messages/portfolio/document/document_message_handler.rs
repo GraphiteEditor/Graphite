@@ -2888,9 +2888,10 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 	click_targets
 		.filter_map(|target| {
 			if let ClickTargetType::Subpath(subpath) = target.target_type() {
-				return Some(subpath.iter());
+				Some(subpath.iter())
+			} else {
+				None
 			}
-			None
 		})
 		.flatten()
 		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
