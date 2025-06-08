@@ -1550,7 +1550,7 @@ impl Fsm for PenToolFsmState {
 											.find(|(id, _, _, _)| id == &edge.id)
 											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
 									});
-									vector_data.subpath_from_segments_ignore_discontinuities(segments)
+									vector_data.subpath_from_segments(segments, true)
 								})
 								.collect();
 
