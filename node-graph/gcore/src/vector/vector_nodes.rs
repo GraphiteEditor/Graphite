@@ -2,7 +2,7 @@ use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_o
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
-use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
+use super::{PointId, SegmentDomain, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
 use crate::raster::image::ImageFrameTable;
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
@@ -16,7 +16,7 @@ use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, PathEl, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 
@@ -1420,16 +1420,23 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::empty();
 
-	for mut vector_data_instance in vector_data.instance_iter() {
+	for vector_data_instance in vector_data.instance_iter() {
 		// Exit early if there are no points to generate splines from.
 		if vector_data_instance.instance.point_domain.positions().is_empty() {
 			continue;
 		}
 
-		let mut segment_domain = SegmentDomain::default();
-		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
-			let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
-			let closed = subpath.closed() && positions.len() > 2;
+		let mut result_vector_data = VectorData::default();
+
+		for bezpath in vector_data_instance.instance.stroke_bezpath_iter() {
+			let positions = bezpath
+				.elements()
+				.iter()
+				.filter_map(|element| element.end_point())
+				.map(|point| point_to_dvec2(point))
+				.collect::<Vec<_>>();
+
+			let closed = bezpath.elements().last().is_some_and(|element| *element == PathEl::ClosePath) && positions.len() > 2;
 
 			// Compute control point handles for Bezier spline.
 			let first_handles = if closed {
@@ -1438,25 +1445,34 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 				bezier_rs::solve_spline_first_handle_open(&positions)
 			};
 
-			let stroke_id = StrokeId::ZERO;
+			let mut bezpath = BezPath::new();
+			if let Some(first_point) = positions.get(0) {
+				bezpath.move_to(dvec2_to_point(*first_point));
+			}
 
 			// Create segments with computed Bezier handles and add them to vector data.
 			for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 				let next_index = (i + 1) % positions.len();
 
-				let start_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();
-				let end_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[next_index].id).unwrap();
+				let p1 = dvec2_to_point(first_handles[i]);
+				let p2 = dvec2_to_point(positions[next_index] * 2. - first_handles[next_index]);
+				let p3 = dvec2_to_point(positions[next_index]);
 
-				let handle_start = first_handles[i];
-				let handle_end = positions[next_index] * 2. - first_handles[next_index];
-				let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
-
-				segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+				bezpath.curve_to(p1, p2, p3);
 			}
+
+			if closed {
+				bezpath.close_path();
+			}
+
+			info!("push a kurbo bezpath spline");
+			result_vector_data.append_bezpath(bezpath);
 		}
 
-		vector_data_instance.instance.segment_domain = segment_domain;
-		result_table.push(vector_data_instance);
+		result_table.push(Instance {
+			instance: result_vector_data,
+			..vector_data_instance
+		});
 	}
 
 	// TODO: remove after pt6 of instance table refactor
