@@ -66,6 +66,7 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	#[serde(default)]
 	pub fillable_indicator: bool,
 }
 
