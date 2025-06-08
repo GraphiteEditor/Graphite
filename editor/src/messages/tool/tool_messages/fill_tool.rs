@@ -3,6 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
 use graph_craft::document::value::TaggedValue;
 use graphene_core::vector::style::Fill;
+use graphene_std::transform::Transform;
 use graphene_std::vector::PointId;
 use graphene_std::vector::style::Stroke;
 
@@ -77,6 +78,9 @@ impl ToolTransition for FillTool {
 
 pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, to_viewport_transform: DAffine2) -> bool {
 	let lookup = subpath.compute_lookup_table(Some(25), None);
+	// TODO: This solution is not ideal, it introduces hysteresis at certain zoom levels when hovering over a stroke.
+	let transform_scale = to_viewport_transform.decompose_scale().x.max(to_viewport_transform.decompose_scale().y);
+	let stroke_width = stroke_width * transform_scale * 1.2;
 
 	lookup
 		.iter()
