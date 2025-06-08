@@ -498,9 +498,14 @@ mod test {
 			println!("-------------------------------------------------");
 			println!("Failed test due to receiving a DisplayDialogError while loading a Graphite demo file.");
 			println!();
+			println!("NOTE:");
+			println!("Document upgrading isn't performed in tests like when opening in the actual editor.");
+			println!("You may need to open and re-save a document in the editor to apply its migrations.");
+			println!();
 			println!("DisplayDialogError details:");
 			println!();
-			println!("Description: {value}");
+			println!("Description:");
+			println!("{value}");
 			println!("-------------------------------------------------");
 			println!();
 
@@ -538,7 +543,9 @@ mod test {
 			});
 
 			// Check if the graph renders
-			editor.eval_graph().await;
+			if let Err(e) = editor.eval_graph().await {
+				print_problem_to_terminal_on_failure(&format!("Failed to evaluate the graph for document '{document_name}':\n{e}"));
+			}
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
