@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
@@ -16,7 +16,7 @@ use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::TAU;
@@ -1028,9 +1028,14 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 		let vector_data = vector_data_instance.instance;
 
 		let mut result = vector_data
-			.bounding_box()
-			.map(|bounding_box| VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1])))
+			.bounding_box_rect()
+			.map(|bbox| {
+				let mut vector_data = VectorData::default();
+				vector_data.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
+				vector_data
+			})
 			.unwrap_or_default();
+
 		result.style = vector_data.style.clone();
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 
@@ -1413,7 +1418,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 				.stroke_bezpath_iter()
 				.flat_map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>()
+					bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>()
 				})
 				.collect::<Vec<f64>>()
 		})
