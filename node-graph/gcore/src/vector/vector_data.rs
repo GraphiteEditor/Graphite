@@ -60,8 +60,8 @@ pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 				region_domain: old.region_domain,
 				upstream_graphic_group: old.upstream_graphic_group,
 			});
-			*vector_data_table.one_instance_mut().transform = old.transform;
-			*vector_data_table.one_instance_mut().alpha_blending = old.alpha_blending;
+			*vector_data_table.instance_mut_iter().next().unwrap().transform = old.transform;
+			*vector_data_table.instance_mut_iter().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_data_table
 		}
 		EitherFormat::VectorDataTable(vector_data_table) => vector_data_table,
@@ -91,6 +91,19 @@ pub struct VectorData {
 	pub upstream_graphic_group: Option<GraphicGroupTable>,
 }
 
+impl Default for VectorData {
+	fn default() -> Self {
+		Self {
+			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
+			colinear_manipulators: Vec::new(),
+			point_domain: PointDomain::new(),
+			segment_domain: SegmentDomain::new(),
+			region_domain: RegionDomain::new(),
+			upstream_graphic_group: None,
+		}
+	}
+}
+
 impl core::hash::Hash for VectorData {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.point_domain.hash(state);
@@ -102,19 +115,6 @@ impl core::hash::Hash for VectorData {
 }
 
 impl VectorData {
-	/// An empty subpath with no data, an identity transform, and a black fill.
-	// TODO: Replace with just `Default`
-	pub const fn empty() -> Self {
-		Self {
-			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
-			colinear_manipulators: Vec::new(),
-			point_domain: PointDomain::new(),
-			segment_domain: SegmentDomain::new(),
-			region_domain: RegionDomain::new(),
-			upstream_graphic_group: None,
-		}
-	}
-
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
@@ -185,7 +185,7 @@ impl VectorData {
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
-		let mut vector_data = Self::empty();
+		let mut vector_data = Self::default();
 
 		for subpath in subpaths.into_iter() {
 			vector_data.append_subpath(subpath, preserve_id);
@@ -466,12 +466,6 @@ impl VectorData {
 	}
 }
 
-impl Default for VectorData {
-	fn default() -> Self {
-		Self::empty()
-	}
-}
-
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -576,6 +570,16 @@ pub enum HandleType {
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,
+}
+
+impl std::fmt::Display for HandleId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self.ty {
+			// I haven't checked if "out" and "in" are reversed, or are accurate translations of the "primary" and "end" terms used in the `HandleType` enum, so this naming is an assumption.
+			HandleType::Primary => write!(f, "{} out", self.segment.inner()),
+			HandleType::End => write!(f, "{} in", self.segment.inner()),
+		}
+	}
 }
 
 impl HandleId {
