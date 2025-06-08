@@ -116,11 +116,6 @@ impl core::hash::Hash for VectorData {
 }
 
 impl VectorData {
-	/// Construct some new vector data from a single subpath with an identity transform and black fill.
-	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
-		Self::from_subpaths([subpath], false)
-	}
-
 	/// Push a subpath to the vector data
 	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &bezier_rs::Subpath<PointId> = subpath.borrow();
@@ -213,7 +208,7 @@ impl VectorData {
 	}
 
 	pub fn from_target_types(target_types: impl IntoIterator<Item = impl Borrow<ClickTargetType>>, preserve_id: bool) -> Self {
-		let mut vector_data = Self::empty();
+		let mut vector_data = Self::default();
 		for target_type in target_types.into_iter() {
 			let target_type = target_type.borrow();
 			match target_type {
