@@ -1,7 +1,4 @@
 use glam::DVec2;
-use kurbo::{BezPath, ParamCurve, ParamCurveDeriv};
-
-use crate::vector::misc::{dvec2_to_point, point_to_dvec2};
 
 /// Solve for the first handle of an open spline. (The opposite handle can be found by mirroring the result about the anchor.)
 pub fn solve_spline_first_handle_open(points: &[DVec2]) -> Vec<DVec2> {
@@ -141,6 +138,9 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 
 #[test]
 fn closed_spline() {
+	use crate::vector::misc::{dvec2_to_point, point_to_dvec2};
+	use kurbo::{BezPath, ParamCurve, ParamCurveDeriv};
+
 	// These points are just chosen arbitrary
 	let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
 

@@ -1,5 +1,6 @@
 use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
+use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, StrokeId, VectorData, VectorDataTable};
@@ -1444,9 +1445,9 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 
 			// Compute control point handles for Bezier spline.
 			let first_handles = if closed {
-				bezier_rs::solve_spline_first_handle_closed(&positions)
+				solve_spline_first_handle_closed(&positions)
 			} else {
-				bezier_rs::solve_spline_first_handle_open(&positions)
+				solve_spline_first_handle_open(&positions)
 			};
 
 			let mut bezpath = BezPath::new();
