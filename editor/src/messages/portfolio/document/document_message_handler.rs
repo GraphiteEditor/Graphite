@@ -32,7 +32,7 @@ use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::image::RasterDataTable;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
@@ -1636,10 +1636,17 @@ impl DocumentMessageHandler {
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
-			targets.iter().all(|target| {
-				let mut subpath = target.subpath().clone();
-				subpath.apply_transform(layer_transform);
-				subpath.is_inside_subpath(&viewport_polygon, None, None)
+			targets.iter().all(|target| match target.target_type() {
+				ClickTargetType::Subpath(subpath) => {
+					let mut subpath = subpath.clone();
+					subpath.apply_transform(layer_transform);
+					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				}
+				ClickTargetType::FreePoint(point) => {
+					let mut point = point.clone();
+					point.apply_transform(layer_transform);
+					viewport_polygon.contains_point(point.position)
+				}
 			})
 		})
 	}
@@ -2879,7 +2886,14 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
 	};
 	click_targets
-		.flat_map(|target| target.subpath().iter())
+		.filter_map(|target| {
+			if let ClickTargetType::Subpath(subpath) = target.target_type() {
+				Some(subpath.iter())
+			} else {
+				None
+			}
+		})
+		.flatten()
 		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
 		.collect()
 }
