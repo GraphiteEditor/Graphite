@@ -53,6 +53,7 @@ pub enum OverlaysType {
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(default = "OverlaysVisibilitySettings::default")]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
@@ -66,7 +67,6 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
-	#[serde(default)]
 	pub fillable_indicator: bool,
 }
 
