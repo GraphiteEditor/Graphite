@@ -1,7 +1,9 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp, Unit};
 use crate::context::EvalContext;
+use crate::lexer::{Span, Token, TokenStream, lexer};
 use crate::value::{Complex, Number, Value};
 use chumsky::container::Seq;
+use chumsky::input::{BorrowInput, ValueInput};
 use chumsky::{Parser, prelude::*};
 use lazy_static::lazy_static;
 use num_complex::ComplexFloat;
@@ -10,95 +12,81 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ParseError<'src> {
-	#[error("Syntax error(s): {0:#?}")]
-	Syntax(Vec<Rich<'src, char>>),
+	#[error("lexical error(s): {0:#?}")]
+	Lex(Vec<Rich<'src, char>>),
+
+	#[error("syntax error(s): {0:#?}")]
+	Parse(Vec<Rich<'src, Token<'src>, Span>>),
 }
 
 impl Node {
-	pub fn try_parse_from_str(s: &str) -> Result<Node, ParseError> {
-		let parsed = chumsky_parser().parse(s);
-		if parsed.has_output() {
-			Ok(parsed.into_output().unwrap())
-		} else {
-			Err(ParseError::Syntax(parsed.into_errors()))
+	/// Lex + parse the source and either return an AST `Node`
+	/// or a typed `ParseError`.
+	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError> {
+		// ── stage 1: lexing ──────────────────────────────────────────────
+		let (tokens_opt, lex_errs) = lexer().parse(src).into_output_errors();
+		if !lex_errs.is_empty() {
+			return Err(ParseError::Lex(lex_errs));
+		}
+		let tokens = TokenStream::new(tokens_opt.expect("lexer always returns tokens with recovery"));
+
+		match parser().parse(tokens.map((0..src.len()).into(), |(t, s)| (t, s))).into_result() {
+			Ok(ast) => Ok(ast),
+			Err(errs) => Err(ParseError::Parse(errs)),
 		}
 	}
 }
 
-pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Err<chumsky::error::Rich<'a, char>>> {
+pub fn parser<'src, I>() -> impl Parser<'src, I, Node, extra::Err<Rich<'src, Token<'src>, Span>>>
+where
+	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+{
 	recursive(|expr| {
-		let float = text::int(10)
-			.then(just('.').map(|c: char| c).then(text::int(10)).or_not())
-			.then(just('e').or(just('E')).then(one_of("+-").or_not()).then(text::int(10)).or_not())
-			.map(|((int_part, opt_frac), opt_exp): ((&str, _), _)| {
-				let mut s: String = int_part.to_string();
-				if let Some((dot, frac)) = opt_frac {
-					s.push(dot);
-					s.push_str(frac);
-				}
-				if let Some(((e, sign), exp)) = opt_exp {
-					s.push(e);
-					if let Some(sign) = sign {
-						s.push(sign);
-					}
-					s.push_str(exp);
-				}
-				Node::Lit(Literal::Float(s.parse().unwrap()))
-			});
+		let constant = select! {Token::Const(x) => Node::Lit(x)};
 
-		let constant = choice((
-			just("pi").or(just("π")).map(|_| Node::Lit(Literal::Float(std::f64::consts::PI))),
-			just("tau").or(just("τ")).map(|_| Node::Lit(Literal::Float(std::f64::consts::TAU))),
-			just("e").map(|_| Node::Lit(Literal::Float(std::f64::consts::E))),
-			just("phi").or(just("φ")).map(|_| Node::Lit(Literal::Float(1.618_033_988_75))),
-			just("inf").or(just("∞")).map(|_| Node::Lit(Literal::Float(f64::INFINITY))),
-			just("i").map(|_| Node::Lit(Literal::Complex(Complex::new(0.0, 1.0)))), // Assuming `Complex` impl
-			just("G").map(|_| Node::Lit(Literal::Float(9.80665))),                  // Standard gravity on Earth
-		));
+		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
 
-		let ident = text::ident().padded();
+		let if_expr = just(Token::If)
+    .ignore_then(args.clone()) // Parses (cond, a, b)
+    .try_map(|args: Vec<Node>, span| {
+        if args.len() != 3 {
+            return Err(Rich::custom(span, "Expected 3 arguments in if(cond, a, b)"));
+        }
+        let mut iter = args.into_iter();
+        let cond = iter.next().unwrap();
+        let if_b = iter.next().unwrap();
+        let else_b = iter.next().unwrap();
+        Ok(Node::Conditional {
+            condition: Box::new(cond),
+            if_block: Box::new(if_b),
+            else_block: Box::new(else_b),
+        })
+    });
 
-		let var = ident.map(|s: &str| Node::Var(s.to_string()));
+		let call = select! {Token::Call(s) => s}
+			.then(args)
+			.try_map(|(name, args): (&str, Vec<Node>), span| Ok(Node::FnCall { name: name.to_string(), expr: args }));
 
-		let args = expr.clone().separated_by(just(',')).collect::<Vec<_>>().delimited_by(just('('), just(')'));
+		let parens = expr.clone().clone().delimited_by(just(Token::LParen), just(Token::RParen));
+		let var = select! { Token::Var(name) => Node::Var(name.to_string()) };
 
-		let call = ident.then(args).map(|(name, args): (&str, Vec<Node>)| Node::FnCall { name: name.to_string(), expr: args });
+		let atom = choice((constant, if_expr, call, parens, var)).boxed();
 
-		let parens = expr.clone().clone().delimited_by(just('('), just(')'));
-
-		let conditional = just("if")
-			.padded()
-			.ignore_then(expr.clone().delimited_by(just('('), just(')')))
-			.padded()
-			.then(expr.clone().delimited_by(just('{'), just('}')))
-			.padded()
-			.then_ignore(just("else"))
-			.padded()
-			.then(expr.clone().delimited_by(just('{'), just('}')))
-			.padded()
-			.map(|((cond, if_b), else_b): ((Node, _), _)| Node::Conditional {
-				condition: Box::new(cond),
-				if_block: Box::new(if_b),
-				else_block: Box::new(else_b),
-			});
-
-		let atom = choice((conditional, float, constant, call, parens, var)).boxed();
-
-		let add_op = choice((just('+').to(BinaryOp::Add), just('-').to(BinaryOp::Sub))).padded();
-		let mul_op = choice((just('*').to(BinaryOp::Mul), just('/').to(BinaryOp::Div))).padded();
-		let pow_op = just('^').to(BinaryOp::Pow).padded();
-		let unary_op = choice((just('-').to(UnaryOp::Neg), just("sqrt").to(UnaryOp::Sqrt))).padded();
+		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
+		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
+		let pow_op = just(Token::Caret).to(BinaryOp::Pow);
+		let unary_op = just(Token::Minus).to(UnaryOp::Neg);
 		let cmp_op = choice((
-			just("<").to(BinaryOp::Lt),
-			just("<=").to(BinaryOp::Leq),
-			just(">").to(BinaryOp::Gt),
-			just(">=").to(BinaryOp::Geq),
-			just("==").to(BinaryOp::Eq),
+			just(Token::Lt).to(BinaryOp::Lt),
+			just(Token::Le).to(BinaryOp::Leq),
+			just(Token::Gt).to(BinaryOp::Gt),
+			just(Token::Ge).to(BinaryOp::Geq),
+			just(Token::EqEq).to(BinaryOp::Eq),
 		));
 
 		let unary = unary_op.repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
 
-		let cmp = unary.clone().foldl(cmp_op.padded().then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
+		let cmp = unary.clone().foldl(cmp_op.then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
 			op,
 			rhs: Box::new(rhs),
@@ -119,13 +107,11 @@ pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Er
 			})
 			.boxed();
 
-		let sum = product.clone().foldl(add_op.then(product).repeated(), |lhs, (op, rhs)| Node::BinOp {
+		product.clone().foldl(add_op.then(product).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
 			op,
 			rhs: Box::new(rhs),
-		});
-
-		sum.padded()
+		})
 	})
 }
 
@@ -147,7 +133,7 @@ mod tests {
 	test_parser! {
 		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.0)),
 		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(#[allow(clippy::approx_constant)] 3.14)),
-		test_parse_ident: "x" => Node::Var("x".to_string()),
+		test_parse_ident: "#x" => Node::Var("x".to_string()),
 		test_parse_unary_neg: "-42" => Node::UnaryOp {
 			expr: Box::new(Node::Lit(Literal::Float(42.0))),
 			op: UnaryOp::Neg,
@@ -167,15 +153,14 @@ mod tests {
 			op: BinaryOp::Pow,
 			rhs: Box::new(Node::Lit(Literal::Float(3.0))),
 		},
-		test_parse_unary_sqrt: "sqrt(16)" => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(16.0))),
-			op: UnaryOp::Sqrt,
+		test_parse_unary_sqrt: "@sqrt(16)" => Node::FnCall {
+			name: "sqrt".to_string(),
+			expr: vec![Node::Lit(Literal::Float(16.0))],
 		},
-		test_parse_sqr_ident: "sqr(16)" => Node::FnCall {
-			 name:"sqr".to_string(),
+		test_parse_i_call: "@i(16)" => Node::FnCall {
+			 name:"i".to_string(),
 			 expr: vec![Node::Lit(Literal::Float(16.0))]
 		},
-
 		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {
@@ -193,7 +178,7 @@ mod tests {
 				rhs: Box::new(Node::Lit(Literal::Float(2.0))),
 			}),
 		},
-		test_conditional_expr: "if (x+3) {0} else {1}" => Node::Conditional{
+		test_conditional_expr: "if (#x+3, 0, 1)" => Node::Conditional{
 			condition: Box::new(Node::BinOp{
 				lhs: Box::new(Node::Var("x".to_string())),
 				op: BinaryOp::Add,

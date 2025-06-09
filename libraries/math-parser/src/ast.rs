@@ -37,7 +37,7 @@ impl Unit {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
 	Float(f64),
 	Complex(Complex),
