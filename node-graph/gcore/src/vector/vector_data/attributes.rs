@@ -869,8 +869,8 @@ impl VectorData {
 		self.build_stroke_path_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
 	}
 
-	/// Construct and returns an iterator of Vec of ([`bezier_rs::ManipulatorGroup<PointId>`], bool) for stroke.
-	/// The boolean in the tuple express if the path is closed.
+	/// Construct and return an iterator of Vec of `(bezier_rs::ManipulatorGroup<PointId>], bool)` for stroke.
+	/// The boolean in the tuple indicates if the path is closed.
 	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup<PointId>>, bool)> {
 		self.build_stroke_path_iter()
 	}
