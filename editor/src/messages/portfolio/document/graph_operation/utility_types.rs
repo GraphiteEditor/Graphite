@@ -15,8 +15,8 @@ use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
-use graphene_std::GraphicGroupTable;
 use graphene_std::vector::{VectorData, VectorDataTable};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -361,24 +361,24 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn stroke_set(&mut self, stroke: Stroke) {
 		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 
-		let input_connector = InputConnector::node(stroke_node_id, 1);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::<Option<Color>>::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 2);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 3);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 4);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 5);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeCap(stroke.cap), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 6);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 7);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, 8);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, 9);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeCap(stroke.cap), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 	}
 
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.

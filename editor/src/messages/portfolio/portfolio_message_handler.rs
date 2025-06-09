@@ -697,16 +697,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 8), old_inputs[3].clone(), network_path);
 						document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
-
-						// 1 Color				|1| -> 1 Color
-						// 2 Weight				|2| -> 2 Weight
-						// 3 Dash Lengths		|*| -> 3 Align
-						// 4 Dash Offset		|5| -> 4 Cap
-						// 5 Line Cap			|6| -> 5 Join
-						// 6 Line Join			|7| -> 6 Miter Limit
-						// 7 Miter Limit		|*| -> 7 Paint Order
-						// 						|3| -> 8 Dash Lengths
-						// 						|4| -> 9 Dash Offset
 					}
 
 					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node

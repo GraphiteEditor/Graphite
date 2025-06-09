@@ -13,6 +13,7 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::image::RasterDataTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
+use graphene_std::NodeInputDecleration;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -370,7 +371,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let weight_node_input_index = 2;
+	let weight_node_input_index = graphene_std::vector::stroke::WeightInput::INDEX;
 	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).find_input("Stroke", weight_node_input_index)? {
 		Some(*width)
 	} else {
