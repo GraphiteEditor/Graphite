@@ -310,6 +310,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			PathToolFsmState::SlidingPoint => actions!(PathToolMessageDiscriminant;
 				PointerMove,
 				DragStop,
+				Escape,
+				RightClick
 			),
 		}
 	}
