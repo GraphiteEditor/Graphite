@@ -15,7 +15,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::transform::Footprint;
@@ -608,8 +608,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(3), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, ImageFrameTable<SRGBA8>>")),
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0)],
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<_, RasterDataTable<SRGBA8>>")),
 								..Default::default()
 							},
 							DocumentNode {
@@ -636,7 +636,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -852,7 +852,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -861,7 +861,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -870,7 +870,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -879,7 +879,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
+									NodeInput::network(concrete!(RasterDataTable<Color>), 0),
 									NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::adjustments::ExtractChannelNode")),
@@ -893,7 +893,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						.collect(),
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -959,13 +959,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
+								inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::ExtractXyNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
@@ -978,7 +978,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 
 						..Default::default()
 					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1019,6 +1019,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		// TODO: Remove this and just use the proto node definition directly
 		DocumentNodeDefinition {
 			identifier: "Brush",
 			category: "Raster",
@@ -1028,10 +1029,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(0), 0)],
 						nodes: vec![DocumentNode {
 							inputs: vec![
-								NodeInput::network(concrete!(ImageFrameTable<Color>), 0),
-								NodeInput::network(concrete!(ImageFrameTable<Color>), 1),
-								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 2),
-								NodeInput::network(concrete!(BrushCache), 3),
+								NodeInput::network(concrete!(RasterDataTable<Color>), 0),
+								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 1),
+								NodeInput::network(concrete!(BrushCache), 2),
 							],
 							manual_composition: Some(concrete!(Context)),
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::brush::BrushNode")),
@@ -1044,15 +1044,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
-						NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), false),
+						NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),
 						NodeInput::value(TaggedValue::BrushCache(BrushCache::new_proto()), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Background", "TODO").into(), ("Bounds", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
+					input_properties: vec![("Background", "TODO").into(), ("Trace", "TODO").into(), ("Cache", "TODO").into()],
 					output_names: vec!["Image".to_string()],
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
@@ -1084,7 +1083,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::MemoNode"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
 					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
@@ -1103,7 +1102,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::memo::ImpureMemoNode"),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
+					inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
 					manual_composition: Some(concrete!(Context)),
 					..Default::default()
 				},
@@ -1770,87 +1769,87 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
-			identifier: "Upload Texture",
-			category: "Debug: GPU",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0), NodeInput::node(NodeId(0), 0)],
-								manual_composition: Some(generic!(T)),
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UploadTextureNode")),
-								..Default::default()
-							},
-							DocumentNode {
-								manual_composition: Some(generic!(T)),
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					inputs: vec![NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("In", "TODO").into()],
-					output_names: vec!["Texture".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Extract Executor".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Upload Texture".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
+		// #[cfg(feature = "gpu")]
+		// DocumentNodeDefinition {
+		// 	identifier: "Upload Texture",
+		// 	category: "Debug: GPU",
+		// 	node_template: NodeTemplate {
+		// 		document_node: DocumentNode {
+		// 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+		// 				exports: vec![NodeInput::node(NodeId(2), 0)],
+		// 				nodes: [
+		// 					DocumentNode {
+		// 						inputs: vec![NodeInput::scope("editor-api")],
+		// 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+		// 						..Default::default()
+		// 					},
+		// 					DocumentNode {
+		// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0), NodeInput::node(NodeId(0), 0)],
+		// 						manual_composition: Some(generic!(T)),
+		// 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::UploadTextureNode")),
+		// 						..Default::default()
+		// 					},
+		// 					DocumentNode {
+		// 						manual_composition: Some(generic!(T)),
+		// 						inputs: vec![NodeInput::node(NodeId(1), 0)],
+		// 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode")),
+		// 						..Default::default()
+		// 					},
+		// 				]
+		// 				.into_iter()
+		// 				.enumerate()
+		// 				.map(|(id, node)| (NodeId(id as u64), node))
+		// 				.collect(),
+		// 				..Default::default()
+		// 			}),
+		// 			inputs: vec![NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true)],
+		// 			..Default::default()
+		// 		},
+		// 		persistent_node_metadata: DocumentNodePersistentMetadata {
+		// 			input_properties: vec![("In", "TODO").into()],
+		// 			output_names: vec!["Texture".to_string()],
+		// 			network_metadata: Some(NodeNetworkMetadata {
+		// 				persistent_metadata: NodeNetworkPersistentMetadata {
+		// 					node_metadata: [
+		// 						DocumentNodeMetadata {
+		// 							persistent_metadata: DocumentNodePersistentMetadata {
+		// 								display_name: "Extract Executor".to_string(),
+		// 								node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
+		// 								..Default::default()
+		// 							},
+		// 							..Default::default()
+		// 						},
+		// 						DocumentNodeMetadata {
+		// 							persistent_metadata: DocumentNodePersistentMetadata {
+		// 								display_name: "Upload Texture".to_string(),
+		// 								node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+		// 								..Default::default()
+		// 							},
+		// 							..Default::default()
+		// 						},
+		// 						DocumentNodeMetadata {
+		// 							persistent_metadata: DocumentNodePersistentMetadata {
+		// 								display_name: "Cache".to_string(),
+		// 								node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
+		// 								..Default::default()
+		// 							},
+		// 							..Default::default()
+		// 						},
+		// 					]
+		// 					.into_iter()
+		// 					.enumerate()
+		// 					.map(|(id, node)| (NodeId(id as u64), node))
+		// 					.collect(),
+		// 					..Default::default()
+		// 				},
+		// 				..Default::default()
+		// 			}),
+		// 			..Default::default()
+		// 		},
+		// 	},
+		// 	description: Cow::Borrowed("TODO"),
+		// 	properties: None,
+		// },
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "Debug",
@@ -1883,7 +1882,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 		document_node: DocumentNode {
 		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
 		// 			inputs: vec![
-		// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::empty()), true),
+		// 				NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
 		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),
 		// 			],
 		// 			..Default::default()
@@ -2647,7 +2646,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 // 				exports: vec![NodeInput::node(NodeId(1), 0)],
 // 				nodes: [
 // 					DocumentNode {
-// 						inputs: vec![NodeInput::network(concrete!(ImageFrameTable<Color>), 0)],
+// 						inputs: vec![NodeInput::network(concrete!(RasterDataTable<Color>), 0)],
 // 						implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 // 						manual_composition: Some(concrete!(Context)),
 // 						skip_deduplication: true,
@@ -2685,7 +2684,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 // 				..Default::default()
 // 			}),
 // 			inputs: vec![
-// 				NodeInput::value(TaggedValue::ImageFrame(ImageFrameTable::one_empty_image()), true),
+// 				NodeInput::value(TaggedValue::RasterData(RasterDataTable::default()), true),
 // 				NodeInput::scope("editor-api"),
 // 				NodeInput::value(TaggedValue::ImaginateController(Default::default()), false),
 // 				NodeInput::value(TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
