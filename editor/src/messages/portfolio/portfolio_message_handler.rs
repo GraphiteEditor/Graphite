@@ -777,7 +777,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 
 					// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-					if reference == "Text" && inputs_count != 8 {
+					if reference == "Text" && inputs_count != 9 {
 						let node_definition = resolve_document_node_type(reference).unwrap();
 						let document_node = node_definition.default_node_template().document_node;
 						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
@@ -814,6 +814,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(
 							&InputConnector::node(*node_id, 7),
 							NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+							network_path,
+						);
+						document.network_interface.set_input(
+							&InputConnector::node(*node_id, 8),
+							NodeInput::value(TaggedValue::TextAlignment(TypesettingConfig::default().text_alignment), false),
 							network_path,
 						);
 					}

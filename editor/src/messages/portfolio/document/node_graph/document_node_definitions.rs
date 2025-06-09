@@ -14,6 +14,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
+use graphene_core::text::TextAlignment;
 use graphene_std::ops::XY;
 use graphene_std::raster::brush_cache::BrushCache;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
@@ -1555,6 +1556,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+						NodeInput::value(TaggedValue::TextAlignment(TypesettingConfig::default().text_alignment), false),
 					],
 					..Default::default()
 				},
@@ -1608,6 +1610,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							}),
 						),
+						PropertiesRow::with_override("Text Alignment", "TODO", WidgetOverride::Custom("text_alignment".to_string())),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
@@ -2877,6 +2880,16 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 				ColorInput::default().allow_none(false),
 			)])
+		}),
+	);
+	map.insert(
+		"text_alignment".to_string(),
+		Box::new(|node_id, index, context| {
+			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
+			let text_alignment = enum_choice::<TextAlignment>()
+				.for_socket(ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true))
+				.property_row();
+			Ok(vec![text_alignment])
 		}),
 	);
 	map
