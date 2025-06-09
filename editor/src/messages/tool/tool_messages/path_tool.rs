@@ -1129,7 +1129,7 @@ impl Fsm for PathToolFsmState {
 					Self::Ready => {
 						if let Some(closest_segment) = &tool_data.segment {
 							let perp = closest_segment.calculate_perp(document);
-							let point = closest_segment.closest_point_to_viewport();
+							let point = closest_segment.closest_point(document.metadata());
 
 							// Draw an X on the segment
 							if tool_data.delete_segment_pressed {
@@ -1400,7 +1400,7 @@ impl Fsm for PathToolFsmState {
 				// If already hovering on a segment, then recalculate its closest point
 				else if let Some(closest_segment) = &mut tool_data.segment {
 					closest_segment.update_closest_point(document.metadata(), input.mouse.position);
-					if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE, document.metadata()) {
+					if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
 						tool_data.segment = None;
 					}
 					responses.add(OverlaysMessage::Draw)
