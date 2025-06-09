@@ -11,7 +11,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, StrokeCap, StrokeJoin, PaintOrder, Stroke, StrokeAlign};
+use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::convert_usvg_path;
 
 #[derive(Debug, Clone)]
