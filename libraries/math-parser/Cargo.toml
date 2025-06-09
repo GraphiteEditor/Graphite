@@ -12,7 +12,7 @@ thiserror = "2.0"
 lazy_static = "1.5"
 num-complex = "0.4"
 log = { workspace = true }
-chumsky = {version = "0.10", features = ["std"]}
+chumsky = {version = "0.10",default-features = false, features = ["std"]}
 
 [dev-dependencies]
 criterion = "0.5"
