@@ -11,7 +11,7 @@ license = "MIT OR Apache-2.0"
 thiserror = "2.0"
 lazy_static = "1.5"
 num-complex = "0.4"
-chumsky = "0.10"
+chumsky = { version = "0.10", features = ["std"] }
 
 [dev-dependencies]
 criterion = "0.5"
