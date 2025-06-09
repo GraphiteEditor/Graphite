@@ -720,7 +720,7 @@ impl OverlayContext {
 	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, stroke_width: Option<f64>) {
 		self.render_context.save();
 		let transform_scale = transform.decompose_scale().x.max(transform.decompose_scale().y);
-		self.render_context.set_line_width(stroke_width.unwrap_or(1.) * transform_scale);
+		self.render_context.set_line_width(stroke_width.unwrap_or(1.) * transform_scale + 2.0);
 		self.draw_path_from_subpaths(subpaths, transform);
 
 		if with_pattern {

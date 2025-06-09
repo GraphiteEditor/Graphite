@@ -76,11 +76,15 @@ impl ToolTransition for FillTool {
 }
 
 pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, to_viewport_transform: DAffine2) -> bool {
-	let lookup = subpath.compute_lookup_table(Some(25), None);
+	let stroke_width = stroke_width + 1.0;
+	let mouse_pos = to_viewport_transform.inverse().transform_point2(mouse_pos);
 
-	lookup
-		.iter()
-		.any(|&point| (to_viewport_transform.inverse().transform_point2(mouse_pos) - point).length() <= stroke_width)
+	if let Some((segment_index, t)) = subpath.project(mouse_pos) {
+		let nearest_point = subpath.evaluate(bezier_rs::SubpathTValue::Parametric { segment_index, t });
+		(mouse_pos - nearest_point).length() <= stroke_width
+	} else {
+		false
+	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
