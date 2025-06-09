@@ -233,9 +233,11 @@ tagged_value! {
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
-	LineCap(graphene_core::vector::style::LineCap),
-	LineJoin(graphene_core::vector::style::LineJoin),
-	LineAlignment(graphene_core::vector::style::LineAlignment),
+	#[serde(alias = "LineCap")]
+	StrokeCap(graphene_core::vector::style::StrokeCap),
+	#[serde(alias = "LineJoin")]
+	StrokeJoin(graphene_core::vector::style::StrokeJoin),
+	StrokeAlign(graphene_core::vector::style::StrokeAlign),
 	PaintOrder(graphene_core::vector::style::PaintOrder),
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),

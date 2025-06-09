@@ -370,13 +370,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let input_connector = InputConnector::node(stroke_node_id, 4);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 5);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::LineCap(stroke.line_cap), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeCap(stroke.cap), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 6);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::LineJoin(stroke.line_join), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 7);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, 8);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::LineAlignment(stroke.line_alignment), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, 9);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
 	}

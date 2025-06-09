@@ -11,7 +11,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineAlignment, LineCap, LineJoin, PaintOrder, Stroke};
+use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, StrokeCap, StrokeJoin, PaintOrder, Stroke, StrokeAlign};
 use graphene_std::vector::convert_usvg_path;
 
 #[derive(Debug, Clone)]
@@ -388,19 +388,19 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 			weight: stroke.width().get() as f64,
 			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
 			dash_offset: stroke.dashoffset() as f64,
-			line_cap: match stroke.linecap() {
-				usvg::LineCap::Butt => LineCap::Butt,
-				usvg::LineCap::Round => LineCap::Round,
-				usvg::LineCap::Square => LineCap::Square,
+			cap: match stroke.linecap() {
+				usvg::LineCap::Butt => StrokeCap::Butt,
+				usvg::LineCap::Round => StrokeCap::Round,
+				usvg::LineCap::Square => StrokeCap::Square,
 			},
-			line_join: match stroke.linejoin() {
-				usvg::LineJoin::Miter => LineJoin::Miter,
-				usvg::LineJoin::MiterClip => LineJoin::Miter,
-				usvg::LineJoin::Round => LineJoin::Round,
-				usvg::LineJoin::Bevel => LineJoin::Bevel,
+			join: match stroke.linejoin() {
+				usvg::LineJoin::Miter => StrokeJoin::Miter,
+				usvg::LineJoin::MiterClip => StrokeJoin::Miter,
+				usvg::LineJoin::Round => StrokeJoin::Round,
+				usvg::LineJoin::Bevel => StrokeJoin::Bevel,
 			},
-			line_join_miter_limit: stroke.miterlimit().get() as f64,
-			line_alignment: LineAlignment::Center,
+			join_miter_limit: stroke.miterlimit().get() as f64,
+			align: StrokeAlign::Center,
 			paint_order: PaintOrder::StrokeAbove,
 			transform,
 			non_scaling: false,

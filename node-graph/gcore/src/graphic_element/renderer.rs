@@ -6,7 +6,7 @@ use crate::raster::image::RasterDataTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
-use crate::vector::style::{Fill, LineAlignment, Stroke, ViewMode};
+use crate::vector::style::{Fill, Stroke, StrokeAlign, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
 use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable};
 use base64::Engine;
@@ -318,16 +318,6 @@ pub struct RenderParams {
 }
 
 impl RenderParams {
-	pub fn new(view_mode: ViewMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool, for_mask: bool) -> Self {
-		Self {
-			view_mode,
-			culling_bounds,
-			thumbnail,
-			hide_artboards,
-			for_export,
-			for_mask,
-		}
-	}
 	pub fn for_clipper(&self) -> Self {
 		Self { for_mask: true, ..*self }
 	}
@@ -394,6 +384,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut iter = self.instance_ref_iter().peekable();
 		let mut mask_state = None;
+
 		while let Some(instance) = iter.next() {
 			render.parent_tag(
 				"g",
@@ -446,6 +437,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		let mut iter = self.instance_ref_iter().peekable();
 		let mut mask_instance_state = None;
+
 		while let Some(instance) = iter.next() {
 			let transform = transform * *instance.transform;
 			let alpha_blending = *instance.alpha_blending;
@@ -478,6 +470,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 			let next_clips = iter.peek().is_some_and(|next_instance| next_instance.instance.had_clip_enabled());
 			if next_clips && mask_instance_state.is_none() {
 				mask_instance_state = Some((instance.instance, transform));
+
 				instance.instance.render_to_vello(scene, transform, context, render_params);
 			} else if let Some((instance_mask, transform_mask)) = mask_instance_state {
 				if !next_clips {
@@ -491,7 +484,9 @@ impl GraphicElementRendered for GraphicGroupTable {
 					instance_mask.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
 					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
+
 				instance.instance.render_to_vello(scene, transform, context, render_params);
+
 				if bounds.is_some() {
 					scene.pop_layer();
 					scene.pop_layer();
@@ -596,17 +591,15 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let defs = &mut attributes.0.svg_defs;
 
-				let can_draw_aligned_stroke = instance
-					.instance
-					.style
-					.stroke()
-					.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.line_alignment.is_not_centered())
+				let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 					&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
+
 				let mut push_id = None;
+
 				if can_draw_aligned_stroke {
 					let id = format!("alignment-{}", generate_uuid());
 					let selector = format!("url(#{id})");
-					let mask_type = if instance.instance.style.stroke().unwrap().line_alignment == LineAlignment::Inside {
+					let mask_type = if instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside {
 						MaskType::Clip
 					} else {
 						MaskType::Mask
@@ -633,7 +626,7 @@ impl GraphicElementRendered for VectorDataTable {
 					let (x, y) = quad.top_left().into();
 					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
 					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white"/>"##, x, y);
+					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
 					match mask_type {
 						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
 						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
@@ -671,7 +664,7 @@ impl GraphicElementRendered for VectorDataTable {
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-		use crate::vector::style::{GradientType, LineCap, LineJoin};
+		use crate::vector::style::{GradientType, StrokeCap, StrokeJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
@@ -708,11 +701,7 @@ impl GraphicElementRendered for VectorDataTable {
 				);
 			}
 
-			let can_draw_aligned_stroke = instance
-				.instance
-				.style
-				.stroke()
-				.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.line_alignment.is_not_centered())
+			let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
 			if can_draw_aligned_stroke {
 				let mut vector_data = VectorDataTable::default();
@@ -731,15 +720,11 @@ impl GraphicElementRendered for VectorDataTable {
 				let quad = Quad::from_box(layer_bounds).inflate(weight * element_transform.matrix2.determinant());
 				let rect = vello::kurbo::Rect::new(quad.top_left().x, quad.top_left().y, quad.bottom_right().x, quad.bottom_right().y);
 
-				let inside = instance.instance.style.stroke().unwrap().line_alignment == LineAlignment::Inside;
+				let inside = instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside;
 				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
 				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 				vector_data.render_to_vello(scene, element_transform, _context, render_params);
 				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
-			}
-			enum Op {
-				Fill,
-				Stroke,
 			}
 
 			// Render the path
@@ -764,6 +749,11 @@ impl GraphicElementRendered for VectorDataTable {
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
 				_ => {
+					enum Op {
+						Fill,
+						Stroke,
+					}
+
 					let order = if instance.instance.style.stroke().is_none_or(|stroke| stroke.paint_order.is_default()) {
 						[Op::Fill, Op::Stroke]
 					} else {
@@ -829,19 +819,19 @@ impl GraphicElementRendered for VectorDataTable {
 										Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 										None => peniko::Color::TRANSPARENT,
 									};
-									let cap = match stroke.line_cap {
-										LineCap::Butt => Cap::Butt,
-										LineCap::Round => Cap::Round,
-										LineCap::Square => Cap::Square,
+									let cap = match stroke.cap {
+										StrokeCap::Butt => Cap::Butt,
+										StrokeCap::Round => Cap::Round,
+										StrokeCap::Square => Cap::Square,
 									};
-									let join = match stroke.line_join {
-										LineJoin::Miter => Join::Miter,
-										LineJoin::Bevel => Join::Bevel,
-										LineJoin::Round => Join::Round,
+									let join = match stroke.join {
+										StrokeJoin::Miter => Join::Miter,
+										StrokeJoin::Bevel => Join::Bevel,
+										StrokeJoin::Round => Join::Round,
 									};
 									let stroke = kurbo::Stroke {
 										width: stroke.weight * if can_draw_aligned_stroke { 2. } else { 1. },
-										miter_limit: stroke.line_join_miter_limit,
+										miter_limit: stroke.join_miter_limit,
 										join,
 										start_cap: cap,
 										end_cap: cap,
@@ -881,11 +871,11 @@ impl GraphicElementRendered for VectorDataTable {
 
 				let stroke_width = instance.instance.style.stroke().map(|s| s.weight()).unwrap_or_default();
 
-				let miter_limit = instance.instance.style.stroke().map(|s| s.line_join_miter_limit).unwrap_or(1.);
+				let miter_limit = instance.instance.style.stroke().map(|s| s.join_miter_limit).unwrap_or(1.);
 
 				let scale = transform.decompose_scale();
 
-				// We use the full line width here to account for different styles of line caps
+				// We use the full line width here to account for different styles of stroke caps
 				let offset = DVec2::splat(stroke_width * scale.x.max(scale.y) * miter_limit);
 
 				instance.instance.bounding_box_with_transform(transform * *instance.transform).map(|[a, b]| [a - offset, b + offset])

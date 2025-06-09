@@ -1323,7 +1323,6 @@ where
 pub(super) trait MultiplyFill {
 	fn multiply_fill(&mut self, factor: f64);
 }
-
 impl MultiplyFill for Color {
 	fn multiply_fill(&mut self, factor: f64) {
 		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
@@ -1343,10 +1342,7 @@ impl MultiplyFill for GraphicGroupTable {
 		}
 	}
 }
-impl<P: Pixel> MultiplyFill for RasterDataTable<P>
-where
-	GraphicElement: From<Image<P>>,
-{
+impl<P: Pixel> MultiplyFill for RasterDataTable<P> {
 	fn multiply_fill(&mut self, factor: f64) {
 		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.fill *= factor as f32;

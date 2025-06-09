@@ -256,7 +256,7 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
-/// Get the current gradient of a layer from the closest Fill node
+/// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;
 
@@ -267,7 +267,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	Some(gradient.clone())
 }
 
-/// Get the current fill of a layer from the closest Fill node
+/// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;
 
@@ -278,7 +278,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(color.to_linear_srgb())
 }
 
-/// Get the current blend mode of a layer from the closest Blending node
+/// Get the current blend mode of a layer from the closest "Blending" node.
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
@@ -287,7 +287,7 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest Blending node.
+/// Get the current opacity of a layer from the closest "Blending" node.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
 /// - Multiplied with additional opacity nodes earlier in the chain
 /// - Set by an Opacity node with an exposed input value driven by another node

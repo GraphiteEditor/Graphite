@@ -508,19 +508,19 @@ pub enum FillType {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
-pub enum LineCap {
+pub enum StrokeCap {
 	#[default]
 	Butt,
 	Round,
 	Square,
 }
 
-impl LineCap {
+impl StrokeCap {
 	fn svg_name(&self) -> &'static str {
 		match self {
-			LineCap::Butt => "butt",
-			LineCap::Round => "round",
-			LineCap::Square => "square",
+			StrokeCap::Butt => "butt",
+			StrokeCap::Round => "round",
+			StrokeCap::Square => "square",
 		}
 	}
 }
@@ -528,19 +528,19 @@ impl LineCap {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
-pub enum LineJoin {
+pub enum StrokeJoin {
 	#[default]
 	Miter,
 	Bevel,
 	Round,
 }
 
-impl LineJoin {
+impl StrokeJoin {
 	fn svg_name(&self) -> &'static str {
 		match self {
-			LineJoin::Bevel => "bevel",
-			LineJoin::Miter => "miter",
-			LineJoin::Round => "round",
+			StrokeJoin::Bevel => "bevel",
+			StrokeJoin::Miter => "miter",
+			StrokeJoin::Round => "round",
 		}
 	}
 }
@@ -548,14 +548,14 @@ impl LineJoin {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
-pub enum LineAlignment {
+pub enum StrokeAlign {
 	#[default]
 	Center,
 	Inside,
 	Outside,
 }
 
-impl LineAlignment {
+impl StrokeAlign {
 	pub fn is_not_centered(self) -> bool {
 		self != Self::Center
 	}
@@ -590,10 +590,13 @@ pub struct Stroke {
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
 	pub dash_offset: f64,
-	pub line_cap: LineCap,
-	pub line_join: LineJoin,
-	pub line_join_miter_limit: f64,
-	pub line_alignment: LineAlignment,
+	#[serde(alias = "line_cap")]
+	pub cap: StrokeCap,
+	#[serde(alias = "line_join")]
+	pub join: StrokeJoin,
+	#[serde(alias = "line_join_miter_limit")]
+	pub join_miter_limit: f64,
+	pub align: StrokeAlign,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
@@ -609,9 +612,9 @@ impl core::hash::Hash for Stroke {
 		self.dash_lengths.len().hash(state);
 		self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
 		self.dash_offset.to_bits().hash(state);
-		self.line_cap.hash(state);
-		self.line_join.hash(state);
-		self.line_join_miter_limit.to_bits().hash(state);
+		self.cap.hash(state);
+		self.join.hash(state);
+		self.join_miter_limit.to_bits().hash(state);
 		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
@@ -635,10 +638,10 @@ impl Stroke {
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
-			line_cap: LineCap::Butt,
-			line_join: LineJoin::Miter,
-			line_join_miter_limit: 4.,
-			line_alignment: LineAlignment::Center,
+			cap: StrokeCap::Butt,
+			join: StrokeJoin::Miter,
+			join_miter_limit: 4.,
+			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
 			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
@@ -651,10 +654,10 @@ impl Stroke {
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
-			line_cap: if time < 0.5 { self.line_cap } else { other.line_cap },
-			line_join: if time < 0.5 { self.line_join } else { other.line_join },
-			line_join_miter_limit: self.line_join_miter_limit + (other.line_join_miter_limit - self.line_join_miter_limit) * time,
-			line_alignment: if time < 0.5 { self.line_alignment } else { other.line_alignment },
+			cap: if time < 0.5 { self.cap } else { other.cap },
+			join: if time < 0.5 { self.join } else { other.join },
+			join_miter_limit: self.join_miter_limit + (other.join_miter_limit - self.join_miter_limit) * time,
+			align: if time < 0.5 { self.align } else { other.align },
 			transform: DAffine2::from_mat2_translation(
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
@@ -686,16 +689,16 @@ impl Stroke {
 		self.dash_offset
 	}
 
-	pub fn line_cap_index(&self) -> u32 {
-		self.line_cap as u32
+	pub fn cap_index(&self) -> u32 {
+		self.cap as u32
 	}
 
-	pub fn line_join_index(&self) -> u32 {
-		self.line_join as u32
+	pub fn join_index(&self) -> u32 {
+		self.join as u32
 	}
 
-	pub fn line_join_miter_limit(&self) -> f32 {
-		self.line_join_miter_limit as f32
+	pub fn join_miter_limit(&self) -> f32 {
+		self.join_miter_limit as f32
 	}
 
 	/// Provide the SVG attributes for the stroke.
@@ -710,10 +713,10 @@ impl Stroke {
 		let weight = (self.weight != 1.).then_some(self.weight);
 		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
 		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
-		let line_cap = (self.line_cap != LineCap::Butt).then_some(self.line_cap);
-		let line_join = (self.line_join != LineJoin::Miter).then_some(self.line_join);
-		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
-		let line_alignment = (self.line_alignment != LineAlignment::Center).then_some(self.line_alignment);
+		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);
+		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
+		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
+		let stroke_align = (self.align != StrokeAlign::Center).then_some(self.align);
 		let paint_order = (self.paint_order != PaintOrder::StrokeAbove).then_some(self.paint_order);
 
 		// Render the needed stroke attributes
@@ -722,7 +725,7 @@ impl Stroke {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
 		if let Some(mut weight) = weight {
-			if line_alignment.is_some() && aligned_strokes {
+			if stroke_align.is_some() && aligned_strokes {
 				weight *= 2.;
 			}
 			let _ = write!(&mut attributes, r#" stroke-width="{}""#, weight);
@@ -733,14 +736,14 @@ impl Stroke {
 		if let Some(dash_offset) = dash_offset {
 			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
 		}
-		if let Some(line_cap) = line_cap {
-			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap.svg_name());
+		if let Some(stroke_cap) = stroke_cap {
+			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, stroke_cap.svg_name());
 		}
-		if let Some(line_join) = line_join {
-			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join.svg_name());
+		if let Some(stroke_join) = stroke_join {
+			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, stroke_join.svg_name());
 		}
-		if let Some(line_join_miter_limit) = line_join_miter_limit {
-			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);
+		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
+			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, stroke_join_miter_limit);
 		}
 		// Add vector-effect attribute to make strokes non-scaling
 		if self.non_scaling {
@@ -781,23 +784,23 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_line_cap(mut self, line_cap: LineCap) -> Self {
-		self.line_cap = line_cap;
+	pub fn with_stroke_cap(mut self, stroke_cap: StrokeCap) -> Self {
+		self.cap = stroke_cap;
 		self
 	}
 
-	pub fn with_line_join(mut self, line_join: LineJoin) -> Self {
-		self.line_join = line_join;
+	pub fn with_stroke_join(mut self, stroke_join: StrokeJoin) -> Self {
+		self.join = stroke_join;
 		self
 	}
 
-	pub fn with_line_join_miter_limit(mut self, limit: f64) -> Self {
-		self.line_join_miter_limit = limit;
+	pub fn with_stroke_join_miter_limit(mut self, limit: f64) -> Self {
+		self.join_miter_limit = limit;
 		self
 	}
 
-	pub fn with_line_alignment(mut self, line_alignment: LineAlignment) -> Self {
-		self.line_alignment = line_alignment;
+	pub fn with_stroke_align(mut self, stroke_align: StrokeAlign) -> Self {
+		self.align = stroke_align;
 		self
 	}
 
@@ -819,10 +822,10 @@ impl Default for Stroke {
 			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
-			line_cap: LineCap::Butt,
-			line_join: LineJoin::Miter,
-			line_join_miter_limit: 4.,
-			line_alignment: LineAlignment::Center,
+			cap: StrokeCap::Butt,
+			join: StrokeJoin::Miter,
+			join_miter_limit: 4.,
+			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
 			non_scaling: false,
 			paint_order: PaintOrder::default(),
@@ -997,6 +1000,7 @@ impl PathStyle {
 	}
 
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
+	#[allow(clippy::too_many_arguments)]
 	pub fn render(
 		&self,
 		svg_defs: &mut String,

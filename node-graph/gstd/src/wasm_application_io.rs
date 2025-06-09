@@ -257,7 +257,14 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
-	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export, false);
+	let render_params = RenderParams {
+		view_mode: render_config.view_mode,
+		culling_bounds: None,
+		thumbnail: false,
+		hide_artboards,
+		for_export,
+		for_mask: false,
+	};
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;

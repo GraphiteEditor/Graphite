@@ -338,7 +338,14 @@ impl NodeGraphExecutor {
 	fn debug_render(render_object: impl GraphicElementRendered, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		// Setup rendering
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(ViewMode::Normal, None, false, false, false, false);
+		let render_params = RenderParams {
+			view_mode: ViewMode::Normal,
+			culling_bounds: None,
+			thumbnail: false,
+			hide_artboards: false,
+			for_export: false,
+			for_mask: false,
+		};
 
 		// Render SVG
 		render_object.render_svg(&mut render, &render_params);
