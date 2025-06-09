@@ -10,6 +10,14 @@ lazy_static! {
 		let mut map: HashMap<&'static str, FunctionImplementation> = HashMap::new();
 
 		map.insert(
+			"sqrt",
+			Box::new(|values| match values{
+				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sqrt()))),
+				[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sqrt()))),
+				_ => None,
+			})
+		);
+		map.insert(
 			"sin",
 			Box::new(|values| match values {
 				[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sin()))),
