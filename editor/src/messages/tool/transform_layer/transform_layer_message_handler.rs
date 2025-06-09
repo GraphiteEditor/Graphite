@@ -397,31 +397,28 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					return;
 				}
 
-				let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) else {
-					selected.original_transforms.clear();
-					return;
-				};
+				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
+					if let [point] = selected_points.as_slice() {
+						if matches!(point, ManipulatorPointId::Anchor(_)) {
+							if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
+								let handle1_length = handle1.length(&vector_data);
+								let handle2_length = handle2.length(&vector_data);
 
-				if let [point] = selected_points.as_slice() {
-					if matches!(point, ManipulatorPointId::Anchor(_)) {
-						if let Some([handle1, handle2]) = point.get_handle_pair(&vector_data) {
-							let handle1_length = handle1.length(&vector_data);
-							let handle2_length = handle2.length(&vector_data);
-
-							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
-								// G should work for this point but not R and S
-								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
-									selected.original_transforms.clear();
-									return;
+								if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+									// G should work for this point but not R and S
+									if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+										selected.original_transforms.clear();
+										return;
+									}
 								}
 							}
-						}
-					} else {
-						let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
+						} else {
+							let handle_length = point.as_handle().map(|handle| handle.length(&vector_data));
 
-						if handle_length == Some(0.) {
-							selected.original_transforms.clear();
-							return;
+							if handle_length == Some(0.) {
+								selected.original_transforms.clear();
+								return;
+							}
 						}
 					}
 				}

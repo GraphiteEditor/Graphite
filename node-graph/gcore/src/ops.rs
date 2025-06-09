@@ -1,6 +1,6 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
-use crate::raster::image::ImageFrameTable;
+use crate::raster::image::RasterDataTable;
 use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
@@ -453,7 +453,7 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 // 	_: impl Ctx,
 // 	#[implementations(
 // 		Color,
-// 		ImageFrameTable<Color>,
+// 		RasterDataTable<Color>,
 // 		GradientStops,
 // 	)]
 // 	mut image: T,
@@ -515,7 +515,7 @@ fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, O
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&RasterDataTable<Color>)] value: &'i T) -> T {
 	value.clone()
 }
 
@@ -586,22 +586,22 @@ impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Nod
 
 // Into
 pub struct IntoNode<O>(PhantomData<O>);
-impl<_O> IntoNode<_O> {
+impl<O> IntoNode<O> {
 	#[cfg(feature = "alloc")]
 	pub const fn new() -> Self {
 		Self(core::marker::PhantomData)
 	}
 }
-impl<_O> Default for IntoNode<_O> {
+impl<O> Default for IntoNode<O> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
-impl<'input, I: 'input, _O: 'input> Node<'input, I> for IntoNode<_O>
+impl<'input, I: 'input, O: 'input> Node<'input, I> for IntoNode<O>
 where
-	I: Into<_O> + Sync + Send,
+	I: Into<O> + Sync + Send,
 {
-	type Output = ::dyn_any::DynFuture<'input, _O>;
+	type Output = ::dyn_any::DynFuture<'input, O>;
 
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
