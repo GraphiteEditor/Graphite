@@ -65,11 +65,11 @@
 				{#if isWidgetSpanRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
 				{:else if isWidgetSpanColumn(layoutGroup)}
-					<span style="color: #d6536e">Error: The WidgetSpan used here should be a row not a column</span>
+					<TextLabel styles={{ color: "#d6536e" }}>Error: The WidgetSpan used here should be a row not a column</TextLabel>
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />
 				{:else}
-					<span style="color: #d6536e">Error: The widget that belongs here has an invalid layout group type</span>
+					<TextLabel styles={{ color: "#d6536e" }}>Error: The widget that belongs here has an invalid layout group type</TextLabel>
 				{/if}
 			{/each}
 		</LayoutCol>

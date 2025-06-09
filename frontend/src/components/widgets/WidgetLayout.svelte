@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type WidgetLayout, isWidgetTable } from "@graphite/messages";
 
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 	import WidgetTable from "@graphite/components/widgets/WidgetTable.svelte";
@@ -19,7 +20,7 @@
 	{:else if isWidgetTable(layoutGroup)}
 		<WidgetTable widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
 	{:else}
-		<span style="color: #d6536e">Error: The widget layout that belongs here has an invalid layout group type</span>
+		<TextLabel styles={{ color: "#d6536e" }}>Error: The widget layout that belongs here has an invalid layout group type</TextLabel>
 	{/if}
 {/each}
 

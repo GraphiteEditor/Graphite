@@ -24,14 +24,14 @@
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
+<LayoutRow class="radio-input" classes={{ disabled, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
 	{#each entries as entry, index}
-		<button class:active={index === selectedIndex} class:mixed class:disabled on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
+		<button class:active={!mixed ? index === selectedIndex : undefined} on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
 			{#if entry.icon}
 				<IconLabel icon={entry.icon} />
 			{/if}
 			{#if entry.label}
-				<TextLabel italic={mixed}>{entry.label}</TextLabel>
+				<TextLabel>{entry.label}</TextLabel>
 			{/if}
 		</button>
 	{/each}
@@ -39,12 +39,17 @@
 
 <style lang="scss" global>
 	.radio-input {
+		background: var(--color-5-dullgray);
+		border-radius: 2px;
+		height: 24px;
+
 		button {
 			background: var(--color-5-dullgray);
 			fill: var(--color-e-nearwhite);
-			height: 24px;
-			margin: 0;
+			border-radius: 2px;
+			height: 20px;
 			padding: 0;
+			margin: 2px 1px;
 			border: none;
 			display: flex;
 			align-items: center;
@@ -54,8 +59,12 @@
 			min-width: fit-content;
 			flex: 1 1 0;
 
-			&.mixed {
-				background: var(--color-4-dimgray);
+			&:first-of-type {
+				margin-left: 2px;
+			}
+
+			&:last-of-type {
+				margin-right: 2px;
 			}
 
 			&:hover {
@@ -76,7 +85,34 @@
 				}
 			}
 
-			&.disabled {
+			.icon-label {
+				margin: 2px;
+
+				+ .text-label {
+					margin-left: 0;
+				}
+			}
+
+			.text-label {
+				margin: 0 8px;
+				overflow: hidden;
+				flex: 0 0 auto;
+			}
+		}
+
+		&.mixed {
+			background: var(--color-4-dimgray);
+
+			button:not(:hover),
+			&.disabled button:hover {
+				background: var(--color-5-dullgray);
+			}
+		}
+
+		&.disabled {
+			background: var(--color-4-dimgray);
+
+			button {
 				background: var(--color-4-dimgray);
 				color: var(--color-8-uppergray);
 
@@ -93,37 +129,6 @@
 					}
 				}
 			}
-
-			& + button {
-				margin-left: 1px;
-			}
-
-			&:first-of-type {
-				border-radius: 2px 0 0 2px;
-			}
-
-			&:last-of-type {
-				border-radius: 0 2px 2px 0;
-			}
-
-			.icon-label {
-				margin: 0 4px;
-
-				+ .text-label {
-					margin-left: 0;
-				}
-			}
-
-			.text-label {
-				margin: 0 8px;
-				overflow: hidden;
-				flex: 0 0 auto;
-			}
-		}
-
-		&.combined-before button:first-of-type,
-		&.combined-after button:last-of-type {
-			border-radius: 0;
 		}
 	}
 </style>

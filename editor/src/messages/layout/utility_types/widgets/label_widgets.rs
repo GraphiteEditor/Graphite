@@ -1,3 +1,4 @@
+use super::input_widgets::CheckboxId;
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 
@@ -56,9 +57,21 @@ pub struct TextLabel {
 
 	pub tooltip: String,
 
+	#[serde(rename = "checkboxId")]
+	#[widget_builder(skip)]
+	pub checkbox_id: CheckboxId,
+
 	// Body
 	#[widget_builder(constructor)]
 	pub value: String,
+}
+
+impl TextLabel {
+	pub fn for_checkbox(mut self, id: &mut CheckboxId) -> Self {
+		id.fill();
+		self.checkbox_id = id.clone();
+		self
+	}
 }
 
 // TODO: Add UserInputLabel

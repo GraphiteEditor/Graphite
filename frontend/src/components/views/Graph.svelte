@@ -994,7 +994,7 @@
 				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<span>{node.displayName}</span>
+					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
@@ -1585,7 +1585,7 @@
 			.details {
 				margin: 0 8px;
 
-				span {
+				.text-label {
 					white-space: nowrap;
 					line-height: 48px;
 				}

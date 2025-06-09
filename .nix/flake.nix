@@ -78,6 +78,7 @@
           pkgs.git
           pkgs.gobject-introspection
           pkgs-unstable.cargo-tauri
+          pkgs-unstable.cargo-about
 
           # Linker
           pkgs.mold

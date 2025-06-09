@@ -1,16 +1,17 @@
-use super::graph_modification_utils::{self, merge_layers};
+use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::calculate_segment_angle;
 use crate::consts::HANDLE_LENGTH_FACTOR;
+use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-use crate::messages::tool::tool_messages::path_tool::PointSelectState;
+use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
+use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 use graphene_std::vector::{HandleId, SegmentId};
 
@@ -106,7 +107,11 @@ impl SelectedLayerState {
 	}
 
 	pub fn selected_points_count(&self) -> usize {
-		self.selected_points.len()
+		let count = self.selected_points.iter().fold(0, |acc, point| {
+			let is_ignored = (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors);
+			acc + if is_ignored { 0 } else { 1 }
+		});
+		count
 	}
 }
 
@@ -143,7 +148,6 @@ pub struct ClosestSegment {
 	colinear: [Option<HandleId>; 2],
 	t: f64,
 	bezier_point_to_viewport: DVec2,
-	stroke_width: f64,
 }
 
 impl ClosestSegment {
@@ -163,6 +167,12 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport
 	}
 
+	pub fn closest_point(&self, document_metadata: &DocumentMetadata) -> DVec2 {
+		let transform = document_metadata.transform_to_viewport(self.layer);
+		let bezier_point = self.bezier.evaluate(TValue::Parametric(self.t));
+		transform.transform_point2(bezier_point)
+	}
+
 	/// Updates this [`ClosestSegment`] with the viewport-space location of the closest point on the segment to the given mouse position.
 	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
 		let transform = document_metadata.transform_to_viewport(self.layer);
@@ -180,10 +190,8 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport.distance_squared(mouse_position)
 	}
 
-	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64, document_metadata: &DocumentMetadata) -> bool {
-		let dist_sq = self.distance_squared(mouse_position);
-		let stroke_width = document_metadata.document_to_viewport.decompose_scale().x.max(1.) * self.stroke_width;
-		(stroke_width + tolerance).powi(2) < dist_sq
+	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
+		tolerance.powi(2) < self.distance_squared(mouse_position)
 	}
 
 	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
@@ -421,12 +429,20 @@ impl ShapeState {
 
 	/// Select/deselect the first point within the selection threshold.
 	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
-	pub fn change_point_selection(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64, extend_selection: bool) -> Option<Option<SelectedPointsInfo>> {
+	pub fn change_point_selection(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		mouse_position: DVec2,
+		select_threshold: f64,
+		extend_selection: bool,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	) -> Option<Option<SelectedPointsInfo>> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
 
-		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
+		if let Some((layer, manipulator_point_id)) = self.find_nearest_visible_point_indices(network_interface, mouse_position, select_threshold, path_overlay_mode, frontier_handles_info) {
 			let vector_data = network_interface.compute_modified_vector(layer)?;
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
 
@@ -467,7 +483,14 @@ impl ShapeState {
 		None
 	}
 
-	pub fn get_point_selection_state(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(bool, Option<SelectedPointsInfo>)> {
+	pub fn get_point_selection_state(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		mouse_position: DVec2,
+		select_threshold: f64,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	) -> Option<(bool, Option<SelectedPointsInfo>)> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
@@ -475,6 +498,13 @@ impl ShapeState {
 		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
 			let vector_data = network_interface.compute_modified_vector(layer)?;
 			let point_position = manipulator_point_id.get_position(&vector_data)?;
+
+			// Check if point is visible under current overlay mode or not
+			let selected_segments = selected_segments(network_interface, self);
+			let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
+			if !is_visible_point(manipulator_point_id, &vector_data, path_overlay_mode, frontier_handles_info, selected_segments, &selected_points) {
+				return None;
+			}
 
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
 			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
@@ -1320,6 +1350,42 @@ impl ShapeState {
 		None
 	}
 
+	pub fn find_nearest_visible_point_indices(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		mouse_position: DVec2,
+		select_threshold: f64,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
+		if self.selected_shape_state.is_empty() {
+			return None;
+		}
+
+		let select_threshold_squared = select_threshold.powi(2);
+
+		// Find the closest control point among all elements of shapes_to_modify
+		for &layer in self.selected_shape_state.keys() {
+			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(network_interface, layer, mouse_position) {
+				// Choose the first point under the threshold
+				if distance_squared < select_threshold_squared {
+					// Check if point is visible in current PathOverlayMode
+					let vector_data = network_interface.compute_modified_vector(layer)?;
+					let selected_segments = selected_segments(network_interface, self);
+					let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
+
+					if !is_visible_point(manipulator_point_id, &vector_data, path_overlay_mode, frontier_handles_info, selected_segments, &selected_points) {
+						return None;
+					}
+
+					return Some((layer, manipulator_point_id));
+				}
+			}
+		}
+
+		None
+	}
+
 	// TODO Use quadtree or some equivalent spatial acceleration structure to improve this to O(log(n))
 	/// Find the closest manipulator, manipulator point, and distance so we can select path elements.
 	/// Brute force comparison to determine which manipulator (handle or anchor) we want to select taking O(n) time.
@@ -1385,11 +1451,6 @@ impl ShapeState {
 			if distance_squared < closest_distance_squared {
 				closest_distance_squared = distance_squared;
 
-				// 0.5 is half the line (center to side) but it's convenient to allow targeting slightly more than half the line width
-				const STROKE_WIDTH_PERCENT: f64 = 0.7;
-
-				let stroke_width = graph_modification_utils::get_stroke_width(layer, network_interface).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
-
 				// Convert to linear if handes are on top of control points
 				if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
 					if handle_start.abs_diff_eq(bezier.start(), f64::EPSILON * 100.) && handle_end.abs_diff_eq(bezier.end(), f64::EPSILON * 100.) {
@@ -1410,7 +1471,6 @@ impl ShapeState {
 					t,
 					bezier_point_to_viewport: screenspace,
 					layer,
-					stroke_width,
 				});
 			}
 		}
@@ -1623,7 +1683,17 @@ impl ShapeState {
 		false
 	}
 
-	pub fn select_all_in_shape(&mut self, network_interface: &NodeNetworkInterface, selection_shape: SelectionShape, selection_change: SelectionChange) {
+	pub fn select_all_in_shape(
+		&mut self,
+		network_interface: &NodeNetworkInterface,
+		selection_shape: SelectionShape,
+		selection_change: SelectionChange,
+		path_overlay_mode: PathOverlayMode,
+		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+	) {
+		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
+		let selected_segments = selected_segments(network_interface, self);
+
 		for (&layer, state) in &mut self.selected_shape_state {
 			if selection_change == SelectionChange::Clear {
 				state.clear_points()
@@ -1666,13 +1736,17 @@ impl ShapeState {
 					};
 
 					if select {
-						match selection_change {
-							SelectionChange::Shrink => state.deselect_point(id),
-							_ => {
-								// Select only the handles which are of nonzero length
-								if let Some(handle) = id.as_handle() {
-									if handle.length(&vector_data) > 0. {
-										state.select_point(id)
+						let is_visible_handle = is_visible_point(id, &vector_data, path_overlay_mode, frontier_handles_info.clone(), selected_segments.clone(), &selected_points);
+
+						if is_visible_handle {
+							match selection_change {
+								SelectionChange::Shrink => state.deselect_point(id),
+								_ => {
+									// Select only the handles which are of nonzero length
+									if let Some(handle) = id.as_handle() {
+										if handle.length(&vector_data) > 0. {
+											state.select_point(id)
+										}
 									}
 								}
 							}

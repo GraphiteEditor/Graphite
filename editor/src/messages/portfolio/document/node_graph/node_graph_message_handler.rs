@@ -566,10 +566,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::AddTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+				let nodes: Vec<_> = new_ids.iter().map(|(_, id)| *id).collect();
 				responses.add(NodeGraphMessage::AddNodes {
 					nodes: data,
 					new_ids: new_ids.clone(),
 				});
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes })
 			}
 			NodeGraphMessage::PointerDown {
 				shift_click,
@@ -995,11 +997,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
 					self.preview_on_mouse_up = None;
 				}
-				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
-					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
-					new_selected_nodes.remove(node_to_deselect);
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
-					self.deselect_on_pointer_up = None;
+				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take() {
+					if !self.drag_start.as_ref().is_some_and(|t| t.1) {
+						let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+						new_selected_nodes.remove(node_to_deselect);
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+						return;
+					}
 				}
 				let point = network_metadata
 					.persistent_metadata
@@ -1212,11 +1216,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								let mut stack_wires = Vec::new();
 								for wire in overlapping_wires {
 									if is_stack_wire(&wire) { stack_wires.push(wire) } else { node_wires.push(wire) }
-								}
-
-								// Auto convert node to layer when inserting on a single stack wire
-								if stack_wires.len() == 1 && node_wires.is_empty() {
-									network_interface.set_to_node_or_layer(&selected_node_id, selection_network_path, true)
 								}
 
 								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
@@ -1851,11 +1850,6 @@ impl NodeGraphMessageHandler {
 			//
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			//
-			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
 			IconButton::new("Folder", 24)
 				.tooltip("Group Selected")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
@@ -1864,6 +1858,11 @@ impl NodeGraphMessageHandler {
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.disabled(!has_selection)
+				.widget_holder(),
+			IconButton::new("NewLayer", 24)
+				.tooltip("New Layer")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip("Delete Selected")

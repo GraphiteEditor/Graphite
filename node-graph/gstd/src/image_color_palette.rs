@@ -1,10 +1,10 @@
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::{Color, Ctx};
 
 #[node_macro::node(category("Raster"))]
 async fn image_color_palette(
 	_: impl Ctx,
-	image: ImageFrameTable<Color>,
+	image: RasterDataTable<Color>,
 	#[hard_min(1.)]
 	#[soft_max(28.)]
 	max_size: u32,
@@ -16,17 +16,17 @@ async fn image_color_palette(
 	let mut histogram: Vec<usize> = vec![0; (bins + 1.) as usize];
 	let mut colors: Vec<Vec<Color>> = vec![vec![]; (bins + 1.) as usize];
 
-	let image = image.one_instance_ref().instance;
+	for image_instance in image.instance_ref_iter() {
+		for pixel in image_instance.instance.data.iter() {
+			let r = pixel.r() * GRID;
+			let g = pixel.g() * GRID;
+			let b = pixel.b() * GRID;
 
-	for pixel in image.data.iter() {
-		let r = pixel.r() * GRID;
-		let g = pixel.g() * GRID;
-		let b = pixel.b() * GRID;
+			let bin = (r * GRID + g * GRID + b * GRID) as usize;
 
-		let bin = (r * GRID + g * GRID + b * GRID) as usize;
-
-		histogram[bin] += 1;
-		colors[bin].push(pixel.to_gamma_srgb());
+			histogram[bin] += 1;
+			colors[bin].push(pixel.to_gamma_srgb());
+		}
 	}
 
 	let shorted = histogram.iter().enumerate().filter(|&(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
@@ -64,13 +64,13 @@ async fn image_color_palette(
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::raster::image::{Image, ImageFrameTable};
+	use graphene_core::raster::image::{Image, RasterDataTable};
 
 	#[test]
 	fn test_image_color_palette() {
 		let result = image_color_palette(
 			(),
-			ImageFrameTable::new(Image {
+			RasterDataTable::new(Image {
 				width: 100,
 				height: 100,
 				data: vec![Color::from_rgbaf32(0., 0., 0., 1.).unwrap(); 10000],

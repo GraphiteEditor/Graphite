@@ -248,7 +248,7 @@
 						}
 					}
 
-					span {
+					.text-label {
 						flex: 1 1 100%;
 						overflow-x: hidden;
 						white-space: nowrap;
