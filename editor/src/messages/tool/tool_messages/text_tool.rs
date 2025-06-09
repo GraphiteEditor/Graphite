@@ -18,7 +18,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_std::text::{Font, FontCache, TextAlignment, TypesettingConfig, lines_clipping, load_face};
 use graphene_std::vector::style::Fill;
 
 #[derive(Default)]
@@ -784,6 +784,7 @@ impl Fsm for TextToolFsmState {
 						max_width: constraint_size.map(|size| size.x),
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
+						text_alignment: TextAlignment::default(),
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),

@@ -2,6 +2,7 @@ use crate::vector::{VectorData, VectorDataTable};
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_core::Ctx;
 pub use graphene_core::text::*;
+pub use graphene_core::text::{Font, FontCache, bounding_box, load_face, to_path};
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
@@ -14,6 +15,7 @@ fn text<'i: 'n>(
 	#[default(1.)] character_spacing: f64,
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
+	#[default(TextAlign::Left)] text_alignment: TextAlignment,
 ) -> VectorDataTable {
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
 
@@ -21,6 +23,7 @@ fn text<'i: 'n>(
 		font_size,
 		line_height_ratio,
 		character_spacing,
+		text_alignment,
 		max_width,
 		max_height,
 	};
