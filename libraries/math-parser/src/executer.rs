@@ -3,7 +3,6 @@ use crate::constants::DEFAULT_FUNCTIONS;
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
 use num_complex::Complex;
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]

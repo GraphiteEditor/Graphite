@@ -1,11 +1,8 @@
-use std::{
-	collections::HashMap,
-	f64::consts::{LN_2, PI},
-};
-
 use crate::value::{Number, Value};
 use lazy_static::lazy_static;
 use num_complex::{Complex, ComplexFloat};
+use std::collections::HashMap;
+use std::f64::consts::{LN_2, PI};
 
 type FunctionImplementation = Box<dyn Fn(&[Value]) -> Option<Value> + Send + Sync>;
 lazy_static! {
