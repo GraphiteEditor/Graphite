@@ -433,46 +433,24 @@ impl BoundingBoxManager {
 	}
 
 	pub fn check_skew_handle(&self, cursor: DVec2, edge: EdgeBool) -> bool {
-		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) {
-			if (end - start).length() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY {
-				return false;
-			}
+		let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(edge) else { return false };
+		if (end - start).length_squared() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY.powi(2) {
+			return false;
+		};
 
-			let touches_triangle = |base: DVec2, direction: DVec2, cursor: DVec2| -> bool {
-				let normal = direction.perp();
-				let top = base + direction * SKEW_TRIANGLE_SIZE;
-				let edge1 = base + normal * SKEW_TRIANGLE_SIZE / 2.;
-				let edge2 = base - normal * SKEW_TRIANGLE_SIZE / 2.;
+		let edge_dir = (end - start).normalize();
+		let mid = start.midpoint(end);
 
-				let v0 = edge1 - top;
-				let v1 = edge2 - top;
-				let v2 = cursor - top;
+		for direction in [-edge_dir, edge_dir] {
+			let base = mid + direction * (3. + SKEW_TRIANGLE_OFFSET + SKEW_TRIANGLE_SIZE / 2.);
+			let extension = cursor - base;
+			let along_edge = extension.dot(edge_dir).abs();
+			let along_perp = extension.perp_dot(edge_dir).abs();
 
-				let d00 = v0.dot(v0);
-				let d01 = v0.dot(v1);
-				let d11 = v1.dot(v1);
-				let d20 = v2.dot(v0);
-				let d21 = v2.dot(v1);
-
-				let denom = d00 * d11 - d01 * d01;
-				let v = (d11 * d20 - d01 * d21) / denom;
-				let w = (d00 * d21 - d01 * d20) / denom;
-				let u = 1. - v - w;
-
-				u >= 0. && v >= 0. && w >= 0.
-			};
-
-			let edge_dir = (end - start).normalize();
-			let mid = end.midpoint(start);
-
-			for direction in [edge_dir, -edge_dir] {
-				let base = mid + direction * (3. + SKEW_TRIANGLE_OFFSET);
-				if touches_triangle(base, direction, cursor) {
-					return true;
-				}
+			if along_edge <= SKEW_TRIANGLE_SIZE / 2. && along_perp <= BOUNDS_SELECT_THRESHOLD {
+				return true;
 			}
 		}
-
 		false
 	}
 
