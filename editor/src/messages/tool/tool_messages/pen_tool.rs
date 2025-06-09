@@ -1200,7 +1200,7 @@ impl PenToolData {
 			if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
 				let (point, segments) = closest_segment.adjusted_insert(responses);
 				let layer = closest_segment.layer();
-				let position = closest_segment.closest_point();
+				let position = closest_segment.closest_point_document();
 
 				// Setting any one of the new segments created as the previous segment
 				self.prior_segment_endpoint = Some(point);

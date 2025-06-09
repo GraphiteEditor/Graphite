@@ -163,7 +163,7 @@ impl ClosestSegment {
 		self.points
 	}
 
-	pub fn closest_point(&self) -> DVec2 {
+	pub fn closest_point_document(&self) -> DVec2 {
 		self.bezier.evaluate(TValue::Parametric(self.t))
 	}
 
