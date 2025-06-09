@@ -1,6 +1,6 @@
 use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, disable_g1_continuity, molded_control_points, restore_g1_continuity, restore_previous_handle_position};
+use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, molded_control_points, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -294,10 +294,8 @@ impl ClosestSegment {
 		c2: DVec2,
 		new_b: DVec2,
 		falloff: f64,
-		toggle_colinear: bool,
 		momentary_colinear: bool,
 		momentary_adjacent_handles: Option<[Option<HandleId>; 2]>,
-		colinear_toggle_state: bool,
 	) -> Option<[Option<HandleId>; 2]> {
 		let t = self.t;
 
@@ -322,18 +320,7 @@ impl ClosestSegment {
 		// TODO: Find something which is more appropriate
 		let vector_data = document.network_interface.compute_modified_vector(self.layer())?;
 
-		if toggle_colinear && colinear_toggle_state {
-			let mut other_handles = [None, None];
-
-			other_handles[0] = vector_data.other_colinear_handle(handle1);
-			other_handles[1] = vector_data.other_colinear_handle(handle2);
-
-			// Disable G1 continuity
-			disable_g1_continuity(handle1, &vector_data, layer, responses);
-			disable_g1_continuity(handle2, &vector_data, layer, responses);
-
-			if momentary_adjacent_handles.is_some() { momentary_adjacent_handles } else { Some(other_handles) }
-		} else if momentary_colinear {
+		if momentary_colinear {
 			// Disable G1 continuity
 			let mut other_handles = [None, None];
 			other_handles[0] = restore_previous_handle_position(handle1, c1, start, &vector_data, layer, responses);
@@ -346,7 +333,7 @@ impl ClosestSegment {
 			adjust_handle_colinearity(handle1, start, nc1, &vector_data, layer, responses);
 			adjust_handle_colinearity(handle2, end, nc2, &vector_data, layer, responses);
 
-			if let Some(adj_handles) = (!colinear_toggle_state).then_some(momentary_adjacent_handles).flatten() {
+			if let Some(adj_handles) = momentary_adjacent_handles {
 				if let Some(other_handle1) = adj_handles[0] {
 					restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
 				}

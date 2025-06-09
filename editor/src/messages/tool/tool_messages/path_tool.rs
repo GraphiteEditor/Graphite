@@ -81,7 +81,6 @@ pub enum PathToolMessage {
 		lock_angle: Key,
 		delete_segment: Key,
 		momentary_colinear_molding: Key,
-		toggle_colinear_molding: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
@@ -91,7 +90,6 @@ pub enum PathToolMessage {
 		lock_angle: Key,
 		delete_segment: Key,
 		momentary_colinear_molding: Key,
-		toggle_colinear_molding: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -395,8 +393,6 @@ struct PathToolData {
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
 	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
-	colinear_toggle_state: bool,
-	previous_permanent_toggle_state: bool,
 }
 
 impl PathToolData {
@@ -1141,6 +1137,31 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
+						// Check if there is no point nearby
+						if shape_editor
+							.find_nearest_visible_point_indices(
+								&document.network_interface,
+								input.mouse.position,
+								SELECTION_THRESHOLD,
+								tool_options.path_overlay_mode,
+								tool_data.frontier_handles_info.clone(),
+							)
+							.is_some()
+						{
+							tool_data.segment = None;
+						}
+						// If already hovering on a segment, then recalculate its closest point
+						else if let Some(closest_segment) = &mut tool_data.segment {
+							closest_segment.update_closest_point(document.metadata(), input.mouse.position);
+							if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
+								tool_data.segment = None;
+							}
+						}
+						// If not, check that if there is some closest segment or not
+						else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
+							tool_data.segment = Some(closest_segment);
+						}
+
 						if let Some(closest_segment) = &tool_data.segment {
 							let perp = closest_segment.calculate_perp(document);
 							let point = closest_segment.closest_point(document.metadata());
@@ -1257,7 +1278,6 @@ impl Fsm for PathToolFsmState {
 					lock_angle,
 					delete_segment,
 					momentary_colinear_molding,
-					toggle_colinear_molding,
 				},
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
@@ -1278,7 +1298,6 @@ impl Fsm for PathToolFsmState {
 						lock_angle,
 						delete_segment,
 						momentary_colinear_molding,
-						toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1289,7 +1308,6 @@ impl Fsm for PathToolFsmState {
 						lock_angle,
 						delete_segment,
 						momentary_colinear_molding,
-						toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1307,7 +1325,6 @@ impl Fsm for PathToolFsmState {
 					lock_angle,
 					delete_segment,
 					momentary_colinear_molding,
-					toggle_colinear_molding,
 				},
 			) => {
 				let mut selected_only_handles = true;
@@ -1380,7 +1397,6 @@ impl Fsm for PathToolFsmState {
 						lock_angle,
 						delete_segment,
 						momentary_colinear_molding,
-						toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1391,7 +1407,6 @@ impl Fsm for PathToolFsmState {
 						lock_angle,
 						delete_segment,
 						momentary_colinear_molding,
-						toggle_colinear_molding,
 					}
 					.into(),
 				];
@@ -1399,29 +1414,16 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
-			(
-				PathToolFsmState::MoldingSegment,
-				PathToolMessage::PointerMove {
-					momentary_colinear_molding,
-					toggle_colinear_molding,
-					..
-				},
-			) => {
+			(PathToolFsmState::MoldingSegment, PathToolMessage::PointerMove { momentary_colinear_molding, .. }) => {
 				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					tool_data.molding_segment = true;
 				}
 
 				let momentary_colinear_molding = input.keyboard.get(momentary_colinear_molding as usize);
-				let toggle_colinear_molding = input.keyboard.get(toggle_colinear_molding as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment {
 					if let Some(molding_segment_handles) = tool_data.molding_info {
-						if toggle_colinear_molding && !tool_data.previous_permanent_toggle_state {
-							tool_data.colinear_toggle_state = !tool_data.colinear_toggle_state;
-						}
-
-						tool_data.previous_permanent_toggle_state = toggle_colinear_molding;
 						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 							document,
 							responses,
@@ -1429,10 +1431,8 @@ impl Fsm for PathToolFsmState {
 							molding_segment_handles.1,
 							input.mouse.position,
 							MOLDING_FALLOFF,
-							toggle_colinear_molding,
 							momentary_colinear_molding,
 							tool_data.temporary_adjacent_handles_while_molding,
-							tool_data.colinear_toggle_state,
 						);
 					}
 				}
@@ -1450,33 +1450,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.adjacent_anchor_offset = None;
 				}
 
-				// If there is a point nearby, then remove the overlay
-				if shape_editor
-					.find_nearest_visible_point_indices(
-						&document.network_interface,
-						input.mouse.position,
-						SELECTION_THRESHOLD,
-						tool_options.path_overlay_mode,
-						tool_data.frontier_handles_info.clone(),
-					)
-					.is_some()
-				{
-					tool_data.segment = None;
-					responses.add(OverlaysMessage::Draw)
-				}
-				// If already hovering on a segment, then recalculate its closest point
-				else if let Some(closest_segment) = &mut tool_data.segment {
-					closest_segment.update_closest_point(document.metadata(), input.mouse.position);
-					if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
-						tool_data.segment = None;
-					}
-					responses.add(OverlaysMessage::Draw)
-				}
-				// If not, check that if there is some closest segment or not
-				else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
-					tool_data.segment = Some(closest_segment);
-					responses.add(OverlaysMessage::Draw)
-				}
+				responses.add(OverlaysMessage::Draw);
 
 				self
 			}
@@ -1506,7 +1480,6 @@ impl Fsm for PathToolFsmState {
 					lock_angle,
 					delete_segment,
 					momentary_colinear_molding,
-					toggle_colinear_molding,
 				},
 			) => {
 				// Auto-panning
@@ -1519,7 +1492,6 @@ impl Fsm for PathToolFsmState {
 						lock_angle,
 						delete_segment,
 						momentary_colinear_molding,
-						toggle_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1530,7 +1502,6 @@ impl Fsm for PathToolFsmState {
 						lock_angle,
 						delete_segment,
 						momentary_colinear_molding,
-						toggle_colinear_molding,
 					}
 					.into(),
 				];
