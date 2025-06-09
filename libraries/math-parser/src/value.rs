@@ -62,10 +62,7 @@ impl Number {
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powf(rhs),
 					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
-					BinaryOp::Lt => {
-						println!("{lhs} < {rhs}: {}", (lhs < rhs) as u8);
-						(lhs < rhs) as u8 as f64
-					}
+					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
 					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
 					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
 					BinaryOp::Eq => (lhs == rhs) as u8 as f64,

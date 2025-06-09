@@ -85,8 +85,11 @@ mod tests {
 	}
 
 	test_end_to_end! {
-		// Basic arithmetic and units
+		// Basic arithmetic
 		infix_addition: "5 + 5" => 10.,
+		infix_subtraction_units: "5 - 3" => 2.,
+		infix_multiplication_units: "4 * 4" => 16.,
+		infix_division_units: "8/2" => 4.,
 
 		// Order of operations
 		order_of_operations_negative_prefix: "-10 + 5" => -5.,

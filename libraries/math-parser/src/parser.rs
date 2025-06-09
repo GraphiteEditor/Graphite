@@ -52,8 +52,8 @@ pub fn chumsky_parser<'a>() -> impl Parser<'a, &'a str, Node, chumsky::extra::Er
 			just("e").map(|_| Node::Lit(Literal::Float(std::f64::consts::E))),
 			just("phi").or(just("φ")).map(|_| Node::Lit(Literal::Float(1.618_033_988_75))),
 			just("inf").or(just("∞")).map(|_| Node::Lit(Literal::Float(f64::INFINITY))),
-			just("i").map(|_| Node::Lit(Literal::Complex(Complex::new(0.0, 1.0)))), // Assuming Complex impl
-			just("G").map(|_| Node::Lit(Literal::Float(9.80665))),                  // gravity
+			just("i").map(|_| Node::Lit(Literal::Complex(Complex::new(0.0, 1.0)))), // Assuming `Complex` impl
+			just("G").map(|_| Node::Lit(Literal::Float(9.80665))),                  // Standard gravity on Earth
 		));
 
 		let ident = text::ident().padded();
