@@ -226,9 +226,9 @@ impl Default for GridSnapping {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
 			rectangular_spacing: DVec2::ONE,
-			isometric_y_spacing: 1.0,
-			isometric_angle_a: 30.0,
-			isometric_angle_b: 30.0,
+			isometric_y_spacing: 1.,
+			isometric_angle_a: 30.,
+			isometric_angle_b: 30.,
 			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
 			dot_display: false,
 		}
