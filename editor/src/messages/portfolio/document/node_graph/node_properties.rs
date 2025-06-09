@@ -334,6 +334,15 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 	if let Some(&TaggedValue::ReferencePoint(reference_point)) = input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			CheckboxInput::new(reference_point != ReferencePoint::None)
+				.on_update(update_value(
+					move |x: &CheckboxInput| TaggedValue::ReferencePoint(if x.checked { ReferencePoint::Center } else { ReferencePoint::None }),
+					node_id,
+					index,
+				))
+				.disabled(disabled)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			ReferencePointInput::new(reference_point)
 				.on_update(update_value(move |x: &ReferencePointInput| TaggedValue::ReferencePoint(x.value), node_id, index))
 				.disabled(disabled)
