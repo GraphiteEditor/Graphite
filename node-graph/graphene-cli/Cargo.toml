@@ -24,6 +24,7 @@ gpu = [
 # Local dependencies
 graphene-std = { path = "../gstd", features = ["serde"] }
 interpreted-executor = { path = "../interpreted-executor" }
+preprocessor = { path = "../preprocessor" }
 
 # Workspace dependencies
 log = { workspace = true }

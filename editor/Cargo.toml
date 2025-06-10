@@ -30,6 +30,7 @@ ron = ["dep:ron"]
 # Local dependencies
 graphite-proc-macros = { path = "../proc-macros" }
 graph-craft = { path = "../node-graph/graph-craft" }
+preprocessor = { path = "../node-graph/preprocessor" }
 interpreted-executor = { path = "../node-graph/interpreted-executor", features = [
 	"serde",
 ] }
