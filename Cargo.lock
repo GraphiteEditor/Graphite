@@ -2175,6 +2175,7 @@ dependencies = [
  "graphene-std",
  "interpreted-executor",
  "log",
+ "preprocessor",
  "tokio",
  "wgpu",
  "wgpu-executor",
@@ -2282,6 +2283,7 @@ dependencies = [
  "log",
  "num_enum",
  "once_cell",
+ "preprocessor",
  "ron",
  "serde",
  "serde_json",
@@ -4474,6 +4476,23 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "preprocessor"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dyn-any",
+ "futures",
+ "glam",
+ "graph-craft",
+ "graphene-std",
+ "interpreted-executor",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "presser"

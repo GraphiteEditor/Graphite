@@ -29,6 +29,7 @@ graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
 graphene-std = { workspace = true }
+preprocessor = { path = "../node-graph/preprocessor" }
 
 # Workspace dependencies
 js-sys = { workspace = true }

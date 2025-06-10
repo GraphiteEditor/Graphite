@@ -1,0 +1,30 @@
+[package]
+name = "preprocessor"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[features]
+
+[dependencies]
+# Local dependencies
+dyn-any = { path = "../../libraries/dyn-any", features = [
+	"log-bad-types",
+	"rc",
+	"glam",
+] }
+
+# Workspace dependencies
+graphene-std = { workspace = true, features = ["gpu"] }
+graph-craft = { workspace = true}
+interpreted-executor  = { path = "../interpreted-executor" }
+log = { workspace = true }
+futures = { workspace = true }
+glam = { workspace = true }
+base64 = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+

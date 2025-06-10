@@ -619,7 +619,6 @@ impl_convert!(f64);
 // Convert
 pub struct ConvertNode<O>(PhantomData<O>);
 impl<_O> ConvertNode<_O> {
-	#[cfg(feature = "alloc")]
 	pub const fn new() -> Self {
 		Self(core::marker::PhantomData)
 	}
