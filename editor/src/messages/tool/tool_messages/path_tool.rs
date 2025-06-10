@@ -1055,6 +1055,8 @@ impl Fsm for PathToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
+
+		update_dynamic_hints(self, responses, shape_editor, document, tool_data);
 		let ToolMessage::Path(event) = event else { return self };
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
@@ -1834,102 +1836,8 @@ impl Fsm for PathToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
-		let hint_data = match self {
-			PathToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
-				HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
-				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
-					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "To Sharp"),
-					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "To Smooth"),
-				]),
-				// TODO: Only show the following hints if at least one point is selected
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-				HintGroup(vec![
-					HintInfo::keys([Key::Delete], "Delete Selected"),
-					// TODO: Only show the following hints if at least one anchor is selected
-					HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
-					HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
-				]),
-			]),
-			PathToolFsmState::Dragging(dragging_state) => {
-				let colinear = dragging_state.colinear;
-				let mut dragging_hint_data = HintData(Vec::new());
-				dragging_hint_data
-					.0
-					.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]));
-
-				let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
-				let toggle_group = match dragging_state.point_select_state {
-					PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
-						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
-						hints.push(HintInfo::keys(
-							[Key::KeyC],
-							if colinear == ManipulatorAngle::Colinear {
-								"Break Colinear Handles"
-							} else {
-								"Make Handles Colinear"
-							},
-						));
-						hints
-					}
-					PointSelectState::Anchor => Vec::new(),
-				};
-				let hold_group = match dragging_state.point_select_state {
-					PointSelectState::HandleNoPair => {
-						let mut hints = vec![];
-						if colinear != ManipulatorAngle::Free {
-							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
-						}
-						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints.push(drag_anchor);
-						hints
-					}
-					PointSelectState::HandleWithPair => {
-						let mut hints = vec![];
-						if colinear != ManipulatorAngle::Free {
-							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
-						}
-						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints.push(drag_anchor);
-						hints
-					}
-					PointSelectState::Anchor => Vec::new(),
-				};
-
-				if !toggle_group.is_empty() {
-					dragging_hint_data.0.push(HintGroup(toggle_group));
-				}
-
-				if !hold_group.is_empty() {
-					dragging_hint_data.0.push(HintGroup(hold_group));
-				}
-
-				dragging_hint_data
-			}
-			PathToolFsmState::Drawing { .. } => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-					HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
-					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
-				]),
-			]),
-			PathToolFsmState::MoldingSegment => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]),
-			]),
-		};
-
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	fn update_hints(&self, _responses: &mut VecDeque<Message>) {
+		// Moved logic to update_dynamic_hints
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -2155,4 +2063,131 @@ fn calculate_adjacent_anchor_tangent(
 
 		_ => (None, None),
 	}
+}
+
+fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Message>, _shape_editor: &mut ShapeState, document: &DocumentMessageHandler, tool_data: &PathToolData) {
+	// Condinting based on currently selected segment if it has any one g1 continuous handle
+
+	let hint_data = match state {
+		PathToolFsmState::Ready => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
+			// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
+			HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
+				HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "To Sharp"),
+				HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "To Smooth"),
+			]),
+			// TODO: Only show the following hints if at least one point is selected
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+			HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
+			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+			HintGroup(vec![
+				HintInfo::keys([Key::Delete], "Delete Selected"),
+				// TODO: Only show the following hints if at least one anchor is selected
+				HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
+			]),
+		]),
+		PathToolFsmState::Dragging(dragging_state) => {
+			let colinear = dragging_state.colinear;
+			let mut dragging_hint_data = HintData(Vec::new());
+			dragging_hint_data
+				.0
+				.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]));
+
+			let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
+			let toggle_group = match dragging_state.point_select_state {
+				PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
+					let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
+					hints.push(HintInfo::keys(
+						[Key::KeyC],
+						if colinear == ManipulatorAngle::Colinear {
+							"Break Colinear Handles"
+						} else {
+							"Make Handles Colinear"
+						},
+					));
+					hints
+				}
+				PointSelectState::Anchor => Vec::new(),
+			};
+			let hold_group = match dragging_state.point_select_state {
+				PointSelectState::HandleNoPair => {
+					let mut hints = vec![];
+					if colinear != ManipulatorAngle::Free {
+						hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+					}
+					hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
+					hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+					hints.push(drag_anchor);
+					hints
+				}
+				PointSelectState::HandleWithPair => {
+					let mut hints = vec![];
+					if colinear != ManipulatorAngle::Free {
+						hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+					}
+					hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
+					hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+					hints.push(drag_anchor);
+					hints
+				}
+				PointSelectState::Anchor => Vec::new(),
+			};
+
+			if !toggle_group.is_empty() {
+				dragging_hint_data.0.push(HintGroup(toggle_group));
+			}
+
+			if !hold_group.is_empty() {
+				dragging_hint_data.0.push(HintGroup(hold_group));
+			}
+
+			dragging_hint_data
+		}
+		PathToolFsmState::Drawing { .. } => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+			HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
+				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+			]),
+		]),
+		PathToolFsmState::MoldingSegment => {
+			let mut has_colinear_anchors = false;
+
+			if let Some(segment) = &tool_data.segment {
+				let handle1 = HandleId::primary(segment.segment());
+				let handle2 = HandleId::end(segment.segment());
+
+				if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+					let other_handle1 = vector_data.other_colinear_handle(handle1);
+					let other_handle2 = vector_data.other_colinear_handle(handle2);
+					if other_handle1.is_some() || other_handle2.is_some() {
+						has_colinear_anchors = true;
+					}
+				};
+			}
+
+			let handles_stored = if let Some(other_handles) = tool_data.temporary_adjacent_handles_while_molding {
+				other_handles[0].is_some() || other_handles[1].is_some()
+			} else {
+				false
+			};
+
+			let molding_disable_possible = has_colinear_anchors || handles_stored;
+
+			let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+
+			if molding_disable_possible {
+				molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
+			}
+
+			HintData(molding_hints)
+		}
+	};
+	responses.add(FrontendMessage::UpdateInputHints { hint_data });
 }

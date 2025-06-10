@@ -340,11 +340,8 @@ impl ClosestSegment {
 				if let Some(other_handle2) = adj_handles[1] {
 					restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
 				}
-
-				None
-			} else {
-				momentary_adjacent_handles
 			}
+			None
 		}
 	}
 }
