@@ -422,6 +422,11 @@ impl Fill {
 			Fill::None => true,
 		}
 	}
+
+	/// Returns if fill is none
+	pub fn is_none(&self) -> bool {
+		*self == Self::None
+	}
 }
 
 impl From<Color> for Fill {
@@ -702,7 +707,7 @@ impl Stroke {
 	}
 
 	/// Provide the SVG attributes for the stroke.
-	pub fn render(&self, aligned_strokes: bool, _render_params: &RenderParams) -> String {
+	pub fn render(&self, aligned_strokes: bool, override_paint_order: bool, _render_params: &RenderParams) -> String {
 		// Don't render a stroke at all if it would be invisible
 		let Some(color) = self.color else { return String::new() };
 		if !self.has_renderable_stroke() {
@@ -717,7 +722,7 @@ impl Stroke {
 		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
 		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
 		let stroke_align = (self.align != StrokeAlign::Center).then_some(self.align);
-		let paint_order = (self.paint_order != PaintOrder::StrokeAbove).then_some(self.paint_order);
+		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
 		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
@@ -1009,6 +1014,7 @@ impl PathStyle {
 		bounds: [DVec2; 2],
 		transformed_bounds: [DVec2; 2],
 		aligned_strokes: bool,
+		override_paint_order: bool,
 		render_params: &RenderParams,
 	) -> String {
 		let view_mode = render_params.view_mode;
@@ -1018,12 +1024,16 @@ impl PathStyle {
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
-				let stroke_attribute = outline_stroke.render(aligned_strokes, render_params);
+				let stroke_attribute = outline_stroke.render(aligned_strokes, override_paint_order, render_params);
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
 				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render(aligned_strokes, render_params)).unwrap_or_default();
+				let stroke_attribute = self
+					.stroke
+					.as_ref()
+					.map(|stroke| stroke.render(aligned_strokes, override_paint_order, render_params))
+					.unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 		}

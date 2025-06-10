@@ -595,41 +595,46 @@ impl GraphicElementRendered for VectorDataTable {
 					&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
 
 				let mut push_id = None;
+				let mut can_use_order = false;
 
 				if can_draw_aligned_stroke {
-					let id = format!("alignment-{}", generate_uuid());
-					let selector = format!("url(#{id})");
 					let mask_type = if instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside {
 						MaskType::Clip
 					} else {
 						MaskType::Mask
 					};
-					push_id = Some((selector, mask_type));
 
-					let mut vector_data = VectorDataTable::default();
+					can_use_order = !instance.instance.style.fill().is_none() && mask_type == MaskType::Mask;
+					if !can_use_order {
+						let id = format!("alignment-{}", generate_uuid());
+						let selector = format!("url(#{id})");
+						push_id = Some((selector, mask_type));
 
-					let mut fill_instance = instance.instance.clone();
-					fill_instance.style.clear_stroke();
-					fill_instance.style.set_fill(Fill::solid(Color::BLACK));
+						let mut vector_data = VectorDataTable::default();
 
-					vector_data.push(Instance {
-						instance: fill_instance,
-						alpha_blending: *instance.alpha_blending,
-						..Default::default()
-					});
+						let mut fill_instance = instance.instance.clone();
+						fill_instance.style.clear_stroke();
+						fill_instance.style.set_fill(Fill::solid(Color::BLACK));
 
-					let mut svg = SvgRender::new();
-					vector_data.render_svg(&mut svg, render_params);
+						vector_data.push(Instance {
+							instance: fill_instance,
+							alpha_blending: *instance.alpha_blending,
+							..Default::default()
+						});
 
-					let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
-					let quad = Quad::from_box(transformed_bounds).inflate(weight);
-					let (x, y) = quad.top_left().into();
-					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
-					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
-					match mask_type {
-						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
-						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
+						let mut svg = SvgRender::new();
+						vector_data.render_svg(&mut svg, render_params);
+
+						let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
+						let quad = Quad::from_box(transformed_bounds).inflate(weight);
+						let (x, y) = quad.top_left().into();
+						let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+						write!(defs, r##"{}"##, svg.svg_defs).unwrap();
+						let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
+						match mask_type {
+							MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
+							MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
+						}
 					}
 				}
 
@@ -640,9 +645,9 @@ impl GraphicElementRendered for VectorDataTable {
 					layer_bounds,
 					transformed_bounds,
 					can_draw_aligned_stroke,
+					can_use_order,
 					render_params,
 				);
-
 				if let Some((selector, mask_type)) = push_id {
 					attributes.push(mask_type.to_attribute(), selector);
 				}
@@ -703,7 +708,13 @@ impl GraphicElementRendered for VectorDataTable {
 
 			let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 				&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
-			if can_draw_aligned_stroke {
+
+			let reorder_for_outside = instance
+				.instance
+				.style
+				.stroke()
+				.is_some_and(|stroke| stroke.align == StrokeAlign::Outside && !instance.instance.style.fill().is_none());
+			if can_draw_aligned_stroke && !reorder_for_outside {
 				let mut vector_data = VectorDataTable::default();
 
 				let mut fill_instance = instance.instance.clone();
@@ -754,10 +765,10 @@ impl GraphicElementRendered for VectorDataTable {
 						Stroke,
 					}
 
-					let order = if instance.instance.style.stroke().is_none_or(|stroke| stroke.paint_order.is_default()) {
-						[Op::Fill, Op::Stroke]
-					} else {
+					let order = if instance.instance.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) || reorder_for_outside {
 						[Op::Stroke, Op::Fill]
+					} else {
+						[Op::Fill, Op::Stroke] // default
 					};
 					for operation in order {
 						match operation {
