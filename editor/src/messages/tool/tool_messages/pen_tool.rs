@@ -1563,9 +1563,13 @@ impl Fsm for PenToolFsmState {
 				// Check if there is an anchor within threshold
 				// If not check if there is a closest segment within threshold, if yes then draw overlay
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				let close_to_point = closest_point(document, input.mouse.position, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+
+				let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
 				if preferences.vector_meshes && !close_to_point {
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, tolerance) {
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
 						let pos = closest_segment.closest_point_to_viewport();
 						let perp = closest_segment.calculate_perp(&document);
 						overlay_context.manipulator_anchor(pos, true, None);
@@ -1685,11 +1689,17 @@ impl Fsm for PenToolFsmState {
 
 				if self == PenToolFsmState::PlacingAnchor && preferences.vector_meshes {
 					let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, tolerance) {
-						let pos = closest_segment.closest_point_to_viewport();
-						let perp = closest_segment.calculate_perp(&document);
-						overlay_context.manipulator_anchor(pos, true, None);
-						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+					let close_to_point = closest_point(&document, viewport, tolerance, document.metadata().all_layers(), |_| false, &preferences).is_some();
+					if !close_to_point {
+						if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+							let pos = closest_segment.closest_point_to_viewport();
+							let perp = closest_segment.calculate_perp(&document);
+							overlay_context.manipulator_anchor(pos, true, None);
+							overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+						}
 					}
 				}
 
