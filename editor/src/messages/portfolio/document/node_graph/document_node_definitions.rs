@@ -239,15 +239,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(3), 0)],
+						exports: vec![NodeInput::node(NodeId(2), 0)],
 						nodes: [
-							// Secondary (left) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 1)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToElementNode"),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
 							// Primary (bottom) input type coercion
 							DocumentNode {
 								inputs: vec![NodeInput::network(generic!(T), 0)],
@@ -257,7 +250,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::network(generic!(T), 1)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
 								manual_composition: Some(generic!(T)),
 								skip_deduplication: true,
@@ -266,8 +259,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(generic!(T)),
 								inputs: vec![
+									NodeInput::node(NodeId(0), 0),
 									NodeInput::node(NodeId(1), 0),
-									NodeInput::node(NodeId(2), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
 								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::LayerNode"),

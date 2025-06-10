@@ -183,8 +183,11 @@ fn fix_nodes(network: &mut NodeNetwork) {
 fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let mut network = load_network(&document_string);
 	fix_nodes(&mut network);
+	let substitutions = preprocessor::generate_node_substitutions();
+	preprocessor::expand_network(&mut network, &substitutions);
 
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
+
 	let compiler = Compiler {};
 	compiler.compile_single(wrapped_network).map_err(|x| x.into())
 }
