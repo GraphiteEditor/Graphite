@@ -410,7 +410,7 @@
 
 	function pointerDownHandler(e: PointerEvent) {
 		// Close the floating menu if the pointer clicked outside the floating menu (but within stray distance)
-		if (isPointerEventOutsideFloatingMenu(e)) {
+		if (!self?.closest("[data-floating-menu-content]") && isPointerEventOutsideFloatingMenu(e)) {
 			dispatch("open", false);
 
 			// Track if the left pointer button is now down so its later click event can be canceled
@@ -438,10 +438,15 @@
 	}
 
 	function isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
-		// Consider all child menus as well as the top-level one
+		// Consider all self-or-child menus as well as the top-level one
 		const allContainedFloatingMenus = [...(self?.querySelectorAll("[data-floating-menu-content]") || [])];
 
-		return !allContainedFloatingMenus.find((element) => !isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
+		// If we find no self-or-child menus that this pointer event is inside, then the pointer event is outside all the floating menus
+		const result = !allContainedFloatingMenus.find((element) => !isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
+
+		if (result) console.log("Result is true");
+
+		return result;
 	}
 
 	function isPointerEventOutsideMenuElement(e: PointerEvent, element: Element, extraDistanceAllowed = 0): boolean {

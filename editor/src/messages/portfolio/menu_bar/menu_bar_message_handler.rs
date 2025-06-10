@@ -335,43 +335,58 @@ impl LayoutHolder for MenuBarMessageHandler {
 							]),
 							..MenuBarEntry::default()
 						},
+						// ...existing code...
 						MenuBarEntry {
 							label: "Align".into(),
 							icon: Some("AlignVerticalCenter".into()),
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren({
-								let choices = [
-									[
-										(AlignAxis::X, AlignAggregate::Min, "AlignLeft", "Align Left"),
-										(AlignAxis::X, AlignAggregate::Center, "AlignHorizontalCenter", "Align Horizontal Center"),
-										(AlignAxis::X, AlignAggregate::Max, "AlignRight", "Align Right"),
-									],
-									[
-										(AlignAxis::Y, AlignAggregate::Min, "AlignTop", "Align Top"),
-										(AlignAxis::Y, AlignAggregate::Center, "AlignVerticalCenter", "Align Vertical Center"),
-										(AlignAxis::Y, AlignAggregate::Max, "AlignBottom", "Align Bottom"),
-									],
+								let x_choices = [
+									(AlignAxis::X, AlignAggregate::Min, "AlignLeft", "Align Left"),
+									(AlignAxis::X, AlignAggregate::Center, "AlignHorizontalCenter", "Align Horizontal Center"),
+									(AlignAxis::X, AlignAggregate::Max, "AlignRight", "Align Right"),
+								];
+								let y_choices = [
+									(AlignAxis::Y, AlignAggregate::Min, "AlignTop", "Align Top"),
+									(AlignAxis::Y, AlignAggregate::Center, "AlignVerticalCenter", "Align Vertical Center"),
+									(AlignAxis::Y, AlignAggregate::Max, "AlignBottom", "Align Bottom"),
 								];
 
-								choices
-									.into_iter()
-									.map(|group| {
-										group
-											.into_iter()
-											.map(|(axis, aggregate, icon, name)| MenuBarEntry {
-												label: name.into(),
-												icon: Some(icon.into()),
-												action: MenuBarEntry::create_action(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into()),
-												disabled: no_active_document || !has_selected_layers,
-												..MenuBarEntry::default()
-											})
-											.collect()
-									})
-									.collect()
+								vec![
+									x_choices
+										.into_iter()
+										.map(|(axis, aggregate, icon, name)| MenuBarEntry {
+											label: name.into(),
+											icon: Some(icon.into()),
+											action: MenuBarEntry::create_action(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into()),
+											disabled: no_active_document || !has_selected_layers,
+											..MenuBarEntry::default()
+										})
+										.collect(),
+									vec![MenuBarEntry {
+										label: "Vertical".into(),
+										icon: Some("AlignVerticalCenter".into()),
+										action: MenuBarEntry::no_action(),
+										children: MenuBarEntryChildren(vec![
+											y_choices
+												.into_iter()
+												.map(|(axis, aggregate, icon, name)| MenuBarEntry {
+													label: name.into(),
+													icon: Some(icon.into()),
+													action: MenuBarEntry::create_action(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into()),
+													disabled: no_active_document || !has_selected_layers,
+													..MenuBarEntry::default()
+												})
+												.collect(),
+										]),
+										..MenuBarEntry::default()
+									}],
+								]
 							}),
 							..MenuBarEntry::default()
 						},
+						// ...existing code...
 						MenuBarEntry {
 							label: "Flip".into(),
 							icon: Some("FlipVertical".into()),
