@@ -86,7 +86,7 @@ impl PointModification {
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
-	divide: HashMap<SegmentId, (SegmentId, SegmentId, PointId, f64)>,
+	divide: HashMap<SegmentId, DivideSegmentArgs>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	start_point: HashMap<SegmentId, PointId>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
@@ -104,32 +104,18 @@ impl SegmentModification {
 	pub fn apply(&self, segment_domain: &mut SegmentDomain, point_domain: &mut PointDomain) {
 		let mut dividing_segments = Vec::new();
 
-		for (segment_id, (first_segment_id, second_segment_id, new_point_id, t_value)) in self.divide.iter() {
+		for (segment_id, args) in self.divide.iter() {
 			for (seg_id, start_index, end_index, handles) in segment_domain.iter() {
-				let Some(&start_pos) = point_domain.positions().get(start_index) else { continue };
-				let Some(&end_pos) = point_domain.positions().get(end_index) else { continue };
-				let Some(&start_id) = point_domain.ids().get(start_index) else {
-					continue;
-				};
-				let Some(&end_id) = point_domain.ids().get(end_index) else {
-					continue;
-				};
 				if seg_id == *segment_id {
-					dividing_segments.push((
-						*segment_id,
-						first_segment_id,
-						second_segment_id,
-						new_point_id,
-						t_value,
-						(start_id, start_index, start_pos),
-						(end_id, end_index, end_pos),
-						handles,
-					));
+					dividing_segments.push((*segment_id, args, start_index, end_index, handles));
 				}
 			}
 		}
 
-		for (segment_id, new_first_segment_id, new_second_segment_id, new_point_id, t_value, (start_id, start_index, start_position), (end_id, end_index, end_position), handles) in dividing_segments {
+		for (segment_id, args, start_index, end_index, handles) in dividing_segments {
+			let Some(&start_position) = point_domain.positions().get(start_index) else { continue };
+			let Some(&end_position) = point_domain.positions().get(end_index) else { continue };
+
 			let path_segment = match handles {
 				BezierHandles::Linear => PathSeg::Line(Line::new(dvec2_to_point(start_position), dvec2_to_point(end_position))),
 				BezierHandles::Quadratic { handle } => {
@@ -147,8 +133,8 @@ impl SegmentModification {
 				}
 			};
 
-			let first = path_segment.subsegment(0f64..*t_value);
-			let second = path_segment.subsegment(*t_value..1.);
+			let first = path_segment.subsegment(0f64..args.t_value);
+			let second = path_segment.subsegment(args.t_value..1.);
 
 			let first_handles = match first {
 				PathSeg::Line(_) => BezierHandles::Linear,
@@ -172,18 +158,14 @@ impl SegmentModification {
 				continue;
 			};
 
-			let Some(new_point_index) = point_domain.ids().iter().enumerate().find(|(_, id)| **id == *new_point_id).map(|(i, _)| i) else {
-				// TODO: write an warn msg
-				continue;
-			};
-
 			// Delete the original segment.
 			segment_domain.retain(|id| *id != segment_id, point_domain.ids().len());
 			// Insert the point common between first and second half of original segment.
-			point_domain.push(*new_point_id, point_to_dvec2(first.end()));
+			let new_point_index = point_domain.ids().len();
+			point_domain.push(args.point_id, point_to_dvec2(first.end()));
 			// Insert the segments with handles.
-			segment_domain.push(*new_first_segment_id, start_index, new_point_index, first_handles, StrokeId::ZERO);
-			segment_domain.push(*new_second_segment_id, new_point_index, end_index, second_handles, StrokeId::ZERO);
+			segment_domain.push(args.first_segment_id, start_index, new_point_index, first_handles, stroke_id);
+			segment_domain.push(args.second_segment_id, new_point_index, end_index, second_handles, stroke_id);
 		}
 
 		segment_domain.retain(|id| !self.remove.contains(id), point_domain.ids().len());
@@ -338,9 +320,9 @@ impl SegmentModification {
 		self.stroke.remove(&id);
 	}
 
-	fn divide(&mut self, segment_id: SegmentId, first_id: SegmentId, second_id: SegmentId, point_id: PointId, t_value: f64) {
-		self.remove.remove(&segment_id);
-		self.divide.insert(segment_id, (first_id, second_id, point_id, t_value));
+	fn divide(&mut self, divide_segment_args: DivideSegmentArgs) {
+		self.remove.remove(&divide_segment_args.segment_id);
+		self.divide.insert(divide_segment_args.segment_id, divide_segment_args);
 	}
 }
 
@@ -400,13 +382,31 @@ pub struct VectorModification {
 	remove_g1_continuous: HashSet<[HandleId; 2]>,
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-struct DivideSegmentArg {
+// TODO: Write comments to discribe the meaning of fields.
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DivideSegmentArgs {
+	// The ID of segment to divide.
 	segment_id: SegmentId,
+	// New ID for the first part of original segment division.
 	first_segment_id: SegmentId,
+	// New ID for the second part of original segment division.
 	second_segment_id: SegmentId,
+	// The ID for the point which will be inserted between the original segment.
 	point_id: PointId,
+	// Parametric t value at which the segment will be divided.
 	t_value: f64,
+}
+
+impl DivideSegmentArgs {
+	pub fn new(segment_id: SegmentId, first_segment_id: SegmentId, second_segment_id: SegmentId, point_id: PointId, t_value: f64) -> Self {
+		Self {
+			segment_id,
+			first_segment_id,
+			second_segment_id,
+			point_id,
+			t_value,
+		}
+	}
 }
 
 /// A modification type that can be added to a [`VectorModification`].
@@ -418,7 +418,7 @@ pub enum VectorModificationType {
 	RemoveSegment { id: SegmentId },
 	RemovePoint { id: PointId },
 
-	DivideSegment(DivideSegmentArg),
+	DivideSegment(DivideSegmentArgs),
 
 	SetG1Continuous { handles: [HandleId; 2], enabled: bool },
 	SetHandles { segment: SegmentId, handles: [Option<DVec2>; 2] },
@@ -460,14 +460,8 @@ impl VectorModification {
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
 			VectorModificationType::RemovePoint { id } => self.points.remove(*id),
 
-			VectorModificationType::DivideSegment {
-				segment_id,
-				first_segment_id: first_id,
-				second_id,
-				point_id,
-				t_value,
-			} => {
-				self.segments.divide(*segment_id, *first_id, *second_id, *point_id, *t_value);
+			VectorModificationType::DivideSegment(divide_segment_args) => {
+				self.segments.divide(*divide_segment_args);
 			}
 
 			VectorModificationType::SetG1Continuous { handles, enabled } => {
