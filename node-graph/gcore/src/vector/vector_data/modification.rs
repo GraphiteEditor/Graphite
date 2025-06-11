@@ -105,17 +105,15 @@ impl SegmentModification {
 	pub fn apply(&self, segment_domain: &mut SegmentDomain, point_domain: &mut PointDomain) {
 		let mut dividing_segments = Vec::new();
 
-		for (segment_id, args) in self.divide.iter() {
-			for (seg_id, start_index, end_index, handles) in segment_domain.iter() {
-				if seg_id == *segment_id {
-					dividing_segments.push((*segment_id, args, start_index, end_index, handles));
-				}
+		for (segment_id, start_point_index, endpoint_index, handles) in segment_domain.iter() {
+			if let Some(args) = self.divide.get(&segment_id) {
+				dividing_segments.push((segment_id, args, start_point_index, endpoint_index, handles));
 			}
 		}
 
-		for (segment_id, args, start_index, end_index, handles) in dividing_segments {
-			let Some(&start_position) = point_domain.positions().get(start_index) else { continue };
-			let Some(&end_position) = point_domain.positions().get(end_index) else { continue };
+		for (segment_id, args, start_point_index, endpoint_index, handles) in dividing_segments {
+			let Some(&start_position) = point_domain.positions().get(start_point_index) else { continue };
+			let Some(&end_position) = point_domain.positions().get(endpoint_index) else { continue };
 
 			let path_segment = match handles {
 				BezierHandles::Linear => PathSeg::Line(Line::new(dvec2_to_point(start_position), dvec2_to_point(end_position))),
@@ -165,8 +163,8 @@ impl SegmentModification {
 			let new_point_index = point_domain.ids().len();
 			point_domain.push(args.point_id, point_to_dvec2(first.end()));
 			// Insert the segments with handles.
-			segment_domain.push(args.first_segment_id, start_index, new_point_index, first_handles, stroke_id);
-			segment_domain.push(args.second_segment_id, new_point_index, end_index, second_handles, stroke_id);
+			segment_domain.push(args.first_segment_id, start_point_index, new_point_index, first_handles, stroke_id);
+			segment_domain.push(args.second_segment_id, new_point_index, endpoint_index, second_handles, stroke_id);
 		}
 
 		segment_domain.retain(|id| !self.remove.contains(id), point_domain.ids().len());
