@@ -959,13 +959,3 @@ pub enum ViewMode {
 	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
 	Pixels,
 }
-
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
-#[widget(Radio)]
-pub enum Spacing {
-	#[default]
-	Span,
-	Envelope,
-	Pitch,
-	Gap,
-}
