@@ -86,6 +86,7 @@ impl PointModification {
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	divide: HashMap<SegmentId, DivideSegmentArgs>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	start_point: HashMap<SegmentId, PointId>,
