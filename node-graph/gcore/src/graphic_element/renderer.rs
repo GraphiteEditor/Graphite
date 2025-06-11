@@ -567,19 +567,51 @@ impl GraphicElementRendered for GraphicGroupTable {
 impl GraphicElementRendered for VectorDataTable {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
-			let multiplied_transform = render.transform * *instance.transform;
+			let multiplied_transform = *instance.transform;
+			let vector_data = &instance.instance;
 			// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
-			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let has_real_stroke = vector_data.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*instance.transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-			let layer_bounds = instance.instance.bounding_box().unwrap_or_default();
-			let transformed_bounds = instance.instance.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
+			let layer_bounds = vector_data.bounding_box().unwrap_or_default();
+			let transformed_bounds = vector_data.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 			let mut path = String::new();
 			for subpath in instance.instance.stroke_bezier_paths() {
 				let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
+			}
+
+			let can_draw_aligned_stroke =
+				vector_data.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && vector_data.stroke_bezier_paths().all(|path| path.closed());
+
+			let mut push_id = None;
+
+			if can_draw_aligned_stroke {
+				let mask_type = if vector_data.style.stroke().unwrap().align == StrokeAlign::Inside {
+					MaskType::Clip
+				} else {
+					MaskType::Mask
+				};
+
+				let can_use_order = !instance.instance.style.fill().is_none() && mask_type == MaskType::Mask;
+				if !can_use_order {
+					let id = format!("alignment-{}", generate_uuid());
+					let mut vector_row = VectorDataTable::default();
+					let mut fill_instance = instance.instance.clone();
+
+					fill_instance.style.clear_stroke();
+					fill_instance.style.set_fill(Fill::solid(Color::BLACK));
+
+					vector_row.push(Instance {
+						instance: fill_instance,
+						alpha_blending: *instance.alpha_blending,
+						transform: *instance.transform,
+						source_node_id: *instance.source_node_id,
+					});
+					push_id = Some((id, mask_type, vector_row));
+				}
 			}
 
 			render.leaf_tag("path", |attributes| {
@@ -590,51 +622,19 @@ impl GraphicElementRendered for VectorDataTable {
 				}
 
 				let defs = &mut attributes.0.svg_defs;
+				if let Some((ref id, mask_type, ref vector_row)) = push_id {
+					let mut svg = SvgRender::new();
+					vector_row.render_svg(&mut svg, render_params);
 
-				let can_draw_aligned_stroke = instance.instance.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
-					&& instance.instance.stroke_bezier_paths().all(|path| path.closed());
-
-				let mut push_id = None;
-				let mut can_use_order = false;
-
-				if can_draw_aligned_stroke {
-					let mask_type = if instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside {
-						MaskType::Clip
-					} else {
-						MaskType::Mask
-					};
-
-					can_use_order = !instance.instance.style.fill().is_none() && mask_type == MaskType::Mask;
-					if !can_use_order {
-						let id = format!("alignment-{}", generate_uuid());
-						let selector = format!("url(#{id})");
-						push_id = Some((selector, mask_type));
-
-						let mut vector_data = VectorDataTable::default();
-
-						let mut fill_instance = instance.instance.clone();
-						fill_instance.style.clear_stroke();
-						fill_instance.style.set_fill(Fill::solid(Color::BLACK));
-
-						vector_data.push(Instance {
-							instance: fill_instance,
-							alpha_blending: *instance.alpha_blending,
-							..Default::default()
-						});
-
-						let mut svg = SvgRender::new();
-						vector_data.render_svg(&mut svg, render_params);
-
-						let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
-						let quad = Quad::from_box(transformed_bounds).inflate(weight);
-						let (x, y) = quad.top_left().into();
-						let (width, height) = (quad.bottom_right() - quad.top_left()).into();
-						write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-						let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
-						match mask_type {
-							MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
-							MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
-						}
+					let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
+					let quad = Quad::from_box(transformed_bounds).inflate(weight);
+					let (x, y) = quad.top_left().into();
+					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
+					let rect = format!(r##"<rect x="{}" y="{}" width="{width}" height="{height}" fill="white" />"##, x, y);
+					match mask_type {
+						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
+						MaskType::Mask => write!(defs, r##"<mask id="{id}">{}{}</mask>"##, rect, svg.svg.to_svg_string()).unwrap(),
 					}
 				}
 
@@ -645,10 +645,12 @@ impl GraphicElementRendered for VectorDataTable {
 					layer_bounds,
 					transformed_bounds,
 					can_draw_aligned_stroke,
-					can_use_order,
+					can_draw_aligned_stroke && push_id.is_none(),
 					render_params,
 				);
-				if let Some((selector, mask_type)) = push_id {
+
+				if let Some((id, mask_type, _)) = push_id {
+					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
 				attributes.push_val(fill_and_stroke);
@@ -1130,7 +1132,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 impl GraphicElementRendered for RasterDataTable<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
-			let transform = *instance.transform * render.transform;
+			let transform = *instance.transform;
 
 			let image = &instance.instance;
 			if image.data.is_empty() {
