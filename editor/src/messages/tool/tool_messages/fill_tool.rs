@@ -76,9 +76,15 @@ impl ToolTransition for FillTool {
 	}
 }
 
-pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, to_viewport_transform: DAffine2) -> bool {
-	let mouse_pos = to_viewport_transform.inverse().transform_point2(mouse_pos);
-	let transform_scale = to_viewport_transform.decompose_scale().x.max(to_viewport_transform.decompose_scale().y);
+pub fn close_to_subpath(
+	mouse_pos: DVec2,
+	subpath: bezier_rs::Subpath<PointId>,
+	stroke_width: f64,
+	layer_to_viewport_transform: DAffine2,
+	// downstream_layer_to_viewport_transform: DAffine2,
+	transform_scale: f64,
+) -> bool {
+	let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
 	let threshold = (2.0 - transform_scale).exp2();
 	let max_stroke_distance = stroke_width * 0.5 + threshold;
 
@@ -119,6 +125,13 @@ impl Fsm for FillToolFsmState {
 					return self;
 				};
 				if let Some(layer) = document.click(input) {
+					let transform_scale = document
+						.metadata()
+						.downstream_transform_to_viewport(layer)
+						.decompose_scale()
+						.x
+						.max(document.metadata().downstream_transform_to_viewport(layer).decompose_scale().y);
+
 					if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 						let mut subpaths = vector_data.stroke_bezier_paths();
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
@@ -129,9 +142,9 @@ impl Fsm for FillToolFsmState {
 									subpath,
 									get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
 									document.metadata().transform_to_viewport(layer),
+									transform_scale,
 								)
 							});
-
 						if close_to_stroke {
 							let overlay_stroke = || {
 								let mut stroke = Stroke::new(Some(preview_color), get_stroke_width(layer, &document.network_interface).unwrap());
@@ -147,12 +160,13 @@ impl Fsm for FillToolFsmState {
 							};
 
 							if let Some(stroke) = overlay_stroke() {
-								overlay_context.fill_stroke(&vector_data, &stroke);
+								overlay_context.fill_stroke(&vector_data, &stroke, transform_scale);
 							}
 						} else {
 							overlay_context.fill_path(
 								document.metadata().layer_outline(layer),
 								document.metadata().transform_to_viewport(layer),
+								transform_scale,
 								&preview_color,
 								true,
 								get_stroke_width(layer, &document.network_interface),
@@ -185,6 +199,12 @@ impl Fsm for FillToolFsmState {
 					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color.to_gamma_srgb(),
 					_ => return self,
 				};
+				let transform_scale = document
+					.metadata()
+					.downstream_transform_to_viewport(layer)
+					.decompose_scale()
+					.x
+					.max(document.metadata().downstream_transform_to_viewport(layer).decompose_scale().y);
 
 				responses.add(DocumentMessage::AddTransaction);
 				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
@@ -197,6 +217,7 @@ impl Fsm for FillToolFsmState {
 								subpath,
 								get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
 								document.metadata().transform_to_viewport(layer),
+								transform_scale,
 							)
 						});
 
