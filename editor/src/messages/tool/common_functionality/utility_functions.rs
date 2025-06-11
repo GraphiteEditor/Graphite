@@ -95,40 +95,7 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
 }
 
-pub fn molded_control_points(start: DVec2, end: DVec2, t: f64, falloff: f64, new_b: DVec2, c1: DVec2, c2: DVec2) -> (DVec2, DVec2) {
-	let v1 = (1. - t) * start + t * c1;
-	let a = (1. - t) * c1 + t * c2;
-	let v2 = (1. - t) * c2 + t * end;
-	let e1 = (1. - t) * v1 + t * a;
-	let e2 = (1. - t) * a + t * v2;
-	let b = (1. - t) * e1 + t * e2;
-
-	let d1 = e1 - b;
-	let d2 = e2 - b;
-	let ne1 = new_b + d1;
-	let ne2 = new_b + d2;
-
-	// Calculate new points A and C (C stays the same)
-	let point_c_ratio = (1. - t).powi(3) / (t.powi(3) + (1. - t).powi(3));
-	let ab_bc_ratio = ((t.powi(3) + (1. - t).powi(3) - 1.) / (t.powi(3) + (1. - t).powi(3))).abs();
-	let c = point_c_ratio * start + (1. - point_c_ratio) * end;
-	let new_a = new_b + (new_b - c) / ab_bc_ratio;
-
-	// Derive the new control points c1, c2
-	let (nc1, nc2) = derive_control_points(t, new_a, ne1, ne2, start, end);
-
-	// Calculate the idealized curve
-	if let Some((ideal_c1, ideal_c2)) = get_idealized_cubic_curve(start, new_b, end) {
-		let d = (b - new_b).length();
-		let interpolation_ratio = d.min(falloff) / falloff;
-		let ic1 = (1. - interpolation_ratio) * nc1 + interpolation_ratio * ideal_c1;
-		let ic2 = (1. - interpolation_ratio) * nc2 + interpolation_ratio * ideal_c2;
-		(ic1, ic2)
-	} else {
-		(nc1, nc2)
-	}
-}
-
+/// Implementation of cubic curve fitting through three points: https://pomax.github.io/bezierinfo/#pointcurves
 pub fn get_idealized_cubic_curve(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<(DVec2, DVec2)> {
 	use std::f64::consts::{PI, TAU};
 

@@ -1,6 +1,6 @@
 use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, molded_control_points, restore_g1_continuity, restore_previous_handle_position};
+use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -293,18 +293,18 @@ impl ClosestSegment {
 		c1: DVec2,
 		c2: DVec2,
 		new_b: DVec2,
-		falloff: f64,
 		momentary_colinear: bool,
 		momentary_adjacent_handles: Option<[Option<HandleId>; 2]>,
 	) -> Option<[Option<HandleId>; 2]> {
-		let t = self.t;
-
 		let transform = document.metadata().transform_to_viewport(self.layer);
-		let new_b = transform.inverse().transform_point2(new_b);
 
 		let start = self.bezier.start;
 		let end = self.bezier.end;
-		let (nc1, nc2) = molded_control_points(start, end, t, falloff, new_b, c1, c2);
+
+		// Using simple delta instead of molding algorithm
+		let b = self.bezier_point_to_viewport;
+		let delta = transform.inverse().transform_vector2(new_b - b);
+		let (nc1, nc2) = (c1 + delta, c2 + delta);
 
 		let handle1 = HandleId::primary(self.segment);
 		let handle2 = HandleId::end(self.segment);
