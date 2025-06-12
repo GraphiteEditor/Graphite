@@ -7,14 +7,14 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self};
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::shapes::convex_shape::Convex;
+use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
+use crate::messages::tool::common_functionality::shapes::star_shape::{Star, StarShapeData};
+use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
-use crate::messages::tool::shapes::convex_shape::Convex;
-use crate::messages::tool::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
-use crate::messages::tool::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
-use crate::messages::tool::shapes::star_shape::{Star, StarShapeData};
-use crate::messages::tool::shapes::{Ellipse, Line, Rectangle};
 use graph_craft::document::NodeId;
 use graphene_core::Color;
 use graphene_std::renderer::Quad;
@@ -322,7 +322,7 @@ impl Fsm for ShapeToolFsmState {
 		};
 		match (self, event) {
 			(_, ShapeToolMessage::Overlays(mut overlay_context)) => {
-				let mouse_pos = tool_data
+				let mouse_position = tool_data
 					.data
 					.snap_manager
 					.indicator_pos()
@@ -335,19 +335,14 @@ impl Fsm for ShapeToolFsmState {
 					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				}
 
-				if matches!(self, ShapeToolFsmState::DraggingStarInnerRadius) {
-					Star::inner_gizmo_overlays(document, tool_data, &mut overlay_context);
+				if matches!(self, ShapeToolFsmState::DraggingStarInnerRadius | Self::Ready(_)) && !input.keyboard.key(Key::Control) {
+					tool_data.star_data.star_gizmos(document, input, mouse_position, &mut overlay_context);
 				}
 
 				if input.keyboard.key(Key::Control) && matches!(self, ShapeToolFsmState::Ready(_)) {
 					anchor_overlays(document, &mut overlay_context);
 				} else if matches!(self, ShapeToolFsmState::Ready(_)) {
 					Line::overlays(document, tool_data, &mut overlay_context);
-
-					// if hovered over vertices of the star show the gizmos
-					if Star::hover_point_radius_handle(document, mouse_pos, &mut overlay_context) {
-						return self;
-					}
 
 					if document
 						.network_interface
@@ -397,9 +392,13 @@ impl Fsm for ShapeToolFsmState {
 
 				// Check if dragging the inner vertices of a star
 
-				if Star::set_point_radius_handle(document, mouse_pos, tool_data) {
+				if let Some(layer) = tool_data.star_data.set_point_radius_handle(document, mouse_pos) {
+					tool_data.data.layer = Some(layer);
 					tool_data.last_mouse_position = mouse_pos;
+
+					// Always store it in document space
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
+
 					responses.add(DocumentMessage::StartTransaction);
 					return ShapeToolFsmState::DraggingStarInnerRadius;
 				}
@@ -517,7 +516,8 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::DraggingStarInnerRadius, ShapeToolMessage::PointerMove(..)) => {
 				if let Some(layer) = tool_data.data.layer {
-					Star::update_inner_radius(document, input, layer, responses, tool_data);
+					tool_data.star_data.update_inner_radius(document, input, layer, responses, tool_data.data.drag_start);
+					tool_data.last_mouse_position = input.mouse.position;
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -578,13 +578,6 @@ impl Fsm for ShapeToolFsmState {
 			}
 
 			(_, ShapeToolMessage::PointerMove { .. }) => {
-				// Snapped position in viewport-space.
-				let mouse_pos = tool_data
-					.data
-					.snap_manager
-					.indicator_pos()
-					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
-					.unwrap_or(input.mouse.position);
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
@@ -596,20 +589,12 @@ impl Fsm for ShapeToolFsmState {
 					.as_ref()
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge)));
 
-				// // Dragging the pivot overrules the other operations
-				// if tool_data.pivot.is_over(input.mouse.position) {
-				// 	cursor = MouseCursorIcon::Move;
-				// }
-
-				// Generate the hover outline
-				let inner_gizmo_points = Star::points_on_inner_circle(document, mouse_pos).is_empty();
-
-				if tool_data.cursor != cursor && !input.keyboard.key(Key::Control) && inner_gizmo_points {
+				if tool_data.cursor != cursor && !input.keyboard.key(Key::Control) && !tool_data.star_data.point_radius_handle.is_hovered() {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				if !inner_gizmo_points {
+				if !tool_data.star_data.point_radius_handle.snap_radii.is_empty() {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				}
 
@@ -645,6 +630,8 @@ impl Fsm for ShapeToolFsmState {
 			) => {
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup(responses);
+
+				tool_data.star_data.point_radius_handle.cleanup();
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();

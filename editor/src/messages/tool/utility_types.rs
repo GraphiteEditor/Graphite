@@ -11,7 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
-use crate::messages::tool::shapes::shape_utility::ShapeType;
+use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_core::raster::color::Color;
 use graphene_core::text::FontCache;
