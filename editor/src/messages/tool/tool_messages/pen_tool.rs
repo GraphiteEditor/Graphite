@@ -656,6 +656,7 @@ impl PenToolData {
 					layer,
 					modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
 				});
+				self.cleanup(responses);
 			}
 		}
 
