@@ -315,11 +315,18 @@ pub struct RenderParams {
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
+	/// Are we generating a mask for alignment? Used to prevent unnecesary transforms in masks
+	pub alignment_parent_transform: Option<DAffine2>,
 }
 
 impl RenderParams {
 	pub fn for_clipper(&self) -> Self {
 		Self { for_mask: true, ..*self }
+	}
+
+	pub fn for_alignment(&self, transform: DAffine2) -> Self {
+		let alignment_parent_transform = Some(transform);
+		Self { alignment_parent_transform, ..*self }
 	}
 }
 
@@ -573,19 +580,20 @@ impl GraphicElementRendered for VectorDataTable {
 			let has_real_stroke = vector_data.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(*instance.transform);
+			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = vector_data.bounding_box().unwrap_or_default();
 			let transformed_bounds = vector_data.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 
 			let mut path = String::new();
+
 			for subpath in instance.instance.stroke_bezier_paths() {
 				let _ = subpath.subpath_to_svg(&mut path, applied_stroke_transform);
 			}
 
-			let can_draw_aligned_stroke =
-				vector_data.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && vector_data.stroke_bezier_paths().all(|path| path.closed());
-
+			let connected = vector_data.stroke_bezier_paths().all(|path| path.closed());
+			let can_draw_aligned_stroke = vector_data.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && connected;
 			let mut push_id = None;
 
 			if can_draw_aligned_stroke {
@@ -608,7 +616,7 @@ impl GraphicElementRendered for VectorDataTable {
 						instance: fill_instance,
 						alpha_blending: *instance.alpha_blending,
 						transform: *instance.transform,
-						source_node_id: *instance.source_node_id,
+						source_node_id: None,
 					});
 					push_id = Some((id, mask_type, vector_row));
 				}
@@ -624,7 +632,7 @@ impl GraphicElementRendered for VectorDataTable {
 				let defs = &mut attributes.0.svg_defs;
 				if let Some((ref id, mask_type, ref vector_row)) = push_id {
 					let mut svg = SvgRender::new();
-					vector_row.render_svg(&mut svg, render_params);
+					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
 
 					let weight = instance.instance.style.stroke().unwrap().weight * instance.transform.matrix2.determinant();
 					let quad = Quad::from_box(transformed_bounds).inflate(weight);
@@ -680,6 +688,7 @@ impl GraphicElementRendered for VectorDataTable {
 			let has_real_stroke = instance.instance.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
+			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
 			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
 			let layer_bounds = instance.instance.bounding_box().unwrap_or_default();
@@ -726,7 +735,8 @@ impl GraphicElementRendered for VectorDataTable {
 				vector_data.push(Instance {
 					instance: fill_instance,
 					alpha_blending: *instance.alpha_blending,
-					..Default::default()
+					transform: *instance.transform,
+					source_node_id: None,
 				});
 
 				let weight = instance.instance.style.stroke().unwrap().weight;

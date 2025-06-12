@@ -264,6 +264,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 		hide_artboards,
 		for_export,
 		for_mask: false,
+		alignment_parent_transform: None,
 	};
 
 	let data = data.eval(ctx.clone()).await;

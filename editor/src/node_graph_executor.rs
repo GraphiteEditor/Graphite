@@ -345,6 +345,7 @@ impl NodeGraphExecutor {
 			hide_artboards: false,
 			for_export: false,
 			for_mask: false,
+			alignment_parent_transform: None,
 		};
 
 		// Render SVG
