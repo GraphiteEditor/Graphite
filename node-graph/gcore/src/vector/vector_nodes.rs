@@ -1,5 +1,6 @@
 use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
+use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
@@ -1444,15 +1445,15 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 		}
 
 		let mut segment_domain = SegmentDomain::default();
-		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
-			let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
-			let closed = subpath.closed() && positions.len() > 2;
+		for (manipulator_groups, closed) in vector_data_instance.instance.stroke_manipulator_groups() {
+			let positions = manipulator_groups.iter().map(|group| group.anchor).collect::<Vec<_>>();
+			let closed = closed && positions.len() > 2;
 
 			// Compute control point handles for Bezier spline.
 			let first_handles = if closed {
-				bezier_rs::solve_spline_first_handle_closed(&positions)
+				solve_spline_first_handle_closed(&positions)
 			} else {
-				bezier_rs::solve_spline_first_handle_open(&positions)
+				solve_spline_first_handle_open(&positions)
 			};
 
 			let stroke_id = StrokeId::ZERO;
@@ -1461,8 +1462,8 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 			for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 				let next_index = (i + 1) % positions.len();
 
-				let start_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();
-				let end_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[next_index].id).unwrap();
+				let start_index = vector_data_instance.instance.point_domain.resolve_id(manipulator_groups[i].id).unwrap();
+				let end_index = vector_data_instance.instance.point_domain.resolve_id(manipulator_groups[next_index].id).unwrap();
 
 				let handle_start = first_handles[i];
 				let handle_end = positions[next_index] * 2. - first_handles[next_index];
