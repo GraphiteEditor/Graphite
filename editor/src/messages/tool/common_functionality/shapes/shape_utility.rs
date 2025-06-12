@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage, Responses};
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -11,6 +11,7 @@ use glam::{DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
+use std::f64::consts::PI;
 
 use super::ShapeToolData;
 
@@ -148,4 +149,38 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
 		}
 	}
+}
+
+pub fn points_on_inner_circle(document: &DocumentMessageHandler, mouse_position: DVec2) -> Option<(LayerNodeIdentifier, u32, usize, f64)> {
+	for layer in document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some())
+	{
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+			continue;
+		};
+
+		let viewport = document.network_interface.document_metadata().transform_to_viewport(layer);
+
+		let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(outer)), Some(&TaggedValue::F64(inner))) = (node_inputs[1].as_value(), node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+			continue;
+		};
+
+		for i in 0..(2 * n) {
+			let angle = i as f64 * PI / n as f64;
+			let (radius, index) = if i % 2 == 0 { (outer, 2) } else { (inner, 3) };
+
+			let point = viewport.transform_point2(DVec2 {
+				x: radius * angle.sin(),
+				y: -radius * angle.cos(),
+			});
+
+			if point.distance(mouse_position) < 5.0 {
+				return Some((layer, i, index, radius));
+			};
+		}
+	}
+	None
 }

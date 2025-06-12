@@ -8,5 +8,5 @@ pub mod star_shape;
 pub use super::shapes::ellipse_shape::Ellipse;
 pub use super::shapes::line_shape::{Line, LineEnd};
 pub use super::shapes::rectangle_shape::Rectangle;
-pub use super::tool_messages::shape_tool::ShapeToolData;
+pub use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use glam::DVec2;

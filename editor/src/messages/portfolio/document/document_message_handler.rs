@@ -1687,6 +1687,21 @@ impl DocumentMessageHandler {
 		self.click_list(ipp).last()
 	}
 
+	pub fn click_based_on_position(&self, mouse_snapped_positon: DVec2) -> Option<LayerNodeIdentifier> {
+		ClickXRayIter::new(&self.network_interface, XRayTarget::Point(mouse_snapped_positon))
+			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
+			.scan(true, |last_had_children, layer| {
+				if *last_had_children {
+					*last_had_children = layer.has_children(self.network_interface.document_metadata());
+					Some(layer)
+				} else {
+					None
+				}
+			})
+			.last()
+	}
+
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.network_interface
