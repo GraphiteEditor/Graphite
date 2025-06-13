@@ -746,7 +746,7 @@ impl GraphicElementRendered for VectorDataTable {
 				let inside = instance.instance.style.stroke().unwrap().align == StrokeAlign::Inside;
 				let compose = if inside { peniko::Compose::SrcIn } else { peniko::Compose::SrcOut };
 				scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-				vector_data.render_to_vello(scene, element_transform, _context, render_params);
+				vector_data.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
 				scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
 			}
 
