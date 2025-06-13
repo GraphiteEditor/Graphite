@@ -504,6 +504,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = clipLayer)]
+	pub fn clip_layer(&self, id: u64) {
+		let id = NodeId(id);
+		let message = DocumentMessage::ClipLayer { id };
+		self.dispatch(message);
+	}
+
 	/// Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
 	#[wasm_bindgen(js_name = selectLayer)]
 	pub fn select_layer(&self, id: u64, ctrl: bool, shift: bool) {

@@ -14,9 +14,12 @@ pub mod renderer;
 
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[serde(default)]
 pub struct AlphaBlending {
-	pub opacity: f32,
 	pub blend_mode: BlendMode,
+	pub opacity: f32,
+	pub fill: f32,
+	pub clip: bool,
 }
 impl Default for AlphaBlending {
 	fn default() -> Self {
@@ -26,13 +29,22 @@ impl Default for AlphaBlending {
 impl core::hash::Hash for AlphaBlending {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
+		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
+		self.clip.hash(state);
 	}
 }
 impl std::fmt::Display for AlphaBlending {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let round = |x: f32| (x * 1e3).round() / 1e3;
-		write!(f, "Opacity: {}% — Blend Mode: {}", round(self.opacity * 100.), self.blend_mode)
+		write!(
+			f,
+			"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
+			self.blend_mode,
+			round(self.opacity * 100.),
+			round(self.fill * 100.),
+			if self.clip { "Yes" } else { "No" }
+		)
 	}
 }
 
@@ -40,7 +52,9 @@ impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
 			opacity: 1.,
+			fill: 1.,
 			blend_mode: BlendMode::Normal,
+			clip: false,
 		}
 	}
 
@@ -49,7 +63,9 @@ impl AlphaBlending {
 
 		AlphaBlending {
 			opacity: lerp(self.opacity, other.opacity, t),
+			fill: lerp(self.fill, other.fill, t),
 			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
+			clip: if t < 0.5 { self.clip } else { other.clip },
 		}
 	}
 }
@@ -197,6 +213,25 @@ impl GraphicElement {
 		match self {
 			GraphicElement::RasterData(raster) => Some(raster),
 			_ => None,
+		}
+	}
+
+	pub fn had_clip_enabled(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::GraphicGroup(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+		}
+	}
+
+	pub fn can_reduce_to_clip_path(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
+				let style = &instance_data.instance.style;
+				let alpha_blending = &instance_data.alpha_blending;
+				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			}),
+			_ => false,
 		}
 	}
 }
@@ -380,8 +415,10 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 							instance: current_element.instance.clone(),
 							transform: *current_instance.transform * *current_element.transform,
 							alpha_blending: AlphaBlending {
-								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
 								blend_mode: current_element.alpha_blending.blend_mode,
+								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
+								fill: current_element.alpha_blending.fill,
+								clip: current_element.alpha_blending.clip,
 							},
 							source_node_id: reference,
 						});
