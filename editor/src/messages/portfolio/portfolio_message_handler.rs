@@ -467,7 +467,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 37] = [
+				const REPLACEMENTS: [(&str, &str); 40] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -475,7 +475,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::logic::LogicAndNode", "graphene_core::ops::LogicAndNode"),
 					("graphene_core::logic::LogicNotNode", "graphene_core::ops::LogicNotNode"),
 					("graphene_core::logic::LogicOrNode", "graphene_core::ops::LogicOrNode"),
-					("graphene_core::ops::ConstructVector2", "graphene_core::ops::Vector2ValueNode"),
+					("graphene_core::ops::ConstructVector2", "graphene_core::ops::CoordinateValueNode"),
+					("graphene_core::ops::Vector2ValueNode", "graphene_core::ops::CoordinateValueNode"),
 					("graphene_core::raster::BlackAndWhiteNode", "graphene_core::raster::adjustments::BlackAndWhiteNode"),
 					("graphene_core::raster::BlendNode", "graphene_core::raster::adjustments::BlendNode"),
 					("graphene_core::raster::ChannelMixerNode", "graphene_core::raster::adjustments::ChannelMixerNode"),
@@ -484,6 +485,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::raster::ExtractChannelNode", "graphene_core::raster::adjustments::ExtractChannelNode"),
 					("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
 					("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
+					("graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::AutoTangentsNode"),
+					("graphene_core::vector::RemoveHandlesNode", "graphene_core::vector::AutoTangentsNode"),
 					("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
 					("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
 					("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
@@ -962,6 +965,48 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
 
 						document.network_interface.replace_reference_name(node_id, network_path, "Flatten Path".to_string());
+					}
+
+					if reference == "Remove Handles" {
+						let node_definition = resolve_document_node_type("Auto-Tangents").unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(0.), false), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
+
+						document.network_interface.replace_reference_name(node_id, network_path, "Auto-Tangents".to_string());
+					}
+
+					if reference == "Generate Handles" {
+						let node_definition = resolve_document_node_type("Auto-Tangents").unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document
+							.network_interface
+							.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+
+						document.network_interface.replace_reference_name(node_id, network_path, "Auto-Tangents".to_string());
 					}
 				}
 
