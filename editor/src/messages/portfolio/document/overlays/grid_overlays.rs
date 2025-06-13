@@ -236,12 +236,24 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			TextLabel::new("Type").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
-				RadioEntryData::new("rectangular")
-					.label("Rectangular")
-					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGULAR)),
-				RadioEntryData::new("isometric")
-					.label("Isometric")
-					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::ISOMETRIC)),
+				RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
+					if let GridType::Isometric { y_axis_spacing, angle_a, angle_b } = grid.grid_type {
+						grid.isometric_y_spacing = y_axis_spacing;
+						grid.isometric_angle_a = angle_a;
+						grid.isometric_angle_b = angle_b;
+					}
+					grid.grid_type = GridType::Rectangular { spacing: grid.rectangular_spacing };
+				})),
+				RadioEntryData::new("isometric").label("Isometric").on_update(update_val(grid, |grid, _| {
+					if let GridType::Rectangular { spacing } = grid.grid_type {
+						grid.rectangular_spacing = spacing;
+					}
+					grid.grid_type = GridType::Isometric {
+						y_axis_spacing: grid.isometric_y_spacing,
+						angle_a: grid.isometric_angle_a,
+						angle_b: grid.isometric_angle_b,
+					};
+				})),
 			])
 			.min_width(200)
 			.selected_index(Some(match grid.grid_type {

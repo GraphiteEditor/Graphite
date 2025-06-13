@@ -1,6 +1,6 @@
-use super::graph_modification_utils::{self, merge_layers};
+use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::calculate_segment_angle;
+use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -12,7 +12,6 @@ use crate::messages::tool::common_functionality::utility_functions::is_visible_p
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 use graphene_std::vector::{HandleId, SegmentId};
 
@@ -108,7 +107,11 @@ impl SelectedLayerState {
 	}
 
 	pub fn selected_points_count(&self) -> usize {
-		self.selected_points.len()
+		let count = self.selected_points.iter().fold(0, |acc, point| {
+			let is_ignored = (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors);
+			acc + if is_ignored { 0 } else { 1 }
+		});
+		count
 	}
 }
 
@@ -145,7 +148,6 @@ pub struct ClosestSegment {
 	colinear: [Option<HandleId>; 2],
 	t: f64,
 	bezier_point_to_viewport: DVec2,
-	stroke_width: f64,
 }
 
 impl ClosestSegment {
@@ -165,6 +167,12 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport
 	}
 
+	pub fn closest_point(&self, document_metadata: &DocumentMetadata) -> DVec2 {
+		let transform = document_metadata.transform_to_viewport(self.layer);
+		let bezier_point = self.bezier.evaluate(TValue::Parametric(self.t));
+		transform.transform_point2(bezier_point)
+	}
+
 	/// Updates this [`ClosestSegment`] with the viewport-space location of the closest point on the segment to the given mouse position.
 	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
 		let transform = document_metadata.transform_to_viewport(self.layer);
@@ -182,10 +190,8 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport.distance_squared(mouse_position)
 	}
 
-	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64, document_metadata: &DocumentMetadata) -> bool {
-		let dist_sq = self.distance_squared(mouse_position);
-		let stroke_width = document_metadata.document_to_viewport.decompose_scale().x.max(1.) * self.stroke_width;
-		(stroke_width + tolerance).powi(2) < dist_sq
+	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
+		tolerance.powi(2) < self.distance_squared(mouse_position)
 	}
 
 	pub fn handle_positions(&self, document_metadata: &DocumentMetadata) -> (Option<DVec2>, Option<DVec2>) {
@@ -275,6 +281,71 @@ impl ClosestSegment {
 		}
 		.unwrap_or(DVec2::ZERO);
 		tangent.perp()
+	}
+
+	/// Molding the bezier curve.
+	/// Returns adjacent handles' [`HandleId`] if colinearity is broken temporarily.
+	pub fn mold_handle_positions(
+		&self,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+		(c1, c2): (DVec2, DVec2),
+		new_b: DVec2,
+		break_colinear_molding: bool,
+		temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
+	) -> Option<[Option<HandleId>; 2]> {
+		let transform = document.metadata().transform_to_viewport(self.layer);
+
+		let start = self.bezier.start;
+		let end = self.bezier.end;
+
+		// Apply the drag delta to the segment's handles
+		let b = self.bezier_point_to_viewport;
+		let delta = transform.inverse().transform_vector2(new_b - b);
+		let (nc1, nc2) = (c1 + delta, c2 + delta);
+
+		let handle1 = HandleId::primary(self.segment);
+		let handle2 = HandleId::end(self.segment);
+		let layer = self.layer;
+
+		let modification_type = handle1.set_relative_position(nc1 - start);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		let modification_type = handle2.set_relative_position(nc2 - end);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// If adjacent segments have colinear handles, their direction is changed but their handle lengths is preserved
+		// TODO: Find something which is more appropriate
+		let vector_data = document.network_interface.compute_modified_vector(self.layer())?;
+
+		if break_colinear_molding {
+			// Disable G1 continuity
+			let other_handles = [
+				restore_previous_handle_position(handle1, c1, start, &vector_data, layer, responses),
+				restore_previous_handle_position(handle2, c2, end, &vector_data, layer, responses),
+			];
+
+			// Store other HandleId in tool data to regain colinearity later
+			if temporary_adjacent_handles_while_molding.is_some() {
+				temporary_adjacent_handles_while_molding
+			} else {
+				Some(other_handles)
+			}
+		} else {
+			// Move the colinear handles so that colinearity is maintained
+			adjust_handle_colinearity(handle1, start, nc1, &vector_data, layer, responses);
+			adjust_handle_colinearity(handle2, end, nc2, &vector_data, layer, responses);
+
+			if let Some(adjacent_handles) = temporary_adjacent_handles_while_molding {
+				if let Some(other_handle1) = adjacent_handles[0] {
+					restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
+				}
+				if let Some(other_handle2) = adjacent_handles[1] {
+					restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
+				}
+			}
+			None
+		}
 	}
 }
 
@@ -1445,11 +1516,6 @@ impl ShapeState {
 			if distance_squared < closest_distance_squared {
 				closest_distance_squared = distance_squared;
 
-				// 0.5 is half the line (center to side) but it's convenient to allow targeting slightly more than half the line width
-				const STROKE_WIDTH_PERCENT: f64 = 0.7;
-
-				let stroke_width = graph_modification_utils::get_stroke_width(layer, network_interface).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
-
 				// Convert to linear if handes are on top of control points
 				if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
 					if handle_start.abs_diff_eq(bezier.start(), f64::EPSILON * 100.) && handle_end.abs_diff_eq(bezier.end(), f64::EPSILON * 100.) {
@@ -1470,7 +1536,6 @@ impl ShapeState {
 					t,
 					bezier_point_to_viewport: screenspace,
 					layer,
-					stroke_width,
 				});
 			}
 		}
