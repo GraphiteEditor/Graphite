@@ -628,7 +628,6 @@ impl PathToolData {
 		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
-
 			if segment_editing_mode {
 				let layer = segment.layer();
 				let segment_id = segment.segment();
@@ -664,14 +663,14 @@ impl PathToolData {
 				PathToolFsmState::Dragging(self.dragging_state)
 			} else {
 				//
-        let handle1 = ManipulatorPointId::PrimaryHandle(closed_segment.segment());
-			let handle2 = ManipulatorPointId::EndHandle(closed_segment.segment());
-        if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
-				if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
-					self.molding_info = Some((pos1, pos2))
+				let handle1 = ManipulatorPointId::PrimaryHandle(segment.segment());
+				let handle2 = ManipulatorPointId::EndHandle(segment.segment());
+				if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+					if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
+						self.molding_info = Some((pos1, pos2))
+					}
 				}
-          }
-        PathToolFsmState::MoldingSegment
+				PathToolFsmState::MoldingSegment
 			}
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
@@ -1826,7 +1825,8 @@ impl Fsm for PathToolFsmState {
 				);
 
 				if let Some(segment) = &mut tool_data.segment {
-					if !drag_occurred && !tool_data.molding_segment {
+					let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
+					if !drag_occurred && !tool_data.molding_segment && !segment_mode {
 						if tool_data.delete_segment_pressed {
 							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
