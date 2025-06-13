@@ -310,11 +310,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				RightClick,
 			),
 			PathToolFsmState::SlidingPoint => actions!(PathToolMessageDiscriminant;
-				PointerMove,
-				DragStop,
-				Escape,
-				RightClick
-      ),
+					  PointerMove,
+					  DragStop,
+					  Escape,
+					  RightClick
+			),
 			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
 				PointerMove,
 				DragStop,
@@ -1593,7 +1593,7 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
 				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, &shape_editor);
 				PathToolFsmState::SlidingPoint
-      }
+			}
 			(PathToolFsmState::MoldingSegment, PathToolMessage::PointerMove { break_colinear_molding, .. }) => {
 				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					tool_data.molding_segment = true;
@@ -1750,8 +1750,8 @@ impl Fsm for PathToolFsmState {
 				tool_data.sliding_point_info = None;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
-        PathToolFsmState::Ready
-      }
+				PathToolFsmState::Ready
+			}
 			(PathToolFsmState::MoldingSegment, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				// Undo the molding and go back to the state before
 				tool_data.molding_info = None;
@@ -2017,7 +2017,6 @@ impl Fsm for PathToolFsmState {
 		}
 	}
 
-
 	fn update_hints(&self, _responses: &mut VecDeque<Message>) {
 		// Moved logic to update_dynamic_hints
 	}
@@ -2247,32 +2246,65 @@ fn calculate_adjacent_anchor_tangent(
 	}
 }
 
-fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Message>, _shape_editor: &mut ShapeState, document: &DocumentMessageHandler, tool_data: &PathToolData) {
+fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Message>, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, tool_data: &PathToolData) {
 	// Condinting based on currently selected segment if it has any one g1 continuous handle
 
 	let hint_data = match state {
-		PathToolFsmState::Ready => HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
-			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
-			// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
-			HintGroup(vec![
-				HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
-				HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "To Sharp"),
-				HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "To Smooth"),
-			]),
-			// TODO: Only show the following hints if at least one point is selected
-			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-			HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
-			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-			HintGroup(vec![
-				HintInfo::keys([Key::Delete], "Delete Selected"),
-				// TODO: Only show the following hints if at least one anchor is selected
-				HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
-				HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
-			]),
-		]),
+		PathToolFsmState::Ready => {
+			// Show point sliding hints only when there is an anchor with colinear handles selected
+			let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+			let at_least_one_anchor_selected = shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+			let at_least_one_point_selected = shape_editor.selected_points().count() >= 1;
+
+			let single_colinear_anchor_selected = if single_anchor_selected {
+				let anchor = shape_editor.selected_points().next().unwrap();
+				let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
+				let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
+				vector_data.colinear(*anchor)
+			} else {
+				false
+			};
+
+			let mut drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
+			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
+
+			if at_least_one_anchor_selected {
+				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus());
+			}
+
+			if single_colinear_anchor_selected {
+				drag_selected_hints.push(HintInfo::multi_keys([[Key::Control], [Key::Shift]], "Slide").prepend_plus());
+			}
+
+			let mut hint_data = vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+				HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
+			];
+
+			if at_least_one_anchor_selected {
+				// TODO: Dynamically show either "Smooth" or "Sharp" based on the current state
+				hint_data.push(HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
+					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "To Sharp"),
+					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "To Smooth"),
+				]));
+			}
+
+			if at_least_one_point_selected {
+				let mut groups = vec![
+					HintGroup(drag_selected_hints),
+					HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
+					HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+					HintGroup(delete_selected_hints),
+				];
+				hint_data.append(&mut groups);
+			}
+
+			HintData(hint_data)
+		}
 		PathToolFsmState::Dragging(dragging_state) => {
 			let colinear = dragging_state.colinear;
 			let mut dragging_hint_data = HintData(Vec::new());
@@ -2370,6 +2402,7 @@ fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Messag
 
 			HintData(molding_hints)
 		}
+		PathToolFsmState::SlidingPoint { .. } => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	responses.add(FrontendMessage::UpdateInputHints { hint_data });
 }
