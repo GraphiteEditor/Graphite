@@ -95,93 +95,6 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
 }
 
-/// Implementation of cubic curve fitting through three points: https://pomax.github.io/bezierinfo/#pointcurves
-pub fn get_idealized_cubic_curve(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<(DVec2, DVec2)> {
-	use std::f64::consts::{PI, TAU};
-
-	let center = calculate_center(p1, p2, p3)?;
-
-	let d1 = (p1 - p2).length();
-	let d2 = (p2 - p3).length();
-	let t = d1 / (d1 + d2);
-
-	let start = p1;
-	let end = p3;
-
-	let [a, b, _c] = compute_abc_for_cubic_through_points(p1, p2, p3, t);
-
-	let angle = ((end.y - start.y).atan2(end.x - start.x) - (b.y - start.y).atan2(b.x - start.x) + TAU) % TAU;
-	let factor = if !(0.0..=PI).contains(&angle) { -1. } else { 1. };
-	let bc = factor * (start - end).length() / 3.;
-	let de1 = t * bc;
-	let de2 = (1. - t) * bc;
-	let tangent = [
-		DVec2::new(b.x - 10. * (b.y - center.y), b.y + 10. * (b.x - center.x)),
-		DVec2::new(b.x + 10. * (b.y - center.y), b.y - 10. * (b.x - center.x)),
-	];
-
-	let normalized_tangent = (tangent[1] - tangent[0]).try_normalize()?;
-
-	let e1 = DVec2::new(b.x + de1 * normalized_tangent.x, b.y + de1 * normalized_tangent.y);
-	let e2 = DVec2::new(b.x - de2 * normalized_tangent.x, b.y - de2 * normalized_tangent.y);
-
-	// Deriving control points
-	Some(derive_control_points(t, a, e1, e2, start, end))
-}
-
-fn derive_control_points(t: f64, a: DVec2, e1: DVec2, e2: DVec2, start: DVec2, end: DVec2) -> (DVec2, DVec2) {
-	let v1 = (e1 - t * a) / (1. - t);
-	let v2 = (e2 - (1. - t) * a) / t;
-	let c1 = (v1 - (1. - t) * start) / t;
-	let c2 = (v2 - t * end) / (1. - t);
-	(c1, c2)
-}
-
-fn calculate_center(p1: DVec2, p2: DVec2, p3: DVec2) -> Option<DVec2> {
-	// Calculate midpoints of two sides
-	let mid1 = (p1 + p2) / 2.;
-	let mid2 = (p2 + p3) / 2.;
-
-	// Calculate perpendicular bisectors
-	let dir1 = p2 - p1;
-	let dir2 = p3 - p2;
-	let perp_dir1 = DVec2::new(-dir1.y, dir1.x);
-	let perp_dir2 = DVec2::new(-dir2.y, dir2.x);
-
-	// Create points along the perpendicular directions
-	let mid1_plus = mid1 + perp_dir1;
-	let mid2_plus = mid2 + perp_dir2;
-
-	// Find intersection of the two perpendicular bisectors
-	line_line_intersection(mid1, mid1_plus, mid2, mid2_plus)
-}
-
-fn line_line_intersection(a1: DVec2, a2: DVec2, b1: DVec2, b2: DVec2) -> Option<DVec2> {
-	let (x1, y1) = (a1.x, a1.y);
-	let (x2, y2) = (a2.x, a2.y);
-	let (x3, y3) = (b1.x, b1.y);
-	let (x4, y4) = (b2.x, b2.y);
-
-	// Calculate numerator components
-	let nx = (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
-	let ny = (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
-
-	// Calculate denominator
-	let d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-
-	// Check for parallel lines (colinear points)
-	if d.abs() < f64::EPSILON { None } else { Some(DVec2::new(nx / d, ny / d)) }
-}
-
-pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: DVec2, end_point: DVec2, t: f64) -> [DVec2; 3] {
-	let point_c_ratio = (1. - t).powi(3) / (t.powi(3) + (1. - t).powi(3));
-	let c = point_c_ratio * start_point + (1. - point_c_ratio) * end_point;
-
-	let ab_bc_ratio = ((t.powi(3) + (1. - t).powi(3) - 1.) / (t.powi(3) + (1. - t).powi(3))).abs();
-	let a = point_on_curve + (point_on_curve - c) / ab_bc_ratio;
-	[a, point_on_curve, c]
-}
-
 pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector_data: &VectorData, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	let Some(other_handle) = vector_data.other_colinear_handle(handle) else { return };
 	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector_data) else {
@@ -191,14 +104,6 @@ pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, targe
 
 	let new_relative_position = (handle_position - anchor_position).length() * direction;
 	let modification_type = other_handle.set_relative_position(new_relative_position);
-
-	responses.add(GraphOperationMessage::Vector { layer, modification_type });
-}
-
-pub fn disable_g1_continuity(handle: HandleId, vector_data: &VectorData, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	let Some(other_handle) = vector_data.other_colinear_handle(handle) else { return };
-	let handles = [handle, other_handle];
-	let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 }
