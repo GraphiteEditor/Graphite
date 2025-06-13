@@ -6,7 +6,7 @@ use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
-use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorData};
+use graphene_std::vector::{HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
@@ -94,6 +94,65 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector_data:
 	};
 
 	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
+}
+
+pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector_data: &VectorData, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	let Some(other_handle) = vector_data.other_colinear_handle(handle) else { return };
+	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector_data) else {
+		return;
+	};
+	let Some(direction) = (anchor_position - target_control_point).try_normalize() else { return };
+
+	let new_relative_position = (handle_position - anchor_position).length() * direction;
+	let modification_type = other_handle.set_relative_position(new_relative_position);
+
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+}
+
+pub fn restore_previous_handle_position(
+	handle: HandleId,
+	original_c: DVec2,
+	anchor_position: DVec2,
+	vector_data: &VectorData,
+	layer: LayerNodeIdentifier,
+	responses: &mut VecDeque<Message>,
+) -> Option<HandleId> {
+	let other_handle = vector_data.other_colinear_handle(handle)?;
+	let handle_position = other_handle.to_manipulator_point().get_position(vector_data)?;
+	let direction = (anchor_position - original_c).try_normalize()?;
+
+	let old_relative_position = (handle_position - anchor_position).length() * direction;
+	let modification_type = other_handle.set_relative_position(old_relative_position);
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	let handles = [handle, other_handle];
+	let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	Some(other_handle)
+}
+
+pub fn restore_g1_continuity(
+	handle: HandleId,
+	other_handle: HandleId,
+	control_point: DVec2,
+	anchor_position: DVec2,
+	vector_data: &VectorData,
+	layer: LayerNodeIdentifier,
+	responses: &mut VecDeque<Message>,
+) {
+	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector_data) else {
+		return;
+	};
+	let Some(direction) = (anchor_position - control_point).try_normalize() else { return };
+
+	let new_relative_position = (handle_position - anchor_position).length() * direction;
+	let modification_type = other_handle.set_relative_position(new_relative_position);
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	let handles = [handle, other_handle];
+	let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
+	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 }
 
 /// Check whether a point is visible in the current overlay mode.
