@@ -203,12 +203,13 @@ pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 	let start_handle_length = a.exp();
 	let end_handle_length = b.exp();
 
-	// Calculate the similarity somehow using the new bezier curve
+	// Compute the handle positions of new bezier curve
 	let c1 = p1 + d1 * start_handle_length;
 	let c2 = p3 + d2 * end_handle_length;
 
 	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
 
+	// Sample 2*n points from new curve and get the L2 metric between all of points
 	let points = new_curve.compute_lookup_table(Some(2 * n), None).collect::<Vec<_>>();
 
 	let dist = points1.iter().zip(points.iter()).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
