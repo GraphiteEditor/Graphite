@@ -285,23 +285,21 @@ impl ClosestSegment {
 
 	/// Molding the bezier curve.
 	/// Returns adjacent handles' [`HandleId`] if colinearity is broken temporarily.
-	#[allow(clippy::too_many_arguments)]
 	pub fn mold_handle_positions(
 		&self,
 		document: &DocumentMessageHandler,
 		responses: &mut VecDeque<Message>,
-		c1: DVec2,
-		c2: DVec2,
+		(c1, c2): (DVec2, DVec2),
 		new_b: DVec2,
-		momentary_colinear: bool,
-		momentary_adjacent_handles: Option<[Option<HandleId>; 2]>,
+		break_colinear_molding: bool,
+		temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	) -> Option<[Option<HandleId>; 2]> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
 
 		let start = self.bezier.start;
 		let end = self.bezier.end;
 
-		// Using simple delta instead of molding algorithm
+		// Apply the drag delta to the segment's handles
 		let b = self.bezier_point_to_viewport;
 		let delta = transform.inverse().transform_vector2(new_b - b);
 		let (nc1, nc2) = (c1 + delta, c2 + delta);
@@ -320,24 +318,29 @@ impl ClosestSegment {
 		// TODO: Find something which is more appropriate
 		let vector_data = document.network_interface.compute_modified_vector(self.layer())?;
 
-		if momentary_colinear {
+		if break_colinear_molding {
 			// Disable G1 continuity
-			let mut other_handles = [None, None];
-			other_handles[0] = restore_previous_handle_position(handle1, c1, start, &vector_data, layer, responses);
-			other_handles[1] = restore_previous_handle_position(handle2, c2, end, &vector_data, layer, responses);
+			let other_handles = [
+				restore_previous_handle_position(handle1, c1, start, &vector_data, layer, responses),
+				restore_previous_handle_position(handle2, c2, end, &vector_data, layer, responses),
+			];
 
 			// Store other HandleId in tool data to regain colinearity later
-			if momentary_adjacent_handles.is_some() { momentary_adjacent_handles } else { Some(other_handles) }
+			if temporary_adjacent_handles_while_molding.is_some() {
+				temporary_adjacent_handles_while_molding
+			} else {
+				Some(other_handles)
+			}
 		} else {
 			// Move the colinear handles so that colinearity is maintained
 			adjust_handle_colinearity(handle1, start, nc1, &vector_data, layer, responses);
 			adjust_handle_colinearity(handle2, end, nc2, &vector_data, layer, responses);
 
-			if let Some(adj_handles) = momentary_adjacent_handles {
-				if let Some(other_handle1) = adj_handles[0] {
+			if let Some(adjacent_handles) = temporary_adjacent_handles_while_molding {
+				if let Some(other_handle1) = adjacent_handles[0] {
 					restore_g1_continuity(handle1, other_handle1, nc1, start, &vector_data, layer, responses);
 				}
-				if let Some(other_handle2) = adj_handles[1] {
+				if let Some(other_handle2) = adjacent_handles[1] {
 					restore_g1_continuity(handle2, other_handle2, nc2, end, &vector_data, layer, responses);
 				}
 			}
