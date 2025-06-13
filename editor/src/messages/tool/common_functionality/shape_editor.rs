@@ -45,6 +45,7 @@ pub enum ManipulatorAngle {
 #[derive(Clone, Debug, Default)]
 pub struct SelectedLayerState {
 	selected_points: HashSet<ManipulatorPointId>,
+	selected_segments: HashSet<SegmentId>,
 	/// Keeps track of the current state; helps avoid unnecessary computation when called by [`ShapeState`].
 	ignore_handles: bool,
 	ignore_anchors: bool,
@@ -68,6 +69,23 @@ impl SelectedLayerState {
 
 	pub fn deselect_point(&mut self, point: ManipulatorPointId) {
 		self.selected_points.remove(&point);
+	}
+
+	// Same methods for segment selection mode
+	pub fn selected_segments(&self) -> impl Iterator<Item = SegmentId> + '_ {
+		self.selected_segments.iter().copied()
+	}
+
+	pub fn is_selected_segment(&self, segment: SegmentId) -> bool {
+		self.selected_segments.contains(&segment)
+	}
+
+	pub fn select_segment(&mut self, segment: SegmentId) {
+		self.selected_segments.insert(segment);
+	}
+
+	pub fn deselect_segment(&mut self, segment: SegmentId) {
+		self.selected_segments.remove(&segment);
 	}
 
 	pub fn ignore_handles(&mut self, status: bool) {
@@ -132,6 +150,12 @@ pub struct SelectedPointsInfo {
 	pub vector_data: VectorData,
 }
 
+#[derive(Debug)]
+pub struct SelectedSegmentsInfo {
+	pub segments: Vec<SegmentId>,
+	pub vector_data: VectorData,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ManipulatorPointInfo {
 	pub layer: LayerNodeIdentifier,
@@ -161,6 +185,10 @@ impl ClosestSegment {
 
 	pub fn points(&self) -> [PointId; 2] {
 		self.points
+	}
+
+	pub fn bezier(&self) -> Bezier {
+		self.bezier
 	}
 
 	pub fn closest_point_to_viewport(&self) -> DVec2 {
@@ -474,6 +502,7 @@ impl ShapeState {
 
 				return Some(Some(SelectedPointsInfo { points, offset, vector_data }));
 			} else {
+				log::info!("got here safely hehe");
 				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
 				selected_shape_state.deselect_point(manipulator_point_id);
 
@@ -527,6 +556,15 @@ impl ShapeState {
 
 		None
 	}
+
+	// pub fn get_segment_selection_state(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(bool, Option<SelectedSegmentsInfo>)> {
+	// 	if let Some(segment) = self.upper_closest_segment(network_interface, mouse_position, select_threshold) {
+	// 		let vector_data = network_interface.compute_modified_vector(segment.layer);
+
+	// 		let selected_shape_state = self.selected_shape_state.get_mut(&segment.layer)?;
+	// 		let already_selected = selected_shape_state.is_selected_segment(segment.segment);
+	// 	}
+	// }
 
 	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, extend_selection: bool) {
 		if !extend_selection {
@@ -606,6 +644,13 @@ impl ShapeState {
 		}
 	}
 
+	/// Deselects all segments across every selected layer
+	pub fn deselect_all_segments(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.selected_segments.clear()
+		}
+	}
+
 	pub fn update_selected_anchors_status(&mut self, status: bool) {
 		for state in self.selected_shape_state.values_mut() {
 			self.ignore_anchors = !status;
@@ -669,6 +714,10 @@ impl ShapeState {
 	/// Provide the currently selected points by reference.
 	pub fn selected_points(&self) -> impl Iterator<Item = &'_ ManipulatorPointId> {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
+	}
+
+	pub fn selected_segments(&self) -> impl Iterator<Item = &'_ SegmentId> {
+		self.selected_shape_state.values().flat_map(|state| &state.selected_segments)
 	}
 
 	pub fn selected_points_in_layer(&self, layer: LayerNodeIdentifier) -> Option<&HashSet<ManipulatorPointId>> {
@@ -948,6 +997,7 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
+	/// This now also includes the logic to move the selected segments.
 	#[allow(clippy::too_many_arguments)]
 	pub fn move_selected_points(
 		&self,
@@ -975,7 +1025,17 @@ impl ShapeState {
 			};
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
-			for &point in state.selected_points.iter() {
+			// Make a new collection of anchor points which needs to be moved
+			let mut affected_points = state.selected_points.clone();
+
+			for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+				if state.is_selected_segment(segment_id) {
+					affected_points.insert(ManipulatorPointId::Anchor(start));
+					affected_points.insert(ManipulatorPointId::Anchor(end));
+				}
+			}
+
+			for &point in affected_points.iter() {
 				if self.is_point_ignored(&point) {
 					continue;
 				}
@@ -1690,6 +1750,7 @@ impl ShapeState {
 		selection_change: SelectionChange,
 		path_overlay_mode: PathOverlayMode,
 		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		select_segments: bool,
 	) {
 		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
 		let selected_segments = selected_segments(network_interface, self);
@@ -1722,7 +1783,13 @@ impl ShapeState {
 				None
 			};
 
+			// Checking the selection of handles
 			for (id, bezier, _, _) in vector_data.segment_bezier_iter() {
+				if select_segments {
+					// Checking for selection of segments if they lie inside the bounding box or lasso polygon
+				}
+
+				// Checking for selection of handles
 				for (position, id) in [(bezier.handle_start(), ManipulatorPointId::PrimaryHandle(id)), (bezier.handle_end(), ManipulatorPointId::EndHandle(id))] {
 					let Some(position) = position else { continue };
 					let transformed_position = transform.transform_point2(position);
@@ -1755,6 +1822,7 @@ impl ShapeState {
 				}
 			}
 
+			// Checking for selection of anchor points
 			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
 				let transformed_position = transform.transform_point2(position);
 

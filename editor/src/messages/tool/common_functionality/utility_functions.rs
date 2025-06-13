@@ -2,6 +2,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
+use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
@@ -136,4 +137,8 @@ pub fn is_visible_point(
 			}
 		}
 	}
+}
+
+pub fn calculate_bezier_bbox(_bezier: Bezier) {
+	// Get the bbox of bezier
 }

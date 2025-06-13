@@ -31,6 +31,7 @@ pub struct PathTool {
 #[derive(Default)]
 pub struct PathToolOptions {
 	path_overlay_mode: PathOverlayMode,
+	path_editing_mode: PathEditingMode,
 }
 
 #[impl_message(Message, ToolMessage, Path)]
@@ -113,9 +114,29 @@ pub enum PathOverlayMode {
 	FrontierHandles = 2,
 }
 
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
+pub struct PathEditingMode {
+	point_editing_mode: bool,
+	segment_editing_mode: bool,
+	region_editing_mode: bool,
+}
+
+impl Default for PathEditingMode {
+	fn default() -> Self {
+		Self {
+			point_editing_mode: true,
+			segment_editing_mode: false,
+			region_editing_mode: false,
+		}
+	}
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
+	PointEditingMode { enabled: bool },
+	SegmentEditingMode { enabled: bool },
+	RegionEditingMode { enabled: bool },
 }
 
 impl ToolMetadata for PathTool {
@@ -217,6 +238,19 @@ impl LayoutHolder for PathTool {
 		.selected_index(Some(self.options.path_overlay_mode as u32))
 		.widget_holder();
 
+		let point_editing_mode = CheckboxInput::new(self.options.path_editing_mode.point_editing_mode)
+			.icon("Overlays")
+			.on_update(|input| PathToolMessage::UpdateOptions(PathOptionsUpdate::PointEditingMode { enabled: input.checked }).into())
+			.widget_holder();
+		let segment_editing_mode = CheckboxInput::new(self.options.path_editing_mode.segment_editing_mode)
+			.icon("Overlays")
+			.on_update(|input| PathToolMessage::UpdateOptions(PathOptionsUpdate::SegmentEditingMode { enabled: input.checked }).into())
+			.widget_holder();
+		let region_editing_mode = CheckboxInput::new(self.options.path_editing_mode.region_editing_mode)
+			.icon("Overlays")
+			.on_update(|input| PathToolMessage::UpdateOptions(PathOptionsUpdate::RegionEditingMode { enabled: input.checked }).into())
+			.widget_holder();
+
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
@@ -224,10 +258,16 @@ impl LayoutHolder for PathTool {
 				y_location,
 				unrelated_seperator.clone(),
 				colinear_handle_checkbox,
-				related_seperator,
+				related_seperator.clone(),
 				colinear_handles_label,
-				unrelated_seperator,
+				unrelated_seperator.clone(),
 				path_overlay_mode_widget,
+				unrelated_seperator,
+				point_editing_mode,
+				related_seperator.clone(),
+				segment_editing_mode,
+				related_seperator,
+				region_editing_mode,
 			],
 		}]))
 	}
@@ -241,6 +281,18 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			ToolMessage::Path(PathToolMessage::UpdateOptions(action)) => match action {
 				PathOptionsUpdate::OverlayModeType(overlay_mode_type) => {
 					self.options.path_overlay_mode = overlay_mode_type;
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::PointEditingMode { enabled } => {
+					self.options.path_editing_mode.point_editing_mode = enabled;
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::SegmentEditingMode { enabled } => {
+					self.options.path_editing_mode.segment_editing_mode = enabled;
+					responses.add(OverlaysMessage::Draw);
+				}
+				PathOptionsUpdate::RegionEditingMode { enabled } => {
+					self.options.path_editing_mode.region_editing_mode = enabled;
 					responses.add(OverlaysMessage::Draw);
 				}
 			},
@@ -441,6 +493,7 @@ impl PathToolData {
 		self.selection_status = selection_status;
 	}
 
+	// This function is for basic point select mode, we need to make a new one for the segment select mode, for sure
 	#[allow(clippy::too_many_arguments)]
 	fn mouse_down(
 		&mut self,
@@ -453,6 +506,7 @@ impl PathToolData {
 		handle_drag_from_anchor: bool,
 		drag_zero_handle: bool,
 		path_overlay_mode: PathOverlayMode,
+		segment_editing_mode: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -559,22 +613,57 @@ impl PathToolData {
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
 		// We didn't find a point nearby, so we will see if there is a segment to insert a point on
-		else if let Some(closed_segment) = &mut self.segment {
+		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			if self.delete_segment_pressed {
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
-					shape_editor.dissolve_segment(responses, closed_segment.layer(), &vector_data, closed_segment.segment(), closed_segment.points());
+			if segment_editing_mode {
+				let layer = segment.layer();
+				let segment_id = segment.segment();
+				let already_selected = shape_editor.selected_shape_state.get(&layer).map_or(false, |state| state.is_selected_segment(segment_id));
+
+				if !(already_selected && extend_selection) {
+					// let vector_data = document.network_interface.compute_modified_vector(segment.layer());
+
+					let new_selected = if already_selected { !extend_selection } else { true };
+					if new_selected {
+						let retain_existing_selection = extend_selection || already_selected;
+						if !retain_existing_selection {
+							shape_editor.deselect_all_segments();
+						}
+
+						// Add to selected segments
+						if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
+							selected_shape_state.select_segment(segment_id);
+						}
+					} else {
+						if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
+							selected_shape_state.deselect_segment(segment_id);
+						}
+					}
+				}
+
+				self.drag_start_pos = input.mouse.position;
+
+				let viewport_to_document = document.metadata().document_to_viewport.inverse();
+				self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position);
+
+				responses.add(OverlaysMessage::Draw);
+				PathToolFsmState::Dragging(self.dragging_state)
+			} else {
+				if self.delete_segment_pressed {
+					if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+						shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
+						responses.add(DocumentMessage::EndTransaction);
+					}
+				} else {
+					segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
 					responses.add(DocumentMessage::EndTransaction);
 				}
-			} else {
-				closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
-				responses.add(DocumentMessage::EndTransaction);
+
+				self.segment = None;
+
+				PathToolFsmState::Ready
 			}
-
-			self.segment = None;
-
-			PathToolFsmState::Ready
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
@@ -597,6 +686,77 @@ impl PathToolData {
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+			PathToolFsmState::Drawing { selection_shape }
+		}
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn mouse_down_segment_mode(
+		&mut self,
+		shape_editor: &mut ShapeState,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		responses: &mut VecDeque<Message>,
+		extend_selection: bool,
+		_lasso_select: bool,
+		_handle_drag_from_anchor: bool,
+		_drag_zero_handle: bool,
+		_path_overlay_mode: PathOverlayMode,
+	) -> PathToolFsmState {
+		self.drag_start_pos = input.mouse.position;
+
+		// Check if a segment is already selected; if not, select the first segment within the threshold
+		if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+			//Got the segment add the segment in selected segments
+			let layer = segment.layer();
+			let segment_id = segment.segment();
+			let already_selected = shape_editor.selected_shape_state.get(&layer).map_or(false, |state| state.is_selected_segment(segment_id));
+
+			if !(already_selected && extend_selection) {
+				// let vector_data = document.network_interface.compute_modified_vector(segment.layer());
+
+				let new_selected = if already_selected { !extend_selection } else { true };
+				if new_selected {
+					let retain_existing_selection = extend_selection || already_selected;
+					if !retain_existing_selection {
+						shape_editor.deselect_all_segments();
+					}
+
+					// Add to selected segments
+					if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
+						selected_shape_state.select_segment(segment_id);
+					}
+				} else {
+					if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
+						selected_shape_state.deselect_segment(segment_id);
+					}
+				}
+			}
+			responses.add(OverlaysMessage::Draw);
+			PathToolFsmState::Dragging(self.dragging_state)
+		}
+		// We didn't find a segment, so consider selecting the nearest shape instead
+		else if let Some(layer) = document.click(input) {
+			shape_editor.deselect_all_points();
+			if extend_selection {
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
+			} else {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+			}
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
+			responses.add(DocumentMessage::StartTransaction);
+
+			PathToolFsmState::Dragging(self.dragging_state)
+		}
+		// Start drawing
+		else {
+			self.drag_start_pos = input.mouse.position;
+			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
+			let selection_shape = if _lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+			responses.add(OverlaysMessage::Draw);
 			PathToolFsmState::Drawing { selection_shape }
 		}
 	}
@@ -1125,24 +1285,46 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
+				// Get the selected segments and then add an bold line overlay on them
+				for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
+					let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
+					let transform = document.metadata().transform_to_viewport(layer);
+					for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
+						let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+							continue;
+						};
+						// let selected_segments = selected_shape_state.selected_segments().collect::<Vec<_>>();
+						// log::info!("selected segments are: {:?}", selected_segments);
+						if selected_shape_state.is_selected_segment(segment_id) {
+							overlay_context.outline_select_bezier(bezier, transform);
+						}
+					}
+				}
+
 				match self {
 					Self::Ready => {
 						if let Some(closest_segment) = &tool_data.segment {
-							let perp = closest_segment.calculate_perp(document);
-							let point = closest_segment.closest_point(document.metadata());
+							//Do this only when the segment editing mode is turned off
+							if tool_options.path_editing_mode.segment_editing_mode {
+								let transform = document.metadata().transform_to_viewport(closest_segment.layer());
+								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
+							} else {
+								let perp = closest_segment.calculate_perp(document);
+								let point = closest_segment.closest_point(document.metadata());
 
-							// Draw an X on the segment
-							if tool_data.delete_segment_pressed {
-								let angle = 45_f64.to_radians();
-								let tilted_line = DVec2::from_angle(angle).rotate(perp);
-								let tilted_perp = tilted_line.perp();
+								// Draw an X on the segment
+								if tool_data.delete_segment_pressed {
+									let angle = 45_f64.to_radians();
+									let tilted_line = DVec2::from_angle(angle).rotate(perp);
+									let tilted_perp = tilted_line.perp();
 
-								overlay_context.line(point - tilted_line * SEGMENT_OVERLAY_SIZE, point + tilted_line * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-								overlay_context.line(point - tilted_perp * SEGMENT_OVERLAY_SIZE, point + tilted_perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-							}
-							// Draw a line on the segment
-							else {
-								overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+									overlay_context.line(point - tilted_line * SEGMENT_OVERLAY_SIZE, point + tilted_line * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+									overlay_context.line(point - tilted_perp * SEGMENT_OVERLAY_SIZE, point + tilted_perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+								}
+								// Draw a line on the segment
+								else {
+									overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+								}
 							}
 						}
 					}
@@ -1230,6 +1412,7 @@ impl Fsm for PathToolFsmState {
 					handle_drag_from_anchor,
 					drag_zero_handle,
 					tool_options.path_overlay_mode,
+					tool_options.path_editing_mode.segment_editing_mode,
 				)
 			}
 			(
@@ -1302,11 +1485,14 @@ impl Fsm for PathToolFsmState {
 					tool_data.handle_drag_toggle = true;
 				}
 
-				if tool_data.selection_status.is_none() {
-					if let Some(layer) = document.click(input) {
-						shape_editor.select_all_anchors_in_layer(document, layer);
-					}
-				}
+				// This is responsible for selecting all the anchors if nothing is selected
+				// Should also check that if there is some segment selection or not
+
+				// if tool_data.selection_status.is_none() {
+				// 	if let Some(layer) = document.click(input) {
+				// 		shape_editor.select_all_anchors_in_layer(document, layer);
+				// 	}
+				// }
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
@@ -1491,6 +1677,7 @@ impl Fsm for PathToolFsmState {
 								selection_change,
 								tool_options.path_overlay_mode,
 								tool_data.frontier_handles_info.clone(),
+								tool_options.path_editing_mode.segment_editing_mode,
 							);
 						}
 						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
@@ -1499,6 +1686,7 @@ impl Fsm for PathToolFsmState {
 							selection_change,
 							tool_options.path_overlay_mode,
 							tool_data.frontier_handles_info.clone(),
+							tool_options.path_editing_mode.segment_editing_mode,
 						),
 					}
 				}
@@ -1551,6 +1739,7 @@ impl Fsm for PathToolFsmState {
 								select_kind,
 								tool_options.path_overlay_mode,
 								tool_data.frontier_handles_info.clone(),
+								tool_options.path_editing_mode.segment_editing_mode,
 							);
 						}
 						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
@@ -1559,6 +1748,7 @@ impl Fsm for PathToolFsmState {
 							select_kind,
 							tool_options.path_overlay_mode,
 							tool_data.frontier_handles_info.clone(),
+							tool_options.path_editing_mode.segment_editing_mode,
 						),
 					}
 				}

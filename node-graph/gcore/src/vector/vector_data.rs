@@ -10,6 +10,7 @@ use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
 use core::borrow::Borrow;
+use core::hash::{Hash, Hasher};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
@@ -581,6 +582,26 @@ impl ManipulatorPointId {
 		}
 	}
 }
+
+// #[derive(Clone, Copy, Debug, DynAny)]
+// pub struct SelectedSegment {
+// 	segment: SegmentId,
+// 	points: [PointId; 2],
+// }
+
+// impl PartialEq for SelectedSegment {
+// 	fn eq(&self, other: &Self) -> bool {
+// 		self.segment == other.segment
+// 	}
+// }
+
+// impl Eq for SelectedSegment {}
+
+// impl Hash for SelectedSegment {
+// 	fn hash<H: Hasher>(&self, state: &mut H) {
+// 		self.segment.hash(state);
+// 	}
+// }
 
 /// The type of handle found on a bézier curve.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
