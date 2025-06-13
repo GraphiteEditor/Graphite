@@ -1,5 +1,3 @@
-use core::f64;
-
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
@@ -205,21 +203,20 @@ pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 	let start_handle_length = a.exp();
 	let end_handle_length = b.exp();
 
-	// Calculate the similairty somehow using the new bezier curve
-	let c1: DVec2 = p1 + d1 * start_handle_length;
-	let c2: DVec2 = p3 + d2 * end_handle_length;
+	// Calculate the similarity somehow using the new bezier curve
+	let c1 = p1 + d1 * start_handle_length;
+	let c2 = p3 + d2 * end_handle_length;
 
 	let new_curve = Bezier::from_cubic_coordinates(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p3.x, p3.y);
 
 	let points = new_curve.compute_lookup_table(Some(2 * n), None).collect::<Vec<_>>();
 
 	let dist = points1.iter().zip(points.iter()).map(|(p1, p2)| (p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sum::<f64>();
-	let dist = dist / (2. * (n as f64));
 
-	dist
+	dist / (2 * n) as f64
 }
 
-/// Calculates the handles lengths for a bezier curve with fixed handle directions and passing through a given point p2 with parameter t
+/// Calculates the handle lengths for a bezier curve with fixed handle directions and passing through a given point `p2` with parameter `t`.
 pub fn calculate_curve_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2) -> (f64, f64) {
 	let a = 3. * (1. - t).powi(2) * t;
 	let b = 3. * (1. - t) * t.powi(2);
@@ -242,13 +239,13 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	let tol = 1e-6;
 	let max_iter = 200;
 
-	let mut a = (5.0f64).ln();
-	let mut b = (5.0f64).ln();
+	let mut a = (5_f64).ln();
+	let mut b = (5_f64).ln();
 
-	let mut m_a = 0.0;
-	let mut v_a = 0.0;
-	let mut m_b = 0.0;
-	let mut v_b = 0.0;
+	let mut m_a = 0.;
+	let mut v_a = 0.;
+	let mut m_b = 0.;
+	let mut v_b = 0.;
 
 	let initial_alpha = 0.05;
 	let decay_rate: f64 = 0.99;
@@ -271,7 +268,7 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 		other_segment
 	};
 
-	//Now we sample points proportional to the lengths of the beziers
+	// Now we sample points proportional to the lengths of the beziers
 	let l1 = farther_segment.length(None);
 	let l2 = other_segment.length(None);
 	let ratio = l1 / (l1 + l2);
@@ -283,19 +280,19 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 	let f = |a: f64, b: f64| -> f64 { log_optimization(a, b, p1, p3, d1, d2, &points1, n) };
 
 	for t in 1..=max_iter {
-		let dfa = (f(a + h, b) - f(a - h, b)) / (2.0 * h);
-		let dfb = (f(a, b + h) - f(a, b - h)) / (2.0 * h);
+		let dfa = (f(a + h, b) - f(a - h, b)) / (2. * h);
+		let dfb = (f(a, b + h) - f(a, b - h)) / (2. * h);
 
-		m_a = beta1 * m_a + (1.0 - beta1) * dfa;
-		m_b = beta1 * m_b + (1.0 - beta1) * dfb;
+		m_a = beta1 * m_a + (1. - beta1) * dfa;
+		m_b = beta1 * m_b + (1. - beta1) * dfb;
 
-		v_a = beta2 * v_a + (1.0 - beta2) * dfa * dfa;
-		v_b = beta2 * v_b + (1.0 - beta2) * dfb * dfb;
+		v_a = beta2 * v_a + (1. - beta2) * dfa * dfa;
+		v_b = beta2 * v_b + (1. - beta2) * dfb * dfb;
 
-		let m_a_hat = m_a / (1.0 - beta1.powi(t));
-		let v_a_hat = v_a / (1.0 - beta2.powi(t));
-		let m_b_hat = m_b / (1.0 - beta1.powi(t));
-		let v_b_hat = v_b / (1.0 - beta2.powi(t));
+		let m_a_hat = m_a / (1. - beta1.powi(t));
+		let v_a_hat = v_a / (1. - beta2.powi(t));
+		let m_b_hat = m_b / (1. - beta1.powi(t));
+		let v_b_hat = v_b / (1. - beta2.powi(t));
 
 		let alpha_t = initial_alpha * decay_rate.powi(t);
 
