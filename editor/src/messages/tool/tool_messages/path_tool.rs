@@ -310,10 +310,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				RightClick,
 			),
 			PathToolFsmState::SlidingPoint => actions!(PathToolMessageDiscriminant;
-					  PointerMove,
-					  DragStop,
-					  Escape,
-					  RightClick
+				PointerMove,
+				DragStop,
+				Escape,
+				RightClick
 			),
 			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
 				PointerMove,
@@ -947,24 +947,30 @@ impl PathToolData {
 				return false;
 			};
 
-			let Some(pointid) = anchor.as_anchor() else { return false };
+			let Some(point_id) = anchor.as_anchor() else { return false };
 
-			let mut segments_vec = vec![];
+			let mut connected_segments = [None, None];
 			for (segment, bezier, start, end) in vector_data.segment_bezier_iter() {
-				if start == pointid || end == pointid {
-					segments_vec.push(SlidingSegmentData { segment_id: segment, bezier, start });
+				if start == point_id || end == point_id {
+					match (connected_segments[0], connected_segments[1]) {
+						(None, None) => connected_segments[0] = Some(SlidingSegmentData { segment_id: segment, bezier, start }),
+						(Some(_), None) => connected_segments[1] = Some(SlidingSegmentData { segment_id: segment, bezier, start }),
+						_ => {
+							warn!("more than two segments connected to the anchor point");
+							return false;
+						}
+					}
 				}
 			}
-
-			if segments_vec.iter().count() != 2 {
+			let connected_segments = if let [Some(seg1), Some(seg2)] = connected_segments {
+				[seg1, seg2]
+			} else {
 				warn!("expected exactly two connected segments");
 				return false;
-			}
-
-			let connected_segments = [segments_vec[0], segments_vec[1]];
+			};
 
 			self.sliding_point_info = Some(SlidingPointInfo {
-				anchor: pointid,
+				anchor: point_id,
 				layer,
 				connected_segments,
 			});
@@ -976,7 +982,6 @@ impl PathToolData {
 	fn slide_point(&mut self, target_position: DVec2, responses: &mut VecDeque<Message>, network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) {
 		let Some(sliding_point_info) = self.sliding_point_info else { return };
 		let anchor = sliding_point_info.anchor;
-		// let initial_position = sliding_point_info.initial_position;
 		let layer = sliding_point_info.layer;
 
 		let Some(vector_data) = network_interface.compute_modified_vector(layer) else { return };
@@ -1024,7 +1029,7 @@ impl PathToolData {
 		let modification_type = closer_secondary_handle.set_relative_position(relative_position2);
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-		let end_handle_direction = if anchor == closer_segment.start { -1. * relative_position1 } else { -1. * relative_position2 };
+		let end_handle_direction = if anchor == closer_segment.start { -relative_position1 } else { -relative_position2 };
 
 		let (farther_other_point, start_handle, end_handle, start_handle_pos) = if anchor == farther_segment.start {
 			(
@@ -1047,7 +1052,7 @@ impl PathToolData {
 		// Get normalized direction vectors, if cubic handle is zero then we consider corresponding tangent
 		let d1 = start_handle_direction.try_normalize().unwrap_or({
 			if anchor == farther_segment.start {
-				-1. * farther_segment.bezier.tangent(TValue::Parametric(0.99))
+				-farther_segment.bezier.tangent(TValue::Parametric(0.99))
 			} else {
 				farther_segment.bezier.tangent(TValue::Parametric(0.01))
 			}
@@ -1545,10 +1550,8 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
-					if snap_angle_state && lock_angle_state {
-						if tool_data.start_sliding_point(tool_action_data.shape_editor, &tool_action_data.document) {
-							return PathToolFsmState::SlidingPoint;
-						}
+					if snap_angle_state && lock_angle_state && tool_data.start_sliding_point(tool_action_data.shape_editor, &tool_action_data.document) {
+						return PathToolFsmState::SlidingPoint;
 					}
 
 					tool_data.drag(
@@ -1748,8 +1751,10 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::SlidingPoint, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				tool_data.sliding_point_info = None;
+
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+
 				PathToolFsmState::Ready
 			}
 			(PathToolFsmState::MoldingSegment, PathToolMessage::Escape | PathToolMessage::RightClick) => {
