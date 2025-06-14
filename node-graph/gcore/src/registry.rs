@@ -26,7 +26,7 @@ pub mod types {
 	pub type IntegerCount = u32;
 	/// Unsigned integer to be used for random seeds
 	pub type SeedValue = u32;
-	/// Non-negative integer vector2 with px unit
+	/// Non-negative integer coordinate with px unit
 	pub type Resolution = glam::UVec2;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
