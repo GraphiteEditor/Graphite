@@ -12,12 +12,23 @@ use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 use thiserror::Error;
 use tiff::file::TiffRead;
-use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag};
-use tiff::values::Transform;
+use tiff::tags::{Compression, ImageLength, ImageWidth, Orientation, StripByteCounts, SubIfd, Tag, ThumbnailLength, ThumbnailOffset};
+use tiff::values::{CompressionValue, OrientationValue};
 use tiff::{Ifd, TiffError};
 
 pub(crate) const CHANNELS_IN_RGB: usize = 3;
 pub(crate) type Histogram = [[usize; 0x2000]; CHANNELS_IN_RGB];
+
+pub enum ThumbnailFormat {
+	Jpeg,
+	Unsupported,
+}
+
+/// A thumbnail image extracted from the raw file. This is usually a JPEG image.
+pub struct ThumbnailImage {
+	pub data: Vec<u8>,
+	pub format: ThumbnailFormat,
+}
 
 /// The amount of black level to be subtracted from Raw Image.
 pub enum SubtractBlack {
@@ -48,7 +59,7 @@ pub struct RawImage {
 	pub cfa_pattern: [u8; 4],
 
 	/// Transformation to be applied to negate the orientation of camera.
-	pub transform: Transform,
+	pub orientation: OrientationValue,
 
 	/// The maximum possible value of pixel that the camera sensor could give.
 	pub maximum: u16,
@@ -97,8 +108,8 @@ pub struct Image<T> {
 
 	/// The transformation required to orient the image correctly.
 	///
-	/// This will be [`Transform::Horizontal`] after the transform step is applied.
-	pub transform: Transform,
+	/// This will be [`OrientationValue::Horizontal`] after the orientation step is applied.
+	pub orientation: OrientationValue,
 }
 
 #[allow(dead_code)]
@@ -119,7 +130,7 @@ impl RawImage {
 		let ifd = Ifd::new_first_ifd(&mut file)?;
 
 		let camera_model = metadata::identify::identify_camera_model(&ifd, &mut file).unwrap();
-		let transform = ifd.get_value::<Orientation, _>(&mut file)?;
+		let orientation = ifd.get_value::<Orientation, _>(&mut file)?;
 
 		let mut raw_image = if camera_model.model == "DSLR-A100" {
 			decoder::arw1::decode_a100(ifd, &mut file)
@@ -127,7 +138,7 @@ impl RawImage {
 			let sub_ifd = ifd.get_value::<SubIfd, _>(&mut file)?;
 			let arw_ifd = sub_ifd.get_value::<ArwIfd, _>(&mut file)?;
 
-			if arw_ifd.compression == 1 {
+			if arw_ifd.compression == CompressionValue::Uncompressed {
 				decoder::uncompressed::decode(sub_ifd, &mut file)
 			} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
 				decoder::arw2::decode(sub_ifd, &mut file)
@@ -138,11 +149,36 @@ impl RawImage {
 		};
 
 		raw_image.camera_model = Some(camera_model);
-		raw_image.transform = transform;
+		raw_image.orientation = orientation;
 
 		raw_image.calculate_conversion_matrices();
 
 		Ok(raw_image)
+	}
+
+	/// Extracts the thumbnail image from the raw file.
+	pub fn extract_thumbnail<R: Read + Seek>(reader: &mut R) -> Result<ThumbnailImage, DecoderError> {
+		let mut file = TiffRead::new(reader)?;
+		let ifd = Ifd::new_first_ifd(&mut file)?;
+
+		// TODO: ARW files Store the thumbnail offset and length in the first IFD. Add support for other file types in the future.
+		let thumbnail_offset = ifd.get_value::<ThumbnailOffset, _>(&mut file)?;
+		let thumbnail_length = ifd.get_value::<ThumbnailLength, _>(&mut file)?;
+		file.seek_from_start(thumbnail_offset)?;
+
+		let mut thumbnail_data = vec![0; thumbnail_length as usize];
+		file.read_exact(&mut thumbnail_data)?;
+
+		// Check the first two bytes to determine the format of the thumbnail.
+		// JPEG format starts with 0xFF, 0xD8.
+		if thumbnail_data[0..2] == [0xFF, 0xD8] {
+			Ok(ThumbnailImage {
+				data: thumbnail_data,
+				format: ThumbnailFormat::Jpeg,
+			})
+		} else {
+			Err(DecoderError::UnsupportedThumbnailFormat)
+		}
 	}
 
 	/// Converts the [`RawImage`] to an [`Image`] with 8 bit resolution for each channel.
@@ -156,7 +192,7 @@ impl RawImage {
 			data: image.data.iter().map(|x| (x >> 8) as u8).collect(),
 			width: image.width,
 			height: image.height,
-			transform: image.transform,
+			orientation: image.orientation,
 		}
 	}
 
@@ -174,7 +210,7 @@ impl RawImage {
 		let image = raw_image.demosaic_and_apply((convert_to_rgb, &mut record_histogram));
 
 		let gamma_correction = image.gamma_correction_fn(&record_histogram.histogram);
-		if image.transform == Transform::Horizontal {
+		if image.orientation == OrientationValue::Horizontal {
 			image.apply(gamma_correction)
 		} else {
 			image.transform_and_apply(gamma_correction)
@@ -211,7 +247,7 @@ impl RawImage {
 			data: image,
 			width: self.width,
 			height: self.height,
-			transform: self.transform,
+			orientation: self.orientation,
 		}
 	}
 }
@@ -232,7 +268,7 @@ impl Image<u16> {
 
 	pub fn transform_and_apply(self, mut transform: impl PixelTransform) -> Image<u16> {
 		let mut image = vec![0; self.width * self.height * 3];
-		let (width, height, iter) = self.transform_iter();
+		let (width, height, iter) = self.orientation_iter();
 		for Pixel { values, row, column } in iter.map(|mut pixel| {
 			pixel.values = transform.apply(pixel);
 			pixel
@@ -246,7 +282,7 @@ impl Image<u16> {
 			data: image,
 			width,
 			height,
-			transform: Transform::Horizontal,
+			orientation: OrientationValue::Horizontal,
 		}
 	}
 }
@@ -259,4 +295,6 @@ pub enum DecoderError {
 	ConversionError(#[from] std::num::TryFromIntError),
 	#[error("An IO Error ocurred")]
 	IoError(#[from] std::io::Error),
+	#[error("The thumbnail format is unsupported")]
+	UnsupportedThumbnailFormat,
 }
