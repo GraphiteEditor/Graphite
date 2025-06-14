@@ -52,7 +52,7 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 		return None;
 	}
 
-	// decide how many loop-iterations: if closed, skip the last duplicate point
+	// Decide how many loop-iterations: if closed, skip the last duplicate point
 	let sample_count_usize = sample_count as usize;
 	let max_i = if was_closed { sample_count_usize } else { sample_count_usize + 1 };
 
