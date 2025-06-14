@@ -8,7 +8,7 @@ use glam::{DAffine2, DVec2, Vec2Swizzles};
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
 	/// Stored as a document position so the start doesn't move if the canvas is panned.
-	drag_start: DVec2,
+	pub drag_start: DVec2,
 	pub layer: Option<LayerNodeIdentifier>,
 	pub snap_manager: SnapManager,
 }
