@@ -1550,7 +1550,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if !tool_data.update_colinear(equidistant_state, toggle_colinear_state, tool_action_data.shape_editor, tool_action_data.document, responses) {
-					if snap_angle_state && lock_angle_state && tool_data.start_sliding_point(tool_action_data.shape_editor, &tool_action_data.document) {
+					if snap_angle_state && lock_angle_state && tool_data.start_sliding_point(tool_action_data.shape_editor, tool_action_data.document) {
 						return PathToolFsmState::SlidingPoint;
 					}
 
@@ -1594,7 +1594,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
 			(PathToolFsmState::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
-				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, &shape_editor);
+				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, shape_editor);
 				PathToolFsmState::SlidingPoint
 			}
 			(PathToolFsmState::MoldingSegment, PathToolMessage::PointerMove { break_colinear_molding, .. }) => {
@@ -2407,7 +2407,7 @@ fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Messag
 
 			HintData(molding_hints)
 		}
-		PathToolFsmState::SlidingPoint { .. } => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	responses.add(FrontendMessage::UpdateInputHints { hint_data });
 }

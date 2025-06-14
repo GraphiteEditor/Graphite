@@ -198,8 +198,9 @@ pub fn is_visible_point(
 	}
 }
 
-/// Calculates similarity metric between new bezier curve and two old beziers by using sampled points
-pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, points1: &Vec<DVec2>, n: usize) -> f64 {
+/// Calculates similarity metric between new bezier curve and two old beziers by using sampled points.
+#[allow(clippy::too_many_arguments)]
+pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, points1: &[DVec2], n: usize) -> f64 {
 	let start_handle_length = a.exp();
 	let end_handle_length = b.exp();
 
@@ -217,24 +218,8 @@ pub fn log_optimization(a: f64, b: f64, p1: DVec2, p3: DVec2, d1: DVec2, d2: DVe
 	dist / (2 * n) as f64
 }
 
-/// Calculates the handle lengths for a bezier curve with fixed handle directions and passing through a given point `p2` with parameter `t`.
-pub fn calculate_curve_for_given_t(t: f64, p1: DVec2, p2: DVec2, p3: DVec2, d1: DVec2, d2: DVec2) -> (f64, f64) {
-	let a = 3. * (1. - t).powi(2) * t;
-	let b = 3. * (1. - t) * t.powi(2);
-
-	let rx = p2.x - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.x - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.x;
-	let ry = p2.y - ((1. - t).powi(3) + 3. * (1. - t).powi(2) * t) * p1.y - (3. * (1. - t) * t.powi(2) + t.powi(3)) * p3.y;
-
-	let cross_product = d1.x * d2.y - d1.y * d2.x;
-	let det = a * b * cross_product;
-
-	let start_handle_length = (rx * b * d2.y - ry * b * d2.x) / det;
-	let end_handle_length = (ry * a * d1.x - rx * a * d1.y) / det;
-
-	(start_handle_length, end_handle_length)
-}
-
-// Calculate optimal handle lengths with adam optimization
+/// Calculates optimal handle lengths with adam optimization.
+#[allow(clippy::too_many_arguments)]
 pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec2, min_len1: f64, min_len2: f64, farther_segment: Bezier, other_segment: Bezier) -> (DVec2, DVec2) {
 	let h = 1e-6;
 	let tol = 1e-6;
@@ -257,17 +242,13 @@ pub fn find_two_param_best_approximate(p1: DVec2, p3: DVec2, d1: DVec2, d2: DVec
 
 	let n = 20;
 
-	let farther_segment = if !(farther_segment.start.distance(p1) < f64::EPSILON) {
+	let farther_segment = if farther_segment.start.distance(p1) >= f64::EPSILON {
 		farther_segment.reverse()
 	} else {
 		farther_segment
 	};
 
-	let other_segment = if !(other_segment.end.distance(p3) < f64::EPSILON) {
-		other_segment.reverse()
-	} else {
-		other_segment
-	};
+	let other_segment = if other_segment.end.distance(p3) >= f64::EPSILON { other_segment.reverse() } else { other_segment };
 
 	// Now we sample points proportional to the lengths of the beziers
 	let l1 = farther_segment.length(None);
