@@ -80,6 +80,7 @@ pub enum PathToolMessage {
 		snap_angle: Key,
 		lock_angle: Key,
 		delete_segment: Key,
+		break_colinear_molding: Key,
 	},
 	PointerOutsideViewport {
 		equidistant: Key,
@@ -88,6 +89,7 @@ pub enum PathToolMessage {
 		snap_angle: Key,
 		lock_angle: Key,
 		delete_segment: Key,
+		break_colinear_molding: Key,
 	},
 	RightClick,
 	SelectAllAnchors,
@@ -306,6 +308,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick,
 			),
+			PathToolFsmState::MoldingSegment => actions!(PathToolMessageDiscriminant;
+				PointerMove,
+				DragStop,
+				RightClick,
+				Escape,
+			),
 		}
 	}
 }
@@ -342,6 +350,7 @@ enum PathToolFsmState {
 	Drawing {
 		selection_shape: SelectionShapeType,
 	},
+	MoldingSegment,
 }
 
 #[derive(Default)]
@@ -379,6 +388,9 @@ struct PathToolData {
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
 	temporary_colinear_handles: bool,
+	molding_info: Option<(DVec2, DVec2)>,
+	molding_segment: bool,
+	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
 }
@@ -562,19 +574,17 @@ impl PathToolData {
 		else if let Some(closed_segment) = &mut self.segment {
 			responses.add(DocumentMessage::StartTransaction);
 
-			if self.delete_segment_pressed {
-				if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
-					shape_editor.dissolve_segment(responses, closed_segment.layer(), &vector_data, closed_segment.segment(), closed_segment.points());
-					responses.add(DocumentMessage::EndTransaction);
+			// Calculating and storing handle positions
+			let handle1 = ManipulatorPointId::PrimaryHandle(closed_segment.segment());
+			let handle2 = ManipulatorPointId::EndHandle(closed_segment.segment());
+
+			if let Some(vector_data) = document.network_interface.compute_modified_vector(closed_segment.layer()) {
+				if let (Some(pos1), Some(pos2)) = (handle1.get_position(&vector_data), handle2.get_position(&vector_data)) {
+					self.molding_info = Some((pos1, pos2))
 				}
-			} else {
-				closed_segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
-				responses.add(DocumentMessage::EndTransaction);
 			}
 
-			self.segment = None;
-
-			PathToolFsmState::Ready
+			PathToolFsmState::MoldingSegment
 		}
 		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
@@ -1045,6 +1055,9 @@ impl Fsm for PathToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
+
+		update_dynamic_hints(self, responses, shape_editor, document, tool_data);
+
 		let ToolMessage::Path(event) = event else { return self };
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
@@ -1127,6 +1140,32 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
+						// Check if there is no point nearby
+						if shape_editor
+							.find_nearest_visible_point_indices(
+								&document.network_interface,
+								input.mouse.position,
+								SELECTION_THRESHOLD,
+								tool_options.path_overlay_mode,
+								tool_data.frontier_handles_info.clone(),
+							)
+							.is_some()
+						{
+							tool_data.segment = None;
+						}
+						// If already hovering on a segment, then recalculate its closest point
+						else if let Some(closest_segment) = &mut tool_data.segment {
+							closest_segment.update_closest_point(document.metadata(), input.mouse.position);
+
+							if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
+								tool_data.segment = None;
+							}
+						}
+						// If not, check that if there is some closest segment or not
+						else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
+							tool_data.segment = Some(closest_segment);
+						}
+
 						if let Some(closest_segment) = &tool_data.segment {
 							let perp = closest_segment.calculate_perp(document);
 							let point = closest_segment.closest_point(document.metadata());
@@ -1195,6 +1234,7 @@ impl Fsm for PathToolFsmState {
 							}
 						}
 					}
+					Self::MoldingSegment => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -1241,6 +1281,7 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
+					break_colinear_molding,
 				},
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
@@ -1260,6 +1301,7 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						break_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1269,6 +1311,7 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						break_colinear_molding,
 					}
 					.into(),
 				];
@@ -1285,6 +1328,7 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
+					break_colinear_molding,
 				},
 			) => {
 				let mut selected_only_handles = true;
@@ -1356,6 +1400,7 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						break_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1365,12 +1410,36 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						break_colinear_molding,
 					}
 					.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
+			}
+			(PathToolFsmState::MoldingSegment, PathToolMessage::PointerMove { break_colinear_molding, .. }) => {
+				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+					tool_data.molding_segment = true;
+				}
+
+				let break_colinear_molding = input.keyboard.get(break_colinear_molding as usize);
+
+				// Logic for molding segment
+				if let Some(segment) = &mut tool_data.segment {
+					if let Some(molding_segment_handles) = tool_data.molding_info {
+						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
+							document,
+							responses,
+							molding_segment_handles,
+							input.mouse.position,
+							break_colinear_molding,
+							tool_data.temporary_adjacent_handles_while_molding,
+						);
+					}
+				}
+
+				PathToolFsmState::MoldingSegment
 			}
 			(PathToolFsmState::Ready, PathToolMessage::PointerMove { delete_segment, .. }) => {
 				tool_data.delete_segment_pressed = input.keyboard.get(delete_segment as usize);
@@ -1383,33 +1452,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.adjacent_anchor_offset = None;
 				}
 
-				// If there is a point nearby, then remove the overlay
-				if shape_editor
-					.find_nearest_visible_point_indices(
-						&document.network_interface,
-						input.mouse.position,
-						SELECTION_THRESHOLD,
-						tool_options.path_overlay_mode,
-						tool_data.frontier_handles_info.clone(),
-					)
-					.is_some()
-				{
-					tool_data.segment = None;
-					responses.add(OverlaysMessage::Draw)
-				}
-				// If already hovering on a segment, then recalculate its closest point
-				else if let Some(closest_segment) = &mut tool_data.segment {
-					closest_segment.update_closest_point(document.metadata(), input.mouse.position);
-					if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
-						tool_data.segment = None;
-					}
-					responses.add(OverlaysMessage::Draw)
-				}
-				// If not, check that if there is some closest segment or not
-				else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
-					tool_data.segment = Some(closest_segment);
-					responses.add(OverlaysMessage::Draw)
-				}
+				responses.add(OverlaysMessage::Draw);
 
 				self
 			}
@@ -1438,6 +1481,7 @@ impl Fsm for PathToolFsmState {
 					snap_angle,
 					lock_angle,
 					delete_segment,
+					break_colinear_molding,
 				},
 			) => {
 				// Auto-panning
@@ -1449,6 +1493,7 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						break_colinear_molding,
 					}
 					.into(),
 					PathToolMessage::PointerMove {
@@ -1458,6 +1503,7 @@ impl Fsm for PathToolFsmState {
 						snap_angle,
 						lock_angle,
 						delete_segment,
+						break_colinear_molding,
 					}
 					.into(),
 				];
@@ -1524,6 +1570,17 @@ impl Fsm for PathToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
+			(PathToolFsmState::MoldingSegment, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				// Undo the molding and go back to the state before
+				tool_data.molding_info = None;
+				tool_data.molding_segment = false;
+				tool_data.temporary_adjacent_handles_while_molding = None;
+
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
+
+				PathToolFsmState::Ready
+			}
 			// Mouse up
 			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
@@ -1578,6 +1635,29 @@ impl Fsm for PathToolFsmState {
 					tool_options.path_overlay_mode,
 					tool_data.frontier_handles_info.clone(),
 				);
+
+				if let Some(segment) = &mut tool_data.segment {
+					if !drag_occurred && !tool_data.molding_segment {
+						if tool_data.delete_segment_pressed {
+							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
+								responses.add(DocumentMessage::EndTransaction);
+							}
+						} else {
+							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
+							responses.add(DocumentMessage::EndTransaction);
+						}
+					} else {
+						responses.add(DocumentMessage::EndTransaction);
+					}
+
+					tool_data.segment = None;
+					tool_data.molding_info = None;
+					tool_data.molding_segment = false;
+					tool_data.temporary_adjacent_handles_while_molding = None;
+
+					return PathToolFsmState::Ready;
+				}
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if !drag_occurred && extend_selection {
@@ -1756,98 +1836,8 @@ impl Fsm for PathToolFsmState {
 		}
 	}
 
-	fn update_hints(&self, responses: &mut VecDeque<Message>) {
-		let hint_data = match self {
-			PathToolFsmState::Ready => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
-				HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
-				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
-					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "To Sharp"),
-					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "To Smooth"),
-				]),
-				// TODO: Only show the following hints if at least one point is selected
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
-				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-				HintGroup(vec![
-					HintInfo::keys([Key::Delete], "Delete Selected"),
-					// TODO: Only show the following hints if at least one anchor is selected
-					HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
-					HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
-				]),
-			]),
-			PathToolFsmState::Dragging(dragging_state) => {
-				let colinear = dragging_state.colinear;
-				let mut dragging_hint_data = HintData(Vec::new());
-				dragging_hint_data
-					.0
-					.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]));
-
-				let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
-				let toggle_group = match dragging_state.point_select_state {
-					PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
-						let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
-						hints.push(HintInfo::keys(
-							[Key::KeyC],
-							if colinear == ManipulatorAngle::Colinear {
-								"Break Colinear Handles"
-							} else {
-								"Make Handles Colinear"
-							},
-						));
-						hints
-					}
-					PointSelectState::Anchor => Vec::new(),
-				};
-				let hold_group = match dragging_state.point_select_state {
-					PointSelectState::HandleNoPair => {
-						let mut hints = vec![];
-						if colinear != ManipulatorAngle::Free {
-							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
-						}
-						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints.push(drag_anchor);
-						hints
-					}
-					PointSelectState::HandleWithPair => {
-						let mut hints = vec![];
-						if colinear != ManipulatorAngle::Free {
-							hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
-						}
-						hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
-						hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
-						hints.push(drag_anchor);
-						hints
-					}
-					PointSelectState::Anchor => Vec::new(),
-				};
-
-				if !toggle_group.is_empty() {
-					dragging_hint_data.0.push(HintGroup(toggle_group));
-				}
-
-				if !hold_group.is_empty() {
-					dragging_hint_data.0.push(HintGroup(hold_group));
-				}
-
-				dragging_hint_data
-			}
-			PathToolFsmState::Drawing { .. } => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-				HintGroup(vec![
-					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-					HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
-					HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
-				]),
-			]),
-		};
-
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	fn update_hints(&self, _responses: &mut VecDeque<Message>) {
+		// Moved logic to update_dynamic_hints
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -2073,4 +2063,131 @@ fn calculate_adjacent_anchor_tangent(
 
 		_ => (None, None),
 	}
+}
+
+fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Message>, _shape_editor: &mut ShapeState, document: &DocumentMessageHandler, tool_data: &PathToolData) {
+	// Condinting based on currently selected segment if it has any one g1 continuous handle
+
+	let hint_data = match state {
+		PathToolFsmState::Ready => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
+			// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
+			HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDouble, "Convert Anchor Point"),
+				HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "To Sharp"),
+				HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "To Smooth"),
+			]),
+			// TODO: Only show the following hints if at least one point is selected
+			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+			HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR], [Key::KeyS]], "Grab/Rotate/Scale Selected")]),
+			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+			HintGroup(vec![
+				HintInfo::keys([Key::Delete], "Delete Selected"),
+				// TODO: Only show the following hints if at least one anchor is selected
+				HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus(),
+			]),
+		]),
+		PathToolFsmState::Dragging(dragging_state) => {
+			let colinear = dragging_state.colinear;
+			let mut dragging_hint_data = HintData(Vec::new());
+			dragging_hint_data
+				.0
+				.push(HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]));
+
+			let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
+			let toggle_group = match dragging_state.point_select_state {
+				PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
+					let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
+					hints.push(HintInfo::keys(
+						[Key::KeyC],
+						if colinear == ManipulatorAngle::Colinear {
+							"Break Colinear Handles"
+						} else {
+							"Make Handles Colinear"
+						},
+					));
+					hints
+				}
+				PointSelectState::Anchor => Vec::new(),
+			};
+			let hold_group = match dragging_state.point_select_state {
+				PointSelectState::HandleNoPair => {
+					let mut hints = vec![];
+					if colinear != ManipulatorAngle::Free {
+						hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+					}
+					hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
+					hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+					hints.push(drag_anchor);
+					hints
+				}
+				PointSelectState::HandleWithPair => {
+					let mut hints = vec![];
+					if colinear != ManipulatorAngle::Free {
+						hints.push(HintInfo::keys([Key::Alt], "Equidistant Handles"));
+					}
+					hints.push(HintInfo::keys([Key::Shift], "15° Increments"));
+					hints.push(HintInfo::keys([Key::Control], "Lock Angle"));
+					hints.push(drag_anchor);
+					hints
+				}
+				PointSelectState::Anchor => Vec::new(),
+			};
+
+			if !toggle_group.is_empty() {
+				dragging_hint_data.0.push(HintGroup(toggle_group));
+			}
+
+			if !hold_group.is_empty() {
+				dragging_hint_data.0.push(HintGroup(hold_group));
+			}
+
+			dragging_hint_data
+		}
+		PathToolFsmState::Drawing { .. } => HintData(vec![
+			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+			HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
+				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+			]),
+		]),
+		PathToolFsmState::MoldingSegment => {
+			let mut has_colinear_anchors = false;
+
+			if let Some(segment) = &tool_data.segment {
+				let handle1 = HandleId::primary(segment.segment());
+				let handle2 = HandleId::end(segment.segment());
+
+				if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
+					let other_handle1 = vector_data.other_colinear_handle(handle1);
+					let other_handle2 = vector_data.other_colinear_handle(handle2);
+					if other_handle1.is_some() || other_handle2.is_some() {
+						has_colinear_anchors = true;
+					}
+				};
+			}
+
+			let handles_stored = if let Some(other_handles) = tool_data.temporary_adjacent_handles_while_molding {
+				other_handles[0].is_some() || other_handles[1].is_some()
+			} else {
+				false
+			};
+
+			let molding_disable_possible = has_colinear_anchors || handles_stored;
+
+			let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+
+			if molding_disable_possible {
+				molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
+			}
+
+			HintData(molding_hints)
+		}
+	};
+	responses.add(FrontendMessage::UpdateInputHints { hint_data });
 }
