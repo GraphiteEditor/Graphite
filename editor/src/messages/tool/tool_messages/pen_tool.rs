@@ -625,10 +625,10 @@ impl PenToolData {
 				self.handle_end_offset = None;
 				self.path_closed = true;
 				self.next_handle_start = self.next_point;
-				self.store_clicked_endpoint(document, &transform, snap_data.input, preferences);
+				self.store_clicked_endpoint(document, transform, snap_data.input, preferences);
 				self.handle_mode = HandleMode::Free;
 				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
-					self.set_lock_angle(&vector_data, prior_endpoint, self.prior_segment);
+					self.set_lock_angle(vector_data, prior_endpoint, self.prior_segment);
 					self.switch_to_free_on_ctrl_release = true;
 				}
 				return true;
@@ -1172,6 +1172,7 @@ impl PenToolData {
 		transform.inverse().transform_point2(document_pos)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn create_initial_point(
 		&mut self,
 		document: &DocumentMessageHandler,
@@ -1190,7 +1191,7 @@ impl PenToolData {
 		let selected_nodes = document.network_interface.selected_nodes();
 		self.handle_end = None;
 
-		let tolerance: f64 = crate::consts::SNAP_POINT_TOLERANCE;
+		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		let extension_choice = should_extend(document, viewport, tolerance, selected_nodes.selected_layers(document.metadata()), preferences);
 		if let Some((layer, point, position)) = extension_choice {
 			self.current_layer = Some(layer);
@@ -1571,7 +1572,7 @@ impl Fsm for PenToolFsmState {
 				if preferences.vector_meshes && !close_to_point {
 					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
 						let pos = closest_segment.closest_point_to_viewport();
-						let perp = closest_segment.calculate_perp(&document);
+						let perp = closest_segment.calculate_perp(document);
 						overlay_context.manipulator_anchor(pos, true, None);
 						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 					}
@@ -1613,6 +1614,7 @@ impl Fsm for PenToolFsmState {
 					// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
 					overlay_context.line(next_anchor, next_handle_start, None, None);
 				}
+
 				match tool_options.pen_overlay_mode {
 					PenOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1621,7 +1623,7 @@ impl Fsm for PenToolFsmState {
 						if let Some(latest_segment) = tool_data.prior_segment {
 							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
 						}
-						// // If a vector mesh then there can be more than one prior segments
+						// If a vector mesh then there can be more than one prior segments
 						else if let Some(segments) = tool_data.prior_segments.clone() {
 							if preferences.vector_meshes {
 								path_overlays(document, DrawHandles::SelectedAnchors(segments), shape_editor, &mut overlay_context);
@@ -1692,11 +1694,11 @@ impl Fsm for PenToolFsmState {
 					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-					let close_to_point = closest_point(&document, viewport, tolerance, document.metadata().all_layers(), |_| false, &preferences).is_some();
+					let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
 					if !close_to_point {
 						if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
 							let pos = closest_segment.closest_point_to_viewport();
-							let perp = closest_segment.calculate_perp(&document);
+							let perp = closest_segment.calculate_perp(document);
 							overlay_context.manipulator_anchor(pos, true, None);
 							overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 						}
