@@ -26,7 +26,7 @@ pub mod types {
 	pub type IntegerCount = u32;
 	/// Unsigned integer to be used for random seeds
 	pub type SeedValue = u32;
-	/// Non-negative integer vector2 with px unit
+	/// Non-negative integer coordinate with px unit
 	pub type Resolution = glam::UVec2;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
@@ -54,6 +54,9 @@ pub struct FieldMetadata {
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
+	pub number_display_decimal_places: Option<u32>,
+	pub number_step: Option<f64>,
+	pub unit: Option<&'static str>,
 }
 
 pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
@@ -266,11 +269,11 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, _I, _O, N> Node<'input, Any<'input>> for DynAnyNode<_I, _O, N>
+impl<'input, I, O, N> Node<'input, Any<'input>> for DynAnyNode<I, O, N>
 where
-	_I: 'input + dyn_any::StaticType + WasmNotSend,
-	_O: 'input + dyn_any::StaticType + WasmNotSend,
-	N: 'input + Node<'input, _I, Output = DynFuture<'input, _O>>,
+	I: 'input + dyn_any::StaticType + WasmNotSend,
+	O: 'input + dyn_any::StaticType + WasmNotSend,
+	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	type Output = FutureAny<'input>;
 	#[inline]
@@ -294,11 +297,11 @@ where
 		self.node.serialize()
 	}
 }
-impl<'input, _I, _O, N> DynAnyNode<_I, _O, N>
+impl<'input, I, O, N> DynAnyNode<I, O, N>
 where
-	_I: 'input + dyn_any::StaticType,
-	_O: 'input + dyn_any::StaticType,
-	N: 'input + Node<'input, _I, Output = DynFuture<'input, _O>>,
+	I: 'input + dyn_any::StaticType,
+	O: 'input + dyn_any::StaticType,
+	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	pub const fn new(node: N) -> Self {
 		Self {
