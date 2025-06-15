@@ -237,28 +237,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
-							// Primary (bottom) input type coercion
-							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 0)],
-								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::ToGroupNode"),
-								manual_composition: Some(generic!(T)),
-								..Default::default()
-							},
 							// The monitor node is used to display a thumbnail in the UI
 							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 1)],
+								inputs: vec![NodeInput::network(concrete!(GraphicElement), 1)],
 								implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode"),
-								manual_composition: Some(generic!(T)),
+								manual_composition: Some(concrete!(Context)),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
 								manual_composition: Some(generic!(T)),
 								inputs: vec![
+									NodeInput::network(concrete!(GraphicGroupTable), 0),
 									NodeInput::node(NodeId(0), 0),
-									NodeInput::node(NodeId(1), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
 								implementation: DocumentNodeImplementation::proto("graphene_core::graphic_element::LayerNode"),
@@ -284,22 +277,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Element".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "To Group".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-										..Default::default()
-									},
-									..Default::default()
-								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Monitor".to_string(),
