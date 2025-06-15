@@ -107,11 +107,7 @@ impl SelectedLayerState {
 	}
 
 	pub fn selected_points_count(&self) -> usize {
-		let count = self.selected_points.iter().fold(0, |acc, point| {
-			let is_ignored = (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors);
-			acc + if is_ignored { 0 } else { 1 }
-		});
-		count
+		self.selected_points.len()
 	}
 }
 
@@ -163,6 +159,10 @@ impl ClosestSegment {
 		self.points
 	}
 
+	pub fn closest_point_document(&self) -> DVec2 {
+		self.bezier.evaluate(TValue::Parametric(self.t))
+	}
+
 	pub fn closest_point_to_viewport(&self) -> DVec2 {
 		self.bezier_point_to_viewport
 	}
@@ -208,7 +208,7 @@ impl ClosestSegment {
 		(first_handle, second_handle)
 	}
 
-	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> PointId {
+	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> (PointId, [SegmentId; 2]) {
 		let layer = self.layer;
 		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
 
@@ -253,11 +253,11 @@ impl ClosestSegment {
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 
-		midpoint
+		(midpoint, segment_ids)
 	}
 
 	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, extend_selection: bool) {
-		let id = self.adjusted_insert(responses);
+		let (id, _) = self.adjusted_insert(responses);
 		shape_editor.select_anchor_point_by_id(self.layer, id, extend_selection)
 	}
 
