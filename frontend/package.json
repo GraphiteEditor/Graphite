@@ -67,5 +67,17 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/GraphiteEditor/Graphite.git"
+	},
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"version": ">=20",
+			"onFail": "error"
+		},
+		"packageManager": {
+			"name": "npm",
+			"version": ">11",
+			"onFail": "error"
+		}
 	}
 }
