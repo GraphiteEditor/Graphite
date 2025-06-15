@@ -149,16 +149,12 @@ impl Fsm for FillToolFsmState {
 							};
 
 							if let Some(stroke) = overlay_stroke() {
-								overlay_context.fill_stroke(&vector_data, &stroke);
+								subpaths = vector_data.stroke_bezier_paths();
+								overlay_context.fill_stroke(subpaths, &stroke);
 							}
 						} else if fill_exists_and_visible {
-							overlay_context.fill_path(
-								document.metadata().layer_outline(layer),
-								document.metadata().transform_to_viewport(layer),
-								&preview_color,
-								true,
-								Some(modified_stroke_width),
-							);
+							subpaths = vector_data.stroke_bezier_paths();
+							overlay_context.fill_path(subpaths, document.metadata().transform_to_viewport(layer), &preview_color, true, Some(modified_stroke_width));
 						}
 					}
 				}
