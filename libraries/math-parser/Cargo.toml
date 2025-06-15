@@ -8,12 +8,11 @@ description = "Parser for Graphite style mathematics expressions"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-pest = "2.7"
-pest_derive = "2.7.11"
 thiserror = "2.0"
 lazy_static = "1.5"
 num-complex = "0.4"
 log = { workspace = true }
+chumsky = { version = "0.10", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 criterion = "0.5"
