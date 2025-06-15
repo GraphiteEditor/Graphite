@@ -740,12 +740,12 @@ impl OverlayContext {
 		self.render_context.restore();
 	}
 
-	pub fn fill_stroke(&mut self, vector_data: &VectorData, overlay_stroke: &Stroke) {
+	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, overlay_stroke: &Stroke) {
 		self.render_context.save();
 
 		// debug!("overlay_stroke.weight * ptz.zoom(): {:?}", overlay_stroke.weight);
 		self.render_context.set_line_width(overlay_stroke.weight);
-		self.draw_path_from_vector_data(vector_data, overlay_stroke.transform);
+		self.draw_path_from_subpaths(subpaths, overlay_stroke.transform);
 
 		self.render_context
 			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
