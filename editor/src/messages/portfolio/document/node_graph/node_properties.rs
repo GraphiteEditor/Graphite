@@ -121,6 +121,9 @@ pub(crate) fn property_from_type(
 	index: usize,
 	ty: &Type,
 	number_options: (Option<f64>, Option<f64>, Option<(f64, f64)>),
+	unit: Option<&str>,
+	display_decimal_places: Option<u32>,
+	step: Option<f64>,
 	context: &mut NodePropertiesContext,
 ) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
 	let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
@@ -142,6 +145,15 @@ pub(crate) fn property_from_type(
 		number_max = Some(range_end);
 		number_input = number_input.mode_range().min(range_start).max(range_end);
 	}
+	if let Some(unit) = unit {
+		number_input = number_input.unit(unit);
+	}
+	if let Some(display_decimal_places) = display_decimal_places {
+		number_input = number_input.display_decimal_places(display_decimal_places);
+	}
+	if let Some(step) = step {
+		number_input = number_input.step(step);
+	}
 
 	let min = |x: f64| number_min.unwrap_or(x);
 	let max = |x: f64| number_max.unwrap_or(x);
@@ -155,15 +167,15 @@ pub(crate) fn property_from_type(
 				// Aliased types (ambiguous values)
 				Some("Percentage") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
 				Some("SignedPercentage") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
-				Some("Angle") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit("°")).into(),
-				Some("Multiplier") => number_widget(default_info, number_input.unit("x")).into(),
-				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(" px")).into(),
+				Some("Angle") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
+				Some("Multiplier") => number_widget(default_info, number_input.unit(unit.unwrap_or("x"))).into(),
+				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
 				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
-				Some("Resolution") => vector2_widget(default_info, "W", "H", " px", Some(64.)),
-				Some("PixelSize") => vector2_widget(default_info, "X", "Y", " px", None),
+				Some("Resolution") => coordinate_widget(default_info, "W", "H", unit.unwrap_or(" px"), Some(64.)),
+				Some("PixelSize") => coordinate_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None),
 
 				// For all other types, use TypeId-based matching
 				_ => {
@@ -177,14 +189,14 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<DVec2>() => vector2_widget(default_info, "X", "Y", "", None),
-						Some(x) if x == TypeId::of::<UVec2>() => vector2_widget(default_info, "X", "Y", "", Some(0.)),
-						Some(x) if x == TypeId::of::<IVec2>() => vector2_widget(default_info, "X", "Y", "", None),
+						Some(x) if x == TypeId::of::<DVec2>() => coordinate_widget(default_info, "X", "Y", "", None),
+						Some(x) if x == TypeId::of::<UVec2>() => coordinate_widget(default_info, "X", "Y", "", Some(0.)),
+						Some(x) if x == TypeId::of::<IVec2>() => coordinate_widget(default_info, "X", "Y", "", None),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
-						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vector2_widget(default_info, TextInput::default()).into(),
+						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_coordinates_widget(default_info, TextInput::default()).into(),
 						// ====================
 						// GRAPHICAL DATA TYPES
 						// ====================
@@ -249,8 +261,8 @@ pub(crate) fn property_from_type(
 			}
 		}
 		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_holder()].into(),
-		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, number_options, context),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -498,7 +510,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	last.clone()
 }
 
-pub fn vector2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>) -> LayoutGroup {
+pub fn coordinate_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>) -> LayoutGroup {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Number);
@@ -641,7 +653,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 	widgets
 }
 
-pub fn array_of_vector2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
+pub fn array_of_coordinates_widget(parameter_widgets_info: ParameterWidgetsInfo, text_props: TextInput) -> Vec<WidgetHolder> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut widgets = start_widgets(parameter_widgets_info, FrontendGraphDataType::Number);
@@ -1181,7 +1193,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
 		match grid_type {
 			GridType::Rectangular => {
-				let spacing = vector2_widget(ParameterWidgetsInfo::from_index(document_node, node_id, spacing_index, true, context), "W", "H", " px", Some(0.));
+				let spacing = coordinate_widget(ParameterWidgetsInfo::from_index(document_node, node_id, spacing_index, true, context), "W", "H", " px", Some(0.));
 				widgets.push(spacing);
 			}
 			GridType::Isometric => {
@@ -1191,7 +1203,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						NumberInput::default().label("H").min(0.).unit(" px"),
 					),
 				};
-				let angles = vector2_widget(ParameterWidgetsInfo::from_index(document_node, node_id, angles_index, true, context), "", "", "°", None);
+				let angles = coordinate_widget(ParameterWidgetsInfo::from_index(document_node, node_id, angles_index, true, context), "", "", "°", None);
 				widgets.extend([spacing, angles]);
 			}
 		}
@@ -1395,6 +1407,9 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				};
 
 				let mut number_options = (None, None, None);
+				let mut display_decimal_places = None;
+				let mut step = None;
+				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						if let Some(field) = graphene_core::registry::NODE_METADATA
@@ -1404,6 +1419,9 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
 							number_options = (field.number_min, field.number_max, field.number_mode_range);
+							display_decimal_places = field.number_display_decimal_places;
+							unit_suffix = field.unit;
+							step = field.number_step;
 							if let Some(ref default) = field.default_type {
 								break 'early_return default.clone();
 							}
@@ -1417,7 +1435,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						let mut input_types = implementations
 							.keys()
 							.filter_map(|item| item.inputs.get(input_index))
-							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, context).is_ok())
+							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, unit_suffix, display_decimal_places, step, context).is_ok())
 							.collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
@@ -1431,7 +1449,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
 				};
 
-				property_from_type(node_id, input_index, &input_type, number_options, context).unwrap_or_else(|value| value)
+				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
 			});
 
 			layout.extend(row);
