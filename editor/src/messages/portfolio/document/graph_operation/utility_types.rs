@@ -366,6 +366,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false), false);
 	}
 
+	pub fn stroke_color_set(&mut self, color: Option<Color>) {
+		let Some(stroke_node_id) = self.existing_node_id("Stroke", false) else { return };
+
+		let input_connector = InputConnector::node(stroke_node_id, 1);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(color), false), false);
+	}
+
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.
 	/// A new Transform node is created if one does not exist, unless it would be given the identity transform.
 	pub fn transform_change_with_parent(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
