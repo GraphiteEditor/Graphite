@@ -50,6 +50,7 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 
 		let into_node_registry = &interpreted_executor::node_registry::NODE_REGISTRY;
 
+		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
 			.iter()
 			.enumerate()
@@ -70,11 +71,13 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 								let ident = ident.name.as_ref();
 								ident == into_node_identifier.name.as_ref()
 							}) {
+								generated_nodes += 1;
 								into_node_identifier
 							} else if into_node_registry.iter().any(|(ident, _)| {
 								let ident = ident.name.as_ref();
 								ident == convert_node_identifier.name.as_ref()
 							}) {
+								generated_nodes += 1;
 								convert_node_identifier
 							} else {
 								identity_node.clone()
@@ -97,6 +100,11 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 				)
 			})
 			.collect();
+
+		if generated_nodes == 0 {
+			log::debug!("skipping {}", id);
+			continue;
+		}
 
 		let document_node = DocumentNode {
 			inputs: network_inputs,
@@ -127,6 +135,7 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 
 		custom.insert(id.clone(), node);
 	}
+
 	custom
 }
 
