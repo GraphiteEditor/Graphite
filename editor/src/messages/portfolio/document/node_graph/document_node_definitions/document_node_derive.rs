@@ -4,7 +4,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::*;
 use graphene_std::registry::*;
 use graphene_std::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec<DocumentNodeDefinition> {
 	// Remove struct generics

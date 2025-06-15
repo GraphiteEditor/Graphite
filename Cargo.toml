@@ -11,13 +11,12 @@ members = [
 	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
-	"node-graph/wgpu-executor",
 	"node-graph/preprocessor",
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/bezier-rs",
 	"libraries/math-parser",
-	"website/other/bezier-rs-demos/wasm", "node-graph/preprocessor",
+	"website/other/bezier-rs-demos/wasm",
 ]
 default-members = [
 	"editor",

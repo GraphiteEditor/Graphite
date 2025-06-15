@@ -1,3 +1,5 @@
+mod document_node_derive;
+
 use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo};
 use super::utility_types::FrontendNodeType;
@@ -23,8 +25,6 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::VectorDataTable;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};
-
-mod document_node_derive;
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
