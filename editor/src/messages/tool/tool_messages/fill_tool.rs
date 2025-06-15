@@ -3,7 +3,6 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
 use graph_craft::document::value::TaggedValue;
 use graphene_core::vector::style::Fill;
-use graphene_std::transform::Transform;
 use graphene_std::vector::PointId;
 use graphene_std::vector::style::Stroke;
 
@@ -76,21 +75,15 @@ impl ToolTransition for FillTool {
 	}
 }
 
-pub fn close_to_subpath(
-	mouse_pos: DVec2,
-	subpath: bezier_rs::Subpath<PointId>,
-	stroke_width: f64,
-	layer_to_viewport_transform: DAffine2,
-	// downstream_layer_to_viewport_transform: DAffine2,
-	transform_scale: f64,
-) -> bool {
+pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, layer_to_viewport_transform: DAffine2) -> bool {
 	let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
-	let threshold = (2.0 - transform_scale).exp2();
-	let max_stroke_distance = stroke_width * 0.5 + threshold;
+	let max_stroke_distance = stroke_width;
 
 	if let Some((segment_index, t)) = subpath.project(mouse_pos) {
 		let nearest_point = subpath.evaluate(bezier_rs::SubpathTValue::Parametric { segment_index, t });
-		(mouse_pos - nearest_point).length() <= max_stroke_distance
+		// debug!("max_stroke_distance: {max_stroke_distance}");
+		// debug!("mouse-stroke distance: {:?}", (mouse_pos - nearest_point).length());
+		(mouse_pos - nearest_point).length_squared() <= max_stroke_distance
 	} else {
 		false
 	}
@@ -120,34 +113,30 @@ impl Fsm for FillToolFsmState {
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
-				// Get the layer the user is hovering over
 				if !overlay_context.visibility_settings.fillable_indicator() {
 					return self;
 				};
+				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input) {
-					let transform_scale = document
-						.metadata()
-						.downstream_transform_to_viewport(layer)
-						.decompose_scale()
-						.x
-						.max(document.metadata().downstream_transform_to_viewport(layer).decompose_scale().y);
-
 					if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 						let mut subpaths = vector_data.stroke_bezier_paths();
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-						let close_to_stroke = graph_layer.upstream_node_id_from_name("Stroke").is_some()
-							&& subpaths.any(|subpath| {
-								close_to_subpath(
-									input.mouse.position,
-									subpath,
-									get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
-									document.metadata().transform_to_viewport(layer),
-									transform_scale,
-								)
-							});
-						if close_to_stroke {
+
+						// Stroke
+						let stroke_node = graph_layer.upstream_node_id_from_name("Stroke");
+						let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
+						let zoom = document.document_ptz.zoom();
+						let modified_stroke_width = stroke_width * zoom;
+						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
+						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, document.metadata().transform_to_viewport(layer)));
+
+						// Fill
+						let fill_node = graph_layer.upstream_node_id_from_name("Fill");
+						let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
+
+						if stroke_exists_and_visible && close_to_stroke {
 							let overlay_stroke = || {
-								let mut stroke = Stroke::new(Some(preview_color), get_stroke_width(layer, &document.network_interface).unwrap());
+								let mut stroke = Stroke::new(Some(preview_color), modified_stroke_width);
 								stroke.transform = document.metadata().transform_to_viewport(layer);
 								let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
 								stroke.line_cap = if let TaggedValue::LineCap(line_cap) = line_cap { *line_cap } else { return None };
@@ -160,16 +149,15 @@ impl Fsm for FillToolFsmState {
 							};
 
 							if let Some(stroke) = overlay_stroke() {
-								overlay_context.fill_stroke(&vector_data, &stroke, transform_scale);
+								overlay_context.fill_stroke(&vector_data, &stroke);
 							}
-						} else {
+						} else if fill_exists_and_visible {
 							overlay_context.fill_path(
 								document.metadata().layer_outline(layer),
 								document.metadata().transform_to_viewport(layer),
-								transform_scale,
 								&preview_color,
 								true,
-								get_stroke_width(layer, &document.network_interface),
+								Some(modified_stroke_width),
 							);
 						}
 					}
@@ -182,6 +170,7 @@ impl Fsm for FillToolFsmState {
 				self
 			}
 			(FillToolFsmState::Ready, color_event) => {
+				// Get the layer the user is hovering over
 				let Some(layer) = document.click(input) else {
 					return self;
 				};
@@ -199,31 +188,25 @@ impl Fsm for FillToolFsmState {
 					FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color.to_gamma_srgb(),
 					_ => return self,
 				};
-				let transform_scale = document
-					.metadata()
-					.downstream_transform_to_viewport(layer)
-					.decompose_scale()
-					.x
-					.max(document.metadata().downstream_transform_to_viewport(layer).decompose_scale().y);
 
 				responses.add(DocumentMessage::AddTransaction);
 				if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
 					let mut subpaths = vector_data.stroke_bezier_paths();
 					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
-					let close_to_stroke = graph_layer.upstream_node_id_from_name("Stroke").is_some()
-						&& subpaths.any(|subpath| {
-							close_to_subpath(
-								input.mouse.position,
-								subpath,
-								get_stroke_width(layer, &document.network_interface).unwrap_or(1.0),
-								document.metadata().transform_to_viewport(layer),
-								transform_scale,
-							)
-						});
 
-					if close_to_stroke {
+					// Stroke
+					let stroke_node = graph_layer.upstream_node_id_from_name("Stroke");
+					let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
+					let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
+					let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, document.metadata().transform_to_viewport(layer)));
+
+					// Fill
+					let fill_node = graph_layer.upstream_node_id_from_name("Fill");
+					let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
+
+					if stroke_exists_and_visible && close_to_stroke {
 						responses.add(GraphOperationMessage::StrokeColorSet { layer, stroke_color });
-					} else {
+					} else if fill_exists_and_visible {
 						responses.add(GraphOperationMessage::FillSet { layer, fill });
 					}
 				}

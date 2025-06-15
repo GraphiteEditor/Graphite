@@ -718,17 +718,9 @@ impl OverlayContext {
 
 	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
-	pub fn fill_path(
-		&mut self,
-		subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>,
-		transform: DAffine2,
-		transform_scale: f64,
-		color: &Color,
-		with_pattern: bool,
-		stroke_width: Option<f64>,
-	) {
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, stroke_width: Option<f64>) {
 		self.render_context.save();
-		self.render_context.set_line_width(stroke_width.unwrap_or(1.) * transform_scale);
+		self.render_context.set_line_width(stroke_width.unwrap_or(1.));
 		self.draw_path_from_subpaths(subpaths, transform);
 
 		if with_pattern {
@@ -748,10 +740,11 @@ impl OverlayContext {
 		self.render_context.restore();
 	}
 
-	pub fn fill_stroke(&mut self, vector_data: &VectorData, overlay_stroke: &Stroke, transform_scale: f64) {
+	pub fn fill_stroke(&mut self, vector_data: &VectorData, overlay_stroke: &Stroke) {
 		self.render_context.save();
 
-		self.render_context.set_line_width(overlay_stroke.weight * transform_scale);
+		// debug!("overlay_stroke.weight * ptz.zoom(): {:?}", overlay_stroke.weight);
+		self.render_context.set_line_width(overlay_stroke.weight);
 		self.draw_path_from_vector_data(vector_data, overlay_stroke.transform);
 
 		self.render_context
