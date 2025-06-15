@@ -140,15 +140,6 @@ pub(crate) fn property_from_type(
 
 	let (mut number_min, mut number_max, range) = number_options;
 	let mut number_input = NumberInput::default();
-	if let Some(unit) = unit {
-		number_input = number_input.unit(unit);
-	}
-	if let Some(display_decimal_places) = display_decimal_places {
-		number_input = number_input.display_decimal_places(display_decimal_places);
-	}
-	if let Some(step) = step {
-		number_input = number_input.step(step);
-	}
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
 		number_max = Some(range_end);
