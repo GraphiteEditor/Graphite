@@ -1429,9 +1429,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.get(&proto_node_identifier.name.clone().into_owned())
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
-							display_decimal_places = field.number_display_decimal_places;
-							unit_suffix = field.unit;
-							step = field.number_step;
 							number_options = (field.number_min, field.number_max, field.number_mode_range);
 							display_decimal_places = field.number_display_decimal_places;
 							unit_suffix = field.unit;
