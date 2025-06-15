@@ -17,6 +17,7 @@ use graphene_core::text::FontCache;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
+#[derive(ExtractField)]
 pub struct ToolActionHandlerData<'a> {
 	pub document: &'a mut DocumentMessageHandler,
 	pub document_id: DocumentId,

@@ -20,7 +20,7 @@ pub enum DrawMode {
 	Restore,
 }
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct BrushTool {
 	fsm_state: BrushToolFsmState,
 	data: BrushToolData,
@@ -185,6 +185,7 @@ impl LayoutHolder for BrushTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {

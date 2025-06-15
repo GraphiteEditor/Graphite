@@ -13,7 +13,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct RectangleTool {
 	fsm_state: RectangleToolFsmState,
 	tool_data: RectangleToolData,
@@ -98,6 +98,7 @@ impl LayoutHolder for RectangleTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for RectangleTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Rectangle(RectangleToolMessage::UpdateOptions(action)) = message else {

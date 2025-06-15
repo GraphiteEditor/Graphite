@@ -13,7 +13,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::Color;
 
-#[derive(Default)]
+#[derive(Default, ExtractField)]
 pub struct EllipseTool {
 	fsm_state: EllipseToolFsmState,
 	data: EllipseToolData,
@@ -110,6 +110,7 @@ impl LayoutHolder for EllipseTool {
 	}
 }
 
+#[message_handler_data()]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for EllipseTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		let ToolMessage::Ellipse(EllipseToolMessage::UpdateOptions(action)) = message else {
