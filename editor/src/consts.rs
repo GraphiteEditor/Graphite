@@ -89,6 +89,8 @@ pub const MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR: f64 = 40.;
 ///
 /// The motion of the user's cursor by an `x` pixel offset results in `x * scale_factor` pixels of offset on the other side.
 pub const MAXIMUM_ALT_SCALE_FACTOR: f64 = 25.;
+/// The width or height that the transform cage needs before it is considered to have no width or height.
+pub const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4;
 
 // SKEW TRIANGLES
 pub const SKEW_TRIANGLE_SIZE: f64 = 7.;
@@ -100,7 +102,7 @@ pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
 pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
-pub const SEGMENT_INSERTION_DISTANCE: f64 = 7.5;
+pub const SEGMENT_INSERTION_DISTANCE: f64 = 8.;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 

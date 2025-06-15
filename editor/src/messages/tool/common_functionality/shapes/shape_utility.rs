@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage, Responses};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -11,7 +11,7 @@ use bezier_rs::Subpath;
 use glam::{DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::vector::PointId;
+use graphene_std::renderer::ClickTargetType;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
 
@@ -177,7 +177,7 @@ pub fn star_outline(layer: LayerNodeIdentifier, document: &DocumentMessageHandle
 		anchors.push(point);
 	}
 
-	let subpath: Vec<Subpath<PointId>> = vec![Subpath::from_anchors_linear(anchors, true)];
+	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::from_anchors_linear(anchors, true))];
 
 	overlay_context.outline(subpath.iter(), viewport, None);
 }

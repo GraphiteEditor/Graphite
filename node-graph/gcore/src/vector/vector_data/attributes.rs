@@ -1,6 +1,6 @@
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::vector_data::{HandleId, VectorData};
-use bezier_rs::BezierHandles;
+use bezier_rs::{BezierHandles, ManipulatorGroup};
 use core::iter::zip;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -853,7 +853,7 @@ impl VectorData {
 			})
 	}
 
-	fn build_stroke_path_iter(&self) -> StrokePathIter {
+	pub fn build_stroke_path_iter(&self) -> StrokePathIter {
 		let mut points = vec![StrokePathIterPointMetadata::default(); self.point_domain.ids().len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			points[start].set(StrokePathIterPointSegmentMetadata::new(segment_index, false));
@@ -871,6 +871,12 @@ impl VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
 	pub fn stroke_bezier_paths(&self) -> impl Iterator<Item = bezier_rs::Subpath<PointId>> {
 		self.build_stroke_path_iter().map(|(group, closed)| bezier_rs::Subpath::new(group, closed))
+	}
+
+	/// Construct and return an iterator of Vec of `(bezier_rs::ManipulatorGroup<PointId>], bool)` for stroke.
+	/// The boolean in the tuple indicates if the path is closed.
+	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup<PointId>>, bool)> {
+		self.build_stroke_path_iter()
 	}
 
 	/// Construct a [`kurbo::BezPath`] curve for stroke.

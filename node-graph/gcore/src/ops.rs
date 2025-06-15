@@ -230,7 +230,7 @@ fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 
 /// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
 /// atan: the angle whose tangent is the specified scalar number.
-/// atan2: the angle of a ray from the origin to the specified vector2 point.
+/// atan2: the angle of a ray from the origin to the specified coordinate.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
 	value.atan(radians)
@@ -434,8 +434,8 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
 }
 
 /// Constructs a two-dimensional vector value which may be set to any XY coordinate.
-#[node_macro::node(name("Vector2 Value"), category("Value"))]
-fn vector2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
+#[node_macro::node(category("Value"))]
+fn coordinate_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
 
@@ -524,7 +524,7 @@ fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
 }
 
-/// Obtain the X or Y component of a vector2.
+/// Obtain the X or Y component of a coordinate.
 #[node_macro::node(name("Extract XY"), category("Math: Vector"))]
 fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: T, axis: XY) -> f64 {
 	match axis {
@@ -533,7 +533,7 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 	}
 }
 
-/// The X or Y component of a vector2.
+/// The X or Y component of a coordinate.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]

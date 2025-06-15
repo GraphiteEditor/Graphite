@@ -951,7 +951,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Split Vector2",
+			identifier: "Split Coordinate",
 			category: "Math: Vector",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -982,7 +982,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_properties: vec![("Vector2", "TODO").into()],
+					input_properties: vec![("Coordinate", "TODO").into()],
 					output_names: vec!["X".to_string(), "Y".to_string()],
 					has_primary_output: false,
 					network_metadata: Some(NodeNetworkMetadata {
@@ -2913,7 +2913,7 @@ fn static_input_properties() -> InputProperties {
 				.input_metadata(&node_id, index, "min", context.selection_network_path)
 				.and_then(|value| value.as_f64());
 
-			Ok(vec![node_properties::vector2_widget(
+			Ok(vec![node_properties::coordinate_widget(
 				ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 				x,
 				y,
@@ -3190,7 +3190,7 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| {
 			let (document_node, input_name, input_description) = node_properties::query_node_and_input_info(node_id, index, context)?;
 			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_vector2_widget(
+				widgets: node_properties::array_of_coordinates_widget(
 					ParameterWidgetsInfo::new(document_node, node_id, index, input_name, input_description, true),
 					TextInput::default().centered(true),
 				),

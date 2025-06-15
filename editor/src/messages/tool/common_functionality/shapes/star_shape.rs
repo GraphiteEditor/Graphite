@@ -241,7 +241,6 @@ impl NumberOfPointsHandle {
 		};
 
 		let new_point_count = (self.initial_points as i32 + net_delta as i32).max(3);
-		log::info!("Updated point count: {:?}", new_point_count);
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
