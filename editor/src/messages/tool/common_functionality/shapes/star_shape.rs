@@ -1,28 +1,33 @@
 use super::line_shape::NodeGraphLayer;
 use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
 use super::*;
-use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
+use crate::consts::{
+	COLOR_OVERLAY_RED, GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_HANDLE_SPOKE_EXTENSION, NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD, POINT_RADIUS_HANDLE_SNAP_THRESHOLD,
+};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::points_on_inner_circle;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::shape_utility::star_outline;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use core::f64;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::misc::dvec2_to_point;
+use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
-use std::f64::consts::FRAC_PI_4;
 use std::f64::consts::{FRAC_1_SQRT_2, PI, SQRT_2};
+use std::f64::consts::{FRAC_PI_4, TAU};
 
 #[derive(Default)]
 pub struct Star;
 
 #[derive(Clone, Debug, Default, PartialEq)]
-enum PointRadiusHandleState {
+pub enum PointRadiusHandleState {
 	#[default]
 	Inactive,
 	Hover,
@@ -32,32 +37,217 @@ enum PointRadiusHandleState {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PointRadiusHandle {
-	layer: LayerNodeIdentifier,
-	pub point: u32,
-	pub index: usize,
-	pub snap_radii: Vec<f64>,
-	initial_radii: f64,
+	pub layer: Option<LayerNodeIdentifier>,
+	point: u32,
+	radius_index: usize,
+	snap_radii: Vec<f64>,
+	initial_radius: f64,
 	handle_state: PointRadiusHandleState,
 }
 
-#[derive(Clone, Debug, Default)]
-enum NumberOfPointsHandleState {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum NumberOfPointsHandleState {
 	#[default]
 	Inactive,
+	Hover,
 	Dragging,
 }
 
 #[derive(Clone, Debug, Default)]
 
 pub struct NumberOfPointsHandle {
+	layer: Option<LayerNodeIdentifier>,
 	initial_points: u32,
-	handle_state: NumberOfPointsHandleState,
+	pub handle_state: NumberOfPointsHandleState,
 }
 
 impl NumberOfPointsHandle {
-	fn overlays(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, mouse_position: DVec2, overlay_context: &mut OverlayContext) {}
-	fn update_state(&mut self, state: NumberOfPointsHandleState) {
+	pub fn cleanup(&mut self) {
+		self.handle_state = NumberOfPointsHandleState::Inactive;
+		self.layer = None;
+	}
+	pub fn update_state(&mut self, state: NumberOfPointsHandleState) {
 		self.handle_state = state;
+	}
+
+	pub fn is_hovering(&self) -> bool {
+		self.handle_state == NumberOfPointsHandleState::Hover
+	}
+
+	pub fn is_dragging(&self) -> bool {
+		self.handle_state == NumberOfPointsHandleState::Dragging
+	}
+
+	fn overlays(
+		&mut self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		shape_editor: &mut &mut ShapeState,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+		responses: &mut VecDeque<Message>,
+	) {
+		if input.keyboard.key(Key::Control) {
+			return;
+		}
+
+		match &self.handle_state {
+			NumberOfPointsHandleState::Inactive => {
+				for layer in document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter(|layer| graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some())
+				{
+					let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+						return;
+					};
+
+					let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius1)), Some(&TaggedValue::F64(radius2))) =
+						(node_inputs[1].as_value(), node_inputs[2].as_value(), node_inputs[3].as_value())
+					else {
+						return;
+					};
+
+					let viewport = document.metadata().transform_to_viewport(layer);
+					let center = viewport.transform_point2(DVec2::ZERO);
+
+					let radius = radius1.max(radius2);
+
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD) {
+						if closest_segment.layer() == layer {
+							return;
+						}
+					}
+
+					let angle: f64 = 0.;
+					let point = viewport.transform_point2(DVec2 {
+						x: radius1 * angle.sin(),
+						y: -radius1 * angle.cos(),
+					});
+
+					if Self::inside_star(viewport, n, radius1, radius2, mouse_position) {
+						self.draw_spokes(center, viewport, n, radius, overlay_context);
+						if mouse_position.distance(center) < NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH && point.distance(center) > GIZMO_HIDE_THRESHOLD {
+							self.layer = Some(layer);
+							self.initial_points = n;
+							self.update_state(NumberOfPointsHandleState::Hover);
+							responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::EWResize });
+						}
+
+						return;
+					}
+				}
+			}
+			NumberOfPointsHandleState::Hover | NumberOfPointsHandleState::Dragging => {
+				let Some(layer) = self.layer else { return };
+				let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+					return;
+				};
+
+				let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(outer)), Some(&TaggedValue::F64(inner))) = (node_inputs[1].as_value(), node_inputs[2].as_value(), node_inputs[3].as_value())
+				else {
+					return;
+				};
+
+				let viewport = document.metadata().transform_to_viewport(layer);
+				let center = viewport.transform_point2(DVec2::ZERO);
+
+				let radius = outer.max(inner);
+
+				if mouse_position.distance(center) > NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH && matches!(&self.handle_state, NumberOfPointsHandleState::Hover) {
+					self.update_state(NumberOfPointsHandleState::Inactive);
+					self.layer = None;
+					self.draw_spokes(center, viewport, n, radius, overlay_context);
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+
+					return;
+				}
+				self.draw_spokes(center, viewport, n, radius, overlay_context);
+			}
+		}
+	}
+
+	fn inside_star(viewport: DAffine2, n: u32, radius1: f64, radius2: f64, mouse_position: DVec2) -> bool {
+		let mut paths = Vec::new();
+
+		for i in 0..(2 * n) {
+			let angle = i as f64 * PI / n as f64;
+			let radius = if i % 2 == 0 { radius1 } else { radius2 };
+
+			let point = viewport.transform_point2(DVec2 {
+				x: radius * angle.sin(),
+				y: -radius * angle.cos(),
+			});
+
+			let new_point = dvec2_to_point(point);
+
+			if i == 0 {
+				paths.push(PathEl::MoveTo(new_point));
+			} else {
+				paths.push(PathEl::LineTo(new_point));
+			}
+		}
+
+		paths.push(PathEl::ClosePath);
+
+		let bez_path = BezPath::from_vec(paths);
+		let (shape, bbox) = (bez_path.clone(), bez_path.bounding_box());
+
+		if bbox.x0 > mouse_position.x || bbox.y0 > mouse_position.y || bbox.x1 < mouse_position.x || bbox.y1 < mouse_position.y {
+			return false;
+		}
+
+		let winding = shape.winding(dvec2_to_point(mouse_position));
+
+		// Non-zero fill rule
+		winding != 0
+	}
+
+	fn draw_spokes(&mut self, center: DVec2, viewport: DAffine2, n: u32, radius: f64, overlay_context: &mut OverlayContext) {
+		for i in 0..n {
+			let angle = i as f64 * TAU / n as f64;
+
+			let point = viewport.transform_point2(DVec2 {
+				x: radius * angle.sin(),
+				y: -radius * angle.cos(),
+			});
+
+			let Some(direction) = (point - center).try_normalize() else { continue };
+
+			// If the user zooms out such that shape is very small hide the gizmo
+			if point.distance(center) < GIZMO_HIDE_THRESHOLD {
+				return;
+			}
+
+			let end_point = direction * NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH;
+			if matches!(self.handle_state, NumberOfPointsHandleState::Hover | NumberOfPointsHandleState::Dragging) {
+				overlay_context.line(center, end_point * NUMBER_OF_POINTS_HANDLE_SPOKE_EXTENSION + center, None, None);
+			} else {
+				overlay_context.line(center, end_point + center, None, None);
+			}
+		}
+	}
+
+	pub fn update_no_of_sides(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+		let delta = input.mouse.position - document.metadata().document_to_viewport.transform_point2(drag_start);
+		let sign = (input.mouse.position.x - document.metadata().document_to_viewport.transform_point2(drag_start).x).signum();
+		let net_delta = (delta.length() / 25.).round() * sign;
+
+		let Some(layer) = self.layer else { return };
+
+		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) else {
+			return;
+		};
+
+		let new_point_count = (self.initial_points as i32 + net_delta as i32).max(3);
+		log::info!("Updated point count: {:?}", new_point_count);
+
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 1),
+			input: NodeInput::value(TaggedValue::U32(new_point_count as u32), false),
+		});
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
 
@@ -65,19 +255,63 @@ impl PointRadiusHandle {
 	pub fn cleanup(&mut self) {
 		self.handle_state = PointRadiusHandleState::Inactive;
 		self.snap_radii.clear();
+		self.layer = None;
 	}
 
-	pub fn is_hovered(&self) -> bool {
+	pub fn is_inactive(&self) -> bool {
+		self.handle_state == PointRadiusHandleState::Inactive
+	}
+
+	pub fn hovered(&self) -> bool {
 		self.handle_state == PointRadiusHandleState::Hover
 	}
 
-	fn update_state(&mut self, state: PointRadiusHandleState) {
+	pub fn update_state(&mut self, state: PointRadiusHandleState) {
 		self.handle_state = state;
 	}
 
-	pub fn overlays(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+	pub fn overlays(
+		&mut self,
+		document: &DocumentMessageHandler,
+		no_of_point_gizmo: Option<LayerNodeIdentifier>,
+		input: &InputPreprocessorMessageHandler,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+	) {
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
+				if let Some(layer) = no_of_point_gizmo {
+					let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+						return;
+					};
+
+					let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(outer)), Some(&TaggedValue::F64(inner))) =
+						(node_inputs[1].as_value(), node_inputs[2].as_value(), node_inputs[3].as_value())
+					else {
+						return;
+					};
+
+					let viewport = document.metadata().transform_to_viewport(layer);
+					let center = viewport.transform_point2(DVec2::ZERO);
+
+					for i in 0..(2 * n) {
+						let angle = i as f64 * PI / n as f64;
+						let radius = if i % 2 == 0 { outer } else { inner };
+
+						let point = viewport.transform_point2(DVec2 {
+							x: radius * angle.sin(),
+							y: -radius * angle.cos(),
+						});
+
+						if point.distance(center) < GIZMO_HIDE_THRESHOLD {
+							return;
+						}
+
+						overlay_context.manipulator_handle(point, false, None);
+					}
+					return;
+				}
+
 				for layer in document
 					.network_interface
 					.selected_nodes()
@@ -108,14 +342,20 @@ impl PointRadiusHandle {
 						let center = viewport.transform_point2(DVec2::ZERO);
 						let viewport_diagonal = input.viewport_bounds.size().length();
 
+						// If the user zooms out such that shape is very small hide the gizmo
+						if point.distance(center) < GIZMO_HIDE_THRESHOLD {
+							return;
+						}
+
 						if point.distance(mouse_position) < 5.0 {
 							let Some(direction) = (point - center).try_normalize() else {
 								continue;
 							};
-
-							self.layer = layer;
+							self.radius_index = radius_index;
+							self.layer = Some(layer);
 							self.point = i;
 							self.snap_radii = Self::calculate_snap_radii(document, layer, radius_index);
+							self.initial_radius = radius;
 							self.update_state(PointRadiusHandleState::Hover);
 							overlay_context.manipulator_handle(point, true, None);
 							overlay_context.line(center, center + direction * viewport_diagonal, None, None);
@@ -129,7 +369,8 @@ impl PointRadiusHandle {
 			}
 
 			PointRadiusHandleState::Dragging | PointRadiusHandleState::Hover => {
-				let layer = self.layer;
+				let Some(layer) = self.layer else { return };
+
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
 				let viewport_diagonal = input.viewport_bounds.size().length();
@@ -153,6 +394,7 @@ impl PointRadiusHandle {
 				if matches!(&self.handle_state, PointRadiusHandleState::Hover) {
 					if (mouse_position - point).length() > 5. {
 						self.update_state(PointRadiusHandleState::Inactive);
+						self.layer = None;
 						return;
 					}
 				}
@@ -172,25 +414,18 @@ impl PointRadiusHandle {
 
 				for snapped_radius in &self.snap_radii {
 					let Some(tick_direction) = direction.perp().try_normalize() else { return };
-					// let Some(&TaggedValue::F64(radius)) = node_inputs[self.index].as_value() else { return };
-					let difference = snapped_radius - self.initial_radii;
-					log::info!("difference {:?}", difference);
 
 					let tick_position = viewport.transform_point2(DVec2 {
 						x: snapped_radius * angle.sin(),
 						y: -snapped_radius * angle.cos(),
 					});
 
-					// let tick_position = viewport.transform_point2(initial_point_position + difference * direction);
-
-					// overlay_context.manipulator_handle(tick_position, false, None);
-
 					overlay_context.line(tick_position, tick_position + tick_direction * 5., None, Some(2.));
 					overlay_context.line(tick_position, tick_position - tick_direction * 5., None, Some(2.));
 				}
 			}
 			PointRadiusHandleState::Snapped(snapping_index) => {
-				let layer = self.layer;
+				let Some(layer) = self.layer else { return };
 				let viewport = document.metadata().transform_to_viewport(layer);
 
 				let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
@@ -230,9 +465,7 @@ impl PointRadiusHandle {
 						let l1 = (before_outer_position - outer_position).length() * 0.2;
 						let Some(l1_direction) = (before_outer_position - outer_position).try_normalize() else { return };
 						let l1_angle = -l1_direction.angle_to(DVec2::X);
-						// overlay_context.draw_angle(outer_position, l1, f64::MAX, l1_angle, FRAC_PI_2);
 
-						let l2 = (point_position - outer_position).length() * 0.2;
 						let Some(l2_direction) = (point_position - outer_position).try_normalize() else { return };
 						let l2_angle = -l2_direction.angle_to(DVec2::X);
 
@@ -263,7 +496,6 @@ impl PointRadiusHandle {
 						let Some(l1_direction) = (before_outer_position - point_position).try_normalize() else { return };
 						let l1_angle = -l1_direction.angle_to(DVec2::X);
 
-						let l2 = (after_point_position - point_position).length() * 0.2;
 						let Some(l2_direction) = (after_point_position - point_position).try_normalize() else { return };
 						let l2_angle = -l2_direction.angle_to(DVec2::X);
 
@@ -278,28 +510,34 @@ impl PointRadiusHandle {
 						overlay_context.line(new_point, after_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 					}
 					i => {
+						// use 'self.point' as absolute reference as it match the index of vertices of star starting from 0
 						if i % 2 != 0 {
 							// flipped case
 							let point_radius = radius(self.point as i32);
 							let point_position = viewport_position(self.point as i32, point_radius);
 
-							let target_index = *i as i32;
+							let target_index = (1 - *i as i32).abs() + self.point as i32;
 							let target_point_radius = radius(target_index);
 							let target_point_position = viewport_position(target_index, target_point_radius);
 
-							let mirrored = viewport_position(-target_index + 2, target_point_radius);
+							let mirrored_index = 2 * (self.point as i32) - target_index;
+							let mirrored = viewport_position(mirrored_index, target_point_radius);
 
 							overlay_context.line(point_position, target_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 							overlay_context.line(point_position, mirrored, Some(COLOR_OVERLAY_RED), Some(3.));
 						} else {
-							let outer_radius = radius(self.point as i32 - 1);
-							let outer_position = viewport_position(self.point as i32 - 1, outer_radius);
+							let outer_index = self.point as i32 - 1;
+							let outer_radius = radius(outer_index);
+							let outer_position = viewport_position(outer_index, outer_radius);
 
+							// the vertex which is colinear with the point we are dragging and its previous outer vertex
 							let target_index = self.point as i32 + *i as i32 - 1;
 							let target_point_radius = radius(target_index);
 							let target_point_position = viewport_position(target_index, target_point_radius);
 
-							let mirrored = viewport_position(-target_index, target_point_radius);
+							let mirrored_index = 2 * outer_index - target_index;
+
+							let mirrored = viewport_position(mirrored_index, target_point_radius);
 
 							overlay_context.line(outer_position, target_point_position, Some(COLOR_OVERLAY_RED), Some(3.));
 							overlay_context.line(outer_position, mirrored, Some(COLOR_OVERLAY_RED), Some(3.));
@@ -310,14 +548,14 @@ impl PointRadiusHandle {
 			}
 		}
 	}
-	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, index: usize) -> Vec<f64> {
+	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) -> Vec<f64> {
 		let mut snap_radii = Vec::new();
 
 		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
 			return snap_radii;
 		};
 
-		let other_index = if index == 3 { 2 } else { 3 };
+		let other_index = if radius_index == 3 { 2 } else { 3 };
 
 		let Some(&TaggedValue::F64(other_radius)) = node_inputs[other_index].as_value() else {
 			return snap_radii;
@@ -378,25 +616,42 @@ pub struct StarShapeData {
 }
 
 impl StarShapeData {
-	pub fn star_gizmos(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
-		self.point_radius_handle.overlays(document, input, mouse_position, overlay_context);
-		self.number_of_points_handle.overlays(document, input, mouse_position, overlay_context);
+	pub fn star_gizmos(
+		&mut self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		shape_editor: &mut &mut ShapeState,
+		mouse_position: DVec2,
+		overlay_context: &mut OverlayContext,
+		responses: &mut VecDeque<Message>,
+	) {
+		if !self.number_of_points_handle.is_dragging() {
+			self.point_radius_handle.overlays(document, self.point_radius_handle.layer, input, mouse_position, overlay_context);
+		}
+
+		if self.point_radius_handle.is_inactive() {
+			self.number_of_points_handle.overlays(document, input, shape_editor, mouse_position, overlay_context, responses);
+		}
+
+		self.star_outline_overlays(document, overlay_context);
 	}
 
-	pub fn set_point_radius_handle(&mut self, document: &DocumentMessageHandler, mouse_pos: DVec2) -> Option<LayerNodeIdentifier> {
-		if let Some((layer, point, index, initial_radii)) = points_on_inner_circle(document, mouse_pos) {
-			let snap_radii = PointRadiusHandle::calculate_snap_radii(document, layer, index);
-			self.point_radius_handle = PointRadiusHandle {
-				layer,
-				point,
-				index,
-				snap_radii,
-				initial_radii,
-				handle_state: PointRadiusHandleState::Dragging,
-			};
-			return Some(layer);
+	pub fn star_outline_overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+		// Prefer explicitly targeted handle layers
+		if let Some(layer) = self.number_of_points_handle.layer.or(self.point_radius_handle.layer) {
+			star_outline(layer, document, overlay_context);
+			return;
 		}
-		None
+
+		// Fallback: apply to all selected visible & unlocked star layers
+		for layer in document
+			.network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.filter(|layer| graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some())
+		{
+			star_outline(layer, document, overlay_context);
+		}
 	}
 
 	pub fn update_inner_radius(
@@ -418,9 +673,9 @@ impl StarShapeData {
 		let path = vector_data.stroke_bezier_paths().next().unwrap();
 		let center = path.length_centroid(None, true).unwrap();
 		let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
-		let index = self.point_radius_handle.index;
+		let radius_index = self.point_radius_handle.radius_index;
 
-		let original_radius = self.point_radius_handle.initial_radii;
+		let original_radius = self.point_radius_handle.initial_radius;
 
 		let delta = input.mouse.position - document.metadata().document_to_viewport.transform_point2(drag_start);
 		let radius = document.metadata().document_to_viewport.transform_point2(drag_start) - transform.transform_point2(center);
@@ -437,7 +692,7 @@ impl StarShapeData {
 		}
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, index),
+			input_connector: InputConnector::node(node_id, radius_index),
 			input: NodeInput::value(TaggedValue::F64(original_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

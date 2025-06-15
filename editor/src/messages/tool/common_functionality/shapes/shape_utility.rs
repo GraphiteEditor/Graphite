@@ -7,9 +7,11 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
+use bezier_rs::Subpath;
 use glam::{DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::PointId;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
 
@@ -151,36 +153,31 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 	}
 }
 
-pub fn points_on_inner_circle(document: &DocumentMessageHandler, mouse_position: DVec2) -> Option<(LayerNodeIdentifier, u32, usize, f64)> {
-	for layer in document
-		.network_interface
-		.selected_nodes()
-		.selected_visible_and_unlocked_layers(&document.network_interface)
-		.filter(|layer| graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some())
-	{
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
-			continue;
+pub fn star_outline(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	let mut anchors = Vec::new();
+
+	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+		return;
+	};
+
+	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius1)), Some(&TaggedValue::F64(radius2))) = (node_inputs[1].as_value(), node_inputs[2].as_value(), node_inputs[3].as_value()) else {
+		return;
+	};
+
+	let viewport = document.metadata().transform_to_viewport(layer);
+	for i in 0..(2 * n) {
+		let angle = i as f64 * PI / n as f64;
+		let radius = if i % 2 == 0 { radius1 } else { radius2 };
+
+		let point = DVec2 {
+			x: radius * angle.sin(),
+			y: -radius * angle.cos(),
 		};
 
-		let viewport = document.network_interface.document_metadata().transform_to_viewport(layer);
-
-		let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(outer)), Some(&TaggedValue::F64(inner))) = (node_inputs[1].as_value(), node_inputs[2].as_value(), node_inputs[3].as_value()) else {
-			continue;
-		};
-
-		for i in 0..(2 * n) {
-			let angle = i as f64 * PI / n as f64;
-			let (radius, index) = if i % 2 == 0 { (outer, 2) } else { (inner, 3) };
-
-			let point = viewport.transform_point2(DVec2 {
-				x: radius * angle.sin(),
-				y: -radius * angle.cos(),
-			});
-
-			if point.distance(mouse_position) < 5.0 {
-				return Some((layer, i, index, radius));
-			};
-		}
+		anchors.push(point);
 	}
-	None
+
+	let subpath: Vec<Subpath<PointId>> = vec![Subpath::from_anchors_linear(anchors, true)];
+
+	overlay_context.outline(subpath.iter(), viewport, None);
 }
