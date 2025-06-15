@@ -963,9 +963,9 @@ pub enum ViewMode {
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum Spacing {
+	Envelope,
 	#[default]
 	Span,
-	Envelope,
 	Pitch,
 	Gap,
 }
