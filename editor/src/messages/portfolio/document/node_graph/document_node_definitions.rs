@@ -1,3 +1,5 @@
+mod document_node_derive;
+
 use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo};
 use super::utility_types::FrontendNodeType;
@@ -25,8 +27,6 @@ use graphene_std::ops::XY;
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
-
-mod document_node_derive;
 
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,

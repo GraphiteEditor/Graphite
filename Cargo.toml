@@ -12,15 +12,15 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/compilation-server",
 	"node-graph/compilation-client",
+	"node-graph/preprocessor",
 	"node-graph/wgpu-executor",
 	"node-graph/gpu-executor",
-	"node-graph/preprocessor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/bezier-rs",
 	"libraries/math-parser",
-	"website/other/bezier-rs-demos/wasm", "node-graph/preprocessor",
+	"website/other/bezier-rs-demos/wasm",
 ]
 exclude = ["node-graph/gpu-compiler"]
 default-members = [
