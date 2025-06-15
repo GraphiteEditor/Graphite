@@ -3,7 +3,7 @@ use glam::{DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::raster::color::Color;
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::raster::*;
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
@@ -13,7 +13,7 @@ use graphene_core::{fn_type_fut, future};
 use graphene_std::Context;
 use graphene_std::GraphicElement;
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, IntoTypeErasedNode};
-use graphene_std::application_io::{ImageTexture, TextureFrameTable};
+use graphene_std::application_io::{ImageTexture, TextureDataTable};
 use graphene_std::wasm_application_io::*;
 use node_registry_macros::{async_node, into_node};
 use once_cell::sync::Lazy;
@@ -34,17 +34,17 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		into_node!(from: VectorDataTable, to: GraphicGroupTable),
 		into_node!(from: GraphicGroupTable, to: GraphicGroupTable),
 		into_node!(from: GraphicGroupTable, to: GraphicElement),
-		into_node!(from: ImageFrameTable<Color>, to: ImageFrameTable<Color>),
-		into_node!(from: ImageFrameTable<Color>, to: ImageFrameTable<SRGBA8>),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicElement),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageFrameTable<Color>]),
+		into_node!(from: RasterDataTable<Color>, to: RasterDataTable<Color>),
+		into_node!(from: RasterDataTable<Color>, to: RasterDataTable<SRGBA8>),
+		into_node!(from: RasterDataTable<Color>, to: GraphicElement),
+		into_node!(from: RasterDataTable<Color>, to: GraphicGroupTable),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => VectorDataTable]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GraphicGroupTable]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GraphicElement]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Artboard]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::RasterFrame]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::RasterDataType]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::instances::Instances<Artboard>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => String]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => glam::IVec2]),
@@ -70,7 +70,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Box<graphene_core::vector::VectorModification>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => VectorDataTable]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => ImageFrameTable<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RasterDataTable<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => GraphicGroupTable]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Arc<WasmSurfaceHandle>]),
@@ -112,9 +112,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
 		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => TextureFrameTable]),
+		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => TextureDataTable]),
 		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => TextureFrameTable]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => TextureDataTable]),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
 		#[cfg(feature = "gpu")]

@@ -7,8 +7,10 @@ use graphene_core::Context;
 use graphene_core::GraphicGroupTable;
 use graphene_core::instances::Instances;
 use graphene_core::memo::IORecord;
+use graphene_core::raster::Image;
 use graphene_core::vector::{VectorData, VectorDataTable};
 use graphene_core::{Artboard, ArtboardGroupTable, GraphicElement};
+use graphene_std::Color;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -154,7 +156,7 @@ impl InstanceLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(instances) => instances.identifier(),
 			Self::VectorData(instances) => instances.identifier(),
-			Self::RasterFrame(_) => "RasterFrame".to_string(),
+			Self::RasterDataType(_) => "RasterDataType".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for GraphicElement
@@ -165,7 +167,7 @@ impl InstanceLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(instances) => instances.layout_with_breadcrumb(data),
 			Self::VectorData(instances) => instances.layout_with_breadcrumb(data),
-			Self::RasterFrame(_) => label("Raster frame not supported"),
+			Self::RasterDataType(_) => label("Raster frame not supported"),
 		}
 	}
 }
@@ -222,6 +224,19 @@ impl InstanceLayout for VectorData {
 
 		let domain = vec![RadioInput::new(entries).selected_index(Some(data.vector_data_domain as u32)).widget_holder()];
 		vec![LayoutGroup::Row { widgets: domain }, LayoutGroup::Table { rows }]
+	}
+}
+
+impl InstanceLayout for Image<Color> {
+	fn type_name() -> &'static str {
+		"Image"
+	}
+	fn identifier(&self) -> String {
+		format!("Image (width={}, height={})", self.width, self.height)
+	}
+	fn compute_layout(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let rows = vec![vec![TextLabel::new(format!("Image (width={}, height={})", self.width, self.height)).widget_holder()]];
+		vec![LayoutGroup::Table { rows }]
 	}
 }
 

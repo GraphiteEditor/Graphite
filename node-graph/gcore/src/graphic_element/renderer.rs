@@ -1,13 +1,13 @@
 mod quad;
 mod rect;
 
-use crate::raster::image::ImageFrameTable;
+use crate::raster::image::RasterDataTable;
 use crate::raster::{BlendMode, Image};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
 use crate::vector::style::{Fill, Stroke, ViewMode};
 use crate::vector::{PointId, VectorDataTable};
-use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterFrame};
+use crate::{Artboard, ArtboardGroupTable, Color, GraphicElement, GraphicGroupTable, RasterDataType};
 use base64::Engine;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
@@ -843,7 +843,7 @@ impl GraphicElementRendered for ArtboardGroupTable {
 	}
 }
 
-impl GraphicElementRendered for ImageFrameTable<Color> {
+impl GraphicElementRendered for RasterDataTable<Color> {
 	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
 		for instance in self.instance_ref_iter() {
 			let transform = *instance.transform * render.transform;
@@ -923,11 +923,11 @@ impl GraphicElementRendered for ImageFrameTable<Color> {
 	}
 }
 
-impl GraphicElementRendered for RasterFrame {
+impl GraphicElementRendered for RasterDataType {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			RasterFrame::ImageFrame(image) => image.render_svg(render, render_params),
-			RasterFrame::TextureFrame(_) => log::warn!("tried to render texture as an svg"),
+			RasterDataType::RasterData(image) => image.render_svg(render, render_params),
+			RasterDataType::TextureData(_) => log::warn!("tried to render texture as an svg"),
 		}
 	}
 
@@ -953,7 +953,7 @@ impl GraphicElementRendered for RasterFrame {
 		};
 
 		match self {
-			RasterFrame::ImageFrame(image) => {
+			RasterDataType::RasterData(image) => {
 				for instance in image.instance_ref_iter() {
 					let image = &instance.instance;
 					if image.data.is_empty() {
@@ -965,7 +965,7 @@ impl GraphicElementRendered for RasterFrame {
 					render_stuff(image, *instance.transform, *instance.alpha_blending);
 				}
 			}
-			RasterFrame::TextureFrame(image_texture) => {
+			RasterDataType::TextureData(image_texture) => {
 				for instance in image_texture.instance_ref_iter() {
 					let image =
 						vello::peniko::Image::new(vec![].into(), peniko::Format::Rgba8, instance.instance.texture.width(), instance.instance.texture.height()).with_extend(peniko::Extend::Repeat);
@@ -986,8 +986,8 @@ impl GraphicElementRendered for RasterFrame {
 		};
 
 		match self {
-			RasterFrame::ImageFrame(instances) => instances.instance_ref_iter().flat_map(|instance| calculate_transform(*instance.transform)).reduce(Quad::combine_bounds),
-			RasterFrame::TextureFrame(instances) => instances.instance_ref_iter().flat_map(|instance| calculate_transform(*instance.transform)).reduce(Quad::combine_bounds),
+			RasterDataType::RasterData(instances) => instances.instance_ref_iter().flat_map(|instance| calculate_transform(*instance.transform)).reduce(Quad::combine_bounds),
+			RasterDataType::TextureData(instances) => instances.instance_ref_iter().flat_map(|instance| calculate_transform(*instance.transform)).reduce(Quad::combine_bounds),
 		}
 	}
 
@@ -999,13 +999,13 @@ impl GraphicElementRendered for RasterFrame {
 		metadata.upstream_footprints.insert(element_id, footprint);
 
 		match self {
-			RasterFrame::ImageFrame(instances) => {
+			RasterDataType::RasterData(instances) => {
 				// TODO: Find a way to handle more than one row of the graphical data table
 				if let Some(image) = instances.instance_ref_iter().next() {
 					metadata.local_transforms.insert(element_id, *image.transform);
 				}
 			}
-			RasterFrame::TextureFrame(instances) => {
+			RasterDataType::TextureData(instances) => {
 				// TODO: Find a way to handle more than one row of the graphical data table
 				if let Some(image_texture) = instances.instance_ref_iter().next() {
 					metadata.local_transforms.insert(element_id, *image_texture.transform);
@@ -1024,7 +1024,7 @@ impl GraphicElementRendered for GraphicElement {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
-			GraphicElement::RasterFrame(raster) => raster.render_svg(render, render_params),
+			GraphicElement::RasterDataType(raster) => raster.render_svg(render, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
 		}
 	}
@@ -1034,14 +1034,14 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.render_to_vello(scene, transform, context, render_params),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_to_vello(scene, transform, context, render_params),
-			GraphicElement::RasterFrame(raster) => raster.render_to_vello(scene, transform, context, render_params),
+			GraphicElement::RasterDataType(raster) => raster.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> Option<[DVec2; 2]> {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.bounding_box(transform, include_stroke),
-			GraphicElement::RasterFrame(raster) => raster.bounding_box(transform, include_stroke),
+			GraphicElement::RasterDataType(raster) => raster.bounding_box(transform, include_stroke),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform, include_stroke),
 		}
 	}
@@ -1059,16 +1059,16 @@ impl GraphicElementRendered for GraphicElement {
 						metadata.local_transforms.insert(element_id, *vector_data.transform);
 					}
 				}
-				GraphicElement::RasterFrame(raster_frame) => {
+				GraphicElement::RasterDataType(raster_frame) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					match raster_frame {
-						RasterFrame::ImageFrame(instances) => {
+						RasterDataType::RasterData(instances) => {
 							// TODO: Find a way to handle more than one row of images
 							if let Some(image) = instances.instance_ref_iter().next() {
 								metadata.local_transforms.insert(element_id, *image.transform);
 							}
 						}
-						RasterFrame::TextureFrame(instances) => {
+						RasterDataType::TextureData(instances) => {
 							// TODO: Find a way to handle more than one row of image textures
 							if let Some(image_texture) = instances.instance_ref_iter().next() {
 								metadata.local_transforms.insert(element_id, *image_texture.transform);
@@ -1081,7 +1081,7 @@ impl GraphicElementRendered for GraphicElement {
 
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.collect_metadata(metadata, footprint, element_id),
-			GraphicElement::RasterFrame(raster) => raster.collect_metadata(metadata, footprint, element_id),
+			GraphicElement::RasterDataType(raster) => raster.collect_metadata(metadata, footprint, element_id),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.collect_metadata(metadata, footprint, element_id),
 		}
 	}
@@ -1089,7 +1089,7 @@ impl GraphicElementRendered for GraphicElement {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.add_upstream_click_targets(click_targets),
-			GraphicElement::RasterFrame(raster) => raster.add_upstream_click_targets(click_targets),
+			GraphicElement::RasterDataType(raster) => raster.add_upstream_click_targets(click_targets),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_upstream_click_targets(click_targets),
 		}
 	}
@@ -1098,7 +1098,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
-			GraphicElement::RasterFrame(raster) => raster.contains_artboard(),
+			GraphicElement::RasterDataType(raster) => raster.contains_artboard(),
 		}
 	}
 
@@ -1106,7 +1106,7 @@ impl GraphicElementRendered for GraphicElement {
 		match self {
 			GraphicElement::VectorData(vector_data) => vector_data.new_ids_from_hash(reference),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.new_ids_from_hash(reference),
-			GraphicElement::RasterFrame(_) => (),
+			GraphicElement::RasterDataType(_) => (),
 		}
 	}
 }

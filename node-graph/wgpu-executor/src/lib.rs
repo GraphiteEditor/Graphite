@@ -8,9 +8,9 @@ pub use executor::GpuExecutor;
 use futures::Future;
 use glam::{DAffine2, UVec2};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
-use graphene_core::application_io::{ApplicationIo, EditorApi, ImageTexture, SurfaceHandle, TextureFrameTable};
+use graphene_core::application_io::{ApplicationIo, EditorApi, ImageTexture, SurfaceHandle, TextureDataTable};
 use graphene_core::instances::Instance;
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::raster::{Image, SRGBA8};
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::{Color, Cow, Ctx, ExtractFootprint, Node, SurfaceFrame, Type};
@@ -911,8 +911,8 @@ async fn render_texture<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: ImageFrameTable<Color>, executor: &'a WgpuExecutor) -> TextureFrameTable {
-	let mut result_table = TextureFrameTable::default();
+async fn upload_texture<'a: 'n>(_: impl ExtractFootprint + Ctx, input: RasterDataTable<Color>, executor: &'a WgpuExecutor) -> TextureDataTable {
+	let mut result_table = TextureDataTable::default();
 
 	for instance in input.instance_ref_iter() {
 		let image = instance.instance;

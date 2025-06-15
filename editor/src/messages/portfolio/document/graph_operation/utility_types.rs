@@ -9,7 +9,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::ImageFrameTable;
+use graphene_core::raster::image::RasterDataTable;
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
@@ -209,11 +209,11 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: ImageFrameTable<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<Color>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image")
 			.expect("Image node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::RasterData(image_frame), false))]);
 
 		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);

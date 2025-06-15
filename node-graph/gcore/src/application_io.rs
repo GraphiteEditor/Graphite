@@ -53,8 +53,7 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-// TODO: Rename to ImageTextureTable
-pub type TextureFrameTable = Instances<ImageTexture>;
+pub type TextureDataTable = Instances<ImageTexture>;
 
 #[derive(Debug, Clone)]
 pub struct ImageTexture {

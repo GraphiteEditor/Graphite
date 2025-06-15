@@ -4,7 +4,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::{Image, RasterDataTable};
 use graphene_core::*;
 use std::sync::Arc;
 use wgpu_executor::{Bindgroup, PipelineLayout, Shader, ShaderIO, ShaderInput, WgpuExecutor};
@@ -34,8 +34,8 @@ async fn compile_gpu<'a: 'n>(_: impl Ctx, node: &'a DocumentNode, typing_context
 }
 
 #[node_macro::node(category("Debug: GPU"))]
-async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, background: ImageFrameTable<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrameTable<Color> {
-	let mut result_table = ImageFrameTable::default();
+async fn blend_gpu_image(_: impl Ctx, foreground: RasterDataTable<Color>, background: RasterDataTable<Color>, blend_mode: BlendMode, opacity: f64) -> RasterDataTable<Color> {
+	let mut result_table = RasterDataTable::default();
 
 	for (foreground_instance, mut background_instance) in foreground.instance_iter().zip(background.instance_iter()) {
 		let foreground_transform = foreground_instance.transform;
@@ -95,7 +95,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 		let proto_networks: Result<Vec<_>, _> = compiler.compile(network.clone()).collect();
 		let Ok(proto_networks_result) = proto_networks else {
 			log::error!("Error compiling network in 'blend_gpu_image()");
-			return ImageFrameTable::default();
+			return RasterDataTable::default();
 		};
 		let proto_networks = proto_networks_result;
 		log::debug!("compiling shader");
@@ -241,7 +241,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // }
 
 // #[node_macro::old_node_impl(MapGpuNode)]
-// async fn map_gpu<'a: 'input>(image: ImageFrameTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrameTable<Color> {
+// async fn map_gpu<'a: 'input>(image: RasterDataTable<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> RasterDataTable<Color> {
 // 	let image_frame_table = &image;
 // 	let image = image.instance_ref_iter().next().unwrap().instance;
 
@@ -258,7 +258,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 		let name = "placeholder".to_string();
 // 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, image_frame_table, executor).await else {
 // 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
-// 			return ImageFrameTable::default();
+// 			return RasterDataTable::default();
 // 		};
 // 		self.cache.lock().as_mut().unwrap().insert(name, compute_pass_descriptor.clone());
 // 		log::error!("created compute pass");
@@ -292,7 +292,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 		height: image.height,
 // 		..Default::default()
 // 	};
-// 	let mut result = ImageFrameTable::new(new_image);
+// 	let mut result = RasterDataTable::new(new_image);
 // 	*result.transform_mut() = image_frame_table.transform();
 // 	*result.instance_mut_iter().next().unwrap().alpha_blending = *image_frame_table.instance_ref_iter().next().unwrap().alpha_blending;
 
@@ -309,7 +309,7 @@ async fn blend_gpu_image(_: impl Ctx, foreground: ImageFrameTable<Color>, backgr
 // 	}
 // }
 
-// async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &ImageFrameTable<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String>
+// async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(node: DocumentNode, image: &RasterDataTable<T>, executor: &&WgpuExecutor) -> Result<ComputePass, String>
 // where
 // 	GraphicElement: From<Image<T>>,
 // 	T::Static: Pixel,

@@ -263,7 +263,7 @@
 
 // 	// let transform = context
 // 	// 	.executor
-// 	// 	.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
+// 	// 	.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &RasterData<Color>| frame.transform)
 // 	// 	.unwrap_or_default();
 // 	let image_size = context
 // 		.executor
@@ -283,7 +283,7 @@
 // 					.map(|(node_id, _)| node_id)
 // 					.copied()
 // 			},
-// 			|frame: &IORecord<(), ImageFrame<Color>>| (frame.output.image.width, frame.output.image.height),
+// 			|frame: &IORecord<(), RasterData<Color>>| (frame.output.image.width, frame.output.image.height),
 // 		)
 // 		.unwrap_or_default();
 
