@@ -2291,6 +2291,7 @@ dependencies = [
 name = "graphite-proc-macros"
 version = "0.0.0"
 dependencies = [
+ "graphite-editor",
  "proc-macro2",
  "quote",
  "serde",
