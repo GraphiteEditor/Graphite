@@ -565,6 +565,10 @@
 				padding-left: calc(var(--layer-indent-levels) * 16px);
 
 				// Dimming
+				&:hover {
+					outline: 2px solid var(--color-4-dimgray);
+				}
+
 				&.selected {
 					background: var(--color-4-dimgray);
 				}
@@ -619,7 +623,6 @@
 							background: var(--icon-expand-collapse-arrow-hover);
 						}
 					}
-
 					&.expanded::after {
 						transform: rotate(90deg);
 					}
