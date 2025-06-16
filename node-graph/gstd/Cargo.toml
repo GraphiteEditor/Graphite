@@ -40,10 +40,7 @@ rand = { workspace = true, default-features = false, features = [
 	"small_rng",
 ] }
 bytemuck = { workspace = true }
-image = { workspace = true, default-features = false, features = [
-	"png",
-	"jpeg",
-] }
+image = { workspace = true }
 
 # Optional workspace dependencies
 base64 = { workspace = true, optional = true }
