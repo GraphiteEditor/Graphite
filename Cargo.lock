@@ -2145,7 +2145,6 @@ dependencies = [
  "tokio",
  "url",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
  "winit",
@@ -2292,7 +2291,6 @@ dependencies = [
 name = "graphite-proc-macros"
 version = "0.0.0"
 dependencies = [
- "graphite-editor",
  "proc-macro2",
  "quote",
  "serde",

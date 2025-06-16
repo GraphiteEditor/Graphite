@@ -25,8 +25,5 @@ syn = { workspace = true }
 quote = { workspace = true }
 
 [dev-dependencies]
-# Local dependencies
-editor = { path = "../editor", package = "graphite-editor" }
-
 # Workspace dependencies
 serde = { workspace = true }
