@@ -10,7 +10,7 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::style::{LineCap, LineJoin};
+use crate::vector::style::{LineCap, LineJoin, Spacing};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath};
@@ -210,8 +210,9 @@ async fn repeat<I: 'n + Send + Clone>(
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
-	angle: Angle,
+	#[unit("°")] angle: f64,
 	#[default(4)] instances: IntegerCount,
+	spacing: Spacing,
 ) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
@@ -222,10 +223,40 @@ where
 
 	let mut result_table = Instances::<I>::default();
 
+	let Some(bounding_box) = instance.bounding_box(DAffine2::IDENTITY, false) else {
+		return result_table;
+	};
+	let exact_size = (bounding_box[1] - bounding_box[0]).abs();
+
 	for index in 0..count {
 		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
+		let mut translation = index as f64 * direction / total;
+
+		let transform = match spacing {
+			Spacing::Span => DAffine2::from_angle(angle) * DAffine2::from_translation(translation),
+			Spacing::Envelope => {
+				let mut size = index as f64 * exact_size / total;
+				if direction.x < -exact_size.x {
+					size.x -= size.x * 2.;
+				} else if direction.x <= exact_size.x {
+					size.x = 0.;
+					translation.x = 0.;
+				}
+				if direction.y < -exact_size.y {
+					size.y -= size.y * 2.;
+				} else if direction.y <= exact_size.y {
+					size.y = 0.;
+					translation.y = 0.;
+				}
+				if size == DVec2::ZERO {
+					DAffine2::from_angle(angle)
+				} else {
+					DAffine2::from_angle(angle) * DAffine2::from_translation(size).inverse() * DAffine2::from_translation(translation)
+				}
+			}
+			Spacing::Pitch => DAffine2::from_angle(angle) * DAffine2::from_translation(index as f64 * direction),
+			Spacing::Gap => DAffine2::from_angle(angle) * DAffine2::from_translation(index as f64 * exact_size) * DAffine2::from_translation(index as f64 * direction),
+		};
 
 		for instance in instance.instance_ref_iter() {
 			let mut instance = instance.to_instance_cloned();
@@ -247,13 +278,18 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	// TODO: Implement other GraphicElementRendered types.
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
 	angle_offset: Angle,
+	// #[default(180.)]
+	// #[unit("°")]
+	// angle_pitch: f64,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
+	// spacing: CircularSpacing,
 ) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
 {
 	let count = instances.max(1);
+	// let circle = angle_pitch.to_radians();
 
 	let mut result_table = Instances::<I>::default();
 
@@ -261,6 +297,16 @@ where
 		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
+		// let transform = match spacing {
+		// 	CircularSpacing::Span => {
+		// 		let rotation = DAffine2::from_angle((circle / instances as f64) * index as f64 + angle_offset.to_radians());
+		// 		DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform)
+		// 	}
+		// 	CircularSpacing::Pitch => {
+		// 		let rotation = DAffine2::from_angle(circle * index as f64 + angle_offset.to_radians());
+		// 		DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform)
+		// 	}
+		// };
 
 		for instance in instance.instance_ref_iter() {
 			let mut instance = instance.to_instance_cloned();
@@ -1956,7 +2002,7 @@ mod test {
 	async fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances, Spacing::Span).await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 3);
@@ -1968,7 +2014,7 @@ mod test {
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances, Spacing::Span).await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
@@ -1978,7 +2024,16 @@ mod test {
 	}
 	#[tokio::test]
 	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
+		let repeated = super::circular_repeat(
+			Footprint::default(),
+			vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)),
+			45.,
+			// 360.,
+			4.,
+			8,
+			// CircularSpacing::Span,
+		)
+		.await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
