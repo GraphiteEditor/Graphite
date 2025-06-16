@@ -565,7 +565,7 @@
 				padding-left: calc(var(--layer-indent-levels) * 16px);
 
 				// Dimming
-				&:hover {	
+				&:hover {
 					background: var(--color-4-dimgray);
 				}
 
