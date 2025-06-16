@@ -210,7 +210,7 @@ async fn repeat<I: 'n + Send + Clone>(
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
-	angle: Angle,
+	#[unit("°")] angle: f64,
 	#[default(4)] instances: IntegerCount,
 	spacing: Spacing,
 ) -> Instances<I>
@@ -231,12 +231,11 @@ where
 	for index in 0..count {
 		let angle = index as f64 * angle / total;
 		let mut translation = index as f64 * direction / total;
-		let mut size = index as f64 * exact_size / total;
 
-		// let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 		let transform = match spacing {
-			Spacing::Span => DAffine2::from_translation(translation) * DAffine2::from_angle(angle),
+			Spacing::Span => DAffine2::from_angle(angle) * DAffine2::from_translation(translation),
 			Spacing::Envelope => {
+				let mut size = index as f64 * exact_size / total;
 				if direction.x < -exact_size.x {
 					size.x -= size.x * 2.;
 				} else if direction.x <= exact_size.x {
@@ -252,11 +251,11 @@ where
 				if size == DVec2::ZERO {
 					DAffine2::from_angle(angle)
 				} else {
-					DAffine2::from_translation(size).inverse() * DAffine2::from_translation(translation) * DAffine2::from_angle(angle)
+					DAffine2::from_angle(angle) * DAffine2::from_translation(size).inverse() * DAffine2::from_translation(translation)
 				}
 			}
-			Spacing::Pitch => DAffine2::from_translation(index as f64 * direction) * DAffine2::from_angle(angle),
-			Spacing::Gap => DAffine2::from_translation(index as f64 * exact_size) * DAffine2::from_translation(index as f64 * direction) * DAffine2::from_angle(angle),
+			Spacing::Pitch => DAffine2::from_angle(angle) * DAffine2::from_translation(index as f64 * direction),
+			Spacing::Gap => DAffine2::from_angle(angle) * DAffine2::from_translation(index as f64 * exact_size) * DAffine2::from_translation(index as f64 * direction),
 		};
 
 		for instance in instance.instance_ref_iter() {
