@@ -22,7 +22,7 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 ] }
 
 # Workspace dependencies
-graphene-core = { workspace = true, features = ["std"] }
+graphene-core = { workspace = true }
 log = { workspace = true }
 glam = { workspace = true }
 bezier-rs = { workspace = true }

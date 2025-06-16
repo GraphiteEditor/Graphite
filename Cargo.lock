@@ -1982,8 +1982,6 @@ version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc46dd3ec48fdd8e693a98d2b8bafae273a2d54c1de02a2a7e3d57d501f39677"
 dependencies = [
- "bytemuck",
- "libm",
  "serde",
 ]
 
@@ -2194,7 +2192,6 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
- "spirv-std",
  "tinyvec",
  "tokio",
  "usvg",
@@ -3676,7 +3673,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
- "libm",
 ]
 
 [[package]]
@@ -5752,34 +5748,6 @@ checksum = "eda41003dc44290527a59b13432d4a0379379fa074b70174882adfbdfd917844"
 dependencies = [
  "bitflags 2.9.0",
 ]
-
-[[package]]
-name = "spirv-std"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git#6e2c84d4fe64e32df4c060c5a7f3e35a32e45421"
-dependencies = [
- "bitflags 1.3.2",
- "glam",
- "num-traits",
- "spirv-std-macros",
- "spirv-std-types",
-]
-
-[[package]]
-name = "spirv-std-macros"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git#6e2c84d4fe64e32df4c060c5a7f3e35a32e45421"
-dependencies = [
- "proc-macro2",
- "quote",
- "spirv-std-types",
- "syn 2.0.99",
-]
-
-[[package]]
-name = "spirv-std-types"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git#6e2c84d4fe64e32df4c060c5a7f3e35a32e45421"
 
 [[package]]
 name = "stable_deref_trait"

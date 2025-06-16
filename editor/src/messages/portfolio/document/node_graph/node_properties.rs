@@ -1161,13 +1161,6 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	]
 }
 
-#[cfg(feature = "gpu")]
-pub(crate) fn _gpu_map_properties(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<LayoutGroup> {
-	let map = text_widget(parameter_widgets_info);
-
-	vec![LayoutGroup::Row { widgets: map }]
-}
-
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let grid_type_index = grid::GridTypeInput::INDEX;
 	let spacing_index = grid::SpacingInput::<f64>::INDEX;

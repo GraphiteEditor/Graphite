@@ -287,9 +287,7 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 	}
 }
 
-#[cfg(feature = "alloc")]
 pub use self::image::Image;
-#[cfg(feature = "alloc")]
 pub mod image;
 
 trait SetBlendMode {

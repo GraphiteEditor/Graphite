@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
-gpu = ["graphene-std/gpu", "graphene-core/gpu", "graphene-std/wgpu"]
+gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
 
 [dependencies]
 # Local dependencies
@@ -16,7 +16,7 @@ graph-craft = { path = "../graph-craft" }
 wgpu-executor = { path = "../wgpu-executor" }
 
 # Workspace dependencies
-graphene-core = { workspace = true, features = ["std"] }
+graphene-core = { workspace = true }
 dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
 log = { workspace = true }
 glam = { workspace = true }

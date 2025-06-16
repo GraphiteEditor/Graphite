@@ -62,7 +62,6 @@ impl<P: Pixel + Debug> Debug for Image<P> {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<P> StaticType for Image<P>
 where
 	P: dyn_any::StaticTypeSized + Pixel,
@@ -261,7 +260,6 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		}
 	}
 
-	#[cfg(feature = "dyn-any")]
 	unsafe impl<P> StaticType for ImageFrame<P>
 	where
 		P: dyn_any::StaticTypeSized + Pixel,
@@ -358,7 +356,6 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		}
 	}
 
-	#[cfg(feature = "dyn-any")]
 	unsafe impl<P> StaticType for ImageFrame<P>
 	where
 		P: dyn_any::StaticTypeSized + Pixel,

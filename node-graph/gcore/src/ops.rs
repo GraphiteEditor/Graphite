@@ -495,7 +495,6 @@ fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
 }
 
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Debug"))]
 fn size_of(_: impl Ctx, ty: crate::Type) -> Option<usize> {
 	ty.size()
@@ -535,8 +534,7 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 
 /// The X or Y component of a coordinate.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum XY {
 	#[default]
@@ -587,7 +585,6 @@ impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Nod
 // Into
 pub struct IntoNode<O>(PhantomData<O>);
 impl<O> IntoNode<O> {
-	#[cfg(feature = "alloc")]
 	pub const fn new() -> Self {
 		Self(core::marker::PhantomData)
 	}

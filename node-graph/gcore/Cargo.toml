@@ -7,28 +7,14 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
+default = ["serde", "kurbo", "log", "wasm"]
 log = ["dep:log"]
-gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
 nightly = []
-alloc = ["dyn-any", "bezier-rs"]
 type_id_logging = []
 wasm = ["web-sys"]
 wgpu = ["dep:wgpu"]
 vello = ["dep:vello", "bezier-rs/kurbo", "wgpu"]
-dealloc_nodes = ["reflections"]
-std = [
-	"dyn-any",
-	"dyn-any/std",
-	"alloc",
-	"glam/std",
-	"specta",
-	"num-traits/std",
-	"rustybuzz",
-	"image",
-	"reflections",
-]
-reflections = ["alloc", "ctor"]
+dealloc_nodes = []
 serde = [
 	"dep:serde",
 	"glam/serde",
@@ -55,30 +41,29 @@ petgraph = { workspace = true, default-features = false, features = [
 ] }
 rustc-hash = { workspace = true }
 math-parser = { path = "../../libraries/math-parser" }
+dyn-any = { workspace = true }
+ctor = { workspace = true }
+rand_chacha = { workspace = true }
+bezier-rs = { workspace = true }
+specta = { workspace = true }
+rustybuzz = { workspace = true }
+image = { workspace = true, default-features = false, features = [
+	"png",
+] }
 
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1" }
 
 # Optional workspace dependencies
-dyn-any = { workspace = true, optional = true }
-spirv-std = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive"] }
-ctor = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
-rand_chacha = { workspace = true, optional = true }
-bezier-rs = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 vello = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
-specta = { workspace = true, optional = true }
-rustybuzz = { workspace = true, optional = true }
 web-sys = { workspace = true, optional = true, features = [
 	"HtmlCanvasElement",
-] }
-image = { workspace = true, optional = true, default-features = false, features = [
-	"png",
 ] }
 
 [dev-dependencies]

@@ -15,7 +15,6 @@ default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 gpu = [
 	"interpreted-executor/gpu",
-	"graphene-std/gpu",
 	"wgpu-executor",
 ]
 tauri = ["ron", "decouple-execution"]
