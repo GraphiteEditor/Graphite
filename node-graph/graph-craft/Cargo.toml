@@ -23,14 +23,10 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 
 # Workspace dependencies
 graphene-core = { workspace = true, features = ["std"] }
-num-traits = { workspace = true }
 log = { workspace = true }
-futures = { workspace = true }
 glam = { workspace = true }
-base64 = { workspace = true }
 bezier-rs = { workspace = true }
 specta = { workspace = true }
-bytemuck = { workspace = true }
 rustc-hash = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }

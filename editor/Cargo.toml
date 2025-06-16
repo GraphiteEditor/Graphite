@@ -38,7 +38,6 @@ graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 js-sys = { workspace = true }
 log = { workspace = true }
 bitflags = { workspace = true }
-convert_case = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -65,7 +64,6 @@ web-sys = { workspace = true, features = [
 ] }
 
 # Required dependencies
-async-mutex = "1.4.0"
 spin = "0.9.8"
 
 # Optional local dependencies

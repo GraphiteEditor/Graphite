@@ -26,32 +26,19 @@ interpreted-executor = { path = "../interpreted-executor" }
 
 # Workspace dependencies
 log = { workspace = true }
-bitflags = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-bezier-rs = { workspace = true }
-glam = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
-dyn-any = { workspace = true }
 graphene-core = { workspace = true }
 futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-image = { workspace = true, default-features = false, features = [
-	"bmp",
-	"png",
-] }
 
 # Required dependencies
 clap = { version = "4.5.31", features = ["cargo", "derive"] }
 
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }
-
-# Optional workspace dependencies
-wasm-bindgen = { workspace = true, optional = true }
 
 [package.metadata.cargo-shear]
 ignored = ["wgpu-executor"]

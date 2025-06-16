@@ -18,9 +18,7 @@ wgpu-executor = { path = "../wgpu-executor" }
 # Workspace dependencies
 graphene-core = { workspace = true, features = ["std"] }
 dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
-num-traits = { workspace = true }
 log = { workspace = true }
-wgpu = { workspace = true }
 glam = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
@@ -34,8 +32,6 @@ graph-craft = { workspace = true, features = ["loading"] }
 
 # Required dependencies
 criterion = { version = "0.5", features = ["html_reports"]}
-glob = "0.3"
-iai-callgrind = { version = "0.12.3"}
 
 # Benchmarks
 [[bench]]

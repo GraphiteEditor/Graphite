@@ -27,8 +27,6 @@ graphite-editor = { path = "../../editor", features = [
 ] }
 
 # Workspace dependencies
-serde_json = { workspace = true }
-serde = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
