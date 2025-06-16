@@ -12,8 +12,10 @@ import "@fontsource/source-sans-pro/700.css";
 // The library replaces the Reflect API on the window to support more features.
 import "reflect-metadata";
 
+import { mount } from "svelte";
+
 import App from "@graphite/App.svelte";
 
 document.body.setAttribute("data-app-container", "");
 
-export default new App({ target: document.body });
+export default mount(App, { target: document.body });
