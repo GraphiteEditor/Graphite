@@ -17,7 +17,6 @@ gpu = [
 	"graphene-std/gpu",
 	"graphene-core/gpu",
 	"wgpu-executor",
-	"gpu-executor",
 ]
 
 [dependencies]
@@ -50,7 +49,6 @@ clap = { version = "4.5.31", features = ["cargo", "derive"] }
 
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }
-gpu-executor = { path = "../gpu-executor", optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
