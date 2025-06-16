@@ -1,24 +1,19 @@
 mod context;
-mod executor;
 
 use anyhow::Result;
 pub use context::Context;
-use dyn_any::{DynAny, StaticType};
-pub use executor::GpuExecutor;
+use dyn_any::StaticType;
 use glam::UVec2;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
-use graphene_core::{Color, Ctx, Node};
+use graphene_core::{Color, Ctx};
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
-use wgpu::{Buffer, Origin3d, ShaderModule, SurfaceConfiguration, Texture, TextureAspect, TextureView};
-
-#[cfg(target_arch = "wasm32")]
-use web_sys::HtmlCanvasElement;
+use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
 	pub context: Context,
-	vello_renderer: futures::lock::Mutex<vello::Renderer>,
+	vello_renderer: futures::lock::Mutex<Renderer>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -42,22 +37,12 @@ impl graphene_core::application_io::Size for Surface {
 	}
 }
 
-#[derive(Debug, DynAny)]
-#[repr(transparent)]
-pub struct CommandBuffer(wgpu::CommandBuffer);
-
-#[derive(Debug, DynAny)]
-#[repr(transparent)]
-pub struct ShaderModuleWrapper(ShaderModule);
-pub type ShaderHandle = ShaderModuleWrapper;
-pub type BufferHandle = Buffer;
-pub type TextureHandle = Texture;
 pub struct Surface {
 	pub inner: wgpu::Surface<'static>,
 	resolution: UVec2,
 }
 #[cfg(target_arch = "wasm32")]
-pub type Window = HtmlCanvasElement;
+pub type Window = web_sys::HtmlCanvasElement;
 #[cfg(not(target_arch = "wasm32"))]
 pub type Window = Arc<winit::window::Window>;
 
@@ -66,10 +51,6 @@ unsafe impl StaticType for Surface {
 }
 
 pub use graphene_core::renderer::RenderContext;
-
-// pub trait SpirVCompiler {
-// 	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
-// }
 
 impl WgpuExecutor {
 	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, width: u32, height: u32, context: &RenderContext, background: Color) -> Result<()> {
@@ -167,31 +148,6 @@ impl WgpuExecutor {
 			context,
 			vello_renderer: vello_renderer.into(),
 		})
-	}
-}
-
-pub enum BindingType<'a> {
-	UniformBuffer(&'a BufferHandle),
-	StorageBuffer(&'a BufferHandle),
-	TextureView(&'a TextureView),
-}
-
-/// Extracts arguments from the function arguments and wraps them in a node.
-pub struct ShaderInputNode<T> {
-	data: T,
-}
-
-impl<'i, T: 'i> Node<'i, ()> for ShaderInputNode<T> {
-	type Output = &'i T;
-
-	fn eval(&'i self, _: ()) -> Self::Output {
-		&self.data
-	}
-}
-
-impl<T> ShaderInputNode<T> {
-	pub fn new(data: T) -> Self {
-		Self { data }
 	}
 }
 
