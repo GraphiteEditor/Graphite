@@ -52,3 +52,6 @@ wgpu-executor = { path = "../wgpu-executor", optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
+
+[package.metadata.cargo-shear]
+ignored = ["wgpu-executor"]
