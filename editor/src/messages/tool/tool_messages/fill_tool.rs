@@ -154,7 +154,7 @@ impl Fsm for FillToolFsmState {
 							}
 						} else if fill_exists_and_visible {
 							subpaths = vector_data.stroke_bezier_paths();
-							overlay_context.fill_path(subpaths, document.metadata().transform_to_viewport(layer), &preview_color, true, Some(modified_stroke_width));
+							overlay_context.fill_path(subpaths, document.metadata().transform_to_viewport(layer), &preview_color, true, stroke_exists_and_visible, Some(modified_stroke_width));
 						}
 					}
 				}

@@ -1555,7 +1555,7 @@ impl Fsm for PenToolFsmState {
 								.collect();
 
 							let fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05);
-							overlay_context.fill_path(subpaths.iter(), transform, &fill_color, false, None);
+							overlay_context.fill_path(subpaths.iter(), transform, &fill_color, false, false, None);
 						}
 					}
 				}

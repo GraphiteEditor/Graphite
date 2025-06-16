@@ -718,23 +718,24 @@ impl OverlayContext {
 
 	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, stroke_width: Option<f64>) {
+	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, clear_stroke_part: bool, stroke_width: Option<f64>) {
 		self.render_context.save();
 		self.render_context.set_line_width(stroke_width.unwrap_or(1.));
 		self.draw_path_from_subpaths(subpaths, transform);
 
 		if with_pattern {
 			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
-			self.render_context.fill();
-
-			// Make the stroke transparent and erase the fill area overlapping the stroke.
-			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
-			self.render_context.set_stroke_style_str(&"#000000");
-			self.render_context.stroke();
 		} else {
 			let color_str = format!("#{:?}", color.to_rgba_hex_srgb());
 			self.render_context.set_fill_style_str(&color_str.as_str());
-			self.render_context.fill();
+		}
+		self.render_context.fill();
+
+		// Make the stroke transparent and erase the fill area overlapping the stroke.
+		if clear_stroke_part {
+			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
+			self.render_context.set_stroke_style_str(&"#000000");
+			self.render_context.stroke();
 		}
 
 		self.render_context.restore();
