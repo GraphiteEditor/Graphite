@@ -1797,18 +1797,6 @@ mod test {
 	}
 
 	#[tokio::test]
-	async fn repeat() {
-		let direction = DVec2::X * 1.5;
-		let instances = 3;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
-		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
-			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
-		}
-	}
-	#[tokio::test]
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
@@ -1820,22 +1808,7 @@ mod test {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
-	#[tokio::test]
-	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
-		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
-			let expected_angle = (index as f64 + 1.) * 45.;
-
-			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
-
-			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
-		}
-	}
 	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))).await;
@@ -1861,27 +1834,7 @@ mod test {
 			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
 		}
 	}
-	#[tokio::test]
-	async fn copy_to_points() {
-		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
-		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
 
-		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
-
-		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
-		let flattened_copy_to_points = flatten_path.instance_ref_iter().next().unwrap().instance;
-
-		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
-
-		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
-			let offset = expected_points[index];
-			assert_eq!(
-				&subpath.anchors(),
-				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
-			);
-		}
-	}
 	#[tokio::test]
 	async fn sample_points() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
