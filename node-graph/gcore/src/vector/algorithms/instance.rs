@@ -258,7 +258,8 @@ mod test {
 	use super::*;
 	use crate::Node;
 	use crate::ops::ExtractXyNode;
-	use crate::vector::VectorData;
+	use crate::transform::Footprint;
+	use crate::vector::{PointId, VectorData, flatten_path};
 	use bezier_rs::Subpath;
 	use glam::DVec2;
 	use std::pin::Pin;
@@ -274,12 +275,16 @@ mod test {
 		}
 	}
 
+	fn vector_node(data: Subpath<PointId>) -> VectorDataTable {
+		VectorDataTable::new(VectorData::from_subpath(data))
+	}
+
 	#[tokio::test]
 	async fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let instances = 3;
 		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
+		let vector_data = flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 3);
 		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
@@ -290,7 +295,7 @@ mod test {
 	#[tokio::test]
 	async fn circular_repeat() {
 		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
+		let vector_data = flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 
@@ -312,7 +317,7 @@ mod test {
 		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
 
 		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
+		let flatten_path = flatten_path(Footprint::default(), copy_to_points).await;
 		let flattened_copy_to_points = flatten_path.instance_ref_iter().next().unwrap().instance;
 
 		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());

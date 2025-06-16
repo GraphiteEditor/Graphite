@@ -1778,6 +1778,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 mod test {
 	use super::*;
 	use crate::Node;
+	use crate::vector::algorithms::instance::repeat;
 	use bezier_rs::Bezier;
 	use std::pin::Pin;
 
@@ -1800,7 +1801,7 @@ mod test {
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
