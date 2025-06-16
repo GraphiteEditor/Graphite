@@ -2,7 +2,165 @@ use crate::instances::{InstanceRef, Instances};
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
+use rand::{Rng, SeedableRng};
+use std::f64::consts::TAU;
+
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
+async fn repeat<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	// TODO: Implement other GraphicElementRendered types.
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
+	#[default(100., 100.)]
+	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
+	direction: PixelSize,
+	angle: Angle,
+	#[default(4)] instances: IntegerCount,
+) -> Instances<I>
+where
+	Instances<I>: GraphicElementRendered,
+{
+	let angle = angle.to_radians();
+	let count = instances.max(1);
+	let total = (count - 1) as f64;
+
+	let mut result_table = Instances::<I>::default();
+
+	for index in 0..count {
+		let angle = index as f64 * angle / total;
+		let translation = index as f64 * direction / total;
+		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
+
+		for instance in instance.instance_ref_iter() {
+			let mut instance = instance.to_instance_cloned();
+
+			let local_translation = DAffine2::from_translation(instance.transform.translation);
+			let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
+			instance.transform = local_translation * transform * local_matrix;
+
+			result_table.push(instance);
+		}
+	}
+
+	result_table
+}
+
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
+async fn circular_repeat<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	// TODO: Implement other GraphicElementRendered types.
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
+	angle_offset: Angle,
+	#[default(5)] radius: f64,
+	#[default(5)] instances: IntegerCount,
+) -> Instances<I>
+where
+	Instances<I>: GraphicElementRendered,
+{
+	let count = instances.max(1);
+
+	let mut result_table = Instances::<I>::default();
+
+	for index in 0..count {
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
+		let translation = DAffine2::from_translation(radius * DVec2::Y);
+		let transform = angle * translation;
+
+		for instance in instance.instance_ref_iter() {
+			let mut instance = instance.to_instance_cloned();
+
+			let local_translation = DAffine2::from_translation(instance.transform.translation);
+			let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
+			instance.transform = local_translation * transform * local_matrix;
+
+			result_table.push(instance);
+		}
+	}
+
+	result_table
+}
+
+#[node_macro::node(name("Copy to Points"), category("Instancing"), path(graphene_core::vector))]
+async fn copy_to_points<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	points: VectorDataTable,
+	#[expose]
+	/// Artwork to be copied and placed at each point.
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)]
+	instance: Instances<I>,
+	/// Minimum range of randomized sizes given to each instance.
+	#[default(1)]
+	#[range((0., 2.))]
+	#[unit("x")]
+	random_scale_min: Multiplier,
+	/// Maximum range of randomized sizes given to each instance.
+	#[default(1)]
+	#[range((0., 2.))]
+	#[unit("x")]
+	random_scale_max: Multiplier,
+	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
+	#[range((-50., 50.))]
+	random_scale_bias: f64,
+	/// Seed to determine unique variations on all the randomized instance sizes.
+	random_scale_seed: SeedValue,
+	/// Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise.
+	#[range((0., 360.))]
+	random_rotation: Angle,
+	/// Seed to determine unique variations on all the randomized instance angles.
+	random_rotation_seed: SeedValue,
+) -> Instances<I>
+where
+	Instances<I>: GraphicElementRendered,
+{
+	let mut result_table = Instances::<I>::default();
+
+	let random_scale_difference = random_scale_max - random_scale_min;
+
+	for point_instance in points.instance_iter() {
+		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
+		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+
+		let do_scale = random_scale_difference.abs() > 1e-6;
+		let do_rotation = random_rotation.abs() > 1e-6;
+
+		let points_transform = point_instance.transform;
+		for &point in point_instance.instance.point_domain.positions() {
+			let translation = points_transform.transform_point2(point);
+
+			let rotation = if do_rotation {
+				let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
+				degrees / 360. * TAU
+			} else {
+				0.
+			};
+
+			let scale = if do_scale {
+				if random_scale_bias.abs() < 1e-6 {
+					// Linear
+					random_scale_min + scale_rng.random::<f64>() * random_scale_difference
+				} else {
+					// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
+					let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
+					let scale_factor = (1. - scale_rng.random::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+					random_scale_min + scale_factor * random_scale_difference
+				}
+			} else {
+				random_scale_min
+			};
+
+			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
+
+			for mut instance in instance.instance_ref_iter().map(|instance| instance.to_instance_cloned()) {
+				let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
+				instance.transform = transform * local_matrix;
+
+				result_table.push(instance);
+			}
+		}
+	}
+
+	result_table
+}
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(
