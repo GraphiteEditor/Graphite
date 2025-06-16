@@ -1,44 +1,70 @@
 use crate::vector::VectorDataTable;
-use crate::{Color, Context, Ctx};
+use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 
-#[node_macro::node(category("Debug"))]
-fn log_to_console<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
-	#[cfg(not(target_arch = "spirv"))]
-	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
-	log::debug!("{:#?}", value);
-	value
+/// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
+#[node_macro::node(category("Math: Logic"))]
+fn equals<U: core::cmp::PartialEq<T>, T>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
+) -> bool {
+	other_value == value
 }
 
-#[node_macro::node(category("Text"))]
-fn to_string<T: core::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
-	format!("{:?}", value)
+/// The inequality operation (!=) compares two values and returns true if they are not equal, or false if they are.
+#[node_macro::node(category("Math: Logic"))]
+fn not_equals<U: core::cmp::PartialEq<T>, T>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
+) -> bool {
+	other_value != value
 }
 
-#[node_macro::node(category("Text"))]
-fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, #[implementations(String)] second: String) -> String {
-	first.clone() + &second
+/// The less-than operation (<) compares two values and returns true if the first value is less than the second, or false if it is not.
+/// If enabled with "Or Equal", the less-than-or-equal operation (<=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn less_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value <= other_value } else { value < other_value }
 }
 
-#[node_macro::node(category("Text"))]
-fn string_replace(_: impl Ctx, #[implementations(String)] string: String, from: String, to: String) -> String {
-	string.replace(&from, &to)
+/// The greater-than operation (>) compares two values and returns true if the first value is greater than the second, or false if it is not.
+/// If enabled with "Or Equal", the greater-than-or-equal operation (>=) will be used instead.
+#[node_macro::node(category("Math: Logic"))]
+fn greater_than<T: core::cmp::PartialOrd<T>>(
+	_: impl Ctx,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
+	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
+	or_equal: bool,
+) -> bool {
+	if or_equal { value >= other_value } else { value > other_value }
 }
 
-#[node_macro::node(category("Text"))]
-fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f64, end: f64) -> String {
-	let start = if start < 0. { string.len() - start.abs() as usize } else { start as usize };
-	let end = if end <= 0. { string.len() - end.abs() as usize } else { end as usize };
-	let n = end.saturating_sub(start);
-	string.char_indices().skip(start).take(n).map(|(_, c)| c).collect()
+/// The logical or operation (||) returns true if either of the two inputs are true, or false if both are false.
+#[node_macro::node(category("Math: Logic"))]
+fn logical_or(_: impl Ctx, value: bool, other_value: bool) -> bool {
+	value || other_value
 }
 
-#[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usize {
-	string.len()
+/// The logical and operation (&&) returns true if both of the two inputs are true, or false if any are false.
+#[node_macro::node(category("Math: Logic"))]
+fn logical_and(_: impl Ctx, value: bool, other_value: bool) -> bool {
+	value && other_value
 }
 
-#[node_macro::node(category("Text"))]
+/// The logical not operation (!) reverses true and false value of the input.
+#[node_macro::node(category("Math: Logic"))]
+fn logical_not(_: impl Ctx, input: bool) -> bool {
+	!input
+}
+
+#[node_macro::node(category("Math: Logic"))]
 async fn switch<T, C: Send + 'n + Clone>(
 	#[implementations(Context)] ctx: C,
 	condition: bool,

@@ -164,6 +164,7 @@
 					.text-label {
 						padding-left: 16px;
 						position: relative;
+						pointer-events: none;
 
 						&::before {
 							content: "";
