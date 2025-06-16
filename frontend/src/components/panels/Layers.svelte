@@ -565,12 +565,12 @@
 				padding-left: calc(var(--layer-indent-levels) * 16px);
 
 				// Dimming
-				&:hover {
-					outline: 2px solid var(--color-4-dimgray);
+				&:hover {	
+				 	background: var(--color-4-dimgray);
 				}
 
 				&.selected {
-					background: var(--color-4-dimgray);
+					background: var(--color-5-dullgray);
 				}
 
 				&.ancestor-of-selected .expand-arrow:not(.expanded) {
@@ -582,7 +582,7 @@
 				}
 
 				&.selected-but-not-in-selected-network {
-					background: rgba(var(--color-4-dimgray-rgb), 0.5);
+					background: rgba(var(--color-5-dullgray), 0.5);
 				}
 
 				&.insert-folder {
@@ -617,8 +617,7 @@
 					}
 
 					&:hover:not([disabled]) {
-						background: var(--color-5-dullgray);
-
+						background: var(--color-6-lowergray);
 						&::after {
 							background: var(--icon-expand-collapse-arrow-hover);
 						}
