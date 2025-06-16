@@ -1,4 +1,4 @@
-use core::any::TypeId;
+use std::any::TypeId;
 
 pub use std::borrow::Cow;
 
@@ -6,20 +6,20 @@ pub use std::borrow::Cow;
 macro_rules! concrete {
 	($type:ty) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			id: Some(std::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: None,
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
+			size: std::mem::size_of::<$type>(),
+			align: std::mem::align_of::<$type>(),
 		})
 	};
 	($type:ty, $name:ty) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(core::any::type_name::<$type>()),
+			id: Some(std::any::TypeId::of::<$type>()),
+			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
 			alias: Some($crate::Cow::Borrowed(stringify!($name))),
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
+			size: std::mem::size_of::<$type>(),
+			align: std::mem::align_of::<$type>(),
 		})
 	};
 }
@@ -28,11 +28,11 @@ macro_rules! concrete {
 macro_rules! concrete_with_name {
 	($type:ty, $name:expr_2021) => {
 		$crate::Type::Concrete($crate::TypeDescriptor {
-			id: Some(core::any::TypeId::of::<$type>()),
+			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
 			alias: None,
-			size: core::mem::size_of::<$type>(),
-			align: core::mem::align_of::<$type>(),
+			size: std::mem::size_of::<$type>(),
+			align: std::mem::align_of::<$type>(),
 		})
 	};
 }
@@ -114,8 +114,8 @@ impl NodeIOTypes {
 	}
 }
 
-impl core::fmt::Debug for NodeIOTypes {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Debug for NodeIOTypes {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!(
 			"node({}) → {}",
 			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
@@ -141,7 +141,7 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
-		"graphene_core::transform::Footprint" => "core::option::Option<alloc::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
+		"graphene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
 		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::instances::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
 		"graphene_core::vector::vector_data::VectorData" => "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
 		"graphene_core::raster::image::ImageFrame<Color>"
@@ -172,8 +172,8 @@ pub struct TypeDescriptor {
 	pub align: usize,
 }
 
-impl core::hash::Hash for TypeDescriptor {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for TypeDescriptor {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);
 	}
 }
@@ -264,10 +264,10 @@ impl Type {
 	pub fn new<T: dyn_any::StaticType + Sized>() -> Self {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
-			name: Cow::Borrowed(core::any::type_name::<T::Static>()),
+			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
 			alias: None,
-			size: core::mem::size_of::<T>(),
-			align: core::mem::align_of::<T>(),
+			size: std::mem::size_of::<T>(),
+			align: std::mem::align_of::<T>(),
 		})
 	}
 
@@ -318,8 +318,8 @@ fn format_type(ty: &str) -> String {
 		.join("<")
 }
 
-impl core::fmt::Debug for Type {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Debug for Type {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let result = match self {
 			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]

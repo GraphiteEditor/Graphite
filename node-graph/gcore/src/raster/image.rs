@@ -1,15 +1,12 @@
-use crate::{
-	AlphaBlending,
-	instances::{Instance, Instances},
-	raster_types::Raster,
-};
-
 use super::Color;
 use super::discrete_srgb::float_to_srgb_u8;
-use alloc::vec::Vec;
+use crate::AlphaBlending;
+use crate::instances::{Instance, Instances};
+use crate::raster_types::Raster;
 use core::hash::{Hash, Hasher};
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
+use std::vec::Vec;
 
 #[cfg(feature = "serde")]
 mod base64_serde {
@@ -56,7 +53,7 @@ pub struct Image<P: Pixel> {
 }
 
 impl<P: Pixel + Debug> Debug for Image<P> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let length = self.data.len();
 		f.debug_struct("Image")
 			.field("width", &self.width)
@@ -203,7 +200,7 @@ where
 
 impl<P: Pixel> IntoIterator for Image<P> {
 	type Item = P;
-	type IntoIter = alloc::vec::IntoIter<P>;
+	type IntoIter = std::vec::IntoIter<P>;
 	fn into_iter(self) -> Self::IntoIter {
 		self.data.into_iter()
 	}

@@ -1,11 +1,9 @@
-extern crate alloc;
-
 #[macro_use]
 extern crate log;
-pub use crate as graphene_core;
-pub use num_traits;
 
+pub use crate as graphene_core;
 pub use ctor;
+pub use num_traits;
 
 pub mod animation;
 pub mod consts;
@@ -35,12 +33,12 @@ pub mod application_io;
 pub mod registry;
 
 pub use context::*;
-use core::any::TypeId;
-use core::future::Future;
-use core::pin::Pin;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use memo::MemoHash;
 pub use raster::Color;
+use std::any::TypeId;
+use std::future::Future;
+use std::pin::Pin;
 pub use types::Cow;
 
 // pub trait Node: for<'n> NodeIO<'n> {
@@ -54,11 +52,11 @@ pub trait Node<'i, Input> {
 	fn reset(&self) {}
 	/// Returns the name of the node for diagnostic purposes.
 	fn node_name(&self) -> &'static str {
-		core::any::type_name::<Self>()
+		std::any::type_name::<Self>()
 	}
 	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
-		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		log::warn!("Node::serialize not implemented for {}", std::any::type_name::<Self>());
 		None
 	}
 }
@@ -75,13 +73,13 @@ where
 		TypeId::of::<Input::Static>()
 	}
 	fn input_type_name(&self) -> &'static str {
-		core::any::type_name::<Input>()
+		std::any::type_name::<Input>()
 	}
-	fn output_type(&self) -> core::any::TypeId {
+	fn output_type(&self) -> std::any::TypeId {
 		TypeId::of::<<Self::Output as StaticTypeSized>::Static>()
 	}
 	fn output_type_name(&self) -> &'static str {
-		core::any::type_name::<Self::Output>()
+		std::any::type_name::<Self::Output>()
 	}
 	fn to_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes {
 		NodeIOTypes {
@@ -122,7 +120,7 @@ impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<
 		(**self).eval(input)
 	}
 }
-impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
+impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for std::sync::Arc<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
@@ -148,7 +146,7 @@ pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasEl
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
 
-pub trait InputAccessorSource<'a, T>: InputAccessorSourceIdentifier + core::fmt::Debug {
+pub trait InputAccessorSource<'a, T>: InputAccessorSourceIdentifier + std::fmt::Debug {
 	fn get_input(&'a self, index: usize) -> Option<&'a T>;
 	fn set_input(&'a mut self, index: usize, value: T);
 }

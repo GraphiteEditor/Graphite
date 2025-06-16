@@ -1,7 +1,7 @@
 use crate::transform::Footprint;
-use core::any::Any;
-use core::borrow::Borrow;
-use core::panic::Location;
+use std::any::Any;
+use std::borrow::Borrow;
+use std::panic::Location;
 use std::sync::Arc;
 
 pub trait Ctx: Clone + Send {}
@@ -249,8 +249,8 @@ pub struct OwnedContextImpl {
 	animation_time: Option<f64>,
 }
 
-impl core::fmt::Debug for OwnedContextImpl {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Debug for OwnedContextImpl {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OwnedContextImpl")
 			.field("footprint", &self.footprint)
 			.field("varargs", &self.varargs)
@@ -269,8 +269,8 @@ impl Default for OwnedContextImpl {
 	}
 }
 
-impl core::hash::Hash for OwnedContextImpl {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for OwnedContextImpl {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.footprint.hash(state);
 		self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
 		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);

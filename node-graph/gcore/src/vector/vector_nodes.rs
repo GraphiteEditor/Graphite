@@ -14,13 +14,13 @@ use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath};
-use core::f64::consts::PI;
-use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Point, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use std::f64::consts::PI;
 use std::f64::consts::TAU;
+use std::hash::{Hash, Hasher};
 
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
@@ -1949,7 +1949,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, T: 'i + Clone + Send> Node<'i, Footprint> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn std::future::Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: Footprint) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })
@@ -2011,7 +2011,7 @@ mod test {
 		// Test a VectorData with non-zero rotation
 		let square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
 		let mut square = VectorDataTable::new(square);
-		*square.get_mut(0).unwrap().transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
+		*square.get_mut(0).unwrap().transform *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4);
 		let bounding_box = BoundingBoxNode {
 			vector_data: FutureWrapperNode(square),
 		}

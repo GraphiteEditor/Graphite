@@ -1,22 +1,22 @@
 use crate::text::FontCache;
 use crate::transform::Footprint;
 use crate::vector::style::ViewMode;
-use alloc::sync::Arc;
-use core::fmt::Debug;
-use core::future::Future;
-use core::hash::{Hash, Hasher};
-use core::pin::Pin;
-use core::ptr::addr_of;
-use core::time::Duration;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
+use std::fmt::Debug;
+use std::future::Future;
+use std::hash::{Hash, Hasher};
+use std::pin::Pin;
+use std::ptr::addr_of;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SurfaceId(pub u64);
 
-impl core::fmt::Display for SurfaceId {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for SurfaceId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("{}", self.0))
 	}
 }
@@ -298,7 +298,7 @@ impl<Io> PartialEq for EditorApi<Io> {
 }
 
 impl<T> Debug for EditorApi<T> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("EditorApi").field("font_cache", &self.font_cache).finish()
 	}
 }

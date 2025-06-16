@@ -1,6 +1,6 @@
-use core::f64;
 use glam::DVec2;
 use std::collections::HashMap;
+use std::f64;
 
 const DEEPEST_SUBDIVISION_LEVEL_BEFORE_DISCARDING: usize = 8;
 

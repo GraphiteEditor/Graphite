@@ -300,7 +300,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "wgpu")]
-	pub resource_overrides: std::collections::HashMap<u64, alloc::sync::Arc<wgpu::Texture>>,
+	pub resource_overrides: std::collections::HashMap<u64, std::sync::Arc<wgpu::Texture>>,
 }
 
 /// Static state used whilst rendering
@@ -1385,7 +1385,7 @@ impl GraphicElementRendered for GraphicElement {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: core::fmt::Display {}
+trait Primitive: std::fmt::Display {}
 impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}

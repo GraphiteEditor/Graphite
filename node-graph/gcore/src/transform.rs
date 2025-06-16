@@ -136,8 +136,8 @@ impl From<()> for Footprint {
 	}
 }
 
-impl core::hash::Hash for Footprint {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for Footprint {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_le_bytes().hash(state));
 		self.resolution.hash(state)
 	}

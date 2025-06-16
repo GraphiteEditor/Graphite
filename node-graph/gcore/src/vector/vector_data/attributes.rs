@@ -1,11 +1,11 @@
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::vector_data::{HandleId, VectorData};
 use bezier_rs::{BezierHandles, ManipulatorGroup};
-use core::iter::zip;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::iter::zip;
 
 /// A simple macro for creating strongly typed ids (to avoid confusion when passing around ids).
 macro_rules! create_ids {
@@ -53,7 +53,7 @@ create_ids! { InstanceId, PointId, SegmentId, RegionId, StrokeId, FillId }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NoHash(Option<u64>);
 
-impl core::hash::Hasher for NoHash {
+impl std::hash::Hasher for NoHash {
 	fn finish(&self) -> u64 {
 		self.0.unwrap()
 	}
@@ -70,7 +70,7 @@ impl core::hash::Hasher for NoHash {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NoHashBuilder;
 
-impl core::hash::BuildHasher for NoHashBuilder {
+impl std::hash::BuildHasher for NoHashBuilder {
 	type Hasher = NoHash;
 	fn build_hasher(&self) -> Self::Hasher {
 		NoHash::default()
@@ -86,8 +86,8 @@ pub struct PointDomain {
 	pub(crate) position: Vec<DVec2>,
 }
 
-impl core::hash::Hash for PointDomain {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for PointDomain {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.id.hash(state);
 		self.position.iter().for_each(|pos| pos.to_array().map(|v| v.to_bits()).hash(state));
 	}
@@ -368,7 +368,7 @@ impl SegmentDomain {
 		self.id.iter().position(|&check_id| check_id == id)
 	}
 
-	fn resolve_range(&self, range: &core::ops::RangeInclusive<SegmentId>) -> Option<core::ops::RangeInclusive<usize>> {
+	fn resolve_range(&self, range: &std::ops::RangeInclusive<SegmentId>) -> Option<std::ops::RangeInclusive<usize>> {
 		match (self.id_to_index(*range.start()), self.id_to_index(*range.end())) {
 			(Some(start), Some(end)) if start.max(end) < self.handles.len().min(self.id.len()).min(self.start_point.len()).min(self.end_point.len()) => Some(start..=end),
 			_ => {
@@ -446,7 +446,7 @@ impl SegmentDomain {
 pub struct RegionDomain {
 	#[serde(alias = "ids")]
 	id: Vec<RegionId>,
-	segment_range: Vec<core::ops::RangeInclusive<SegmentId>>,
+	segment_range: Vec<std::ops::RangeInclusive<SegmentId>>,
 	fill: Vec<FillId>,
 }
 
@@ -476,7 +476,7 @@ impl RegionDomain {
 	/// Like [`Self::retain`] but also gives the function access to the segment range.
 	///
 	/// Note that this function requires an allocation that `retain` avoids.
-	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &core::ops::RangeInclusive<SegmentId>) -> bool) {
+	pub fn retain_with_region(&mut self, f: impl Fn(&RegionId, &std::ops::RangeInclusive<SegmentId>) -> bool) {
 		let keep = self.id.iter().zip(self.segment_range.iter()).map(|(id, range)| f(id, range)).collect::<Vec<_>>();
 		let mut iter = keep.iter().copied();
 		self.segment_range.retain(|_| iter.next().unwrap());
@@ -486,7 +486,7 @@ impl RegionDomain {
 		self.id.retain(|_| iter.next().unwrap());
 	}
 
-	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
+	pub fn push(&mut self, id: RegionId, segment_range: std::ops::RangeInclusive<SegmentId>, fill: FillId) {
 		if self.id.contains(&id) {
 			warn!("Duplicate region");
 			return;
@@ -504,7 +504,7 @@ impl RegionDomain {
 		self.id.iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(RegionId::ZERO)
 	}
 
-	pub fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut core::ops::RangeInclusive<SegmentId>)> {
+	pub fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut std::ops::RangeInclusive<SegmentId>)> {
 		self.id.iter().copied().zip(self.segment_range.iter_mut())
 	}
 
@@ -516,7 +516,7 @@ impl RegionDomain {
 		&self.id
 	}
 
-	pub fn segment_range(&self) -> &[core::ops::RangeInclusive<SegmentId>] {
+	pub fn segment_range(&self) -> &[std::ops::RangeInclusive<SegmentId>] {
 		&self.segment_range
 	}
 
@@ -545,7 +545,7 @@ impl RegionDomain {
 	/// Iterates over regions in the domain.
 	///
 	/// Tuple is: (id, segment_range, fill)
-	pub fn iter(&self) -> impl Iterator<Item = (RegionId, core::ops::RangeInclusive<SegmentId>, FillId)> + '_ {
+	pub fn iter(&self) -> impl Iterator<Item = (RegionId, std::ops::RangeInclusive<SegmentId>, FillId)> + '_ {
 		let ids = self.id.iter().copied();
 		let segment_range = self.segment_range.iter().cloned();
 		let fill = self.fill.iter().copied();

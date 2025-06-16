@@ -5,8 +5,8 @@ use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
 use bytemuck::{Pod, Zeroable};
-use core::fmt::Debug;
 use glam::DVec2;
+use std::fmt::Debug;
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
@@ -30,9 +30,9 @@ pub trait Linear {
 	fn lerp(self, other: Self, value: Self) -> Self
 	where
 		Self: Sized + Copy,
-		Self: core::ops::Sub<Self, Output = Self>,
-		Self: core::ops::Mul<Self, Output = Self>,
-		Self: core::ops::Add<Self, Output = Self>,
+		Self: std::ops::Sub<Self, Output = Self>,
+		Self: std::ops::Mul<Self, Output = Self>,
+		Self: std::ops::Add<Self, Output = Self>,
 	{
 		self + (other - self) * value
 	}
@@ -134,7 +134,7 @@ pub trait Pixel: Clone + Pod + Zeroable + Default {
 	}
 
 	fn byte_size() -> usize {
-		core::mem::size_of::<Self>()
+		std::mem::size_of::<Self>()
 	}
 }
 pub trait RGB: Pixel {
