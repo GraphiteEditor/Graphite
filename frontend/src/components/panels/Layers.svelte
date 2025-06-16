@@ -566,7 +566,7 @@
 
 				// Dimming
 				&:hover {	
-				 	background: var(--color-4-dimgray);
+					background: var(--color-4-dimgray);
 				}
 
 				&.selected {
