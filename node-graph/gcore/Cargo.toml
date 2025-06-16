@@ -46,9 +46,7 @@ rand_chacha = { workspace = true }
 bezier-rs = { workspace = true }
 specta = { workspace = true }
 rustybuzz = { workspace = true }
-image = { workspace = true, default-features = false, features = [
-	"png",
-] }
+image = { workspace = true }
 
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
