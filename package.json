@@ -13,5 +13,17 @@
 		"---------- UTILITIES ----------": "",
 		"lint": "cd frontend && npm run lint",
 		"lint-fix": "cd frontend && npm run lint-fix"
+	},
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"version": ">=20",
+			"onFail": "error"
+		},
+		"packageManager": {
+			"name": "npm",
+			"version": ">11",
+			"onFail": "error"
+		}
 	}
 }
