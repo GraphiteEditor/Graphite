@@ -28,7 +28,7 @@ use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{CircularSpacing, Fill, FillChoice, FillType, GradientStops, Spacing};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterFrame};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
