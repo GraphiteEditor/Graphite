@@ -485,7 +485,7 @@ impl NodeNetworkInterface {
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
 					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_core::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
+					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_types(encapsulating_node_id, encapsulating_node_id_path).into_iter().nth(export_index).flatten();
@@ -3131,7 +3131,7 @@ impl NodeNetworkInterface {
 				self.node_click_targets(node_id, network_path)
 					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
 			})
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph

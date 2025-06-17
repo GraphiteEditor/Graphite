@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 
 #[derive(Default)]
 pub struct ArtboardTool {
@@ -335,12 +335,12 @@ impl Fsm for ArtboardToolFsmState {
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
-						artboard: graphene_core::Artboard {
-							graphic_group: graphene_core::GraphicGroupTable::default(),
+						artboard: graphene_std::Artboard {
+							graphic_group: graphene_std::GraphicGroupTable::default(),
 							label: String::from("Artboard"),
 							location: start.min(end).round().as_ivec2(),
 							dimensions: (start.round() - end.round()).abs().as_ivec2(),
-							background: graphene_core::Color::WHITE,
+							background: graphene_std::Color::WHITE,
 							clip: false,
 						},
 					})
@@ -562,12 +562,12 @@ impl Fsm for ArtboardToolFsmState {
 mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
 
-	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_core::Artboard> {
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_std::Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {}", e),
 		};
-		instrumented.grab_all_input::<graphene_core::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented.grab_all_input::<graphene_std::append_artboard::ArtboardInput>(&editor.runtime).collect()
 	}
 
 	#[tokio::test]

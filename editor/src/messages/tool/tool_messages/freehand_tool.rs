@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use glam::DVec2;
 use graph_craft::document::NodeId;
-use graphene_core::Color;
-use graphene_core::vector::VectorModificationType;
+use graphene_std::Color;
+use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::{PointId, SegmentId};
 
 #[derive(Default)]
@@ -349,7 +349,7 @@ mod test_freehand {
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DVec2};
-	use graphene_core::vector::VectorData;
+	use graphene_std::vector::VectorData;
 
 	async fn get_vector_data(editor: &mut EditorTestUtils) -> Vec<(VectorData, DAffine2)> {
 		let document = editor.active_document();

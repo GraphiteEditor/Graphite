@@ -29,10 +29,10 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::RasterDataTable;
-use graphene_core::vector::style::ViewMode;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster::image::RasterDataTable;
 use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
+use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
@@ -1592,7 +1592,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let document_quad = document_to_viewport.inverse() * viewport_quad;
 
@@ -1600,7 +1600,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
-	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
@@ -1617,7 +1617,7 @@ impl DocumentMessageHandler {
 		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_core::renderer::Quad) -> bool {
+	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_std::renderer::Quad) -> bool {
 		// Get the bounding box of the layer in document space
 		let Some(bounding_box) = self.metadata().bounding_box_viewport(*layer) else { return false };
 
@@ -1711,7 +1711,7 @@ impl DocumentMessageHandler {
 			.selected_nodes()
 			.selected_visible_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
@@ -1719,7 +1719,7 @@ impl DocumentMessageHandler {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
@@ -2891,7 +2891,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroupTable::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), -1, "", &[]);
 	network_interface
 }
 

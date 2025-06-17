@@ -8,12 +8,12 @@ use glam::DVec2;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::RasterDataTable;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::Gradient;
+use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster::image::RasterDataTable;
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::style::Gradient;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -444,6 +444,6 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
 
-		layer_input_type == concrete!(graphene_core::raster::image::RasterDataTable<graphene_core::Color>)
+		layer_input_type == concrete!(graphene_std::raster::image::RasterDataTable<graphene_std::Color>)
 	}
 }

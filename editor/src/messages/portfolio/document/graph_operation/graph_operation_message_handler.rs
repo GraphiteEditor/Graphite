@@ -8,11 +8,11 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
-use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::Color;
+use graphene_std::renderer::Quad;
+use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::convert_usvg_path;
+use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 #[derive(Debug, Clone)]
 struct ArtboardInfo {
@@ -374,7 +374,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			warn!("Skip image")
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
+			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}

@@ -7,7 +7,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use graphene_core::raster::color::Color;
+use graphene_std::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays(context).into();
 

@@ -6,4 +6,4 @@ pub use animation_message::{AnimationMessage, AnimationMessageDiscriminant};
 #[doc(inline)]
 pub use animation_message_handler::AnimationMessageHandler;
 
-pub use graphene_core::application_io::TimingInformation;
+pub use graphene_std::application_io::TimingInformation;

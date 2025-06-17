@@ -21,7 +21,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graphene_core::*;
+use graphene_std::*;
 use renderer::Quad;
 use std::cmp::Ordering;
 

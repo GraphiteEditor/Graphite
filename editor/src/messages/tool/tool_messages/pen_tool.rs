@@ -13,9 +13,9 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
-use graphene_core::Color;
-use graphene_core::vector::{PointId, VectorModificationType};
+use graphene_std::Color;
 use graphene_std::vector::{HandleId, ManipulatorPointId, NoHashBuilder, SegmentId, StrokeId, VectorData};
+use graphene_std::vector::{PointId, VectorModificationType};
 
 #[derive(Default)]
 pub struct PenTool {

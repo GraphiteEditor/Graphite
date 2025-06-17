@@ -2,7 +2,7 @@ use super::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::*;
 use glam::DVec2;
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
