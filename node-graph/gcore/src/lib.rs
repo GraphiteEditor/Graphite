@@ -1,7 +1,6 @@
 extern crate alloc;
 
-#[cfg_attr(feature = "log", macro_use)]
-#[cfg(feature = "log")]
+#[macro_use]
 extern crate log;
 pub use crate as graphene_core;
 pub use num_traits;

@@ -7,8 +7,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["serde", "kurbo", "log", "wasm"]
-log = ["dep:log"]
+default = ["serde", "wasm"]
 nightly = []
 type_id_logging = []
 wasm = ["web-sys"]
@@ -54,11 +53,11 @@ image = { workspace = true, default-features = false, features = [
 # Required dependencies
 half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1" }
+kurbo = { workspace = true }
+log = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true, features = ["derive"] }
-log = { workspace = true, optional = true }
-kurbo = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 vello = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
