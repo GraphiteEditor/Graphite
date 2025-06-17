@@ -1170,8 +1170,8 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let grid_type_index = grid::GridTypeInput::INDEX;
 	let spacing_index = grid::SpacingInput::<f64>::INDEX;
 	let angles_index = grid::AnglesInput::INDEX;
-	let rows_index = grid::RowsInput::INDEX;
 	let columns_index = grid::ColumnsInput::INDEX;
+	let rows_index = grid::RowsInput::INDEX;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1209,8 +1209,8 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	}
 
-	let rows = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, rows_index, true, context), NumberInput::default().min(1.));
 	let columns = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, columns_index, true, context), NumberInput::default().min(1.));
+	let rows = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, rows_index, true, context), NumberInput::default().min(1.));
 
 	widgets.extend([LayoutGroup::Row { widgets: rows }, LayoutGroup::Row { widgets: columns }]);
 
