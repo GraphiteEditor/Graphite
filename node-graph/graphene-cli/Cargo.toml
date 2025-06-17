@@ -31,7 +31,7 @@ futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 # Required dependencies
 clap = { version = "4.5.31", features = ["cargo", "derive"] }

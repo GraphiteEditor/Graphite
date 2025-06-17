@@ -41,24 +41,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
 futures = { workspace = true }
-glam = { workspace = true, features = ["serde", "debug-glam-assert"] }
+glam = { workspace = true }
 derivative = { workspace = true }
 specta = { workspace = true }
 dyn-any = { workspace = true }
 num_enum = { workspace = true }
 usvg = { workspace = true }
 once_cell = { workspace = true }
-web-sys = { workspace = true, features = [
-	"Document",
-	"DomRect",
-	"Element",
-	"HtmlCanvasElement",
-	"CanvasRenderingContext2d",
-	"CanvasPattern",
-	"OffscreenCanvas",
-	"OffscreenCanvasRenderingContext2d",
-	"TextMetrics",
-] }
+web-sys = { workspace = true }
 
 # Required dependencies
 spin = "0.9.8"
@@ -75,7 +65,7 @@ ron = { workspace = true, optional = true }
 # Workspace dependencies
 env_logger = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true }
 
 [lints.rust]
 # TODO: figure out why we check these features when they do not exist

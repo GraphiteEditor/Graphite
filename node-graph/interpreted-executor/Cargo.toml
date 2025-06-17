@@ -15,7 +15,7 @@ graphene-std = { workspace = true, features = ["serde"] }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
-dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
+dyn-any = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }

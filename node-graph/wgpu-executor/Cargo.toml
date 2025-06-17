@@ -12,17 +12,14 @@ passthrough = []
 [dependencies]
 # Local dependencies
 graphene-core = { workspace = true, features = ["wgpu"] }
-dyn-any = { workspace = true, features = ["log-bad-types", "rc"] }
+dyn-any = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }
 anyhow = { workspace = true }
-wgpu = { workspace = true, features = [
-	"spirv",
-	"strict_asserts",
-] }
+wgpu = { workspace = true }
 futures = { workspace = true }
-web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
+web-sys = { workspace = true }
 winit = { workspace = true }
 vello = { workspace = true }
