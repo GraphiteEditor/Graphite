@@ -1872,9 +1872,14 @@ fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] dista
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn count(_: impl Ctx, source: VectorDataTable) -> u64 {
+	source.instance_iter().count() as u64
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn path_length(_: impl Ctx, source: VectorDataTable) -> f64 {
 	source
-		.instance_ref_iter()
+		.instance_iter()
 		.map(|vector_data_instance| {
 			let transform = vector_data_instance.transform;
 			vector_data_instance
