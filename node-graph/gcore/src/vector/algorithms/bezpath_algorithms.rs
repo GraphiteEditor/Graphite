@@ -18,7 +18,7 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_l
 	}
 }
 
-pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, segments_length: &[f64]) -> Option<BezPath> {
+pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, count_points : bool, segments_length: &[f64]) -> Option<BezPath> {
 	let mut sample_bezpath = BezPath::new();
 
 	let was_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
@@ -34,17 +34,21 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	}
 
 	// Determine the number of points to generate along the path.
-	let sample_count = if adaptive_spacing {
-		// Calculate point count to evenly distribute points while covering the entire path.
-		// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-		(used_length / spacing).round()
-	} else {
-		// Calculate point count based on exact spacing, which may not cover the entire path.
+	let sample_count = if count_points {
+		spacing
+	}else {
+		if adaptive_spacing {
+			// Calculate point count to evenly distribute points while covering the entire path.
+			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
+			(used_length / spacing).round()
+		} else {
+			// Calculate point count based on exact spacing, which may not cover the entire path.
 
-		// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-		let count = (used_length / spacing + f64::EPSILON).floor();
-		used_length -= used_length % spacing;
-		count
+			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+			let count = (used_length / spacing + f64::EPSILON).floor();
+			used_length -= used_length % spacing;
+			count
+		}
 	};
 
 	// Skip if there are no points to generate.
