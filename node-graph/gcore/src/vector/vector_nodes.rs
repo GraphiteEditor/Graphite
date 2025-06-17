@@ -1872,6 +1872,24 @@ fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] dista
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn path_length(_: impl Ctx, source: VectorDataTable) -> f64 {
+	source
+		.instance_ref_iter()
+		.map(|vector_data_instance| {
+			let transform = vector_data_instance.transform;
+			vector_data_instance
+				.instance
+				.stroke_bezpath_iter()
+				.map(|mut bezpath| {
+					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+					bezpath.perimeter(DEFAULT_ACCURACY)
+				})
+				.sum::<f64>()
+		})
+		.sum()
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorDataTable>) -> f64 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
