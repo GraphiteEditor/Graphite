@@ -91,44 +91,48 @@ pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() { pivot } else { DVec2::splat(0.5) }
 }
 
-/// ![](https://files.keavon.com/-/OptimisticSpotlessTinamou/capture.png)
-///
-/// Source:
-/// ```tex
-/// \begin{bmatrix}
-/// S_{x}\cos(\theta)-S_{y}\sin(\theta)H_{y} & S_{x}\cos(\theta)H_{x}-S_{y}\sin(\theta) & T_{x}\\
-/// S_{x}\sin(\theta)+S_{y}\cos(\theta)H_{y} & S_{x}\sin(\theta)H_{x}+S_{y}\cos(\theta) & T_{y}\\
-/// 0 & 0 & 1
-/// \end{bmatrix}
-/// ```
-#[test]
-fn derive_transform() {
-	for shear_x in -10..=10 {
-		let shear_x = (shear_x as f64) / 2.;
-		for angle in (0..=360).step_by(15) {
-			let angle = (angle as f64).to_radians();
-			for scale_x in 1..10 {
-				let scale_x = (scale_x as f64) / 5.;
-				for scale_y in 1..10 {
-					let scale_y = (scale_y as f64) / 5.;
+#[cfg(test)]
+mod tests {
+	use super::*;
+	/// ![](https://files.keavon.com/-/OptimisticSpotlessTinamou/capture.png)
+	///
+	/// Source:
+	/// ```tex
+	/// \begin{bmatrix}
+	/// S_{x}\cos(\theta)-S_{y}\sin(\theta)H_{y} & S_{x}\cos(\theta)H_{x}-S_{y}\sin(\theta) & T_{x}\\
+	/// S_{x}\sin(\theta)+S_{y}\cos(\theta)H_{y} & S_{x}\sin(\theta)H_{x}+S_{y}\cos(\theta) & T_{y}\\
+	/// 0 & 0 & 1
+	/// \end{bmatrix}
+	/// ```
+	#[test]
+	fn derive_transform() {
+		for shear_x in -10..=10 {
+			let shear_x = (shear_x as f64) / 2.;
+			for angle in (0..=360).step_by(15) {
+				let angle = (angle as f64).to_radians();
+				for scale_x in 1..10 {
+					let scale_x = (scale_x as f64) / 5.;
+					for scale_y in 1..10 {
+						let scale_y = (scale_y as f64) / 5.;
 
-					let shear = DVec2::new(shear_x, 0.);
-					let scale = DVec2::new(scale_x, scale_y);
-					let translate = DVec2::new(5666., 644.);
+						let shear = DVec2::new(shear_x, 0.);
+						let scale = DVec2::new(scale_x, scale_y);
+						let translate = DVec2::new(5666., 644.);
 
-					let original_transform = DAffine2::from_cols(
-						DVec2::new(scale.x * angle.cos() - scale.y * angle.sin() * shear.y, scale.x * angle.sin() + scale.y * angle.cos() * shear.y),
-						DVec2::new(scale.x * angle.cos() * shear.x - scale.y * angle.sin(), scale.x * angle.sin() * shear.x + scale.y * angle.cos()),
-						translate,
-					);
+						let original_transform = DAffine2::from_cols(
+							DVec2::new(scale.x * angle.cos() - scale.y * angle.sin() * shear.y, scale.x * angle.sin() + scale.y * angle.cos() * shear.y),
+							DVec2::new(scale.x * angle.cos() * shear.x - scale.y * angle.sin(), scale.x * angle.sin() * shear.x + scale.y * angle.cos()),
+							translate,
+						);
 
-					let (new_scale, new_angle, new_translation, new_shear) = compute_scale_angle_translation_shear(original_transform);
-					let new_transform = DAffine2::from_scale_angle_translation(new_scale, new_angle, new_translation) * DAffine2::from_cols_array(&[1., new_shear.y, new_shear.x, 1., 0., 0.]);
+						let (new_scale, new_angle, new_translation, new_shear) = compute_scale_angle_translation_shear(original_transform);
+						let new_transform = DAffine2::from_scale_angle_translation(new_scale, new_angle, new_translation) * DAffine2::from_cols_array(&[1., new_shear.y, new_shear.x, 1., 0., 0.]);
 
-					assert!(
-						new_transform.abs_diff_eq(original_transform, 1e-10),
-						"original_transform {original_transform} new_transform {new_transform} / scale {scale} new_scale {new_scale} / angle {angle} new_angle {new_angle} / shear {shear} / new_shear {new_shear}",
-					);
+						assert!(
+							new_transform.abs_diff_eq(original_transform, 1e-10),
+							"original_transform {original_transform} new_transform {new_transform} / scale {scale} new_scale {new_scale} / angle {angle} new_angle {new_angle} / shear {shear} / new_shear {new_shear}",
+						);
+					}
 				}
 			}
 		}

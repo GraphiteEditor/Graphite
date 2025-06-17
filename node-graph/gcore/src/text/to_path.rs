@@ -239,11 +239,15 @@ impl<'a> Iterator for SplitWordsIncludingSpaces<'a> {
 	}
 }
 
-#[test]
-fn split_words_including_spaces() {
-	let mut split_words = SplitWordsIncludingSpaces::new("hello  world     .");
-	assert_eq!(split_words.next(), Some("hello  "));
-	assert_eq!(split_words.next(), Some("world     "));
-	assert_eq!(split_words.next(), Some("."));
-	assert_eq!(split_words.next(), None);
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn split_words_including_spaces() {
+		let mut split_words = SplitWordsIncludingSpaces::new("hello  world     .");
+		assert_eq!(split_words.next(), Some("hello  "));
+		assert_eq!(split_words.next(), Some("world     "));
+		assert_eq!(split_words.next(), Some("."));
+		assert_eq!(split_words.next(), None);
+	}
 }

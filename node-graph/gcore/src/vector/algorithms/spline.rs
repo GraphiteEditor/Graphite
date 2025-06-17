@@ -136,43 +136,47 @@ pub fn solve_spline_first_handle_closed(points: &[DVec2]) -> Vec<DVec2> {
 	x
 }
 
-#[test]
-fn closed_spline() {
-	use crate::vector::misc::{dvec2_to_point, point_to_dvec2};
-	use kurbo::{BezPath, ParamCurve, ParamCurveDeriv};
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn closed_spline() {
+		use crate::vector::misc::{dvec2_to_point, point_to_dvec2};
+		use kurbo::{BezPath, ParamCurve, ParamCurveDeriv};
 
-	// These points are just chosen arbitrary
-	let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
+		// These points are just chosen arbitrary
+		let points = [DVec2::new(0., 0.), DVec2::new(0., 0.), DVec2::new(6., 5.), DVec2::new(7., 9.), DVec2::new(2., 3.)];
 
-	// List of first handle or second point in a cubic bezier curve.
-	let first_handles = solve_spline_first_handle_closed(&points);
+		// List of first handle or second point in a cubic bezier curve.
+		let first_handles = solve_spline_first_handle_closed(&points);
 
-	// Construct the Subpath
-	let mut bezpath = BezPath::new();
-	bezpath.move_to(dvec2_to_point(points[0]));
+		// Construct the Subpath
+		let mut bezpath = BezPath::new();
+		bezpath.move_to(dvec2_to_point(points[0]));
 
-	for i in 0..first_handles.len() {
-		let next_i = i + 1;
-		let next_i = if next_i == first_handles.len() { 0 } else { next_i };
+		for i in 0..first_handles.len() {
+			let next_i = i + 1;
+			let next_i = if next_i == first_handles.len() { 0 } else { next_i };
 
-		// First handle or second point of a cubic Bezier curve.
-		let p1 = dvec2_to_point(first_handles[i]);
-		// Second handle or third point of a cubic Bezier curve.
-		let p2 = dvec2_to_point(2. * points[next_i] - first_handles[next_i]);
-		// Endpoint or fourth point of a cubic Bezier curve.
-		let p3 = dvec2_to_point(points[next_i]);
+			// First handle or second point of a cubic Bezier curve.
+			let p1 = dvec2_to_point(first_handles[i]);
+			// Second handle or third point of a cubic Bezier curve.
+			let p2 = dvec2_to_point(2. * points[next_i] - first_handles[next_i]);
+			// Endpoint or fourth point of a cubic Bezier curve.
+			let p3 = dvec2_to_point(points[next_i]);
 
-		bezpath.curve_to(p1, p2, p3);
-	}
+			bezpath.curve_to(p1, p2, p3);
+		}
 
-	// For each pair of bézier curves, ensure that the second derivative is continuous
-	for (bézier_a, bézier_b) in bezpath.segments().zip(bezpath.segments().skip(1).chain(bezpath.segments().take(1))) {
-		let derivative2_end_a = point_to_dvec2(bézier_a.to_cubic().deriv().eval(1.));
-		let derivative2_start_b = point_to_dvec2(bézier_b.to_cubic().deriv().eval(0.));
+		// For each pair of bézier curves, ensure that the second derivative is continuous
+		for (bézier_a, bézier_b) in bezpath.segments().zip(bezpath.segments().skip(1).chain(bezpath.segments().take(1))) {
+			let derivative2_end_a = point_to_dvec2(bézier_a.to_cubic().deriv().eval(1.));
+			let derivative2_start_b = point_to_dvec2(bézier_b.to_cubic().deriv().eval(0.));
 
-		assert!(
-			derivative2_end_a.abs_diff_eq(derivative2_start_b, 1e-10),
-			"second derivative at the end of a {derivative2_end_a} is equal to the second derivative at the start of b {derivative2_start_b}"
-		);
+			assert!(
+				derivative2_end_a.abs_diff_eq(derivative2_start_b, 1e-10),
+				"second derivative at the end of a {derivative2_end_a} is equal to the second derivative at the start of b {derivative2_start_b}"
+			);
+		}
 	}
 }
