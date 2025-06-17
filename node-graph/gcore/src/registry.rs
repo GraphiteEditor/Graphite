@@ -26,7 +26,7 @@ pub mod types {
 	pub type IntegerCount = u32;
 	/// Unsigned integer to be used for random seeds
 	pub type SeedValue = u32;
-	/// Non-negative integer vector2 with px unit
+	/// Non-negative integer coordinate with px unit
 	pub type Resolution = glam::UVec2;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
@@ -54,6 +54,9 @@ pub struct FieldMetadata {
 	pub number_min: Option<f64>,
 	pub number_max: Option<f64>,
 	pub number_mode_range: Option<(f64, f64)>,
+	pub number_display_decimal_places: Option<u32>,
+	pub number_step: Option<f64>,
+	pub unit: Option<&'static str>,
 }
 
 pub trait ChoiceTypeStatic: Sized + Copy + crate::vector::misc::AsU32 + Send + Sync {
