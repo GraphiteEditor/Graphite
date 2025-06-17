@@ -2420,14 +2420,17 @@ fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Messag
 			let at_least_one_anchor_selected = shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 			let at_least_one_point_selected = shape_editor.selected_points().count() >= 1;
 
-			let single_colinear_anchor_selected = if single_anchor_selected {
-				let anchor = shape_editor.selected_points().next().unwrap();
-				let layer = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().unwrap();
-				let vector_data = document.network_interface.compute_modified_vector(layer).unwrap();
-				vector_data.colinear(*anchor)
-			} else {
-				false
-			};
+			let mut single_colinear_anchor_selected = false;
+			if single_anchor_selected {
+				if let (Some(anchor), Some(layer)) = (
+					shape_editor.selected_points().next(),
+					document.network_interface.selected_nodes().selected_layers(document.metadata()).next(),
+				) {
+					if let Some(vector_data) = document.network_interface.compute_modified_vector(layer) {
+						single_colinear_anchor_selected = vector_data.colinear(*anchor)
+					}
+				}
+			}
 
 			let mut drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
 			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
