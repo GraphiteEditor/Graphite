@@ -4,7 +4,6 @@ use glam::{DAffine2, DVec2};
 
 #[node_macro::node(category("Debug"))]
 fn log_to_console<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2, Color, Option<Color>)] value: T) -> T {
-	#[cfg(not(target_arch = "spirv"))]
 	// KEEP THIS `debug!()` - It acts as the output for the debug node itself
 	log::debug!("{:#?}", value);
 	value

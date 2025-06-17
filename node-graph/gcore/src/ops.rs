@@ -14,9 +14,6 @@ use rand::{Rng, SeedableRng};
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
-
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
 struct MathNodeContext {

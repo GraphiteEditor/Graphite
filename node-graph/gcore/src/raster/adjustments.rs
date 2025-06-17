@@ -11,9 +11,6 @@ use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
 use dyn_any::DynAny;
-#[cfg(feature = "serde")]
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 

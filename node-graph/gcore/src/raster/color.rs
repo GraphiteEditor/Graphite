@@ -5,7 +5,6 @@ use dyn_any::DynAny;
 use half::f16;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Euclid;
-#[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 use std::hash::Hash;

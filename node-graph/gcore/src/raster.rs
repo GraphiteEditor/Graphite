@@ -13,10 +13,8 @@ use spirv_std::num_traits::float::Float;
 
 pub mod adjustments;
 pub mod bbox;
-#[cfg(not(target_arch = "spirv"))]
 pub mod brush_cache;
 pub mod color;
-#[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
 
