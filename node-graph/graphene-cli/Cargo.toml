@@ -20,13 +20,13 @@ gpu = [
 
 [dependencies]
 # Local dependencies
-graphene-std = { path = "../gstd", features = ["serde"] }
-interpreted-executor = { path = "../interpreted-executor" }
+graphene-core = { workspace = true }
+graphene-std = { workspace = true, features = ["serde"] }
+interpreted-executor = { workspace = true }
+graph-craft = { workspace = true, features = ["loading"] }
 
 # Workspace dependencies
 log = { workspace = true }
-graph-craft = { workspace = true, features = ["loading"] }
-graphene-core = { workspace = true }
 futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }

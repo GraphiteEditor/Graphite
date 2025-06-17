@@ -24,22 +24,20 @@ serde = [
 ]
 
 [dependencies]
+# Local dependencies
+math-parser = { workspace = true }
+
 # Workspace dependencies
-bytemuck = { workspace = true, features = ["derive"] }
+bytemuck = { workspace = true }
 node-macro = { workspace = true }
 num-derive = { workspace = true }
-num-traits = { workspace = true, default-features = false, features = ["i128"] }
+num-traits = { workspace = true }
 usvg = { workspace = true }
 rand = { workspace = true, default-features = false, features = ["std_rng"] }
-glam = { workspace = true, default-features = false, features = [
-	"scalar-math",
-] }
+glam = { workspace = true }
 serde_json = { workspace = true }
-petgraph = { workspace = true, default-features = false, features = [
-	"graphmap",
-] }
+petgraph = { workspace = true }
 rustc-hash = { workspace = true }
-math-parser = { path = "../../libraries/math-parser" }
 dyn-any = { workspace = true }
 ctor = { workspace = true }
 rand_chacha = { workspace = true }
@@ -47,10 +45,8 @@ bezier-rs = { workspace = true }
 specta = { workspace = true }
 rustybuzz = { workspace = true }
 image = { workspace = true }
-
-# Required dependencies
-half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
-tinyvec = { version = "1" }
+half = { workspace = true }
+tinyvec = { workspace = true }
 kurbo = { workspace = true }
 log = { workspace = true }
 

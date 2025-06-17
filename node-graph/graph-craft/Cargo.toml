@@ -15,14 +15,13 @@ loading = ["serde_json", "serde"]
 
 [dependencies]
 # Local dependencies
-dyn-any = { path = "../../libraries/dyn-any", features = [
+dyn-any = { workspace = true, features = [
 	"log-bad-types",
 	"rc",
-	"glam",
 ] }
+graphene-core = { workspace = true }
 
 # Workspace dependencies
-graphene-core = { workspace = true }
 log = { workspace = true }
 glam = { workspace = true }
 bezier-rs = { workspace = true }
@@ -30,9 +29,9 @@ specta = { workspace = true }
 rustc-hash = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
-wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
+wgpu-executor = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
@@ -53,10 +52,8 @@ winit = { workspace = true }
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
 pretty_assertions = { workspace = true }
-
-# Required dependencies
-criterion = { version = "0.5", features = ["html_reports"] }
-iai-callgrind = { version = "0.12.3" }
+criterion = { workspace = true }
+iai-callgrind = { workspace = true }
 
 # Benchmarks
 [[bench]]
