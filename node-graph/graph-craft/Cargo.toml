@@ -15,10 +15,7 @@ loading = ["serde_json", "serde"]
 
 [dependencies]
 # Local dependencies
-dyn-any = { workspace = true, features = [
-	"log-bad-types",
-	"rc",
-] }
+dyn-any = { workspace = true }
 graphene-core = { workspace = true }
 
 # Workspace dependencies

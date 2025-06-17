@@ -29,7 +29,7 @@ graphite-editor = { path = "../../editor", features = [
 # Workspace dependencies
 axum = { workspace = true }
 chrono = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true }
 ron = { workspace = true }
 log = { workspace = true }
 fern = { workspace = true }
