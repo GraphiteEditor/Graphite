@@ -1959,8 +1959,9 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::Node;
+	use crate::{Node, transform};
 	use bezier_rs::Bezier;
+	use kurbo::Rect;
 	use std::pin::Pin;
 
 	#[derive(Clone)]
@@ -1976,6 +1977,20 @@ mod test {
 
 	fn vector_node(data: Subpath<PointId>) -> VectorDataTable {
 		VectorDataTable::new(VectorData::from_subpath(data))
+	}
+
+	fn vector_node_from_bezpath(bezpath: BezPath, transform: DAffine2) -> VectorDataTable {
+		let mut instance = VectorData::default();
+		instance.append_bezpath(bezpath);
+
+		let mut vector_data_table = VectorDataTable::default();
+		vector_data_table.push(Instance {
+			instance,
+			transform,
+			..Default::default()
+		});
+
+		vector_data_table
 	}
 
 	#[tokio::test]
@@ -2104,10 +2119,17 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn lengths() {
+	async fn segment_lengths() {
 		let subpath = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
 		let lengths = subpath_segment_lengths(Footprint::default(), vector_node(subpath)).await;
 		assert_eq!(lengths, vec![100.]);
+	}
+	#[tokio::test]
+	async fn path_length() {
+		let subpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
+		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
+		let length = super::path_length(Footprint::default(), vector_node_from_bezpath(subpath, transform)).await;
+		assert_eq!(length, 808.);
 	}
 	#[tokio::test]
 	async fn spline() {
