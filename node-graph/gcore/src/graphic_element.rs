@@ -26,7 +26,7 @@ impl Default for AlphaBlending {
 		Self::new()
 	}
 }
-impl std::hash::Hash for AlphaBlending {
+impl Hash for AlphaBlending {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
 		self.fill.to_bits().hash(state);

@@ -252,7 +252,7 @@ impl TangentInverse for f64 {
 		if radians { self.atan() } else { self.atan().to_degrees() }
 	}
 }
-impl TangentInverse for glam::DVec2 {
+impl TangentInverse for DVec2 {
 	type Output = f64;
 	fn atan(self, radians: bool) -> Self::Output {
 		if radians { self.y.atan2(self.x) } else { self.y.atan2(self.x).to_degrees() }
@@ -586,7 +586,7 @@ impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Nod
 pub struct IntoNode<O>(PhantomData<O>);
 impl<O> IntoNode<O> {
 	pub const fn new() -> Self {
-		Self(std::marker::PhantomData)
+		Self(PhantomData)
 	}
 }
 impl<O> Default for IntoNode<O> {
@@ -598,7 +598,7 @@ impl<'input, I: 'input, O: 'input> Node<'input, I> for IntoNode<O>
 where
 	I: Into<O> + Sync + Send,
 {
-	type Output = ::dyn_any::DynFuture<'input, O>;
+	type Output = dyn_any::DynFuture<'input, O>;
 
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -613,8 +613,8 @@ mod test {
 
 	#[test]
 	pub fn dot_product_function() {
-		let vector_a = glam::DVec2::new(1., 2.);
-		let vector_b = glam::DVec2::new(3., 4.);
+		let vector_a = DVec2::new(1., 2.);
+		let vector_b = DVec2::new(3., 4.);
 		assert_eq!(dot_product((), vector_a, vector_b), 11.);
 	}
 

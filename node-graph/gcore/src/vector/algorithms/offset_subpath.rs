@@ -8,7 +8,7 @@ const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-3;
 /// Constant used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-3;
 
-fn segment_to_bezier(seg: kurbo::PathSeg) -> bezier_rs::Bezier {
+fn segment_to_bezier(seg: kurbo::PathSeg) -> Bezier {
 	match seg {
 		kurbo::PathSeg::Line(line) => Bezier::from_linear_coordinates(line.p0.x, line.p0.y, line.p1.x, line.p1.y),
 		kurbo::PathSeg::Quad(quad_bez) => Bezier::from_quadratic_coordinates(quad_bez.p0.x, quad_bez.p0.y, quad_bez.p1.x, quad_bez.p1.y, quad_bez.p1.x, quad_bez.p1.y),

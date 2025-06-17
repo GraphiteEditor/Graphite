@@ -1949,7 +1949,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, T: 'i + Clone + Send> Node<'i, Footprint> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn std::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: Footprint) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })
@@ -2111,7 +2111,7 @@ mod test {
 	}
 
 	#[track_caller]
-	fn contains_segment(vector: VectorData, target: bezier_rs::Bezier) {
+	fn contains_segment(vector: VectorData, target: Bezier) {
 		let segments = vector.segment_bezier_iter().map(|x| x.1);
 		let count = segments.filter(|bezier| bezier.abs_diff_eq(&target, 0.01) || bezier.reversed().abs_diff_eq(&target, 0.01)).count();
 		assert_eq!(
@@ -2132,16 +2132,16 @@ mod test {
 		assert_eq!(beveled.segment_domain.ids().len(), 8);
 
 		// Segments
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 0.), DVec2::new(95., 0.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 100.), DVec2::new(95., 100.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(0., 5.), DVec2::new(0., 95.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 5.), DVec2::new(100., 95.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(5., 0.), DVec2::new(95., 0.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(5., 100.), DVec2::new(95., 100.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(0., 5.), DVec2::new(0., 95.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(100., 5.), DVec2::new(100., 95.)));
 
 		// Joins
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 0.), DVec2::new(0., 5.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(95., 0.), DVec2::new(100., 5.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 95.), DVec2::new(95., 100.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(5., 100.), DVec2::new(0., 95.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(5., 0.), DVec2::new(0., 5.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(95., 0.), DVec2::new(100., 5.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(100., 95.), DVec2::new(95., 100.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(5., 100.), DVec2::new(0., 95.)));
 	}
 
 	#[tokio::test]
@@ -2155,12 +2155,12 @@ mod test {
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
 
 		// Segments
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(-100., 0.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(-100., 0.)));
 		let trimmed = curve.trim(bezier_rs::TValue::Euclidean(5. / curve.length(Some(0.00001))), bezier_rs::TValue::Parametric(1.));
 		contains_segment(beveled.clone(), trimmed);
 
 		// Join
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), trimmed.start));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(-5., 0.), trimmed.start));
 	}
 
 	#[tokio::test]
@@ -2179,12 +2179,12 @@ mod test {
 		assert_eq!(beveled.segment_domain.ids().len(), 3);
 
 		// Segments
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(-10., 0.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(-10., 0.)));
 		let trimmed = curve.trim(bezier_rs::TValue::Euclidean(5. / curve.length(Some(0.00001))), bezier_rs::TValue::Parametric(1.));
 		contains_segment(beveled.clone(), trimmed);
 
 		// Join
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), trimmed.start));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(-5., 0.), trimmed.start));
 	}
 
 	#[tokio::test]
@@ -2197,13 +2197,13 @@ mod test {
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
 
 		// Segments
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(0., 0.), DVec2::new(50., 0.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(100., 50.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(0., 0.), DVec2::new(50., 0.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(100., 50.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
 
 		// Joins
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(50., 0.), DVec2::new(100., 50.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(50., 0.), DVec2::new(100., 50.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(100., 50.), DVec2::new(50., 100.)));
 	}
 
 	#[tokio::test]
@@ -2218,11 +2218,11 @@ mod test {
 		assert_eq!(beveled.segment_domain.ids().len(), 5);
 
 		// Segments
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-100., 0.), DVec2::new(-5., 0.)));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(0., 0.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(-100., 0.), DVec2::new(-5., 0.)));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(DVec2::new(-5., 0.), DVec2::new(0., 0.)));
 		contains_segment(beveled.clone(), point);
 		let [start, end] = curve.split(bezier_rs::TValue::Euclidean(5. / curve.length(Some(0.00001))));
-		contains_segment(beveled.clone(), bezier_rs::Bezier::from_linear_dvec2(start.start, start.end));
+		contains_segment(beveled.clone(), Bezier::from_linear_dvec2(start.start, start.end));
 		contains_segment(beveled.clone(), end);
 	}
 }

@@ -111,12 +111,8 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 		})
 		.collect();
 
-	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		syn::Error::new(
-			proc_macro2::Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
-		)
-	})?;
+	let crate_name = proc_macro_crate::crate_name("graphene-core")
+		.map_err(|e| syn::Error::new(Span::call_site(), format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e)))?;
 	let crate_name = match crate_name {
 		proc_macro_crate::FoundCrate::Itself => quote!(crate),
 		proc_macro_crate::FoundCrate::Name(name) => {

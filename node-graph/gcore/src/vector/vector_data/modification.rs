@@ -416,7 +416,7 @@ impl VectorModification {
 	}
 }
 
-impl std::hash::Hash for VectorModification {
+impl Hash for VectorModification {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		generate_uuid().hash(state)
 	}

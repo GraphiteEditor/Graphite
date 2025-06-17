@@ -108,10 +108,10 @@ pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::ne
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<String, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
-pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n + Send>>;
+pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
 #[cfg(target_arch = "wasm32")]
 pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
-pub type LocalFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
+pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
 #[cfg(not(target_arch = "wasm32"))]
 pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
 #[cfg(target_arch = "wasm32")]
@@ -184,7 +184,7 @@ impl NodeContainer {
 	#[cfg(feature = "dealloc_nodes")]
 	unsafe fn dealloc_unchecked(&mut self) {
 		unsafe {
-			std::mem::drop(Box::from_raw(self.node as *mut TypeErasedNode));
+			drop(Box::from_raw(self.node as *mut TypeErasedNode));
 		}
 	}
 }
@@ -227,8 +227,8 @@ impl<I, O> DowncastBothNode<I, O> {
 	pub const fn new(node: SharedNodeContainer) -> Self {
 		Self {
 			node,
-			_i: std::marker::PhantomData,
-			_o: std::marker::PhantomData,
+			_i: PhantomData,
+			_o: PhantomData,
 		}
 	}
 }
@@ -271,8 +271,8 @@ pub struct DynAnyNode<I, O, Node> {
 
 impl<'input, I, O, N> Node<'input, Any<'input>> for DynAnyNode<I, O, N>
 where
-	I: 'input + dyn_any::StaticType + WasmNotSend,
-	O: 'input + dyn_any::StaticType + WasmNotSend,
+	I: 'input + StaticType + WasmNotSend,
+	O: 'input + StaticType + WasmNotSend,
 	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	type Output = FutureAny<'input>;
@@ -299,15 +299,15 @@ where
 }
 impl<'input, I, O, N> DynAnyNode<I, O, N>
 where
-	I: 'input + dyn_any::StaticType,
-	O: 'input + dyn_any::StaticType,
+	I: 'input + StaticType,
+	O: 'input + StaticType,
 	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
 {
 	pub const fn new(node: N) -> Self {
 		Self {
 			node,
-			_i: std::marker::PhantomData,
-			_o: std::marker::PhantomData,
+			_i: PhantomData,
+			_o: PhantomData,
 		}
 	}
 }

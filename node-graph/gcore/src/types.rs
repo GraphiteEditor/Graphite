@@ -266,8 +266,8 @@ impl Type {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
 			alias: None,
-			size: std::mem::size_of::<T>(),
-			align: std::mem::align_of::<T>(),
+			size: size_of::<T>(),
+			align: align_of::<T>(),
 		})
 	}
 

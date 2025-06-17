@@ -134,7 +134,7 @@ pub trait Pixel: Clone + Pod + Zeroable + Default {
 	}
 
 	fn byte_size() -> usize {
-		std::mem::size_of::<Self>()
+		size_of::<Self>()
 	}
 }
 pub trait RGB: Pixel {

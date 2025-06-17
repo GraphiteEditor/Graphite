@@ -98,10 +98,10 @@ impl Rect {
 }
 
 impl std::ops::Mul<Rect> for DAffine2 {
-	type Output = super::Quad;
+	type Output = Quad;
 
 	fn mul(self, rhs: Rect) -> Self::Output {
-		self * super::Quad::from_box(rhs.0)
+		self * Quad::from_box(rhs.0)
 	}
 }
 

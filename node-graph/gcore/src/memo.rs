@@ -15,7 +15,7 @@ pub struct MemoNode<T, CachedNode> {
 impl<'i, I: Hash + 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for MemoNode<T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
-	for<'a> <CachedNode as Node<'a, I>>::Output: std::future::Future<Output = T> + WasmNotSend,
+	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
 {
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
@@ -63,7 +63,7 @@ pub struct ImpureMemoNode<I, T, CachedNode> {
 impl<'i, I: 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
-	for<'a> <CachedNode as Node<'a, I>>::Output: std::future::Future<Output = T> + WasmNotSend,
+	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
 {
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
@@ -179,7 +179,7 @@ impl<T: Hash> MemoHash<T> {
 	}
 
 	fn calc_hash(data: &T) -> u64 {
-		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		let mut hasher = DefaultHasher::new();
 		data.hash(&mut hasher);
 		hasher.finish()
 	}
@@ -206,7 +206,7 @@ impl<T: Hash> Hash for MemoHash<T> {
 	}
 }
 
-impl<T: Hash> std::ops::Deref for MemoHash<T> {
+impl<T: Hash> Deref for MemoHash<T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -218,14 +218,14 @@ pub struct MemoHashGuard<'a, T: Hash> {
 	inner: &'a mut MemoHash<T>,
 }
 
-impl<T: Hash> std::ops::Drop for MemoHashGuard<'_, T> {
+impl<T: Hash> Drop for MemoHashGuard<'_, T> {
 	fn drop(&mut self) {
 		let hash = MemoHash::<T>::calc_hash(&self.inner.value);
 		self.inner.hash = hash;
 	}
 }
 
-impl<T: Hash> std::ops::Deref for MemoHashGuard<'_, T> {
+impl<T: Hash> Deref for MemoHashGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {

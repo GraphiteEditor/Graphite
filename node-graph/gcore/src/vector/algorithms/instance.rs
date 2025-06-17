@@ -109,7 +109,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn std::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: I) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })

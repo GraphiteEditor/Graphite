@@ -27,7 +27,7 @@ pub fn poisson_disk_sample(
 	// - Dividing into an integer number of cells across the dartboard domain, to avoid wastefully throwing darts beyond the width and height of the dartboard domain
 	// - Being fully covered by the radius around a dart thrown anywhere in its area, where the worst-case is a corner which has a distance of sqrt(2) to the opposite corner
 	let greater_dimension = width.max(height);
-	let base_level_grid_size = greater_dimension / (greater_dimension * std::f64::consts::SQRT_2 / (diameter / 2.)).ceil();
+	let base_level_grid_size = greater_dimension / (greater_dimension * f64::consts::SQRT_2 / (diameter / 2.)).ceil();
 
 	// Initialize the problem by including all base-level squares in the active list since they're all part of the yet-to-be-targetted dartboard domain
 	let base_level = ActiveListLevel::new_filled(base_level_grid_size, offset, width, height, &point_in_shape_checker, &line_intersect_shape_checker);

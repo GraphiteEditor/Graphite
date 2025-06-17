@@ -240,7 +240,7 @@ type DynBox = Box<dyn Any + Send + Sync>;
 
 #[derive(dyn_any::DynAny)]
 pub struct OwnedContextImpl {
-	footprint: Option<crate::transform::Footprint>,
+	footprint: Option<Footprint>,
 	varargs: Option<Arc<[DynBox]>>,
 	parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
 	// This could be converted into a single enum to save extra bytes
@@ -348,7 +348,7 @@ impl OwnedContextImpl {
 
 #[derive(Default, Clone, Copy, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
-	pub(crate) footprint: Option<&'a crate::transform::Footprint>,
+	pub(crate) footprint: Option<&'a Footprint>,
 	varargs: Option<&'a [DynRef<'a>]>,
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,

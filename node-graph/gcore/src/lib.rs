@@ -75,7 +75,7 @@ where
 	fn input_type_name(&self) -> &'static str {
 		std::any::type_name::<Input>()
 	}
-	fn output_type(&self) -> std::any::TypeId {
+	fn output_type(&self) -> TypeId {
 		TypeId::of::<<Self::Output as StaticTypeSized>::Static>()
 	}
 	fn output_type_name(&self) -> &'static str {
