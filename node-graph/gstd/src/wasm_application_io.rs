@@ -1,9 +1,7 @@
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::application_io::SurfaceHandle;
-use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
+use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
@@ -127,7 +125,7 @@ async fn render_canvas(
 	surface_handle: wgpu_executor::WgpuSurface,
 	render_params: RenderParams,
 ) -> RenderOutputType {
-	use graphene_core::SurfaceFrame;
+	use graphene_application_io::SurfaceFrame;
 
 	let footprint = render_config.viewport;
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
@@ -172,7 +170,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
-	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
 ) -> RasterDataTable<CPU>
 where
 	Instances<T>: GraphicElementRendered,

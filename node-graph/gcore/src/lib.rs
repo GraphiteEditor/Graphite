@@ -28,8 +28,6 @@ mod graphic_element;
 pub use graphic_element::*;
 pub mod vector;
 
-pub mod application_io;
-
 pub mod registry;
 
 pub use context::*;
@@ -139,12 +137,6 @@ impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)>
 		(**self).eval(input)
 	}
 }
-
-pub use crate::application_io::{SurfaceFrame, SurfaceId};
-#[cfg(feature = "wasm")]
-pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;
-#[cfg(feature = "wasm")]
-pub type WasmSurfaceHandleFrame = application_io::SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
 
 pub trait InputAccessorSource<'a, T>: InputAccessorSourceIdentifier + std::fmt::Debug {
 	fn get_input(&'a self, index: usize) -> Option<&'a T>;

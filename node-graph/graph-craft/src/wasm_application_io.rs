@@ -1,5 +1,5 @@
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
+use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
@@ -168,7 +168,7 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 	}
 }
 
-pub type WasmEditorApi = graphene_core::application_io::EditorApi<WasmApplicationIo>;
+pub type WasmEditorApi = graphene_application_io::EditorApi<WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
@@ -208,7 +208,7 @@ impl ApplicationIo for WasmApplicationIo {
 			// Use Reflect API to set property
 			Reflect::set(&canvases, &js_key, &js_value)?;
 			Ok::<_, JsValue>(SurfaceHandle {
-				window_id: graphene_core::SurfaceId(id),
+				window_id: SurfaceId(id),
 				surface: canvas,
 			})
 		};
@@ -313,7 +313,7 @@ impl ApplicationIo for WasmApplicationIo {
 #[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 #[cfg(feature = "wgpu")]
-pub type WasmSurfaceHandleFrame = graphene_core::application_io::SurfaceHandleFrame<wgpu_executor::Window>;
+pub type WasmSurfaceHandleFrame = graphene_application_io::SurfaceHandleFrame<wgpu_executor::Window>;
 
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
@@ -321,7 +321,7 @@ pub struct EditorPreferences {
 	pub use_vello: bool,
 }
 
-impl graphene_core::application_io::GetEditorPreferences for EditorPreferences {
+impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 	// fn hostname(&self) -> &str {
 	// 	&self.imaginate_hostname
 	// }

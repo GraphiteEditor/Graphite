@@ -13,7 +13,7 @@ use graphene_core::{fn_type_fut, future};
 use graphene_std::Context;
 use graphene_std::GraphicElement;
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, IntoTypeErasedNode};
-use graphene_std::application_io::ImageTexture;
+use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 use graphene_std::wasm_application_io::*;
 use node_registry_macros::{async_node, into_node};
 use once_cell::sync::Lazy;
@@ -80,8 +80,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => WindowHandle]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Option<WgpuSurface>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => WindowHandle]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::SurfaceFrame]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: UVec2, fn_params: [UVec2 => graphene_std::SurfaceFrame]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => SurfaceFrame]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: UVec2, fn_params: [UVec2 => SurfaceFrame]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => f64]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => String]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RenderOutput]),

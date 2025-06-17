@@ -1,8 +1,8 @@
-use crate::text::FontCache;
-use crate::transform::Footprint;
-use crate::vector::style::ViewMode;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
+use graphene_core::text::FontCache;
+use graphene_core::transform::Footprint;
+use graphene_core::vector::style::ViewMode;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -130,6 +130,11 @@ pub struct SurfaceHandleFrame<Surface> {
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
 	type Static = SurfaceHandleFrame<T>;
 }
+
+#[cfg(feature = "wasm")]
+pub type WasmSurfaceHandle = SurfaceHandle<web_sys::HtmlCanvasElement>;
+#[cfg(feature = "wasm")]
+pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
 
 // TODO: think about how to automatically clean up memory
 /*

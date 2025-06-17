@@ -6,8 +6,8 @@ use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateSender};
 use graphene_core::text::FontCache;
+use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -18,7 +18,7 @@ use std::sync::Arc;
 struct UpdateLogger {}
 
 impl NodeGraphUpdateSender for UpdateLogger {
-	fn send(&self, message: graphene_core::application_io::NodeGraphUpdateMessage) {
+	fn send(&self, message: NodeGraphUpdateMessage) {
 		println!("{message:?}");
 	}
 }
@@ -115,7 +115,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				}
 			});
 			let executor = create_executor(proto_graph)?;
-			let render_config = graphene_core::application_io::RenderConfig::default();
+			let render_config = RenderConfig::default();
 
 			loop {
 				let result = (&executor).execute(render_config).await?;
