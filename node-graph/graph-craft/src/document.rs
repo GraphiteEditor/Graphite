@@ -676,10 +676,12 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	Ok(s)
 }
 // TODO: Eventually remove this document upgrade code
+#[cfg(feature = "serde")]
 fn default_import_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(-25, -4))
 }
 // TODO: Eventually remove this document upgrade code
+#[cfg(feature = "serde")]
 fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(8, -4))
 }
