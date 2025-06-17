@@ -435,6 +435,7 @@ struct PathToolData {
 	angle: f64,
 	opposite_handle_position: Option<DVec2>,
 	last_clicked_point_was_selected: bool,
+	last_clicked_segment_was_selected: bool,
 	snapping_axis: Option<Axis>,
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
@@ -632,6 +633,7 @@ impl PathToolData {
 				let layer = segment.layer();
 				let segment_id = segment.segment();
 				let already_selected = shape_editor.selected_shape_state.get(&layer).map_or(false, |state| state.is_selected_segment(segment_id));
+				self.last_clicked_segment_was_selected = already_selected;
 
 				if !(already_selected && extend_selection) {
 					// let vector_data = document.network_interface.compute_modified_vector(segment.layer());
@@ -675,6 +677,7 @@ impl PathToolData {
 		// We didn't find a segment, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
+			shape_editor.deselect_all_segments();
 			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -693,77 +696,6 @@ impl PathToolData {
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-			PathToolFsmState::Drawing { selection_shape }
-		}
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	fn mouse_down_segment_mode(
-		&mut self,
-		shape_editor: &mut ShapeState,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		responses: &mut VecDeque<Message>,
-		extend_selection: bool,
-		_lasso_select: bool,
-		_handle_drag_from_anchor: bool,
-		_drag_zero_handle: bool,
-		_path_overlay_mode: PathOverlayMode,
-	) -> PathToolFsmState {
-		self.drag_start_pos = input.mouse.position;
-
-		// Check if a segment is already selected; if not, select the first segment within the threshold
-		if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
-			//Got the segment add the segment in selected segments
-			let layer = segment.layer();
-			let segment_id = segment.segment();
-			let already_selected = shape_editor.selected_shape_state.get(&layer).map_or(false, |state| state.is_selected_segment(segment_id));
-
-			if !(already_selected && extend_selection) {
-				// let vector_data = document.network_interface.compute_modified_vector(segment.layer());
-
-				let new_selected = if already_selected { !extend_selection } else { true };
-				if new_selected {
-					let retain_existing_selection = extend_selection || already_selected;
-					if !retain_existing_selection {
-						shape_editor.deselect_all_segments();
-					}
-
-					// Add to selected segments
-					if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
-						selected_shape_state.select_segment(segment_id);
-					}
-				} else {
-					if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
-						selected_shape_state.deselect_segment(segment_id);
-					}
-				}
-			}
-			responses.add(OverlaysMessage::Draw);
-			PathToolFsmState::Dragging(self.dragging_state)
-		}
-		// We didn't find a segment, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input) {
-			shape_editor.deselect_all_points();
-			if extend_selection {
-				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
-			} else {
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
-			}
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-			responses.add(DocumentMessage::StartTransaction);
-
-			PathToolFsmState::Dragging(self.dragging_state)
-		}
-		// Start drawing
-		else {
-			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-
-			let selection_shape = if _lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
-			responses.add(OverlaysMessage::Draw);
 			PathToolFsmState::Drawing { selection_shape }
 		}
 	}
@@ -1741,6 +1673,7 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
+					shape_editor.deselect_all_segments();
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_handle_drag);
 
 					tool_data.saved_points_before_handle_drag.clear();
@@ -1814,7 +1747,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let drag_occurred = tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD;
-				// TODO: Here we want only visible points to be considered
+
 				let nearest_point = shape_editor.find_nearest_visible_point_indices(
 					&document.network_interface,
 					input.mouse.position,
@@ -1823,33 +1756,32 @@ impl Fsm for PathToolFsmState {
 					tool_data.frontier_handles_info.clone(),
 				);
 
+				let nearest_segment = tool_data.segment.clone();
+
 				if let Some(segment) = &mut tool_data.segment {
 					let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
 					if !drag_occurred && !tool_data.molding_segment && !segment_mode {
 						if tool_data.delete_segment_pressed {
 							if let Some(vector_data) = document.network_interface.compute_modified_vector(segment.layer()) {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector_data, segment.segment(), segment.points());
-								responses.add(DocumentMessage::EndTransaction);
 							}
 						} else {
 							segment.adjusted_insert_and_select(shape_editor, responses, extend_selection);
-							responses.add(DocumentMessage::EndTransaction);
 						}
-					} else {
-						responses.add(DocumentMessage::EndTransaction);
 					}
 
 					tool_data.segment = None;
 					tool_data.molding_info = None;
 					tool_data.molding_segment = false;
 					tool_data.temporary_adjacent_handles_while_molding = None;
-
-					return PathToolFsmState::Ready;
 				}
 
+				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
+
 				if let Some((layer, nearest_point)) = nearest_point {
+					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 					if !drag_occurred && extend_selection {
-						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
+						log::info!("yes here occured");
 						if clicked_selected && tool_data.last_clicked_point_was_selected {
 							shape_editor.selected_shape_state.entry(layer).or_default().deselect_point(nearest_point);
 						} else {
@@ -1857,6 +1789,45 @@ impl Fsm for PathToolFsmState {
 						}
 						responses.add(OverlaysMessage::Draw);
 					}
+					if !drag_occurred && !extend_selection {
+						if clicked_selected {
+							if tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
+								tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
+							}
+							shape_editor.deselect_all_points();
+							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
+							responses.add(OverlaysMessage::Draw);
+						}
+					}
+				}
+				// Segment editing mode
+				else if let Some(nearest_segment) = nearest_segment {
+					//Condition this upon whether user has selected segment editing mode or not
+					if segment_mode {
+						let clicked_selected = shape_editor.selected_segments().any(|&segment| segment == nearest_segment.segment());
+						if !drag_occurred && extend_selection {
+							if clicked_selected && tool_data.last_clicked_segment_was_selected {
+								shape_editor
+									.selected_shape_state
+									.entry(nearest_segment.layer())
+									.or_default()
+									.deselect_segment(nearest_segment.segment());
+							} else {
+								shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
+							}
+							responses.add(OverlaysMessage::Draw);
+						}
+						if !drag_occurred && !extend_selection && clicked_selected {
+							shape_editor.deselect_all_segments();
+							shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
+							responses.add(OverlaysMessage::Draw);
+						}
+					}
+				}
+				// Deselect all points if the user clicks the filled region of the shape
+				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
+					shape_editor.deselect_all_points();
+					shape_editor.deselect_all_segments();
 				}
 
 				if tool_data.temporary_colinear_handles {
@@ -1880,25 +1851,6 @@ impl Fsm for PathToolFsmState {
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
 					tool_data.remove_saved_points();
 					tool_data.select_anchor_toggled = false;
-				}
-
-				if let Some((layer, nearest_point)) = nearest_point {
-					if !drag_occurred && !extend_selection {
-						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
-						if clicked_selected {
-							if tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
-								tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
-							}
-
-							shape_editor.deselect_all_points();
-							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
-							responses.add(OverlaysMessage::Draw);
-						}
-					}
-				}
-				// Deselect all points if the user clicks the filled region of the shape
-				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
-					shape_editor.deselect_all_points();
 				}
 
 				if tool_data.snapping_axis.is_some() {

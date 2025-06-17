@@ -1,6 +1,6 @@
 use super::graph_modification_utils::merge_layers;
 use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
+use super::utility_functions::{adjust_handle_colinearity, calculate_bezier_bbox, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -124,6 +124,10 @@ impl SelectedLayerState {
 		self.selected_points.clear();
 	}
 
+	pub fn clear_segments(&mut self) {
+		self.selected_segments.clear();
+	}
+
 	pub fn selected_points_count(&self) -> usize {
 		let count = self.selected_points.iter().fold(0, |acc, point| {
 			let is_ignored = (point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors);
@@ -164,6 +168,7 @@ pub struct ManipulatorPointInfo {
 
 pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<HandleId, f64>>;
 
+#[derive(Clone)]
 pub struct ClosestSegment {
 	layer: LayerNodeIdentifier,
 	segment: SegmentId,
@@ -1822,7 +1827,8 @@ impl ShapeState {
 
 		for (&layer, state) in &mut self.selected_shape_state {
 			if selection_change == SelectionChange::Clear {
-				state.clear_points()
+				state.clear_points();
+				state.clear_segments();
 			}
 
 			let vector_data = network_interface.compute_modified_vector(layer);
@@ -1852,6 +1858,28 @@ impl ShapeState {
 			for (id, bezier, _, _) in vector_data.segment_bezier_iter() {
 				if select_segments {
 					// Checking for selection of segments if they lie inside the bounding box or lasso polygon
+					let segment_bbox = calculate_bezier_bbox(bezier);
+					let bottom_left = transform.transform_point2(segment_bbox[0]);
+					let top_right = transform.transform_point2(segment_bbox[1]);
+
+					let select = match selection_shape {
+						SelectionShape::Box(quad) => quad[0].min(quad[1]).cmple(bottom_left).all() && quad[0].max(quad[1]).cmpge(top_right).all(),
+						SelectionShape::Lasso(_) => {
+							//First check if the segement bbox intersects with lasso polygon (atleast one of the points of bbox should lie in lasso polygon)
+							let polygon = polygon_subpath.as_ref().expect("If `selection_shape` is a polygon then subpath is constructed beforehand.");
+
+							// Sample 10 points on the bezier and check if all lie inside the polygon or not
+							let points = bezier.compute_lookup_table(Some(10), None);
+							points.map(|p| transform.transform_point2(p)).all(|p| polygon.contains_point(p))
+						}
+					};
+
+					if select {
+						match selection_change {
+							SelectionChange::Shrink => state.deselect_segment(id),
+							_ => state.select_segment(id),
+						}
+					}
 				}
 
 				// Checking for selection of handles

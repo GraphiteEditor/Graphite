@@ -2,11 +2,12 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
-use bezier_rs::Bezier;
+use bezier_rs::{Bezier, BezierHandles};
 use glam::DVec2;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{FontCache, load_face};
 use graphene_std::vector::{HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
+use kurbo::{CubicBez, Line, ParamCurveExtrema, Point, QuadBez};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
@@ -198,6 +199,21 @@ pub fn is_visible_point(
 	}
 }
 
-pub fn calculate_bezier_bbox(_bezier: Bezier) {
-	// Get the bbox of bezier
+/// Function to find the bounding box of bezier (uses method from kurbo)
+pub fn calculate_bezier_bbox(bezier: Bezier) -> [DVec2; 2] {
+	let start = Point::new(bezier.start.x, bezier.start.y);
+	let end = Point::new(bezier.end.x, bezier.end.y);
+	let bbox = match bezier.handles {
+		BezierHandles::Cubic { handle_start, handle_end } => {
+			let p1 = Point::new(handle_start.x, handle_start.y);
+			let p2 = Point::new(handle_end.x, handle_end.y);
+			CubicBez::new(start, p1, p2, end).bounding_box()
+		}
+		BezierHandles::Quadratic { handle } => {
+			let p1 = Point::new(handle.x, handle.y);
+			QuadBez::new(start, p1, end).bounding_box()
+		}
+		BezierHandles::Linear => Line::new(start, end).bounding_box(),
+	};
+	[DVec2::new(bbox.x0, bbox.y0), DVec2::new(bbox.x1, bbox.y1)]
 }
