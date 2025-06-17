@@ -15,13 +15,13 @@ default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 gpu = [
 	"interpreted-executor/gpu",
-	"graphene-core/gpu",
+	"graphene-std/gpu",
 	"wgpu-executor",
 ]
 tauri = ["ron", "decouple-execution"]
 decouple-execution = []
 resvg = ["graphene-std/resvg"]
-vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
+vello = ["graphene-std/vello", "resvg"]
 ron = ["dep:ron"]
 
 [dependencies]
@@ -31,7 +31,6 @@ graph-craft = { path = "../node-graph/graph-craft" }
 interpreted-executor = { path = "../node-graph/interpreted-executor", features = [
 	"serde",
 ] }
-graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 
 # Workspace dependencies
