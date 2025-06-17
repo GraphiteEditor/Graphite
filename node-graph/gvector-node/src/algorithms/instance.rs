@@ -3,6 +3,11 @@ use crate::raster_types::{CPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use glam::DVec2;
+use graphene_core::instances::{InstanceRef, Instances};
+use graphene_core::raster::Color;
+use graphene_core::raster::image::RasterDataTable;
+use graphene_core::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
+use graphene_vector::VectorDataTable;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(graphene_core::vector))]
 async fn instance_on_points<T: Into<GraphicElement> + Default + Send + Clone + 'static>(

@@ -1,3 +1,4 @@
+use crate::brush_stroke::{BrushStroke, BrushStyle};
 use crate::raster::{empty_image, extend_image_to_bounds};
 use glam::{DAffine2, DVec2};
 use graph_craft::generic::FnNode;
@@ -12,9 +13,8 @@ use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::renderer::GraphicElementRendered;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
-use graphene_core::vector::VectorDataTable;
-use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
+use graphene_vector::VectorDataTable;
 
 #[node_macro::node(category("Debug"))]
 fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {

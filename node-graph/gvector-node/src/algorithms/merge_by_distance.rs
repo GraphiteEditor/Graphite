@@ -1,5 +1,5 @@
-use crate::vector::{PointId, VectorData, VectorDataIndex};
 use glam::DVec2;
+use graphene_vector::{PointId, VectorData, VectorDataIndex};
 use petgraph::prelude::UnGraphMap;
 use rustc_hash::FxHashSet;
 

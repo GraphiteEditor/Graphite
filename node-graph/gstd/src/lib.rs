@@ -1,5 +1,4 @@
 pub mod any;
-pub mod brush;
 pub mod dehaze;
 pub mod filter;
 pub mod http;

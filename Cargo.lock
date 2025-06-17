@@ -2163,6 +2163,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-brush"
+version = "0.1.0"
+dependencies = [
+ "dyn-any",
+ "glam",
+ "graph-craft",
+ "graphene-core",
+ "graphene-vector",
+ "node-macro",
+ "serde",
+ "specta",
+]
+
+[[package]]
 name = "graphene-cli"
 version = "0.1.0"
 dependencies = [
@@ -2185,14 +2199,12 @@ name = "graphene-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "bezier-rs",
  "bytemuck",
  "ctor",
  "dyn-any",
  "glam",
  "half",
  "image",
- "kurbo",
  "log",
  "math-parser",
  "node-macro",
@@ -2242,6 +2254,56 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
+]
+
+[[package]]
+name = "graphene-text"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "kurbo",
+ "node-macro",
+ "serde",
+ "specta",
+]
+
+[[package]]
+name = "graphene-vector"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "kurbo",
+ "log",
+ "node-macro",
+ "petgraph 0.7.1",
+ "rustc-hash 2.1.1",
+ "serde",
+ "specta",
+ "tinyvec",
+]
+
+[[package]]
+name = "graphene-vector-node"
+version = "0.1.0"
+dependencies = [
+ "bezier-rs",
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "graphene-vector",
+ "kurbo",
+ "log",
+ "node-macro",
+ "petgraph 0.7.1",
+ "rustc-hash 2.1.1",
+ "serde",
+ "specta",
 ]
 
 [[package]]

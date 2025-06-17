@@ -141,7 +141,7 @@ mod tests {
 	use super::*;
 	#[test]
 	fn closed_spline() {
-		use crate::vector::misc::{dvec2_to_point, point_to_dvec2};
+		use graphene_vector::misc::{dvec2_to_point, point_to_dvec2};
 		use kurbo::{BezPath, ParamCurve, ParamCurveDeriv};
 
 		// These points are just chosen arbitrary

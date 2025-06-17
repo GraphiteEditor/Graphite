@@ -1,8 +1,9 @@
-use crate::vector::misc::dvec2_to_point;
-use crate::vector::vector_data::{HandleId, VectorData};
+use crate::misc::dvec2_to_point;
+use crate::{HandleId, VectorData};
 use bezier_rs::{BezierHandles, ManipulatorGroup};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use log::warn;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::iter::zip;

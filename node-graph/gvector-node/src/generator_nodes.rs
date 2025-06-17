@@ -1,10 +1,7 @@
 use super::misc::{ArcType, AsU64, GridType};
-use super::{PointId, SegmentId, StrokeId};
-use crate::Ctx;
-use crate::registry::types::{Angle, PixelSize};
-use crate::vector::{HandleId, VectorData, VectorDataTable};
 use bezier_rs::Subpath;
 use glam::DVec2;
+use graphene_vector::{VectorData, VectorDataTable};
 
 trait CornerRadius {
 	fn generate(self, size: DVec2, clamped: bool) -> VectorDataTable;

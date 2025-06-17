@@ -1,6 +1,6 @@
 use super::poisson_disk::poisson_disk_sample;
-use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
+use graphene_vector::misc::dvec2_to_point;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
 
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {

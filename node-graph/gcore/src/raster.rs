@@ -13,7 +13,6 @@ use spirv_std::num_traits::float::Float;
 
 pub mod adjustments;
 pub mod bbox;
-pub mod brush_cache;
 pub mod color;
 pub mod curve;
 pub mod discrete_srgb;
@@ -77,7 +76,9 @@ impl<T: Linear + Debug + Copy> Channel for T {
 
 impl<T: Linear + Debug + Copy> LinearChannel for T {}
 
+use crate::blending::BlendMode;
 use num_derive::*;
+
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Num, NumCast, NumOps, One, Zero, ToPrimitive, FromPrimitive)]
 pub struct SRGBGammaFloat(f32);
 

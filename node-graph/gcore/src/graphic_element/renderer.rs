@@ -1,8 +1,10 @@
 mod quad;
 mod rect;
 
+use crate::blending::BlendMode;
+use crate::gradient::format_transform_matrix;
 use crate::instances::Instance;
-use crate::raster::{BlendMode, Image};
+use crate::raster::Image;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::transform::{Footprint, Transform};
 use crate::uuid::{NodeId, generate_uuid};
@@ -13,7 +15,6 @@ use base64::Engine;
 use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
-use num_traits::Zero;
 pub use quad::Quad;
 pub use rect::Rect;
 use std::collections::{HashMap, HashSet};
@@ -328,19 +329,6 @@ impl RenderParams {
 		let alignment_parent_transform = Some(transform);
 		Self { alignment_parent_transform, ..*self }
 	}
-}
-
-pub fn format_transform_matrix(transform: DAffine2) -> String {
-	if transform == DAffine2::IDENTITY {
-		return String::new();
-	}
-
-	transform.to_cols_array().iter().enumerate().fold("matrix(".to_string(), |val, (i, num)| {
-		let num = if num.abs() < 1_000_000_000. { (num * 1_000_000_000.).round() / 1_000_000_000. } else { *num };
-		let num = if num.is_zero() { "0".to_string() } else { num.to_string() };
-		let comma = if i == 5 { "" } else { "," };
-		val + &(num + comma)
-	}) + ")"
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {

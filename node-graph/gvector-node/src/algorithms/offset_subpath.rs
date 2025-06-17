@@ -1,5 +1,5 @@
-use crate::vector::PointId;
 use bezier_rs::{Bezier, BezierHandles, Join, Subpath, TValue};
+use graphene_vector::PointId;
 
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;

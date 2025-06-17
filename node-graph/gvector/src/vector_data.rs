@@ -1,19 +1,17 @@
 mod attributes;
 mod indexed;
-mod modification;
 
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::style::{PathStyle, Stroke};
-use crate::instances::Instances;
-use crate::renderer::{ClickTargetType, FreePoint};
-use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use graphene_core::blending::AlphaBlending;
+use graphene_core::instances::Instances;
+use graphene_core::{Color, GraphicGroupTable};
 pub use indexed::VectorDataIndex;
 use kurbo::{Affine, Rect, Shape};
-pub use modification::*;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 

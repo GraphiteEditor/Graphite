@@ -1,12 +1,20 @@
-use super::*;
-use crate::Ctx;
-use crate::instances::Instance;
-use crate::uuid::generate_uuid;
 use bezier_rs::BezierHandles;
 use dyn_any::DynAny;
+use glam::DVec2;
+use graphene_core::Ctx;
+use graphene_core::instances::Instance;
+use graphene_core::uuid::generate_uuid;
+use graphene_vector::misc::point_to_dvec2;
+use graphene_vector::{FillId, HandleId, PointDomain, PointId, RegionDomain, RegionId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use kurbo::{BezPath, PathEl, Point};
+use log::warn;
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::hash::BuildHasher;
+use std::hash::Hash;
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -434,11 +442,6 @@ async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modificat
 
 // Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
 // TODO: Eventually remove this document upgrade code
-use serde::de::{SeqAccess, Visitor};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
-use std::hash::Hash;
 pub fn serialize_hashmap<K, V, S, H>(hashmap: &HashMap<K, V, H>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	K: Serialize + Eq + Hash,

@@ -1,8 +1,8 @@
 use crate::Ctx;
+use crate::gradient::GradientStops;
 use crate::raster::BlendMode;
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Fraction, Percentage};
-use crate::vector::style::GradientStops;
 use crate::{Color, Node};
 use dyn_any::DynAny;
 use glam::{DVec2, IVec2, UVec2};

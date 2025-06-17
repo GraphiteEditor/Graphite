@@ -207,7 +207,7 @@ tagged_value! {
 	Stroke(graphene_core::vector::style::Stroke),
 	Gradient(graphene_core::vector::style::Gradient),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
-	GradientStops(graphene_core::vector::style::GradientStops),
+	GradientStops(graphene_core::gradient::GradientStops),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
 	BrushCache(BrushCache),
