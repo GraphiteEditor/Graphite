@@ -1959,7 +1959,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::{Node, transform};
+	use crate::Node;
 	use bezier_rs::Bezier;
 	use kurbo::Rect;
 	use std::pin::Pin;
@@ -1979,17 +1979,21 @@ mod test {
 		VectorDataTable::new(VectorData::from_subpath(data))
 	}
 
-	fn vector_node_from_bezpath(bezpath: BezPath, transform: DAffine2) -> VectorDataTable {
+	fn create_vector_data_instance(bezpath: BezPath, transform: DAffine2) -> Instance<VectorData> {
 		let mut instance = VectorData::default();
 		instance.append_bezpath(bezpath);
-
-		let mut vector_data_table = VectorDataTable::default();
-		vector_data_table.push(Instance {
+		Instance {
 			instance,
 			transform,
 			..Default::default()
-		});
+		}
+	}
 
+	fn vector_node_from_instances(data: Vec<Instance<VectorData>>) -> VectorDataTable {
+		let mut vector_data_table = VectorDataTable::default();
+		for instance in data {
+			vector_data_table.push(instance);
+		}
 		vector_data_table
 	}
 
@@ -2126,10 +2130,14 @@ mod test {
 	}
 	#[tokio::test]
 	async fn path_length() {
-		let subpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
+		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
-		let length = super::path_length(Footprint::default(), vector_node_from_bezpath(subpath, transform)).await;
-		assert_eq!(length, 808.);
+		let instance = create_vector_data_instance(bezpath, transform);
+		let instances = (0..5).map(|_| instance.clone()).collect::<Vec<Instance<VectorData>>>();
+
+		let length = super::path_length(Footprint::default(), vector_node_from_instances(instances)).await;
+		// 4040. = 101. * 4 (rectangle perimeter) * 2. (scale) * 5. (number of rows)
+		assert_eq!(length, 4040.);
 	}
 	#[tokio::test]
 	async fn spline() {
