@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 default = ["dealloc_nodes"]
 serde = ["dep:serde", "graphene-core/serde", "glam/serde", "bezier-rs/serde"]
 dealloc_nodes = ["graphene-core/dealloc_nodes"]
-wgpu = []
+wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
 wayland = []
 loading = ["serde_json", "serde"]
@@ -30,7 +30,7 @@ specta = { workspace = true }
 rustc-hash = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
-wgpu-executor = { workspace = true }
+wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
