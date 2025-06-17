@@ -29,7 +29,7 @@ editor = { path = "../../editor", package = "graphite-editor", features = [
 # Workspace dependencies
 graph-craft = { workspace = true }
 log = { workspace = true }
-graphene-core = { workspace = true }
+graphene-core = { workspace = true, features = ["wasm"] }
 serde = { workspace = true, features = ["derive"] }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
