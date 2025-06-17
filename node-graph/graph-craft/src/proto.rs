@@ -532,7 +532,8 @@ impl ProtoNetwork {
 		Ok(())
 	}
 }
-#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
 	InputNodeNotFound(NodeId),
@@ -588,7 +589,8 @@ impl Debug for GraphErrorType {
 		}
 	}
 }
-#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphError {
 	pub node_path: Vec<NodeId>,
 	pub identifier: Cow<'static, str>,
