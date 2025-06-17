@@ -1239,7 +1239,7 @@ where
 }
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
-async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
+async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, count_point : bool, subpath_segment_lengths: Vec<f64>) -> VectorDataTable {
 	// Limit the smallest spacing to something sensible to avoid freezing the application.
 	let spacing = spacing.max(0.01);
 
@@ -1277,7 +1277,7 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 			// Increment the segment index by the number of segments in the current bezpath to calculate the next bezpath segment's length.
 			next_segment_index += segment_count;
 
-			let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, current_bezpath_segments_length) else {
+			let Some(mut sample_bezpath) = sample_points_on_bezpath(bezpath, spacing, start_offset, stop_offset, adaptive_spacing, count_point, current_bezpath_segments_length) else {
 				continue;
 			};
 
@@ -2041,7 +2041,7 @@ mod test {
 	#[tokio::test]
 	async fn sample_points() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, vec![100.]).await;
+		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, false,vec![100.]).await;
 		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
@@ -2051,7 +2051,7 @@ mod test {
 	#[tokio::test]
 	async fn adaptive_spacing() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 18., 45., 10., true, vec![100.]).await;
+		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 18., 45., 10., true, false, vec![100.]).await;
 		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {

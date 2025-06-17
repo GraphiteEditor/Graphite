@@ -2273,8 +2273,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 1),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
-									NodeInput::network(concrete!(bool), 4),
-									//NodeInput::network(concrete!(bool), 5),// From the document node's parameters
+									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
+									NodeInput::network(concrete!(bool), 5),
 									NodeInput::node(NodeId(0), 0),          // From output 0 of SubpathSegmentLengthsNode
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePointsNode")),
