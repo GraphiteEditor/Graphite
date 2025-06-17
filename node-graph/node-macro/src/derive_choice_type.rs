@@ -168,7 +168,7 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 		WidgetHint::Dropdown => quote! { Dropdown },
 	};
 	Ok(quote! {
-		impl #crate_name::vector::misc::AsU32 for #name {
+		impl #crate_name::AsU32 for #name {
 			fn as_u32(&self) -> u32 {
 				*self as u32
 			}

@@ -159,3 +159,12 @@ pub trait NodeInputDecleration {
 	fn identifier() -> &'static str;
 	type Result;
 }
+
+pub trait AsU32 {
+	fn as_u32(&self) -> u32;
+}
+impl AsU32 for u32 {
+	fn as_u32(&self) -> u32 {
+		*self
+	}
+}

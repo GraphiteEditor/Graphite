@@ -29,15 +29,6 @@ pub enum BooleanOperation {
 	Difference,
 }
 
-pub trait AsU32 {
-	fn as_u32(&self) -> u32;
-}
-impl AsU32 for u32 {
-	fn as_u32(&self) -> u32 {
-		*self
-	}
-}
-
 pub trait AsU64 {
 	fn as_u64(&self) -> u64;
 }
