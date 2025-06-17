@@ -1,4 +1,4 @@
-use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
@@ -1301,6 +1301,40 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	}
 
 	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
+	let euclidian = !parameterized_distance;
+
+	let bezpaths = vector_data
+		.instance_ref_iter()
+		.enumerate()
+		.flat_map(|(row_index, vector_data)| vector_data.instance.stroke_bezpath_iter().map(|bezpath| (row_index, bezpath)).collect::<Vec<_>>())
+		.collect::<Vec<_>>();
+
+	let bezpath_count = bezpaths.len() as f64;
+	let t_value = t_value.clamp(0., bezpath_count);
+	let t_value = if reverse { bezpath_count - t_value } else { t_value };
+	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
+
+	if let Some((row_index, bezpath)) = bezpaths.get(index).cloned() {
+		let mut vd = VectorData::default();
+		for (_, (_, bezpath)) in bezpaths.iter().enumerate().filter(|(i, (ri, _))| *i != index && *ri == row_index) {
+			vd.append_bezpath(bezpath.clone());
+		}
+		let t = if t_value == bezpath_count { 1. } else { t_value.fract() };
+
+		if let Some((first, second)) = split_bezpath(&bezpath, t, euclidian) {
+			vd.append_bezpath(first);
+			vd.append_bezpath(second);
+		} else {
+			vd.append_bezpath(bezpath);
+		}
+		*vector_data.get_mut(row_index).unwrap().instance = vd;
+	}
+
+	vector_data
 }
 
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.

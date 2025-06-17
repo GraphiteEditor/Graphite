@@ -3,6 +3,42 @@ use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
 
+pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
+	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
+	let segment = bezpath.get_seg(segment_index + 1).unwrap();
+
+	let first_segment = segment.subsegment(0f64..t);
+	let second_segment = segment.subsegment(t..1.);
+
+	let mut first_bezpath = BezPath::new();
+	let mut second_bezpath = BezPath::new();
+
+	for segment in bezpath.segments().take(segment_index) {
+		if first_bezpath.elements().is_empty() {
+			first_bezpath.move_to(segment.start());
+		}
+		first_bezpath.push(segment.as_path_el());
+	}
+	if first_bezpath.elements().is_empty() {
+		first_bezpath.move_to(first_segment.start());
+	}
+	first_bezpath.push(first_segment.as_path_el());
+
+	if second_bezpath.elements().is_empty() {
+		second_bezpath.move_to(second_segment.start());
+	}
+	second_bezpath.push(second_segment.as_path_el());
+
+	for segment in bezpath.segments().skip(segment_index + 1) {
+		if second_bezpath.elements().is_empty() {
+			second_bezpath.move_to(segment.start());
+		}
+		second_bezpath.push(segment.as_path_el());
+	}
+
+	Some((first_bezpath, second_bezpath))
+}
+
 pub fn position_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_length: Option<&[f64]>) -> Point {
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, segments_length);
 	bezpath.get_seg(segment_index + 1).unwrap().eval(t)
