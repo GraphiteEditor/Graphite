@@ -543,6 +543,7 @@ impl PathToolData {
 		drag_zero_handle: bool,
 		path_overlay_mode: PathOverlayMode,
 		segment_editing_mode: bool,
+		point_editing_mode: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -565,6 +566,7 @@ impl PathToolData {
 			SELECTION_THRESHOLD,
 			path_overlay_mode,
 			self.frontier_handles_info.clone(),
+			point_editing_mode,
 		) {
 			responses.add(DocumentMessage::StartTransaction);
 
@@ -659,23 +661,15 @@ impl PathToolData {
 				self.last_clicked_segment_was_selected = already_selected;
 
 				if !(already_selected && extend_selection) {
-					// let vector_data = document.network_interface.compute_modified_vector(segment.layer());
+					let retain_existing_selection = extend_selection || already_selected;
+					if !retain_existing_selection {
+						shape_editor.deselect_all_segments();
+						shape_editor.deselect_all_points();
+					}
 
-					let new_selected = if already_selected { !extend_selection } else { true };
-					if new_selected {
-						let retain_existing_selection = extend_selection || already_selected;
-						if !retain_existing_selection {
-							shape_editor.deselect_all_segments();
-						}
-
-						// Add to selected segments
-						if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
-							selected_shape_state.select_segment(segment_id);
-						}
-					} else {
-						if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
-							selected_shape_state.deselect_segment(segment_id);
-						}
+					// Add to selected segments
+					if let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) {
+						selected_shape_state.select_segment(segment_id);
 					}
 				}
 
@@ -1552,6 +1546,7 @@ impl Fsm for PathToolFsmState {
 					drag_zero_handle,
 					tool_options.path_overlay_mode,
 					tool_options.path_editing_mode.segment_editing_mode,
+					tool_options.path_editing_mode.point_editing_mode,
 				)
 			}
 			(
@@ -1822,6 +1817,11 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == previous_mouse {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
+					let selection_mode = match tool_action_data.preferences.get_selection_mode() {
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+						selection_mode => selection_mode,
+					};
+
 					match selection_shape {
 						SelectionShapeType::Box => {
 							let bbox = [tool_data.drag_start_pos, previous_mouse];
@@ -1832,6 +1832,7 @@ impl Fsm for PathToolFsmState {
 								tool_options.path_overlay_mode,
 								tool_data.frontier_handles_info.clone(),
 								tool_options.path_editing_mode.segment_editing_mode,
+								selection_mode,
 							);
 						}
 						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
@@ -1841,6 +1842,7 @@ impl Fsm for PathToolFsmState {
 							tool_options.path_overlay_mode,
 							tool_data.frontier_handles_info.clone(),
 							tool_options.path_editing_mode.segment_editing_mode,
+							selection_mode,
 						),
 					}
 				}
@@ -1901,6 +1903,12 @@ impl Fsm for PathToolFsmState {
 
 				let document_to_viewport = document.metadata().document_to_viewport;
 				let previous_mouse = document_to_viewport.transform_point2(tool_data.previous_mouse_position);
+
+				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+					selection_mode => selection_mode,
+				};
+
 				if tool_data.drag_start_pos == previous_mouse {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
@@ -1914,6 +1922,7 @@ impl Fsm for PathToolFsmState {
 								tool_options.path_overlay_mode,
 								tool_data.frontier_handles_info.clone(),
 								tool_options.path_editing_mode.segment_editing_mode,
+								selection_mode,
 							);
 						}
 						SelectionShapeType::Lasso => shape_editor.select_all_in_shape(
@@ -1923,6 +1932,7 @@ impl Fsm for PathToolFsmState {
 							tool_options.path_overlay_mode,
 							tool_data.frontier_handles_info.clone(),
 							tool_options.path_editing_mode.segment_editing_mode,
+							selection_mode,
 						),
 					}
 				}
@@ -1982,6 +1992,7 @@ impl Fsm for PathToolFsmState {
 								tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
 							}
 							shape_editor.deselect_all_points();
+							shape_editor.deselect_all_segments();
 							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
 							responses.add(OverlaysMessage::Draw);
 						}
@@ -1994,18 +2005,22 @@ impl Fsm for PathToolFsmState {
 						let clicked_selected = shape_editor.selected_segments().any(|&segment| segment == nearest_segment.segment());
 						if !drag_occurred && extend_selection {
 							if clicked_selected && tool_data.last_clicked_segment_was_selected {
+								log::info!("deselecting form 2");
 								shape_editor
 									.selected_shape_state
 									.entry(nearest_segment.layer())
 									.or_default()
 									.deselect_segment(nearest_segment.segment());
 							} else {
+								log::info!("selecting from 2");
 								shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
 							}
 							responses.add(OverlaysMessage::Draw);
 						}
 						if !drag_occurred && !extend_selection && clicked_selected {
+							log::info!("deselect all and select form 2");
 							shape_editor.deselect_all_segments();
+							shape_editor.deselect_all_points();
 							shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
 							responses.add(OverlaysMessage::Draw);
 						}
@@ -2038,25 +2053,6 @@ impl Fsm for PathToolFsmState {
 					shape_editor.select_points_by_manipulator_id(&tool_data.saved_points_before_anchor_select_toggle);
 					tool_data.remove_saved_points();
 					tool_data.select_anchor_toggled = false;
-				}
-
-				if let Some((layer, nearest_point)) = nearest_point {
-					if !drag_occurred && !extend_selection {
-						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
-						if clicked_selected {
-							if tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
-								tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
-							}
-
-							shape_editor.deselect_all_points();
-							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
-							responses.add(OverlaysMessage::Draw);
-						}
-					}
-				}
-				// Deselect all points if the user clicks the filled region of the shape
-				else if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD {
-					shape_editor.deselect_all_points();
 				}
 
 				tool_data.snapping_axis = None;

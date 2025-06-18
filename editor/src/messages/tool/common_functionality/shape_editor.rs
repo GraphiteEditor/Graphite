@@ -6,9 +6,10 @@ use crate::messages::portfolio::document::overlays::utility_functions::selected_
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
-use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
+use crate::messages::tool::common_functionality::utility_functions::{is_intersecting, is_visible_point};
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
@@ -547,37 +548,28 @@ impl ShapeState {
 			let selected_shape_state = self.selected_shape_state.get(&layer)?;
 			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
 
-			// Should we select or deselect the point?
-			let new_selected = if already_selected { !extend_selection } else { true };
-
 			// Offset to snap the selected point to the cursor
 			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
 
 			// This is selecting the manipulator only for now, next to generalize to points
-			if new_selected {
-				let retain_existing_selection = extend_selection || already_selected;
-				if !retain_existing_selection {
-					self.deselect_all_points();
-				}
 
-				// Add to the selected points
-				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
-				selected_shape_state.select_point(manipulator_point_id);
-
-				let points = self
-					.selected_shape_state
-					.iter()
-					.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
-					.collect();
-
-				return Some(Some(SelectedPointsInfo { points, offset, vector_data }));
-			} else {
-				log::info!("got here safely hehe");
-				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
-				selected_shape_state.deselect_point(manipulator_point_id);
-
-				return Some(None);
+			let retain_existing_selection = extend_selection || already_selected;
+			if !retain_existing_selection {
+				self.deselect_all_points();
+				self.deselect_all_segments();
 			}
+
+			// Add to the selected points (deselect is managed in DraggingState, DragStop)
+			let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
+			selected_shape_state.select_point(manipulator_point_id);
+
+			let points = self
+				.selected_shape_state
+				.iter()
+				.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
+				.collect();
+
+			return Some(Some(SelectedPointsInfo { points, offset, vector_data }));
 		}
 		None
 	}
@@ -589,8 +581,13 @@ impl ShapeState {
 		select_threshold: f64,
 		path_overlay_mode: PathOverlayMode,
 		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
+		point_editing_mode: bool,
 	) -> Option<(bool, Option<SelectedPointsInfo>)> {
 		if self.selected_shape_state.is_empty() {
+			return None;
+		}
+
+		if !point_editing_mode {
 			return None;
 		}
 
@@ -1821,6 +1818,7 @@ impl ShapeState {
 		path_overlay_mode: PathOverlayMode,
 		frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 		select_segments: bool,
+		selection_mode: SelectionMode, // Here selection mode represents touched or enclosed, not to be confused with editing modes
 	) {
 		let selected_points = self.selected_points().cloned().collect::<HashSet<_>>();
 		let selected_segments = selected_segments(network_interface, self);
@@ -1862,8 +1860,18 @@ impl ShapeState {
 					let bottom_left = transform.transform_point2(segment_bbox[0]);
 					let top_right = transform.transform_point2(segment_bbox[1]);
 
+					// Here take account of toched selection prefrences
 					let select = match selection_shape {
-						SelectionShape::Box(quad) => quad[0].min(quad[1]).cmple(bottom_left).all() && quad[0].max(quad[1]).cmpge(top_right).all(),
+						SelectionShape::Box(quad) => {
+							let enclosed = quad[0].min(quad[1]).cmple(bottom_left).all() && quad[0].max(quad[1]).cmpge(top_right).all();
+							match selection_mode {
+								SelectionMode::Enclosed => enclosed,
+								_ => {
+									// Check for intersection with the segment
+									enclosed || is_intersecting(bezier, quad, transform)
+								}
+							}
+						}
 						SelectionShape::Lasso(_) => {
 							//First check if the segement bbox intersects with lasso polygon (atleast one of the points of bbox should lie in lasso polygon)
 							let polygon = polygon_subpath.as_ref().expect("If `selection_shape` is a polygon then subpath is constructed beforehand.");
