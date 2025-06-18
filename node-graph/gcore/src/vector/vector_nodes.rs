@@ -2041,7 +2041,7 @@ mod test {
 	#[tokio::test]
 	async fn sample_points() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
-		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, false,vec![100.]).await;
+		let sample_points = super::sample_points(Footprint::default(), vector_node(path), 30., 0., 0., false, false, vec![100.]).await;
 		let sample_points = sample_points.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(sample_points.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
