@@ -15,10 +15,8 @@ default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 gpu = [
 	"interpreted-executor/gpu",
-	"graphene-std/gpu",
 	"graphene-core/gpu",
 	"wgpu-executor",
-	"gpu-executor",
 ]
 tauri = ["ron", "decouple-execution"]
 decouple-execution = []
@@ -72,7 +70,6 @@ spin = "0.9.8"
 
 # Optional local dependencies
 wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
-gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }

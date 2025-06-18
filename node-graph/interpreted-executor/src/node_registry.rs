@@ -19,8 +19,6 @@ use node_registry_macros::{async_node, into_node};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
-#[cfg(feature = "gpu")]
-use wgpu_executor::ShaderInputFrame;
 use wgpu_executor::{WgpuExecutor, WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap
@@ -108,11 +106,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			),
 		),
 		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
-		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuSurface]),
-		#[cfg(feature = "gpu")]
-		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
 		#[cfg(feature = "gpu")]

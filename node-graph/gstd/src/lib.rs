@@ -1,6 +1,4 @@
 pub mod any;
-#[cfg(feature = "gpu")]
-pub mod gpu_nodes;
 pub mod http;
 pub mod raster;
 pub mod text;
