@@ -583,6 +583,15 @@ impl<'a> AppendBezpath<'a> {
 		self.last_point_index = Some(next_point_index);
 	}
 
+	fn reset(&mut self) {
+		self.first_point = None;
+		self.last_point = None;
+		self.first_point_index = None;
+		self.last_point_index = None;
+		self.first_segment_id = None;
+		self.last_segment_id = None;
+	}
+
 	pub fn append_bezpath(vector_data: &'a mut VectorData, bezpath: BezPath) {
 		let mut this = Self::new(vector_data);
 		let mut elements = bezpath.elements().iter().peekable();
@@ -621,8 +630,8 @@ impl<'a> AppendBezpath<'a> {
 					}
 				}
 				PathEl::ClosePath => {
-					// Already handled using `append_segment_and_close_path()`;
-					break;
+					// Already handled using `append_segment_and_close_path()` hence we reset state and continue.
+					this.reset();
 				}
 			}
 		}
