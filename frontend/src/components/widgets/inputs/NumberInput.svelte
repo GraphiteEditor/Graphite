@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { createBubbler, preventDefault } from 'svelte/legacy';
+
+	const bubble = createBubbler();
+	import { onMount } from "svelte";
 
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
@@ -12,71 +15,91 @@
 	const BUTTONS_RIGHT = 0b0000_0010;
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
+	
+	interface Props {
+		// Label
+		label?: string | undefined;
+		tooltip?: string | undefined;
+		// Disabled
+		disabled?: boolean;
+		// Value
+		// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
+		value?: number | undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
+		min?: number | undefined;
+		max?: number | undefined;
+		isInteger?: boolean;
+		// Number presentation
+		displayDecimalPlaces?: number;
+		unit?: string;
+		unitIsHiddenWhenEditing?: boolean;
+		// Mode behavior
+		// "Increment" shows arrows and allows dragging left/right to change the value.
+		// "Range" shows a range slider between some minimum and maximum value.
+		mode?: NumberInputMode;
+		// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
+		// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
+		step?: number;
+		// `incrementBehavior` is only applicable with a `mode` of "Increment".
+		// "Add"/"Multiply": The value is added or multiplied by `step`.
+		// "None": the increment arrows are not shown.
+		// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+		incrementBehavior?: NumberInputIncrementBehavior;
+		// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
+		// They set the lower and upper values of the slider to drag between.
+		rangeMin?: number;
+		rangeMax?: number;
+		// Styling
+		minWidth?: number;
+		maxWidth?: number;
+		// Callbacks
+		incrementCallbackIncrease?: (() => void) | undefined;
+		incrementCallbackDecrease?: (() => void) | undefined;
+		onvalue?: (value: number | undefined) => void;
+		onstartHistoryTransaction?: () => void;
+	}
 
-	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
+	let {
+		label = undefined,
+		tooltip = undefined,
+		disabled = false,
+		value = undefined,
+		min = undefined,
+		max = undefined,
+		isInteger = false,
+		displayDecimalPlaces = 2,
+		unit = "",
+		unitIsHiddenWhenEditing = true,
+		mode = "Increment",
+		step = 1,
+		incrementBehavior = "Add",
+		rangeMin = 0,
+		rangeMax = 1,
+		minWidth = 0,
+		maxWidth = 0,
+		incrementCallbackIncrease = undefined,
+		incrementCallbackDecrease = undefined,
+		onvalue,
+		onstartHistoryTransaction,
+	}: Props = $props();
 
-	// Label
-	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-
-	// Disabled
-	export let disabled = false;
-
-	// Value
-	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
-	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
-	export let min: number | undefined = undefined;
-	export let max: number | undefined = undefined;
-	export let isInteger = false;
-
-	// Number presentation
-	export let displayDecimalPlaces = 2;
-	export let unit = "";
-	export let unitIsHiddenWhenEditing = true;
-
-	// Mode behavior
-	// "Increment" shows arrows and allows dragging left/right to change the value.
-	// "Range" shows a range slider between some minimum and maximum value.
-	export let mode: NumberInputMode = "Increment";
-	// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
-	// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
-	export let step = 1;
-	// `incrementBehavior` is only applicable with a `mode` of "Increment".
-	// "Add"/"Multiply": The value is added or multiplied by `step`.
-	// "None": the increment arrows are not shown.
-	// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
-	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
-	// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
-	// They set the lower and upper values of the slider to drag between.
-	export let rangeMin = 0;
-	export let rangeMax = 1;
-
-	// Styling
-	export let minWidth = 0;
-	export let maxWidth = 0;
-
-	// Callbacks
-	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
-	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
-
-	let self: FieldInput | undefined;
-	let inputRangeElement: HTMLInputElement | undefined;
-	let text = displayText(value, unit);
+	let self: FieldInput | undefined = $state();
+	let inputRangeElement: HTMLInputElement | undefined = $state();
+	let text = $state(displayText(value, unit));
 	let editing = false;
 	let isDragging = false;
 	let pressingArrow = false;
 	let repeatTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 	// Stays in sync with a binding to the actual input range slider element.
-	let rangeSliderValue = value !== undefined ? value : 0;
+	let rangeSliderValue = $state(value !== undefined ? value : 0);
 	// Value used to render the position of the fake slider when applicable, and length of the progress colored region to the slider's left.
 	// This is the same as `rangeSliderValue` except in the "Deciding" state, when it has the previous location before the user's mousedown.
-	let rangeSliderValueAsRendered = value !== undefined ? value : 0;
+	let rangeSliderValueAsRendered = $state(value !== undefined ? value : 0);
 	// Keeps track of the state of the slider drag as the user transitions through steps of the input process.
 	// - "Ready": no interaction is happening.
 	// - "Deciding": the user has pressed down the mouse and might next decide to either drag left/right or release without dragging.
 	// - "Dragging": the user is dragging the slider left/right.
 	// - "Aborted": the user has right clicked or pressed Escape to abort the drag, but hasn't yet released all mouse buttons.
-	let rangeSliderClickDragState: "Ready" | "Deciding" | "Dragging" | "Aborted" = "Ready";
+	let rangeSliderClickDragState: "Ready" | "Deciding" | "Dragging" | "Aborted" = $state("Ready");
 	// Stores the initial value upon beginning to drag so it can be restored upon aborting. Set to `undefined` when not dragging.
 	let initialValueBeforeDragging: number | undefined = undefined;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
@@ -84,14 +107,7 @@
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
-	$: watchValue(value, unit);
 
-	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
-	$: styles = {
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
-		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
-	};
 
 	// Keep track of the Ctrl key being held down.
 	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
@@ -99,12 +115,16 @@
 		addEventListener("keydown", trackCtrl);
 		addEventListener("keyup", trackCtrl);
 		addEventListener("mousemove", trackCtrl);
+
+		return () => {
+			removeEventListener("keydown", trackCtrl);
+			removeEventListener("keyup", trackCtrl);
+			removeEventListener("mousemove", trackCtrl);
+		}
 	});
-	onDestroy(() => {
-		removeEventListener("keydown", trackCtrl);
-		removeEventListener("keyup", trackCtrl);
-		removeEventListener("mousemove", trackCtrl);
-	});
+	// onDestroy(() => {
+		
+	// });
 
 	// ===============================
 	// TRACKING AND UPDATING THE VALUE
@@ -152,7 +172,7 @@
 
 		text = displayText(newValueValidated, unit);
 
-		if (newValue !== undefined) dispatch("value", newValueValidated);
+		if (newValue !== undefined) onvalue?.(newValueValidated);
 
 		// For any caller that needs to know what the value was changed to, we return it here
 		return newValueValidated;
@@ -212,7 +232,7 @@
 
 		if (newValue !== undefined) {
 			const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
-			if (newValue !== oldValue) dispatch("startHistoryTransaction");
+			if (newValue !== oldValue) onstartHistoryTransaction?.();
 		}
 		updateValue(newValue);
 
@@ -541,7 +561,7 @@
 	function startDragging() {
 		// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
 		// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
-		dispatch("startHistoryTransaction");
+		onstartHistoryTransaction?.()
 	}
 
 	// We want to let the user abort while dragging the slider by right clicking or pressing Escape.
@@ -632,6 +652,15 @@
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
 	}
+	$effect(() => {
+		watchValue(value, unit);
+	});
+	let sliderStepValue = $derived(isInteger ? (step === undefined ? 1 : step) : "any");
+	let styles = $derived({
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
+	});
 </script>
 
 <FieldInput
@@ -640,12 +669,11 @@
 		increment: mode === "Increment",
 		range: mode === "Range",
 	}}
-	value={text}
-	on:value={({ detail }) => (text = detail)}
-	on:textFocused={onTextFocused}
-	on:textChanged={onTextChanged}
-	on:textChangeCanceled={onTextChangeCanceled}
-	on:pointerdown={onDragPointerDown}
+	bind:value={text}
+	onfocus={onTextFocused}
+	onchange={onTextChanged}
+	ontextChangeCanceled={onTextChangeCanceled}
+	onpointerdown={onDragPointerDown}
 	{label}
 	{disabled}
 	{tooltip}
@@ -658,18 +686,18 @@
 		{#if mode === "Increment" && incrementBehavior !== "None"}
 			<button
 				class="arrow left"
-				on:pointerdown={(e) => onIncrementPointerDown(e, "Decrease")}
-				on:mousedown={incrementPressAbort}
-				on:pointerup={onIncrementPointerUp}
-				on:pointerleave={onIncrementPointerUp}
+				onpointerdown={(e) => onIncrementPointerDown(e, "Decrease")}
+				onmousedown={incrementPressAbort}
+				onpointerup={onIncrementPointerUp}
+				onpointerleave={onIncrementPointerUp}
 				tabindex="-1"
 			></button>
 			<button
 				class="arrow right"
-				on:pointerdown={(e) => onIncrementPointerDown(e, "Increase")}
-				on:mousedown={incrementPressAbort}
-				on:pointerup={onIncrementPointerUp}
-				on:pointerleave={onIncrementPointerUp}
+				onpointerdown={(e) => onIncrementPointerDown(e, "Increase")}
+				onmousedown={incrementPressAbort}
+				onpointerup={onIncrementPointerUp}
+				onpointerleave={onIncrementPointerUp}
 				tabindex="-1"
 			></button>
 		{/if}
@@ -684,16 +712,16 @@
 				max={rangeMax}
 				step={sliderStepValue}
 				bind:value={rangeSliderValue}
-				on:input={onSliderInput}
-				on:pointerup={onSliderPointerUp}
-				on:contextmenu|preventDefault
-				on:wheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
+				oninput={onSliderInput}
+				onpointerup={onSliderPointerUp}
+				oncontextmenu={preventDefault(bubble('contextmenu'))}
+				onwheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}
-				<div class="fake-slider-thumb" />
+				<div class="fake-slider-thumb"></div>
 			{/if}
-			<div class="slider-progress" />
+			<div class="slider-progress"></div>
 		{/if}
 	{/if}
 </FieldInput>

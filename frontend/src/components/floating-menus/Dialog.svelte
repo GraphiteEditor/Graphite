@@ -16,7 +16,7 @@
 
 	const dialog = getContext<DialogState>("dialog");
 
-	let self: FloatingMenu | undefined;
+	let self: FloatingMenu | undefined = $state();
 
 	onMount(() => {
 		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup

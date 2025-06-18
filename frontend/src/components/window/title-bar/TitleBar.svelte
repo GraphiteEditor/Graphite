@@ -1,7 +1,3 @@
-<script lang="ts" context="module">
-	export type Platform = "Windows" | "Mac" | "Linux" | "Web";
-</script>
-
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
@@ -17,7 +13,7 @@
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
 
-	export let platform: Platform;
+	export let platform: Graphite.Platform;
 	export let maximized: boolean;
 
 	const editor = getContext<Editor>("editor");

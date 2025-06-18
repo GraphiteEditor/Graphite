@@ -1,27 +1,37 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
-	const dispatch = createEventDispatcher<{ commitText: string }>();
+	interface Props {
+		// Label
+		label?: string | undefined;
+		tooltip?: string | undefined;
+		placeholder?: string | undefined;
+		// Disabled
+		disabled?: boolean;
+		// Value
+		value: string;
+		// Styling
+		centered?: boolean;
+		minWidth?: number;
+		class?: string;
+		classes?: Record<string, boolean>;
+		oncommitText?: (arg1: string) => void;
+	}
 
-	// Label
-	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-	export let placeholder: string | undefined = undefined;
-	// Disabled
-	export let disabled = false;
-	// Value
-	export let value: string;
-	// Styling
-	export let centered = false;
-	export let minWidth = 0;
+	let {
+		label = undefined,
+		tooltip = undefined,
+		placeholder = undefined,
+		disabled = false,
+		value = $bindable(),
+		centered = false,
+		minWidth = 0,
+		class: className = "",
+		classes = {},
+		oncommitText,
+	}: Props = $props();
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-
-	let self: FieldInput | undefined;
+	let self: FieldInput | undefined = $state();
 	let editing = false;
 
 	function onTextFocused() {
@@ -39,7 +49,7 @@
 		onTextChangeCanceled();
 
 		// TODO: Find a less hacky way to do this
-		if (self) dispatch("commitText", self.getValue());
+		if (self) oncommitText?.(self.getValue());
 
 		// Required if value is not changed by the parent component upon update:value event
 		self?.setInputElementValue(self.getValue());
@@ -64,11 +74,10 @@
 	class={`text-input ${className}`.trim()}
 	classes={{ centered, ...classes }}
 	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
-	{value}
-	on:value
-	on:textFocused={onTextFocused}
-	on:textChanged={onTextChanged}
-	on:textChangeCanceled={onTextChangeCanceled}
+	bind:value
+	onfocus={onTextFocused}
+	onchange={onTextChanged}
+	ontextChangeCanceled={onTextChangeCanceled}
 	spellcheck={true}
 	{label}
 	{disabled}
