@@ -33,17 +33,21 @@ const ALLOWED_LICENSES = [
 ];
 
 const runesGlobs = [
-	"**/components/*.svelte"
-	"**/components/*.svelte"
-	"**/components/*.svelte"
+	"**/components/layout/*.svelte",
+	"**/components/widgets/labels/*.svelte",
+	"**/components/widgets/buttons/*.svelte",
+	"**/components/widgets/inputs/*.svelte",
+	"**/components/floating-menus/MenuList.svelte",
+	"**/components/floating-menus/ColorPicker.svelte",
+	"**/components/floating-menus/Dialog.svelte",
+	"**/components/window/workspace/Panel.svelte",
 ];
 
 function forceRunes(filePath: string): boolean {
 	const relativePath = filePath.slice(filePath.indexOf("src"));
 	// Test the file path against each glob pattern
 	return runesGlobs.some((min) => {
-		console.log("🚀 ~ forceRunes ~ filePath:", relativePath, minimatch(filePath, min));
-		return minimatch(filePath, min);
+		return minimatch(relativePath, min);
 	});
 }
 
@@ -60,9 +64,12 @@ export default defineConfig({
 				defaultHandler?.(warning);
 			},
 			dynamicCompileOptions({ filename, compileOptions }) {
-				console.log("🚀 ~ dynamicCompileOptions ~ compileOptions:", compileOptions.runes);
 				if (forceRunes(filename) && !compileOptions.runes) {
+					console.log(`🚀 ~ runes ~`, filename, true);
+
 					return { runes: true };
+				} else {
+					console.log(`🚀 ~ runes ~`, filename, false);
 				}
 			},
 		}),

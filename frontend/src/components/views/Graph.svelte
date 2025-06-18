@@ -786,7 +786,7 @@
 						class="remove-button-import"
 						data-index={index}
 						data-import-text-edge
-						action={() => {
+						onclick={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
 					/>
@@ -806,7 +806,7 @@
 				<IconButton
 					size={24}
 					icon="Add"
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
@@ -847,7 +847,7 @@
 						class="remove-button-export"
 						data-index={index}
 						data-export-text-edge
-						action={() => {
+						onclick={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
 					/>
@@ -878,7 +878,7 @@
 				<IconButton
 					size={24}
 					icon={"Add"}
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 				/>
@@ -1005,7 +1005,7 @@
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
-					action={() => {
+					onclick={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 					tooltip={node.visible ? "Visible" : "Hidden"}

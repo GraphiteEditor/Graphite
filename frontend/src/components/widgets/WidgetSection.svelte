@@ -31,7 +31,7 @@
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
 			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
 			size={24}
-			action={(e) => {
+			onclick={(e) => {
 				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
 				e?.stopPropagation();
 			}}
@@ -41,7 +41,7 @@
 			icon={"Trash"}
 			tooltip={"Delete this node from the layer chain"}
 			size={24}
-			action={(e) => {
+			onclick={(e) => {
 				editor.handle.deleteNode(widgetData.id);
 				e?.stopPropagation();
 			}}
@@ -52,7 +52,7 @@
 			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
 			tooltip={widgetData.visible ? "Hide this node" : "Show this node"}
 			size={24}
-			action={(e) => {
+			onclick={(e) => {
 				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
 				e?.stopPropagation();
 			}}
