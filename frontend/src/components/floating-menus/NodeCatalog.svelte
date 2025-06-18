@@ -110,7 +110,7 @@
 </script>
 
 <div class="node-catalog">
-	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+	<TextInput placeholder="Search Nodes..." bind:value={searchTerm} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>

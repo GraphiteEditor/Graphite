@@ -3,15 +3,25 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-	export let icon: IconName;
-	export let iconSizeOverride: number | undefined = undefined;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	interface Props {
+		class?: string;
+		classes?: Record<string, boolean>;
+		icon: IconName;
+		iconSizeOverride?: number | undefined;
+		disabled?: boolean;
+		tooltip?: string | undefined;
+	}
 
-	$: iconSizeClass = ((icon: IconName) => {
+	let {
+		class: className = "",
+		classes = {},
+		icon,
+		iconSizeOverride = undefined,
+		disabled = false,
+		tooltip = undefined
+	}: Props = $props();
+
+	let iconSizeClass = $derived(((icon: IconName) => {
 		const iconData = ICONS[icon];
 		if (!iconData) {
 			// eslint-disable-next-line no-console
@@ -20,10 +30,10 @@
 		}
 		if (iconData.size === undefined) return "";
 		return `size-${iconSizeOverride || iconData.size}`;
-	})(icon);
-	$: extraClasses = Object.entries(classes)
+	})(icon));
+	let extraClasses = $derived(Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
+		.join(" "));
 </script>
 
 <LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>

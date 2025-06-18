@@ -85,32 +85,32 @@
 	{#each widgets as component, index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
-			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<CheckboxInput {...exclude(checkboxInput)} onchecked={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const colorInput = narrowWidgetProps(component.props, "ColorInput")}
 		{#if colorInput}
-			<ColorInput {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
+			<ColorInput {...exclude(colorInput)} onvalue={(detail) => widgetValueUpdate(index, detail)} onstartHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
-			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => debouncer((value) => widgetValueCommitAndUpdate(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
+			<CurveInput {...exclude(curvesInput)} onvalue={(detail) => debouncer((value) => widgetValueCommitAndUpdate(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
 			<DropdownInput
 				{...exclude(dropdownInput)}
-				on:hoverInEntry={({ detail }) => {
+				onhoverInEntry={(detail) => {
 					return widgetValueUpdate(index, detail);
 				}}
-				on:hoverOutEntry={({ detail }) => {
+				onhoverOutEntry={(detail) => {
 					return widgetValueUpdate(index, detail);
 				}}
-				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
+				onselectedIndex={(detail) => widgetValueCommitAndUpdate(index, detail)}
 			/>
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}
-			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<FontInput {...exclude(fontInput)} onchangeFont={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
 		{#if parameterExposeButton}
@@ -118,7 +118,7 @@
 		{/if}
 		{@const iconButton = narrowWidgetProps(component.props, "IconButton")}
 		{#if iconButton}
-			<IconButton {...exclude(iconButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
+			<IconButton {...exclude(iconButton)} onclick={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
@@ -136,15 +136,15 @@
 		{#if numberInput}
 			<NumberInput
 				{...exclude(numberInput)}
-				on:value={({ detail }) => debouncer((value) => widgetValueUpdate(index, value)).debounceUpdateValue(detail)}
-				on:startHistoryTransaction={() => widgetValueCommit(index, numberInput.value)}
+				onvalue={(detail) => debouncer((value) => widgetValueUpdate(index, value)).debounceUpdateValue(detail)}
+				onstartHistoryTransaction={() => widgetValueCommit(index, numberInput.value)}
 				incrementCallbackIncrease={() => widgetValueCommitAndUpdate(index, "Increment")}
 				incrementCallbackDecrease={() => widgetValueCommitAndUpdate(index, "Decrement")}
 			/>
 		{/if}
 		{@const referencePointInput = narrowWidgetProps(component.props, "ReferencePointInput")}
 		{#if referencePointInput}
-			<ReferencePointInput {...exclude(referencePointInput)} on:value={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<ReferencePointInput {...exclude(referencePointInput)} onvalue={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
@@ -154,7 +154,7 @@
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
 		{#if radioInput}
-			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<RadioInput {...exclude(radioInput)} onselect={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const separator = narrowWidgetProps(component.props, "Separator")}
 		{#if separator}
@@ -166,7 +166,7 @@
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}
-			<TextAreaInput {...exclude(textAreaInput)} on:commitText={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<TextAreaInput {...exclude(textAreaInput)} oncommitText={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
@@ -178,7 +178,7 @@
 		{/if}
 		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
 		{#if textInput}
-			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<TextInput {...exclude(textInput)} oncommitText={(detail) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const textLabel = narrowWidgetProps(component.props, "TextLabel")}
 		{#if textLabel}

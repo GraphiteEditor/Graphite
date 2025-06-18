@@ -1,29 +1,32 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import type { ReferencePoint } from "@graphite/messages";
 
-	const dispatch = createEventDispatcher<{ value: ReferencePoint }>();
+	interface Props {
+		value: string;
+		disabled?: boolean;
+		onvalue?: (point: ReferencePoint) => void;
+		tooltip?: string;
+	}
 
-	export let value: string;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	let { value, disabled = false, onvalue, tooltip }: Props = $props();
 
-	function setValue(newValue: ReferencePoint) {
-		dispatch("value", newValue);
+	function setValue(event: MouseEvent) {
+		let element = event.target as HTMLElement;
+		let position = element.dataset.position as ReferencePoint;
+		onvalue?.(position);
 	}
 </script>
 
 <div class="reference-point-input" class:disabled title={tooltip}>
-	<button on:click={() => setValue("TopLeft")} class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("TopCenter")} class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("TopRight")} class="row-1 col-3" class:active={value === "TopRight"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("CenterLeft")} class="row-2 col-1" class:active={value === "CenterLeft"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("Center")} class="row-2 col-2" class:active={value === "Center"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("CenterRight")} class="row-2 col-3" class:active={value === "CenterRight"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("BottomLeft")} class="row-3 col-1" class:active={value === "BottomLeft"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("BottomCenter")} class="row-3 col-2" class:active={value === "BottomCenter"} tabindex="-1" {disabled}><div /></button>
-	<button on:click={() => setValue("BottomRight")} class="row-3 col-3" class:active={value === "BottomRight"} tabindex="-1" {disabled}><div /></button>
+	<button onclick={setValue} data-position="TopLeft" class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="TopCenter" class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="TopRight" class="row-1 col-3" class:active={value === "TopRight"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="CenterLeft" class="row-2 col-1" class:active={value === "CenterLeft"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="Center" class="row-2 col-2" class:active={value === "Center"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="CenterRight" class="row-2 col-3" class:active={value === "CenterRight"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="BottomLeft" class="row-3 col-1" class:active={value === "BottomLeft"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="BottomCenter" class="row-3 col-2" class:active={value === "BottomCenter"} tabindex="-1" {disabled}><div></div></button>
+	<button onclick={setValue} data-position="BottomRight" class="row-3 col-3" class:active={value === "BottomRight"} tabindex="-1" {disabled}><div></div></button>
 </div>
 
 <style lang="scss" global>

@@ -461,7 +461,7 @@
 	});
 </script>
 
-<LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
+<LayoutCol class="document" ondragover={(e) => e.preventDefault()} ondrop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
 			<WidgetLayout layout={$document.documentModeLayout} />
@@ -517,13 +517,13 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
+					<div class="viewport" onpointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" onscroll={preventTextEditingScroll} />
 							{/if}
 						</div>
 						<canvas
@@ -545,10 +545,10 @@
 						direction="Vertical"
 						thumbLength={scrollbarSize.y}
 						thumbPosition={scrollbarPos.y}
-						on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(0, detail)}
-						on:thumbPosition={({ detail }) => panCanvasY(detail)}
-						on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
-						on:thumbDragAbort={() => editor.handle.panCanvasAbort(false)}
+						ontrackShift={(detail) => editor.handle.panCanvasByFraction(0, detail)}
+						onthumbPosition={(detail) => panCanvasY(detail)}
+						onthumbDragStart={() => editor.handle.panCanvasAbortPrepare(false)}
+						onthumbDragAbort={() => editor.handle.panCanvasAbort(false)}
 					/>
 				</LayoutCol>
 			</LayoutRow>
@@ -557,11 +557,11 @@
 					direction="Horizontal"
 					thumbLength={scrollbarSize.x}
 					thumbPosition={scrollbarPos.x}
-					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
-					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
-					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
-					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
+					ontrackShift={(detail) => editor.handle.panCanvasByFraction(detail, 0)}
+					onthumbPosition={(detail) => panCanvasX(detail)}
+					onthumbDragEnd={() => editor.handle.setGridAlignedEdges()}
+					onthumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
+					onthumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>
 			</LayoutRow>
 		</LayoutCol>

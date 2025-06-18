@@ -10,11 +10,15 @@
 
 	const editor = getContext<Editor>("editor");
 
-	export let primary: Color;
-	export let secondary: Color;
+	interface Props {
+		primary: Color;
+		secondary: Color;
+	}
 
-	let primaryOpen = false;
-	let secondaryOpen = false;
+	let { primary, secondary }: Props = $props();
+
+	let primaryOpen = $state(false);
+	let secondaryOpen = $state(false);
 
 	function clickPrimarySwatch() {
 		primaryOpen = true;
@@ -37,22 +41,20 @@
 
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
-		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
+		<button onclick={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
 		<ColorPicker
-			open={primaryOpen}
-			on:open={({ detail }) => (primaryOpen = detail)}
+			bind:open={primaryOpen}
 			colorOrGradient={primary}
-			on:colorOrGradient={({ detail }) => detail instanceof Color && primaryColorChanged(detail)}
+			oncolorOrGradient={(detail) => detail instanceof Color && primaryColorChanged(detail)}
 			direction="Right"
 		/>
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
-		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
+		<button onclick={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0"></button>
 		<ColorPicker
-			open={secondaryOpen}
-			on:open={({ detail }) => (secondaryOpen = detail)}
+			bind:open={secondaryOpen}
 			colorOrGradient={secondary}
-			on:colorOrGradient={({ detail }) => detail instanceof Color && secondaryColorChanged(detail)}
+			oncolorOrGradient={(detail) => detail instanceof Color && secondaryColorChanged(detail)}
 			direction="Right"
 		/>
 	</LayoutRow>
