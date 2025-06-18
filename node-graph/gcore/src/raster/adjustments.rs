@@ -4,8 +4,9 @@ use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
 #[cfg(feature = "alloc")]
 use crate::raster::curve::{Curve, ValueMapperNode};
 #[cfg(feature = "alloc")]
-use crate::raster::image::{Image, RasterDataTable};
+use crate::raster::image::Image;
 use crate::raster::{Channel, Color, Pixel};
+use crate::raster_types::{CPU, Raster, RasterDataTable};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::vector::VectorDataTable;
 use crate::vector::style::GradientStops;
@@ -265,7 +266,7 @@ fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -289,7 +290,7 @@ fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -312,7 +313,7 @@ fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -337,7 +338,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 	Color,
-	RasterDataTable<Color>,
+	RasterDataTable<CPU>,
 	GradientStops,
 )]
 	mut input: T,
@@ -426,7 +427,7 @@ fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -493,7 +494,7 @@ async fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -565,7 +566,7 @@ async fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -599,7 +600,7 @@ async fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -621,7 +622,7 @@ async fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -663,19 +664,19 @@ impl Blend<Color> for Option<Color> {
 		}
 	}
 }
-impl Blend<Color> for RasterDataTable<Color> {
+impl Blend<Color> for RasterDataTable<CPU> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		let mut result_table = self.clone();
 
 		for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
 			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-			*over.instance = Image {
+			*over.instance = Raster::new_cpu(Image {
 				data,
 				width: over.instance.width,
 				height: over.instance.height,
 				base64_string: None,
-			};
+			});
 		}
 
 		result_table
@@ -706,14 +707,14 @@ async fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	over: T,
 	#[expose]
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	under: T,
@@ -795,13 +796,13 @@ impl Adjust<Color> for GradientStops {
 		}
 	}
 }
-impl<P: Pixel> Adjust<P> for RasterDataTable<P>
+impl Adjust<Color> for RasterDataTable<CPU>
 where
-	GraphicElement: From<Image<P>>,
+	GraphicElement: From<Image<Color>>,
 {
-	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
 		for instance in self.instance_mut_iter() {
-			for c in instance.instance.data.iter_mut() {
+			for c in instance.instance.data_mut().data.iter_mut() {
 				*c = map_fn(c);
 			}
 		}
@@ -829,7 +830,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -865,7 +866,7 @@ async fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1037,7 +1038,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1166,7 +1167,7 @@ async fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1309,9 +1310,9 @@ impl MultiplyAlpha for GraphicGroupTable {
 		}
 	}
 }
-impl<P: Pixel> MultiplyAlpha for RasterDataTable<P>
+impl MultiplyAlpha for RasterDataTable<CPU>
 where
-	GraphicElement: From<Image<P>>,
+	GraphicElement: From<Image<Color>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instance_mut_iter() {
@@ -1331,7 +1332,7 @@ async fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -1364,7 +1365,7 @@ async fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -1438,7 +1439,7 @@ fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1488,7 +1489,8 @@ fn color_overlay<T: Adjust<Color>>(
 #[cfg(test)]
 mod test {
 	use crate::raster::adjustments::BlendMode;
-	use crate::raster::image::{Image, RasterDataTable};
+	use crate::raster::image::Image;
+	use crate::raster_types::{Raster, RasterDataTable};
 	use crate::{Color, Node};
 	use std::pin::Pin;
 
@@ -1514,7 +1516,7 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), RasterDataTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
+		let result = super::color_overlay((), RasterDataTable::new(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
 		let result = result.instance_ref_iter().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)

@@ -12,24 +12,23 @@ use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_core::raster::curve::Curve;
-use graphene_core::raster::image::RasterDataTable;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
+use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_core::text::Font;
 use graphene_core::vector::generator_nodes::grid;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::animation::RealTimeMode;
-use graphene_std::application_io::TextureDataTable;
 use graphene_std::ops::XY;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::{GraphicGroupTable, NodeInputDecleration, RasterDataType};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -190,7 +189,7 @@ pub(crate) fn property_from_type(
 						// GRAPHICAL DATA TYPES
 						// ====================
 						Some(x) if x == TypeId::of::<VectorDataTable>() => vector_data_widget(default_info).into(),
-						Some(x) if x == TypeId::of::<RasterDataType>() || x == TypeId::of::<RasterDataTable<Color>>() || x == TypeId::of::<TextureDataTable>() => raster_widget(default_info).into(),
+						Some(x) if x == TypeId::of::<RasterDataTable<CPU>>() || x == TypeId::of::<RasterDataTable<GPU>>() => raster_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<GraphicGroupTable>() => group_widget(default_info).into(),
 						// ============
 						// STRUCT TYPES

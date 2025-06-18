@@ -30,8 +30,9 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::RasterDataTable;
+use graphene_core::raster_types::RasterDataTable;
 use graphene_core::vector::style::ViewMode;
+use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{ClickTarget, Quad};
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
@@ -864,7 +865,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(RasterDataTable::new(image), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(RasterDataTable::new(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {

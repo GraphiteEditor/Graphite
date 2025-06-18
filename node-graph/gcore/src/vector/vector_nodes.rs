@@ -4,7 +4,7 @@ use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
-use crate::raster::image::RasterDataTable;
+use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
@@ -204,7 +204,7 @@ where
 async fn repeat<I: 'n + Send>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
@@ -246,7 +246,7 @@ where
 async fn circular_repeat<I: 'n + Send>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	angle_offset: Angle,
 	#[default(5)] radius: f64,
 	#[default(5)] instances: IntegerCount,
@@ -286,7 +286,7 @@ async fn copy_to_points<I: 'n + Send>(
 	points: VectorDataTable,
 	#[expose]
 	/// Artwork to be copied and placed at each point.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)]
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)]
 	instance: Instances<I>,
 	/// Minimum range of randomized sizes given to each instance.
 	#[default(1)]
@@ -370,7 +370,7 @@ where
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send>(
 	_: impl Ctx,
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<Color>)] instance: Instances<I>,
+	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
 	#[default(ReferencePoint::Center)] reference_point: ReferencePoint,
 	offset: f64,
 	#[range((-90., 90.))] angle: Angle,

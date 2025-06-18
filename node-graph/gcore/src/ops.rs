@@ -1,6 +1,6 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
-use crate::raster::image::RasterDataTable;
+use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
@@ -453,7 +453,7 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 // 	_: impl Ctx,
 // 	#[implementations(
 // 		Color,
-// 		RasterDataTable<Color>,
+// 		RasterDataTable<CPU>,
 // 		GradientStops,
 // 	)]
 // 	mut image: T,
@@ -515,7 +515,7 @@ fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, O
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&RasterDataTable<Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&RasterDataTable<CPU>)] value: &'i T) -> T {
 	value.clone()
 }
 

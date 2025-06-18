@@ -8,13 +8,13 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_core::Artboard;
 use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::RasterDataTable;
+use graphene_core::raster_types::{CPU, RasterDataTable};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_core::{Artboard, Color};
 use graphene_std::GraphicGroupTable;
 use graphene_std::vector::{VectorData, VectorDataTable};
 
@@ -209,7 +209,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<CPU>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let image = resolve_document_node_type("Image")
 			.expect("Image node does not exist")

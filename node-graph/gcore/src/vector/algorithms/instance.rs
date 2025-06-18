@@ -1,6 +1,5 @@
 use crate::instances::{InstanceRef, Instances};
-use crate::raster::Color;
-use crate::raster::image::RasterDataTable;
+use crate::raster_types::{CPU, RasterDataTable};
 use crate::transform::TransformMut;
 use crate::vector::VectorDataTable;
 use crate::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, GraphicElement, GraphicGroupTable, OwnedContextImpl};
@@ -10,7 +9,7 @@ use glam::DVec2;
 async fn instance_on_points<T: Into<GraphicElement> + Default + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
 	points: VectorDataTable,
-	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> RasterDataTable<Color>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> RasterDataTable<CPU>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	reverse: bool,
 ) -> GraphicGroupTable {
 	let mut result_table = GraphicGroupTable::default();
@@ -46,7 +45,7 @@ async fn instance_on_points<T: Into<GraphicElement> + Default + Clone + 'static>
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_repeat<T: Into<GraphicElement> + Default + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
-	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> RasterDataTable<Color>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
+	#[implementations(Context -> GraphicGroupTable, Context -> VectorDataTable, Context -> RasterDataTable<CPU>)] instance: impl Node<'n, Context<'static>, Output = Instances<T>>,
 	#[default(1)] count: u64,
 	reverse: bool,
 ) -> GraphicGroupTable {

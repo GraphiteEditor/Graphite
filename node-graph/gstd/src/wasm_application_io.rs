@@ -8,7 +8,8 @@ use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, RasterDataTable};
+use graphene_core::raster::image::Image;
+use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_core::transform::Footprint;
@@ -76,7 +77,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 }
 
 #[node_macro::node(category("Network"))]
-fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
+fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<CPU> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
 		return RasterDataTable::default();
 	};
@@ -91,7 +92,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> RasterDataTable<Color> {
 		..Default::default()
 	};
 
-	RasterDataTable::new(image)
+	RasterDataTable::new(Raster::new_cpu(image))
 }
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutputType {
@@ -165,13 +166,13 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		VectorDataTable,
-		RasterDataTable<Color>,
+		RasterDataTable<CPU>,
 		GraphicGroupTable,
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
-) -> RasterDataTable<Color>
+) -> RasterDataTable<CPU>
 where
 	Instances<T>: GraphicElementRendered,
 {
@@ -219,8 +220,9 @@ where
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
 	let mut result = RasterDataTable::default();
+	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	result.push(Instance {
-		instance: Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32),
+		instance: Raster::new_cpu(image),
 		transform: footprint.transform,
 		..Default::default()
 	});
@@ -234,7 +236,7 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 	#[implementations(
 		Context -> VectorDataTable,
-		Context -> RasterDataTable<Color>,
+		Context -> RasterDataTable<CPU>,
 		Context -> GraphicGroupTable,
 		Context -> graphene_core::Artboard,
 		Context -> graphene_core::ArtboardGroupTable,

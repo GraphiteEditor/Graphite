@@ -156,7 +156,8 @@ impl InstanceLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(instances) => instances.identifier(),
 			Self::VectorData(instances) => instances.identifier(),
-			Self::RasterDataType(_) => "RasterDataType".to_string(),
+			Self::RasterDataCPU(_) => "RasterDataCPU".to_string(),
+			Self::RasterDataGPU(_) => "RasterDataGPU".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for GraphicElement
@@ -167,7 +168,8 @@ impl InstanceLayout for GraphicElement {
 		match self {
 			Self::GraphicGroup(instances) => instances.layout_with_breadcrumb(data),
 			Self::VectorData(instances) => instances.layout_with_breadcrumb(data),
-			Self::RasterDataType(_) => label("Raster frame not supported"),
+			Self::RasterDataCPU(_) => label("Raster frame not supported"),
+			Self::RasterDataGPU(_) => label("Raster frame not supported"),
 		}
 	}
 }
