@@ -21,6 +21,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
+	BlendingFillSet {
+		layer: LayerNodeIdentifier,
+		fill: f64,
+	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
 		opacity: f64,
@@ -28,6 +32,9 @@ pub enum GraphOperationMessage {
 	BlendModeSet {
 		layer: LayerNodeIdentifier,
 		blend_mode: BlendMode,
+	},
+	ClipModeToggle {
+		layer: LayerNodeIdentifier,
 	},
 	StrokeSet {
 		layer: LayerNodeIdentifier,

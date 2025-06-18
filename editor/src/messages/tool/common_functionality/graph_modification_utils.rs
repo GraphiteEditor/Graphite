@@ -13,6 +13,7 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_core::text::{Font, TypesettingConfig};
 use graphene_core::vector::style::Gradient;
+use graphene_std::NodeInputDecleration;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -258,7 +259,7 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNe
 	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
-/// Get the current gradient of a layer from the closest Fill node
+/// Get the current gradient of a layer from the closest "Fill" node.
 pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;
 
@@ -269,7 +270,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	Some(gradient.clone())
 }
 
-/// Get the current fill of a layer from the closest Fill node
+/// Get the current fill of a layer from the closest "Fill" node.
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;
 
@@ -280,16 +281,16 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	Some(color.to_linear_srgb())
 }
 
-/// Get the current blend mode of a layer from the closest Blend Mode node
+/// Get the current blend mode of a layer from the closest "Blending" node.
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blend Mode")?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest Opacity node.
+/// Get the current opacity of a layer from the closest "Blending" node.
 /// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
 /// - Multiplied with additional opacity nodes earlier in the chain
 /// - Set by an Opacity node with an exposed input value driven by another node
@@ -298,11 +299,27 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 ///
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Opacity")?;
-	let TaggedValue::F64(opacity) = inputs.get(1)?.as_value()? else {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)
+}
+
+pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {
+		return None;
+	};
+	Some(*clip)
+}
+
+pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blending")?;
+	let TaggedValue::F64(fill) = inputs.get(3)?.as_value()? else {
+		return None;
+	};
+	Some(*fill)
 }
 
 pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
@@ -356,7 +373,7 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	let weight_node_input_index = 2;
+	let weight_node_input_index = graphene_std::vector::stroke::WeightInput::INDEX;
 	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).find_input("Stroke", weight_node_input_index)? {
 		Some(*width)
 	} else {
