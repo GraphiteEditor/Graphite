@@ -601,6 +601,7 @@ pub struct Stroke {
 	pub join: StrokeJoin,
 	#[serde(alias = "line_join_miter_limit")]
 	pub join_miter_limit: f64,
+	#[serde(default)]
 	pub align: StrokeAlign,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
@@ -614,12 +615,16 @@ impl core::hash::Hash for Stroke {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.color.hash(state);
 		self.weight.to_bits().hash(state);
-		self.dash_lengths.len().hash(state);
-		self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
+		{
+			self.dash_lengths.len().hash(state);
+			self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
+		}
 		self.dash_offset.to_bits().hash(state);
 		self.cap.hash(state);
 		self.join.hash(state);
 		self.join_miter_limit.to_bits().hash(state);
+		self.align.hash(state);
+		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}

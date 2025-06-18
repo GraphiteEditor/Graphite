@@ -777,10 +777,9 @@ impl GraphicElementRendered for VectorDataTable {
 						Stroke,
 					}
 
-					let order = if instance.instance.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) || reorder_for_outside {
-						[Op::Stroke, Op::Fill]
-					} else {
-						[Op::Fill, Op::Stroke] // default
+					let order = match instance.instance.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) || reorder_for_outside {
+						true => [Op::Stroke, Op::Fill],
+						false => [Op::Fill, Op::Stroke], // Default
 					};
 					for operation in order {
 						match operation {

@@ -537,7 +537,7 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click to release)"} />
+						<IconLabel icon="Clipped" class="clipped-arrow" tooltip={"Clipping mask is active (Alt-click border to release)"} />
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
