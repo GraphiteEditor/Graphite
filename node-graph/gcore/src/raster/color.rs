@@ -515,6 +515,11 @@ impl Color {
 	}
 
 	#[inline(always)]
+	pub fn is_opaque(&self) -> bool {
+		self.alpha > 1. - f32::EPSILON
+	}
+
+	#[inline(always)]
 	pub fn average_rgb_channels(&self) -> f32 {
 		(self.red + self.green + self.blue) / 3.
 	}

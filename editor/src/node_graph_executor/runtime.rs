@@ -323,7 +323,15 @@ impl NodeRuntime {
 		let bounds = graphic_element.bounding_box(DAffine2::IDENTITY, true);
 
 		// Render the thumbnail from a `GraphicElement` into an SVG string
-		let render_params = RenderParams::new(ViewMode::Normal, bounds, true, false, false);
+		let render_params = RenderParams {
+			view_mode: ViewMode::Normal,
+			culling_bounds: bounds,
+			thumbnail: true,
+			hide_artboards: false,
+			for_export: false,
+			for_mask: false,
+			alignment_parent_transform: None,
+		};
 		let mut render = SvgRender::new();
 		graphic_element.render_svg(&mut render, &render_params);
 

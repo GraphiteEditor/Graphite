@@ -1160,6 +1160,13 @@ impl NodeNetworkInterface {
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
 	}
 
+	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) {
+		let row = ("", "TODO").into();
+		let _ = self
+			.node_metadata_mut(node_id, network_path)
+			.map(|node_metadata| node_metadata.persistent_metadata.input_properties.insert(index - 1, row));
+	}
+
 	pub fn input_metadata(&self, node_id: &NodeId, index: usize, field: &str, network_path: &[NodeId]) -> Option<&Value> {
 		let Some(input_row) = self.input_properties_row(node_id, index, network_path) else {
 			log::error!("Could not get input_row in get_input_metadata");
