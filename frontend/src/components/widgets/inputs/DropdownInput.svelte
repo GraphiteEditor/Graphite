@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
 	import type { MenuListEntry } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
@@ -10,29 +8,41 @@
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
+	let menuList: MenuList | undefined = $state();
+	let self: LayoutRow | undefined = $state();
 
-	let menuList: MenuList | undefined;
-	let self: LayoutRow | undefined;
+	interface Props {
+		entries: MenuListEntry[][];
+		selectedIndex?: number | undefined; // When not provided, a dash is displayed
+		drawIcon?: boolean;
+		interactive?: boolean;
+		disabled?: boolean;
+		tooltip?: string | undefined;
+		minWidth?: number;
+		maxWidth?: number;
+		onhoverOutEntry?: (index: number) => void; 
+		onhoverInEntry?: (index: number) => void;
+		onselectedIndex?: (index: number) => void;
+	}
 
-	export let entries: MenuListEntry[][];
-	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
-	export let drawIcon = false;
-	export let interactive = true;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	let {
+		entries,
+		selectedIndex = undefined,
+		drawIcon = false,
+		interactive = true,
+		disabled = false,
+		tooltip = undefined,
+		minWidth = $bindable(0),
+		maxWidth = 0,
+		onhoverInEntry,
+		onhoverOutEntry,
+		onselectedIndex,
+	}: Props = $props();
 
-	let activeEntry = makeActiveEntry();
+	let activeEntry = $state(makeActiveEntry());
 	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
-	let open = false;
-
-	$: watchSelectedIndex(selectedIndex);
-	$: watchEntries(entries);
-	$: watchActiveEntry(activeEntry);
-	$: watchOpen(open);
+	let open = $state(false);
 
 	function watchOpen(open: boolean) {
 		initialSelectedIndex = open ? selectedIndex : undefined;
@@ -56,17 +66,17 @@
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
 			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
-			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
-			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
+			if (initialSelectedIndex !== undefined) onhoverInEntry?.(initialSelectedIndex);
+			onselectedIndex?.(entries.flat().indexOf(activeEntry));
 		}
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
+		onhoverInEntry?.(entries.flat().indexOf(hoveredEntry));
 	}
 
 	function dispatchHoverOutEntry() {
-		if (initialSelectedIndex !== undefined) dispatch("hoverOutEntry", initialSelectedIndex);
+		if (initialSelectedIndex !== undefined) onhoverOutEntry?.(initialSelectedIndex);
 	}
 
 	function makeActiveEntry(): MenuListEntry {
@@ -82,6 +92,15 @@
 		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]") || undefined;
 		if (blurTarget !== self?.div?.()) open = false;
 	}
+	$effect(() => {
+		watchSelectedIndex(selectedIndex);
+	});
+	$effect(() => {
+		watchActiveEntry(activeEntry);
+	});
+	$effect(() => {
+		watchOpen(open);
+	});
 </script>
 
 <LayoutRow
@@ -94,8 +113,8 @@
 		class="dropdown-box"
 		classes={{ disabled, open }}
 		{tooltip}
-		on:click={() => !disabled && (open = true)}
-		on:blur={unFocusDropdownBox}
+		onclick={() => !disabled && (open = true)}
+		onblur={unFocusDropdownBox}
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner
 	>
@@ -106,13 +125,12 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		onnaturalWidth={(detail) => (minWidth = detail)}
 		{activeEntry}
-		on:activeEntry={({ detail }) => (activeEntry = detail)}
-		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
-		on:hoverOutEntry={() => dispatchHoverOutEntry()}
-		{open}
-		on:open={({ detail }) => (open = detail)}
+		onactiveEntry={(detail) => (activeEntry = detail)}
+		onhoverInEntry={dispatchHoverInEntry}
+		onhoverOutEntry={dispatchHoverOutEntry}
+		bind:open
 		{entries}
 		{drawIcon}
 		{interactive}
