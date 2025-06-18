@@ -800,59 +800,64 @@ impl BoundingBoxManager {
 	}
 }
 
-#[test]
-fn skew_transform_singular() {
-	for edge in [
-		SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
-	] {
-		// The determinant is 0.
-		let transform = DAffine2::from_cols_array(&[2.; 6]);
-		// This shouldn't panic. We don't really care about the behavior in this test.
-		let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform, false);
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn skew_transform_singular() {
+		for edge in [
+			SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
+		] {
+			// The determinant is 0.
+			let transform = DAffine2::from_cols_array(&[2.; 6]);
+			// This shouldn't panic. We don't really care about the behavior in this test.
+			let _ = edge.skew_transform(DVec2::new(1.5, 1.5), transform, false);
+		}
 	}
-}
 
-#[test]
-fn skew_transform_correct() {
-	for edge in [
-		SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
-		SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
-	] {
-		// Random transform with det != 0.
-		let to_viewport_transform = DAffine2::from_cols_array(&[2., 1., 0., 1., 2., 3.]);
-		// Random mouse position.
-		let mouse = DVec2::new(1.5, 1.5);
-		let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
+	#[test]
+	fn skew_transform_correct() {
+		for edge in [
+			SelectedEdges::new(true, false, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, true, false, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, true, false, [DVec2::NEG_ONE, DVec2::ONE]),
+			SelectedEdges::new(false, false, false, true, [DVec2::NEG_ONE, DVec2::ONE]),
+		] {
+			// Random transform with det != 0.
+			let to_viewport_transform = DAffine2::from_cols_array(&[2., 1., 0., 1., 2., 3.]);
+			// Random mouse position.
+			let mouse = DVec2::new(1.5, 1.5);
+			let final_transform = edge.skew_transform(mouse, to_viewport_transform, false);
 
-		// This is the current handle that goes under the mouse.
-		let opposite = edge.pivot_from_bounds(edge.bounds[0], edge.bounds[1]);
-		let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
+			// This is the current handle that goes under the mouse.
+			let opposite = edge.pivot_from_bounds(edge.bounds[0], edge.bounds[1]);
+			let dragging_point = edge.pivot_from_bounds(edge.bounds[1], edge.bounds[0]);
 
-		let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
-		let parallel_to_x = edge.top || edge.bottom;
-		let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
+			let viewport_dragging_point = to_viewport_transform.transform_point2(dragging_point);
+			let parallel_to_x = edge.top || edge.bottom;
+			let parallel_to_y = !parallel_to_x && (edge.left || edge.right);
 
-		let drag_vector = mouse - viewport_dragging_point;
-		let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
+			let drag_vector = mouse - viewport_dragging_point;
+			let document_drag_vector = to_viewport_transform.inverse().transform_vector2(drag_vector);
 
-		let sign = if edge.top || edge.left { -1. } else { 1. };
-		let scale_factor = (edge.bounds[1] - edge.bounds[0])[parallel_to_x as usize].abs().recip() * sign;
-		let scaled_document_drag = document_drag_vector * scale_factor;
+			let sign = if edge.top || edge.left { -1. } else { 1. };
+			let scale_factor = (edge.bounds[1] - edge.bounds[0])[parallel_to_x as usize].abs().recip() * sign;
+			let scaled_document_drag = document_drag_vector * scale_factor;
 
-		let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
-			1.,
-			if parallel_to_y { scaled_document_drag.y } else { 0. },
-			if parallel_to_x { scaled_document_drag.x } else { 0. },
-			1.,
-		]));
+			let skew = DAffine2::from_mat2(DMat2::from_cols_array(&[
+				1.,
+				if parallel_to_y { scaled_document_drag.y } else { 0. },
+				if parallel_to_x { scaled_document_drag.x } else { 0. },
+				1.,
+			]));
 
-		let constructed_transform = DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite);
+			let constructed_transform = DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite);
 
-		assert_eq!(constructed_transform, final_transform);
+			assert_eq!(constructed_transform, final_transform);
+		}
 	}
 }
