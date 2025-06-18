@@ -2275,7 +2275,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
 									NodeInput::network(concrete!(bool), 4), // From the document node's parameters
 									NodeInput::network(concrete!(bool), 5),
-									NodeInput::node(NodeId(0), 0),          // From output 0 of SubpathSegmentLengthsNode
+									NodeInput::node(NodeId(0), 0), // From output 0 of SubpathSegmentLengthsNode
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePointsNode")),
 								manual_composition: Some(generic!(T)),
@@ -2312,7 +2312,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::Bool(false), false),
-                        NodeInput::value(TaggedValue::Bool(false), false),
+						NodeInput::value(TaggedValue::Bool(false), false),
 					],
 					..Default::default()
 				},
@@ -2399,7 +2399,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						Into::<PropertiesRow>::into(("Adaptive Spacing", "Round 'Spacing' to a nearby value that divides into the path length evenly.")),
-						Into::<PropertiesRow>::into(("Count points", "Calculate the distance between points based on the number provided.")),
+						Into::<PropertiesRow>::into(("Count Points", "Calculate the distance between points based on the number provided.")),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
