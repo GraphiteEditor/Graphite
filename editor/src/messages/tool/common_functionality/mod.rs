@@ -9,3 +9,4 @@ pub mod shape_editor;
 pub mod snapping;
 pub mod transformation_cage;
 pub mod utility_functions;
+pub mod origin;

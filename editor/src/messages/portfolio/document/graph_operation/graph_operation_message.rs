@@ -56,6 +56,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		pivot: DVec2,
 	},
+	TransformSetOrigin {
+		layer: LayerNodeIdentifier,
+		origin: DVec2,
+	},
 	Vector {
 		layer: LayerNodeIdentifier,
 		modification_type: VectorModificationType,
