@@ -4,6 +4,10 @@ use glam::DVec2;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
 
 pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
+	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
+		return None;
+	}
+
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
 
