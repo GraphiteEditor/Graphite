@@ -1058,37 +1058,41 @@ impl Color {
 	}
 }
 
-#[test]
-fn hsl_roundtrip() {
-	for (red, green, blue) in [
-		(24, 98, 118),
-		(69, 11, 89),
-		(54, 82, 38),
-		(47, 76, 50),
-		(25, 15, 73),
-		(62, 57, 33),
-		(55, 2, 18),
-		(12, 3, 82),
-		(91, 16, 98),
-		(91, 39, 82),
-		(97, 53, 32),
-		(76, 8, 91),
-		(54, 87, 19),
-		(56, 24, 88),
-		(14, 82, 34),
-		(61, 86, 31),
-		(73, 60, 75),
-		(95, 79, 88),
-		(13, 34, 4),
-		(82, 84, 84),
-		(255, 255, 178),
-	] {
-		let col = Color::from_rgb8_srgb(red, green, blue);
-		let [hue, saturation, lightness, alpha] = col.to_hsla();
-		let result = Color::from_hsla(hue, saturation, lightness, alpha);
-		assert!((col.r() - result.r()) < f32::EPSILON * 100.);
-		assert!((col.g() - result.g()) < f32::EPSILON * 100.);
-		assert!((col.b() - result.b()) < f32::EPSILON * 100.);
-		assert!((col.a() - result.a()) < f32::EPSILON * 100.);
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn hsl_roundtrip() {
+		for (red, green, blue) in [
+			(24, 98, 118),
+			(69, 11, 89),
+			(54, 82, 38),
+			(47, 76, 50),
+			(25, 15, 73),
+			(62, 57, 33),
+			(55, 2, 18),
+			(12, 3, 82),
+			(91, 16, 98),
+			(91, 39, 82),
+			(97, 53, 32),
+			(76, 8, 91),
+			(54, 87, 19),
+			(56, 24, 88),
+			(14, 82, 34),
+			(61, 86, 31),
+			(73, 60, 75),
+			(95, 79, 88),
+			(13, 34, 4),
+			(82, 84, 84),
+			(255, 255, 178),
+		] {
+			let col = Color::from_rgb8_srgb(red, green, blue);
+			let [hue, saturation, lightness, alpha] = col.to_hsla();
+			let result = Color::from_hsla(hue, saturation, lightness, alpha);
+			assert!((col.r() - result.r()) < f32::EPSILON * 100.);
+			assert!((col.g() - result.g()) < f32::EPSILON * 100.);
+			assert!((col.b() - result.b()) < f32::EPSILON * 100.);
+			assert!((col.a() - result.a()) < f32::EPSILON * 100.);
+		}
 	}
 }
