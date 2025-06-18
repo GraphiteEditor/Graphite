@@ -301,7 +301,7 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTabl
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-fn image(_: impl Ctx, _primary: (), image: RasterDataTable<Color>) -> RasterDataTable<Color> {
+fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<Color>) -> RasterDataTable<Color> {
 	image
 }
 
