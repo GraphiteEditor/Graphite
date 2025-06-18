@@ -21,8 +21,7 @@ use std::collections::HashMap;
 pub fn migrate_vector_data<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<VectorDataTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub struct OldVectorData {
 		pub transform: DAffine2,
 		pub alpha_blending: AlphaBlending,
@@ -75,8 +74,7 @@ pub type VectorDataTable = Instances<VectorData>;
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
 ///
 /// Segments are connected if they share endpoints.
-#[derive(Clone, Debug, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct VectorData {
 	pub style: PathStyle,
 
@@ -495,8 +493,7 @@ impl VectorData {
 }
 
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum ManipulatorPointId {
 	/// A control anchor - the start or end point of a bézier.
 	Anchor(PointId),
@@ -583,8 +580,7 @@ impl ManipulatorPointId {
 }
 
 /// The type of handle found on a bézier curve.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum HandleType {
 	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
 	Primary,
@@ -593,8 +589,7 @@ pub enum HandleType {
 }
 
 /// Represents a primary or end handle found in a particular segment.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,

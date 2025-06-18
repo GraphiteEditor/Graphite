@@ -3,8 +3,7 @@ use crate::Node;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use std::ops::{Add, Mul, Sub};
 
-#[derive(Debug, Clone, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct Curve {
 	#[serde(rename = "manipulatorGroups")]
 	pub manipulator_groups: Vec<CurveManipulatorGroup>,
@@ -31,8 +30,7 @@ impl std::hash::Hash for Curve {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct CurveManipulatorGroup {
 	pub anchor: [f32; 2],
 	pub handles: [[f32; 2]; 2],

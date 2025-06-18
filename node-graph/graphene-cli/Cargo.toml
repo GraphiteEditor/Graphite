@@ -21,7 +21,7 @@ gpu = [
 [dependencies]
 # Local dependencies
 graphene-core = { workspace = true }
-graphene-std = { workspace = true, features = ["serde"] }
+graphene-std = { workspace = true }
 interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 

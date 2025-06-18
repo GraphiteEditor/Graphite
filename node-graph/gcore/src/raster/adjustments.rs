@@ -29,8 +29,7 @@ use std::fmt::Debug;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
@@ -42,8 +41,7 @@ pub enum LuminanceCalculation {
 	MaximumChannels,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 #[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
 	// Basic group
@@ -916,8 +914,7 @@ async fn vibrance<T: Adjust<Color>>(
 }
 
 /// Color Channel
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -927,8 +924,7 @@ pub enum RedGreenBlue {
 }
 
 /// Color Channel
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
@@ -939,8 +935,7 @@ pub enum RedGreenBlueAlpha {
 }
 
 /// Style of noise pattern
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -955,8 +950,7 @@ pub enum NoiseType {
 	WhiteNoise,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 /// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
@@ -972,8 +966,7 @@ pub enum FractalType {
 }
 
 /// Distance function used by the cellular noise
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -983,8 +976,7 @@ pub enum CellularDistanceFunction {
 	Hybrid,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -1003,8 +995,7 @@ pub enum CellularReturnType {
 }
 
 /// Type of domain warp
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -1113,8 +1104,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	image
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -1123,8 +1113,7 @@ pub enum RelativeAbsolute {
 }
 
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
