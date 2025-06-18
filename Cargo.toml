@@ -12,6 +12,7 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/compilation-server",
 	"node-graph/compilation-client",
+	"node-graph/preprocessor",
 	"node-graph/wgpu-executor",
 	"node-graph/gpu-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
@@ -38,7 +39,9 @@ resolver = "2"
 # Local dependencies
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest"] }
 graphene-core = { path = "node-graph/gcore" }
+graphene-std = { path = "node-graph/gstd" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
+preprocessor = { path = "node-graph/preprocessor"}
 wgpu-executor = { path = "node-graph/wgpu-executor" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
 path-bool = { path = "libraries/path-bool", default-features = false }
