@@ -564,7 +564,7 @@
 						<IconButton
 							class={"status-toggle"}
 							classes={{ inherited: !listing.entry.parentsUnlocked }}
-							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							onclick={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
@@ -574,7 +574,7 @@
 					<IconButton
 						class={"status-toggle"}
 						classes={{ inherited: !listing.entry.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
+						onclick={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
