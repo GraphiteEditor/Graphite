@@ -10,18 +10,13 @@ members = [
 	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
-	"node-graph/compilation-server",
-	"node-graph/compilation-client",
 	"node-graph/wgpu-executor",
-	"node-graph/gpu-executor",
-	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/bezier-rs",
 	"libraries/math-parser",
 	"website/other/bezier-rs-demos/wasm",
 ]
-exclude = ["node-graph/gpu-compiler"]
 default-members = [
 	"editor",
 	"frontend/wasm",

@@ -8,12 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["wasm", "imaginate"]
-gpu = [
-	"graphene-core/gpu",
-	"gpu-compiler-bin-wrapper",
-	"compilation-client",
-	"gpu-executor",
-]
+gpu = [ "graphene-core/gpu" ]
 wgpu = ["gpu", "dep:wgpu", "graph-craft/wgpu"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
@@ -58,11 +53,6 @@ image = { workspace = true, default-features = false, features = [
 	"png",
 	"jpeg",
 ] }
-
-# Optional local dependencies
-gpu-executor = { path = "../gpu-executor", optional = true }
-gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
-compilation-client = { path = "../compilation-client", optional = true }
 
 # Optional workspace dependencies
 base64 = { workspace = true, optional = true }

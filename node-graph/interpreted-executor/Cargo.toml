@@ -13,7 +13,6 @@ gpu = ["graphene-std/gpu", "graphene-core/gpu", "graphene-std/wgpu"]
 # Local dependencies
 graphene-std = { path = "../gstd", features = ["serde"] }
 graph-craft = { path = "../graph-craft" }
-gpu-executor = { path = "../gpu-executor" }
 wgpu-executor = { path = "../wgpu-executor" }
 
 # Workspace dependencies
