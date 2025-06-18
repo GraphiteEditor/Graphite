@@ -1270,11 +1270,15 @@ impl ShapeState {
 				continue;
 			};
 
+			let selected_segments = &state.selected_segments;
+
 			for point in std::mem::take(&mut state.selected_points) {
 				match point {
 					ManipulatorPointId::Anchor(anchor) => {
 						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector_data) {
-							missing_anchors.insert(anchor, handles);
+							if !vector_data.all_connected(anchor).any(|a| selected_segments.contains(&a.segment)) {
+								missing_anchors.insert(anchor, handles);
+							}
 						}
 						deleted_anchors.insert(anchor);
 					}
@@ -1319,6 +1323,8 @@ impl ShapeState {
 					continue;
 				}
 
+				// Avoid reconnecting to points which have adjacent segments selected
+
 				// Grab the handles from the opposite side of the segment(s) being deleted and make it relative to the anchor
 				let [handle_start, handle_end] = [start, end].map(|(handle, _)| {
 					let handle = handle.opposite();
@@ -1361,6 +1367,20 @@ impl ShapeState {
 					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: true };
 
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
+		}
+	}
+
+	pub fn delete_selected_segments(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
+
+			for (segment, _, start, end) in vector_data.segment_bezier_iter() {
+				if state.selected_segments.contains(&segment) {
+					self.dissolve_segment(responses, layer, &vector_data, segment, [start, end]);
 				}
 			}
 		}

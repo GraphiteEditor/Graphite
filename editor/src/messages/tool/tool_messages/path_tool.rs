@@ -469,6 +469,7 @@ struct PathToolData {
 	frontier_handles_info: Option<HashMap<SegmentId, Vec<PointId>>>,
 	adjacent_anchor_offset: Option<DVec2>,
 	sliding_point_info: Option<SlidingPointInfo>,
+	started_drawing_from_inside: bool,
 }
 
 impl PathToolData {
@@ -691,10 +692,11 @@ impl PathToolData {
 				PathToolFsmState::MoldingSegment
 			}
 		}
-		// We didn't find a segment, so consider selecting the nearest shape instead
+		// We didn't find a segment, so consider selecting the nearest shape instead and start drawing
 		else if let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
 			shape_editor.deselect_all_segments();
+			log::info!("reaching here");
 			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -703,9 +705,9 @@ impl PathToolData {
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 
-			responses.add(DocumentMessage::StartTransaction);
-
-			PathToolFsmState::Dragging(self.dragging_state)
+			self.started_drawing_from_inside = true;
+			let selection_shape = if lasso_select { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+			PathToolFsmState::Drawing { selection_shape }
 		}
 		// Start drawing
 		else {
@@ -1011,6 +1013,28 @@ impl PathToolData {
 
 		let tangent_vector = target_position - position;
 		tangent_vector.try_normalize()
+	}
+
+	fn update_closest_segment(&mut self, shape_editor: &mut ShapeState, position: DVec2, document: &DocumentMessageHandler, path_overlay_mode: PathOverlayMode) {
+		// Check if there is no point nearby
+		if shape_editor
+			.find_nearest_visible_point_indices(&document.network_interface, position, SELECTION_THRESHOLD, path_overlay_mode, self.frontier_handles_info.clone())
+			.is_some()
+		{
+			self.segment = None;
+		}
+		// If already hovering on a segment, then recalculate its closest point
+		else if let Some(closest_segment) = &mut self.segment {
+			closest_segment.update_closest_point(document.metadata(), position);
+
+			if closest_segment.too_far(position, SEGMENT_INSERTION_DISTANCE) {
+				self.segment = None;
+			}
+		}
+		// If not, check that if there is some closest segment or not
+		else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, position, SEGMENT_INSERTION_DISTANCE) {
+			self.segment = Some(closest_segment);
+		}
 	}
 
 	fn start_sliding_point(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) -> bool {
@@ -1408,31 +1432,7 @@ impl Fsm for PathToolFsmState {
 
 				match self {
 					Self::Ready => {
-						// Check if there is no point nearby
-						if shape_editor
-							.find_nearest_visible_point_indices(
-								&document.network_interface,
-								input.mouse.position,
-								SELECTION_THRESHOLD,
-								tool_options.path_overlay_mode,
-								tool_data.frontier_handles_info.clone(),
-							)
-							.is_some()
-						{
-							tool_data.segment = None;
-						}
-						// If already hovering on a segment, then recalculate its closest point
-						else if let Some(closest_segment) = &mut tool_data.segment {
-							closest_segment.update_closest_point(document.metadata(), input.mouse.position);
-
-							if closest_segment.too_far(input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
-								tool_data.segment = None;
-							}
-						}
-						// If not, check that if there is some closest segment or not
-						else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
-							tool_data.segment = Some(closest_segment);
-						}
+						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
 
 						if let Some(closest_segment) = &tool_data.segment {
 							//Do this only when the segment editing mode is turned off
@@ -1475,11 +1475,13 @@ impl Fsm for PathToolFsmState {
 						let quad = tool_data.selection_quad(document.metadata());
 						let polygon = &tool_data.lasso_polygon;
 
-						match (selection_shape, selection_mode) {
-							(SelectionShapeType::Box, SelectionMode::Enclosed) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Lasso, SelectionMode::Enclosed) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
-							(SelectionShapeType::Box, _) => overlay_context.quad(quad, None, fill_color),
-							(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
+						match (selection_shape, selection_mode, tool_data.started_drawing_from_inside) {
+							// Don't draw this if it is from inside a shape and selection just began
+							(SelectionShapeType::Box, SelectionMode::Enclosed, false) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Lasso, SelectionMode::Enclosed, _) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
+							(SelectionShapeType::Box, _, false) => overlay_context.quad(quad, None, fill_color),
+							(SelectionShapeType::Lasso, _, _) => overlay_context.polygon(polygon, None, fill_color),
+							(SelectionShapeType::Box, _, _) => {}
 						}
 					}
 					Self::Dragging(_) => {
@@ -1562,6 +1564,7 @@ impl Fsm for PathToolFsmState {
 				},
 			) => {
 				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				tool_data.started_drawing_from_inside = false;
 
 				if selection_shape == SelectionShapeType::Lasso {
 					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
@@ -1910,7 +1913,10 @@ impl Fsm for PathToolFsmState {
 				};
 
 				if tool_data.drag_start_pos == previous_mouse {
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
+					// If the click happened inside of a node then don't set selected nodes to empty array
+					if document.click(&input).is_none() {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
+					}
 				} else {
 					match selection_shape {
 						SelectionShapeType::Box => {
@@ -2070,9 +2076,9 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::AddTransaction);
+				shape_editor.delete_selected_segments(document, responses);
 				shape_editor.delete_selected_points(document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
-
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
@@ -2195,10 +2201,6 @@ enum SelectionStatus {
 }
 
 impl SelectionStatus {
-	fn is_none(&self) -> bool {
-		self == &SelectionStatus::None
-	}
-
 	fn as_one(&self) -> Option<&SingleSelectedPoint> {
 		match self {
 			SelectionStatus::One(one) => Some(one),
