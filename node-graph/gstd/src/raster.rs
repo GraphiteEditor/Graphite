@@ -305,7 +305,6 @@ fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Raster
 	image
 }
 
-// #[cfg(feature = "serde")]
 // macro_rules! generate_imaginate_node {
 // 	($($val:ident: $t:ident: $o:ty,)*) => {
 // 		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
@@ -386,7 +385,6 @@ fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Raster
 // 	}
 // }
 
-// #[cfg(feature = "serde")]
 // generate_imaginate_node! {
 // 	seed: Seed: f64,
 // 	res: Res: Option<DVec2>,

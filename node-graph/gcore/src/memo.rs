@@ -149,7 +149,6 @@ pub struct MemoHash<T: Hash> {
 	value: T,
 }
 
-#[cfg(feature = "serde")]
 impl<'de, T: serde::Deserialize<'de> + Hash> serde::Deserialize<'de> for MemoHash<T> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
@@ -159,7 +158,6 @@ impl<'de, T: serde::Deserialize<'de> + Hash> serde::Deserialize<'de> for MemoHas
 	}
 }
 
-#[cfg(feature = "serde")]
 impl<T: Hash + serde::Serialize> serde::Serialize for MemoHash<T> {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where

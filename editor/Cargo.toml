@@ -27,10 +27,8 @@ ron = ["dep:ron"]
 # Local dependencies
 graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
-interpreted-executor = { workspace = true, features = [
-	"serde",
-] }
-graphene-std = { workspace = true, features = ["serde"] }
+interpreted-executor = { workspace = true }
+graphene-std = { workspace = true }
 
 # Workspace dependencies
 js-sys = { workspace = true }

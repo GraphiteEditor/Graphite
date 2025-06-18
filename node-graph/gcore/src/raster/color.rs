@@ -10,8 +10,7 @@ use spirv_std::num_traits::float::Float;
 use std::hash::Hash;
 
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, serde::Serialize, serde::Deserialize)]
 pub struct RGBA16F {
 	red: f16,
 	green: f16,
@@ -83,8 +82,7 @@ impl Alpha for RGBA16F {
 impl Pixel for RGBA16F {}
 
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct SRGBA8 {
 	red: u8,
 	green: u8,
@@ -164,8 +162,7 @@ impl Alpha for SRGBA8 {
 impl Pixel for SRGBA8 {}
 
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct Luma(pub f32);
 
 impl Luminance for Luma {
@@ -205,8 +202,7 @@ impl Pixel for Luma {}
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct Color {
 	red: f32,
 	green: f32,
