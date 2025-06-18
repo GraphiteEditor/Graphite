@@ -1310,7 +1310,7 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 	let bezpaths = vector_data
 		.instance_ref_iter()
 		.enumerate()
-		.flat_map(|(row_index, vector_data)| vector_data.instance.stroke_bezpath_iter().map(|bezpath| (row_index, bezpath)).collect::<Vec<_>>())
+		.flat_map(|(instance_row_index, vector_data)| vector_data.instance.stroke_bezpath_iter().map(|bezpath| (instance_row_index, bezpath)).collect::<Vec<_>>())
 		.collect::<Vec<_>>();
 
 	let bezpath_count = bezpaths.len() as f64;
@@ -1318,20 +1318,23 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 	let t_value = if reverse { bezpath_count - t_value } else { t_value };
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
-	if let Some((row_index, bezpath)) = bezpaths.get(index).cloned() {
-		let mut vd = VectorData::default();
-		for (_, (_, bezpath)) in bezpaths.iter().enumerate().filter(|(i, (ri, _))| *i != index && *ri == row_index) {
-			vd.append_bezpath(bezpath.clone());
+	if let Some((instance_row_index, bezpath)) = bezpaths.get(index).cloned() {
+		let mut result_vector_data = VectorData::default();
+		result_vector_data.style = vector_data.get(instance_row_index).unwrap().instance.style.clone();
+
+		for (_, (_, bezpath)) in bezpaths.iter().enumerate().filter(|(i, (ri, _))| *i != index && *ri == instance_row_index) {
+			result_vector_data.append_bezpath(bezpath.clone());
 		}
 		let t = if t_value == bezpath_count { 1. } else { t_value.fract() };
 
 		if let Some((first, second)) = split_bezpath(&bezpath, t, euclidian) {
-			vd.append_bezpath(first);
-			vd.append_bezpath(second);
+			result_vector_data.append_bezpath(first);
+			result_vector_data.append_bezpath(second);
 		} else {
-			vd.append_bezpath(bezpath);
+			result_vector_data.append_bezpath(bezpath);
 		}
-		*vector_data.get_mut(row_index).unwrap().instance = vd;
+
+		*vector_data.get_mut(instance_row_index).unwrap().instance = result_vector_data;
 	}
 
 	vector_data
