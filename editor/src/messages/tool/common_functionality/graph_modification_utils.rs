@@ -243,30 +243,14 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-/// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
-pub fn get_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
-	let pivot_node_input_index = 5;
-	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", pivot_node_input_index)? {
-		Some(*pivot)
-	} else {
-		None
-	}
-}
-
 /// Locate the origin of the transform node
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
-	let origin_node_input_index = 6;
+	let origin_node_input_index = 5;
 	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", origin_node_input_index)? {
 		Some(*origin)
 	} else {
 		None
 	}
-}
-
-pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
-	let [min, max] = network_interface.document_metadata().nonzero_bounding_box(layer);
-	let pivot = get_pivot(layer, network_interface).unwrap_or(DVec2::splat(0.5));
-	network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
 pub fn get_viewport_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {

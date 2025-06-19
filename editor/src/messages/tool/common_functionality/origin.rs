@@ -88,7 +88,7 @@ impl Origin {
 		}
 	}
 
-	pub fn update_origin(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		if !overlay_context.visibility_settings.pivot() {
 			self.active = false;
 			return;

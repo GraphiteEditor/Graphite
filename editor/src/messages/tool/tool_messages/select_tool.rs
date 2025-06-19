@@ -57,6 +57,13 @@ pub enum NestedSelectionBehavior {
 	Deepest,
 }
 
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+enum DotType {
+	#[default]
+	Origin,
+	Pivot,
+}
+
 impl fmt::Display for NestedSelectionBehavior {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -342,6 +349,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	origin: Origin,
+	dot_type: Option<DotType>,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -507,6 +515,14 @@ impl SelectToolData {
 		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;
 	}
+
+	fn is_over(&self, mouse: DVec2) -> bool {
+		let Some(dot_type) = self.dot_type else { return false };
+		match dot_type {
+			DotType::Pivot => self.pivot.is_over(mouse),
+			DotType::Origin => self.origin.is_over(mouse),
+		}
+	}
 }
 
 impl Fsm for SelectToolFsmState {
@@ -516,6 +532,7 @@ impl Fsm for SelectToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
+		tool_data.dot_type = Some(DotType::Pivot);
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
@@ -721,8 +738,11 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
-				tool_data.origin.update_origin(document, &mut overlay_context);
+				match tool_data.dot_type {
+					Some(DotType::Pivot) => tool_data.pivot.update(document, &mut overlay_context, Some((angle,))),
+					Some(DotType::Origin) => tool_data.origin.update(document, &mut overlay_context),
+					_ => (),
+				};
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -910,8 +930,6 @@ impl Fsm for SelectToolFsmState {
 				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
-				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
-				let is_over_origin = tool_data.origin.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
@@ -923,16 +941,16 @@ impl Fsm for SelectToolFsmState {
 
 				let state =
 				// Dragging the pivot
-				if is_over_pivot {
+				if tool_data.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					SelectToolFsmState::DraggingPivot
-				} else if is_over_origin {
-					responses.add(DocumentMessage::StartTransaction);
-					SelectToolFsmState::DraggingOrigin
+					match tool_data.dot_type.unwrap_or_default(){
+						DotType::Pivot => SelectToolFsmState::DraggingPivot,
+						DotType::Origin => SelectToolFsmState::DraggingOrigin,
+					}
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if dragging_bounds.is_some() && !is_flat_layer {
@@ -1261,7 +1279,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
-				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+				tool_data.pivot.set_viewport_position(snapped_mouse_position);
 
 				// Auto-panning
 				let messages = [
@@ -1611,7 +1629,7 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				let pos: Option<DVec2> = position.into();
-				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
+				tool_data.pivot.set_normalized_position(pos.unwrap());
 
 				self
 			}

@@ -450,16 +450,10 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn pivot_set(&mut self, new_pivot: DVec2) {
-		let Some(transform_node_id) = self.existing_node_id("Transform", true) else { return };
-
-		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_pivot), false), false);
-	}
-
 	pub fn origin_set(&mut self, new_origin: DVec2) {
 		let Some(transform_node_id) = self.existing_node_id("Transform", true) else { return };
 
-		self.set_input_with_refresh(InputConnector::node(transform_node_id, 6), NodeInput::value(TaggedValue::DVec2(new_origin), false), false);
+		self.set_input_with_refresh(InputConnector::node(transform_node_id, 5), NodeInput::value(TaggedValue::DVec2(new_origin), false), false);
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {

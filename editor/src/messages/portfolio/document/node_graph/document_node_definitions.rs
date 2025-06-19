@@ -1627,7 +1627,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						NodeInput::value(TaggedValue::DVec2(DVec2::splat(0.5)), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1648,7 +1647,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(DVec2), 3),
 									NodeInput::network(concrete!(DVec2), 4),
 									NodeInput::network(concrete!(DVec2), 5),
-									NodeInput::network(concrete!(DVec2), 6),
 								],
 								manual_composition: Some(concrete!(Context)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::TransformNode")),

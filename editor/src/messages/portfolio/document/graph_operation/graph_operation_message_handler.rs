@@ -89,15 +89,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.transform_set(transform, transform_in, skip_rerender);
 				}
 			}
-			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run TransformSetPivot on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.pivot_set(pivot);
-				}
-			}
 			GraphOperationMessage::TransformSetOrigin { layer, origin } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
 					log::error!("Cannot run TransformSetOrigin on ROOT_PARENT");
