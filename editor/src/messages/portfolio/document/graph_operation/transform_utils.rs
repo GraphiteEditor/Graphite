@@ -3,7 +3,7 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::vector::PointId;
+use graphene_std::vector::PointId;
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {

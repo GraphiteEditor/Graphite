@@ -1,6 +1,6 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
-pub use graphene_core::uuid::*;
+pub use graphene_std::uuid::*;
 
 // TODO: serialize with serde to save the current editor state
 pub struct Editor {

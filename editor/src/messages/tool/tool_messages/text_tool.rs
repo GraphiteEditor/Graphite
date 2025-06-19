@@ -16,10 +16,10 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
-use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
-use graphene_core::vector::style::Fill;
+use graphene_std::Color;
+use graphene_std::renderer::Quad;
+use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_std::vector::style::Fill;
 
 #[derive(Default)]
 pub struct TextTool {
@@ -43,8 +43,8 @@ impl Default for TextOptions {
 			font_size: 24.,
 			line_height_ratio: 1.2,
 			character_spacing: 1.,
-			font_name: graphene_core::consts::DEFAULT_FONT_FAMILY.into(),
-			font_style: graphene_core::consts::DEFAULT_FONT_STYLE.into(),
+			font_name: graphene_std::consts::DEFAULT_FONT_FAMILY.into(),
+			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 		}
 	}
@@ -469,7 +469,7 @@ impl Fsm for TextToolFsmState {
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting, false);
+					let far = graphene_std::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;

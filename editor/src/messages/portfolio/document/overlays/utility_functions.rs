@@ -5,7 +5,7 @@ use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerSta
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 use bezier_rs::{Bezier, BezierHandles};
 use glam::{DAffine2, DVec2};
-use graphene_core::vector::ManipulatorPointId;
+use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId};
 use wasm_bindgen::JsCast;
 

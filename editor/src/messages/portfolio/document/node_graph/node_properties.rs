@@ -11,23 +11,23 @@ use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graphene_core::raster::curve::Curve;
-use graphene_core::raster::{
+use graphene_std::animation::RealTimeMode;
+use graphene_std::ops::XY;
+use graphene_std::raster::curve::Curve;
+use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_core::text::Font;
-use graphene_core::vector::generator_nodes::grid;
-use graphene_core::vector::misc::CentroidType;
-use graphene_core::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use graphene_std::animation::RealTimeMode;
-use graphene_std::ops::XY;
+use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
+use graphene_std::vector::generator_nodes::grid;
 use graphene_std::vector::misc::ArcType;
+use graphene_std::vector::misc::CentroidType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
+use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -1414,7 +1414,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
-						if let Some(field) = graphene_core::registry::NODE_METADATA
+						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
 							.get(&proto_node_identifier.name.clone().into_owned())
@@ -1874,7 +1874,7 @@ pub mod choice {
 	use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 	use crate::messages::tool::tool_messages::tool_prelude::*;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
+	use graphene_std::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
 	use std::marker::PhantomData;
 
 	pub trait WidgetFactory {

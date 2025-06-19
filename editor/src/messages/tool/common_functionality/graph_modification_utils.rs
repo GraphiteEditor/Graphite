@@ -8,12 +8,12 @@ use glam::DVec2;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::Gradient;
+use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::style::Gradient;
 use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 

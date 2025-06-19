@@ -26,7 +26,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					responses.add(Message::StartBuffer);
 					responses.add(GraphOperationMessage::NewArtboard {
 						id: NodeId::new(),
-						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
+						artboard: graphene_std::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
 				}
 

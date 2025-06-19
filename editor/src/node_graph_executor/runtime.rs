@@ -7,14 +7,14 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_core::memo::IORecord;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
-use graphene_core::renderer::{RenderSvgSegmentList, SvgSegment};
-use graphene_core::text::FontCache;
-use graphene_core::vector::style::ViewMode;
 use graphene_std::Context;
+use graphene_std::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::instances::Instance;
+use graphene_std::memo::IORecord;
+use graphene_std::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
+use graphene_std::text::FontCache;
+use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{VectorData, VectorDataTable};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -288,9 +288,9 @@ impl NodeRuntime {
 				continue;
 			};
 
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::GraphicElement>>() {
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::GraphicElement>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_core::Artboard>>() {
+			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, graphene_std::Artboard>>() {
 				Self::process_graphic_element(&mut self.thumbnail_renders, parent_network_node_id, &io.output, responses, update_thumbnails)
 			// Insert the vector modify if we are dealing with vector data
 			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Context, VectorDataTable>>() {
