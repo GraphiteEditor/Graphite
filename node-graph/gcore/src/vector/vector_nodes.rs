@@ -448,6 +448,7 @@ async fn round_corners(
 	for source in source.instance_ref_iter() {
 		let source_transform = *source.transform;
 		let source_transform_inverse = source_transform.inverse();
+		let source_mask = source.mask;
 		let source = source.instance;
 
 		let upstream_graphic_group = source.upstream_graphic_group.clone();
@@ -540,6 +541,7 @@ async fn round_corners(
 
 		result_table.push(Instance {
 			instance: result,
+			mask: source_mask.clone(),
 			transform: source_transform,
 			alpha_blending: Default::default(),
 			source_node_id: None,
@@ -788,6 +790,7 @@ async fn auto_tangents(
 
 	for source in source.instance_ref_iter() {
 		let transform = *source.transform;
+		let mask = source.mask.clone();
 		let alpha_blending = *source.alpha_blending;
 		let source_node_id = *source.source_node_id;
 		let source = source.instance;
@@ -886,6 +889,7 @@ async fn auto_tangents(
 
 		result_table.push(Instance {
 			instance: result,
+			mask,
 			transform,
 			alpha_blending,
 			source_node_id,

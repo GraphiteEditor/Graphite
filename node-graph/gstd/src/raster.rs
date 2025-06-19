@@ -1,3 +1,4 @@
+use crate::instances::Instances;
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
@@ -6,7 +7,9 @@ use graphene_core::raster::bbox::Bbox;
 pub use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
+use graphene_core::vector::VectorDataTable;
 use graphene_core::{AlphaBlending, Ctx, ExtractFootprint};
+use graphene_core::{GraphicElement, GraphicGroupTable};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -171,6 +174,7 @@ fn combine_channels(
 		// Add this instance to the result table
 		result_table.push(Instance {
 			instance: Raster::new_cpu(image),
+			mask: None,
 			transform,
 			alpha_blending,
 			source_node_id: None,
@@ -181,14 +185,34 @@ fn combine_channels(
 }
 
 #[node_macro::node(category("Raster"))]
-fn mask(
+fn mask<T, E>(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: RasterDataTable<CPU>,
+	#[implementations(
+		VectorDataTable,
+		RasterDataTable<CPU>,
+		GraphicGroupTable
+	)]
+	mut image: Instances<T>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: RasterDataTable<CPU>,
-) -> RasterDataTable<CPU> {
+	#[implementations(
+		VectorDataTable,
+		RasterDataTable<CPU>,
+		GraphicGroupTable
+	)]
+	stencil: Instances<E>,
+) -> Instances<T>
+where
+	Instances<E>: Into<GraphicElement> + Clone,
+{
+	for instance in image.instance_mut_iter() {
+		*instance.mask = Some(stencil.clone().into());
+	}
+	image
+}
+
+fn mask_lambda(image: RasterDataTable<CPU>, stencil: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	// TODO: Support multiple stencil instances
 	let Some(stencil_instance) = stencil.instance_iter().next() else {
 		// No stencil provided so we return the original image

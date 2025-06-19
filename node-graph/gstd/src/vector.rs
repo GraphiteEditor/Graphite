@@ -178,6 +178,7 @@ fn difference<'a>(vector_data: impl DoubleEndedIterator<Item = InstanceRef<'a, V
 		instance.style = first_instance.instance.style.clone();
 		let boolean_intersection_result = Instance {
 			instance,
+			mask: None,
 			transform: *first_instance.transform,
 			alpha_blending: *first_instance.alpha_blending,
 			source_node_id: *first_instance.source_node_id,

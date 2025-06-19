@@ -393,6 +393,7 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		},
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => Instance {
 			instance: Raster::new_cpu(image_frame_with_transform_and_blending.image),
+			mask: None,
 			transform: image_frame_with_transform_and_blending.transform,
 			alpha_blending: image_frame_with_transform_and_blending.alpha_blending,
 			source_node_id: None,
@@ -461,6 +462,7 @@ impl From<Image<Color>> for Image<SRGBA8> {
 // 		for image_frame_instance in image_frame_table.instance_iter() {
 // 			result_table.push(Instance {
 // 				instance: image_frame_instance.instance,
+// 				mask: image_frame_instance.mask,
 // 				transform: image_frame_instance.transform,
 // 				alpha_blending: image_frame_instance.alpha_blending,
 // 				source_node_id: image_frame_instance.source_node_id,

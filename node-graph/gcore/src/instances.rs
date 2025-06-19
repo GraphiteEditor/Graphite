@@ -1,13 +1,17 @@
-use crate::AlphaBlending;
+use crate::{AlphaBlending, GraphicElement};
 use crate::uuid::NodeId;
 use dyn_any::StaticType;
 use glam::DAffine2;
 use std::hash::Hash;
 
+pub type Mask = Option<GraphicElement>;
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Instances<T> {
 	#[serde(alias = "instances")]
 	instance: Vec<T>,
+	#[serde(default = "one_mask_default")]
+	mask: Vec<Mask>,
 	#[serde(default = "one_daffine2_default")]
 	transform: Vec<DAffine2>,
 	#[serde(default = "one_alpha_blending_default")]
@@ -20,6 +24,7 @@ impl<T> Instances<T> {
 	pub fn new(instance: T) -> Self {
 		Self {
 			instance: vec![instance],
+			mask: vec![None],
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
 			source_node_id: vec![None],
@@ -28,6 +33,7 @@ impl<T> Instances<T> {
 
 	pub fn push(&mut self, instance: Instance<T>) {
 		self.instance.push(instance.instance);
+		self.mask.push(instance.mask);
 		self.transform.push(instance.transform);
 		self.alpha_blending.push(instance.alpha_blending);
 		self.source_node_id.push(instance.source_node_id);
@@ -43,11 +49,13 @@ impl<T> Instances<T> {
 	pub fn instance_iter(self) -> impl DoubleEndedIterator<Item = Instance<T>> {
 		self.instance
 			.into_iter()
+			.zip(self.mask)
 			.zip(self.transform)
 			.zip(self.alpha_blending)
 			.zip(self.source_node_id)
-			.map(|(((instance, transform), alpha_blending), source_node_id)| Instance {
+			.map(|((((instance, mask), transform), alpha_blending), source_node_id)| Instance {
 				instance,
+				mask,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -57,11 +65,13 @@ impl<T> Instances<T> {
 	pub fn instance_ref_iter(&self) -> impl DoubleEndedIterator<Item = InstanceRef<T>> + Clone {
 		self.instance
 			.iter()
+			.zip(self.mask.iter())
 			.zip(self.transform.iter())
 			.zip(self.alpha_blending.iter())
 			.zip(self.source_node_id.iter())
-			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceRef {
+			.map(|((((instance, mask), transform), alpha_blending), source_node_id)| InstanceRef {
 				instance,
+				mask,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -71,11 +81,13 @@ impl<T> Instances<T> {
 	pub fn instance_mut_iter(&mut self) -> impl DoubleEndedIterator<Item = InstanceMut<T>> {
 		self.instance
 			.iter_mut()
+			.zip(self.mask.iter_mut())
 			.zip(self.transform.iter_mut())
 			.zip(self.alpha_blending.iter_mut())
 			.zip(self.source_node_id.iter_mut())
-			.map(|(((instance, transform), alpha_blending), source_node_id)| InstanceMut {
+			.map(|((((instance, mask), transform), alpha_blending), source_node_id)| InstanceMut {
 				instance,
+				mask,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -89,6 +101,7 @@ impl<T> Instances<T> {
 
 		Some(InstanceRef {
 			instance: &self.instance[index],
+			mask: &self.mask[index],
 			transform: &self.transform[index],
 			alpha_blending: &self.alpha_blending[index],
 			source_node_id: &self.source_node_id[index],
@@ -102,6 +115,7 @@ impl<T> Instances<T> {
 
 		Some(InstanceMut {
 			instance: &mut self.instance[index],
+			mask: &mut self.mask[index],
 			transform: &mut self.transform[index],
 			alpha_blending: &mut self.alpha_blending[index],
 			source_node_id: &mut self.source_node_id[index],
@@ -121,6 +135,7 @@ impl<T> Default for Instances<T> {
 	fn default() -> Self {
 		Self {
 			instance: Vec::new(),
+			mask: Vec::new(),
 			transform: Vec::new(),
 			alpha_blending: Vec::new(),
 			source_node_id: Vec::new(),
@@ -146,6 +161,9 @@ unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
 }
 
+fn one_mask_default() -> Vec<Mask> {
+	vec![None]
+}
 fn one_daffine2_default() -> Vec<DAffine2> {
 	vec![DAffine2::IDENTITY]
 }
@@ -159,6 +177,7 @@ fn one_source_node_id_default() -> Vec<Option<NodeId>> {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct InstanceRef<'a, T> {
 	pub instance: &'a T,
+	pub mask: &'a Mask,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
 	pub source_node_id: &'a Option<NodeId>,
@@ -171,6 +190,7 @@ impl<T> InstanceRef<'_, T> {
 	{
 		Instance {
 			instance: self.instance.clone(),
+			mask: self.mask.clone(),
 			transform: *self.transform,
 			alpha_blending: *self.alpha_blending,
 			source_node_id: *self.source_node_id,
@@ -181,14 +201,16 @@ impl<T> InstanceRef<'_, T> {
 #[derive(Debug)]
 pub struct InstanceMut<'a, T> {
 	pub instance: &'a mut T,
+	pub mask: &'a mut Mask,
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
 	pub source_node_id: &'a mut Option<NodeId>,
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Instance<T> {
 	pub instance: T,
+	pub mask: Mask,
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
 	pub source_node_id: Option<NodeId>,
@@ -201,6 +223,7 @@ impl<T> Instance<T> {
 	{
 		Instance {
 			instance: self.instance.into(),
+			mask: self.mask,
 			transform: self.transform,
 			alpha_blending: self.alpha_blending,
 			source_node_id: self.source_node_id,
@@ -210,6 +233,7 @@ impl<T> Instance<T> {
 	pub fn to_instance_ref(&self) -> InstanceRef<T> {
 		InstanceRef {
 			instance: &self.instance,
+			mask: &self.mask,
 			transform: &self.transform,
 			alpha_blending: &self.alpha_blending,
 			source_node_id: &self.source_node_id,
@@ -219,6 +243,7 @@ impl<T> Instance<T> {
 	pub fn to_instance_mut(&mut self) -> InstanceMut<T> {
 		InstanceMut {
 			instance: &mut self.instance,
+			mask: &mut self.mask,
 			transform: &mut self.transform,
 			alpha_blending: &mut self.alpha_blending,
 			source_node_id: &mut self.source_node_id,
@@ -228,6 +253,7 @@ impl<T> Instance<T> {
 	pub fn to_table(self) -> Instances<T> {
 		Instances {
 			instance: vec![self.instance],
+			mask: vec![self.mask],
 			transform: vec![self.transform],
 			alpha_blending: vec![self.alpha_blending],
 			source_node_id: vec![self.source_node_id],

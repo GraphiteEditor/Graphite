@@ -16,7 +16,7 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graphene_std::ops::XY;
 use graphene_std::raster::brush_cache::BrushCache;
-use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::transform::Footprint;
