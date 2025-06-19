@@ -211,8 +211,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<Color>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
-		let image = resolve_document_node_type("Image")
-			.expect("Image node does not exist")
+		let image = resolve_document_node_type("Image Value")
+			.expect("ImageValue node does not exist")
 			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::RasterData(image_frame), false))]);
 
 		let image_id = NodeId::new();

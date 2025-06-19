@@ -3,10 +3,10 @@ use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::image::{Image, RasterDataTable};
-use graphene_core::raster::{Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, Channel, DomainWarpType, FractalType, LinearChannel, Luminance, NoiseType, RGBMut};
+use graphene_core::raster::image::RasterDataTable;
+pub use graphene_core::raster::*;
 use graphene_core::transform::Transform;
-use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
+use graphene_core::{AlphaBlending, Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -301,7 +301,7 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTabl
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-fn image(_: impl Ctx, _primary: (), image: RasterDataTable<Color>) -> RasterDataTable<Color> {
+fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<Color>) -> RasterDataTable<Color> {
 	image
 }
 

@@ -13,7 +13,7 @@ wgpu = ["gpu", "graph-craft/wgpu"]
 wasm = ["wasm-bindgen", "web-sys"]
 imaginate = ["image/png", "base64", "web-sys", "wasm-bindgen-futures"]
 image-compare = []
-vello = ["dep:vello", "gpu"]
+vello = ["dep:vello", "gpu", "graphene-core/vello"]
 resvg = []
 wayland = ["graph-craft/wayland"]
 
