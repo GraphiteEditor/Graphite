@@ -27,11 +27,11 @@ impl Rectangle {
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
-	) -> bool {
+	) {
 		let (center, lock_ratio) = (modifier[0], modifier[1]);
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
-				return true;
+				return;
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
@@ -49,6 +49,5 @@ impl Rectangle {
 				skip_rerender: false,
 			});
 		}
-		false
 	}
 }

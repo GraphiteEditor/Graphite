@@ -89,7 +89,7 @@ impl EditorTestUtils {
 	}
 
 	pub async fn draw_polygon(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-		self.drag_tool(ToolType::Polygon, x1, y1, x2, y2, ModifierKeys::default()).await;
+		self.drag_tool(ToolType::Shape, x1, y1, x2, y2, ModifierKeys::default()).await;
 	}
 
 	pub async fn draw_ellipse(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
@@ -220,6 +220,8 @@ impl EditorTestUtils {
 	pub async fn select_tool(&mut self, tool_type: ToolType) {
 		match tool_type {
 			ToolType::Line => self.handle_message(Message::Tool(ToolMessage::ActivateShapeLine)).await,
+			ToolType::Rectangle => self.handle_message(Message::Tool(ToolMessage::ActivateShapeRectangle)).await,
+			ToolType::Ellipse => self.handle_message(Message::Tool(ToolMessage::ActivateShapeEllipse)).await,
 			_ => self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await,
 		}
 	}

@@ -255,7 +255,7 @@ impl LayoutHolder for ToolData {
 					IconButton::new(icon_name, 32)
 						.disabled(false)
 						.active(match tool_type {
-							ToolType::Line | ToolType::Ellipse | ToolType::Rectangle => {self.active_shape_type.is_some() &&  active_tool == tool_type},
+							ToolType::Line | ToolType::Ellipse | ToolType::Rectangle => { self.active_shape_type.is_some() && active_tool == tool_type }
 							_ => active_tool == tool_type,
 						})
 						.tooltip(tooltip.clone())
@@ -265,7 +265,7 @@ impl LayoutHolder for ToolData {
 								ToolType::Line => ToolMessage::ActivateShapeLine.into(),
 								ToolType::Ellipse => ToolMessage::ActivateShapeEllipse.into(),
 								ToolType::Rectangle => ToolMessage::ActivateShapeRectangle.into(),
-								ToolType::Shape => ToolMessage::ActivateToolShape .into(),
+								ToolType::Shape => ToolMessage::ActivateToolShape.into(),
 								_ => {
 									if !tooltip.contains("Coming Soon") { (ToolMessage::ActivateTool { tool_type }).into() } else { (DialogMessage::RequestComingSoonDialog { issue: None }).into() }
 								}
@@ -351,7 +351,6 @@ pub enum ToolType {
 	Freehand,
 	Spline,
 	Shape,
-	Polygon,
 	Text,
 
 	// Shape group

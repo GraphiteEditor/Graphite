@@ -65,11 +65,9 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
 				}
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::SetShape(ShapeType::Convex));
+				responses.add(ShapeToolMessage::SetShape(ShapeType::Polygon));
 				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
 			}
-			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
-
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
 			ToolMessage::ActivateShapeRectangle | ToolMessage::ActivateShapeEllipse | ToolMessage::ActivateShapeLine => {
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
@@ -80,8 +78,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 					_ => unreachable!(),
 				};
 				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
-				responses.add(ToolMessage::RefreshToolOptions);
-				self.tool_state.tool_data.send_layout(responses, LayoutTarget::ToolShelf);
 				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
 				responses.add(ShapeToolMessage::SetShape(shape));
 			}
@@ -90,11 +86,8 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				let tool_data = &mut self.tool_state.tool_data;
 				let old_tool = tool_data.active_tool_type;
 
-				// let shape = tool_type;
 				let tool_type = tool_type.get_tool();
 				let old_tool = old_tool.get_tool();
-
-				// tool_data.active_shape_type = if tool_type != ToolType::Shape { None } else { old_shape };
 
 				responses.add(ToolMessage::RefreshToolOptions);
 				tool_data.send_layout(responses, LayoutTarget::ToolShelf);

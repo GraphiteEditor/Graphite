@@ -13,9 +13,9 @@ use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
 #[derive(Default)]
-pub struct Convex;
+pub struct Polygon;
 
-impl Convex {
+impl Polygon {
 	pub fn create_node(vertices: u32) -> NodeTemplate {
 		let node_type = resolve_document_node_type("Regular Polygon").expect("Regular Polygon does not exist");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::U32(vertices), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
@@ -28,7 +28,7 @@ impl Convex {
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
-	) -> bool {
+	) {
 		let (center, lock_ratio) = (modifier[0], modifier[1]);
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
@@ -48,7 +48,7 @@ impl Convex {
 			}
 
 			let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) else {
-				return false;
+				return;
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
@@ -58,11 +58,10 @@ impl Convex {
 
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
+				transform: DAffine2::from_scale_angle_translation(scale, 0.0, (start + end) / 2.0),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: false,
 			});
 		}
-		false
 	}
 }
