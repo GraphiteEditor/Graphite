@@ -583,26 +583,6 @@ impl ManipulatorPointId {
 	}
 }
 
-// #[derive(Clone, Copy, Debug, DynAny)]
-// pub struct SelectedSegment {
-// 	segment: SegmentId,
-// 	points: [PointId; 2],
-// }
-
-// impl PartialEq for SelectedSegment {
-// 	fn eq(&self, other: &Self) -> bool {
-// 		self.segment == other.segment
-// 	}
-// }
-
-// impl Eq for SelectedSegment {}
-
-// impl Hash for SelectedSegment {
-// 	fn hash<H: Hasher>(&self, state: &mut H) {
-// 		self.segment.hash(state);
-// 	}
-// }
-
 /// The type of handle found on a bézier curve.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -624,15 +624,6 @@ impl ShapeState {
 		None
 	}
 
-	// pub fn get_segment_selection_state(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(bool, Option<SelectedSegmentsInfo>)> {
-	// 	if let Some(segment) = self.upper_closest_segment(network_interface, mouse_position, select_threshold) {
-	// 		let vector_data = network_interface.compute_modified_vector(segment.layer);
-
-	// 		let selected_shape_state = self.selected_shape_state.get_mut(&segment.layer)?;
-	// 		let already_selected = selected_shape_state.is_selected_segment(segment.segment);
-	// 	}
-	// }
-
 	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, extend_selection: bool) {
 		if !extend_selection {
 			self.deselect_all_points();
@@ -1876,15 +1867,14 @@ impl ShapeState {
 				None
 			};
 
-			// Checking the selection of handles
+			// Selection segments
 			for (id, bezier, _, _) in vector_data.segment_bezier_iter() {
 				if select_segments {
-					// Checking for selection of segments if they lie inside the bounding box or lasso polygon
+					// Select segments if they lie inside the bounding box or lasso polygon
 					let segment_bbox = calculate_bezier_bbox(bezier);
 					let bottom_left = transform.transform_point2(segment_bbox[0]);
 					let top_right = transform.transform_point2(segment_bbox[1]);
 
-					// Here take account of toched selection prefrences
 					let select = match selection_shape {
 						SelectionShape::Box(quad) => {
 							let enclosed = quad[0].min(quad[1]).cmple(bottom_left).all() && quad[0].max(quad[1]).cmpge(top_right).all();
@@ -1897,12 +1887,14 @@ impl ShapeState {
 							}
 						}
 						SelectionShape::Lasso(_) => {
-							//First check if the segement bbox intersects with lasso polygon (atleast one of the points of bbox should lie in lasso polygon)
 							let polygon = polygon_subpath.as_ref().expect("If `selection_shape` is a polygon then subpath is constructed beforehand.");
 
-							// Sample 10 points on the bezier and check if all lie inside the polygon or not
+							// Sample 10 points on the bezier and check if all or some lie inside the polygon
 							let points = bezier.compute_lookup_table(Some(10), None);
-							points.map(|p| transform.transform_point2(p)).all(|p| polygon.contains_point(p))
+							match selection_mode {
+								SelectionMode::Enclosed => points.map(|p| transform.transform_point2(p)).all(|p| polygon.contains_point(p)),
+								_ => points.map(|p| transform.transform_point2(p)).any(|p| polygon.contains_point(p)),
+							}
 						}
 					};
 
@@ -1914,7 +1906,7 @@ impl ShapeState {
 					}
 				}
 
-				// Checking for selection of handles
+				// Selecting handles
 				for (position, id) in [(bezier.handle_start(), ManipulatorPointId::PrimaryHandle(id)), (bezier.handle_end(), ManipulatorPointId::EndHandle(id))] {
 					let Some(position) = position else { continue };
 					let transformed_position = transform.transform_point2(position);

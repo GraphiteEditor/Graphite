@@ -70,6 +70,7 @@ pub enum PathToolMessage {
 		lasso_select: Key,
 		handle_drag_from_anchor: Key,
 		drag_restore_handle: Key,
+		molding_in_segment_edit: Key,
 	},
 	NudgeSelectedPoints {
 		delta_x: f64,
@@ -542,6 +543,7 @@ impl PathToolData {
 		lasso_select: bool,
 		handle_drag_from_anchor: bool,
 		drag_zero_handle: bool,
+		molding_in_segment_edit: bool,
 		path_overlay_mode: PathOverlayMode,
 		segment_editing_mode: bool,
 		point_editing_mode: bool,
@@ -655,7 +657,7 @@ impl PathToolData {
 		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			if segment_editing_mode {
+			if segment_editing_mode && !molding_in_segment_edit {
 				let layer = segment.layer();
 				let segment_id = segment.segment();
 				let already_selected = shape_editor.selected_shape_state.get(&layer).map_or(false, |state| state.is_selected_segment(segment_id));
@@ -1332,7 +1334,7 @@ impl Fsm for PathToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
 
-		update_dynamic_hints(self, responses, shape_editor, document, tool_data);
+		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options);
 
 		let ToolMessage::Path(event) = event else { return self };
 		match (self, event) {
@@ -1422,8 +1424,6 @@ impl Fsm for PathToolFsmState {
 						let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
 							continue;
 						};
-						// let selected_segments = selected_shape_state.selected_segments().collect::<Vec<_>>();
-						// log::info!("selected segments are: {:?}", selected_segments);
 						if selected_shape_state.is_selected_segment(segment_id) {
 							overlay_context.outline_select_bezier(bezier, transform);
 						}
@@ -1435,7 +1435,6 @@ impl Fsm for PathToolFsmState {
 						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
 
 						if let Some(closest_segment) = &tool_data.segment {
-							//Do this only when the segment editing mode is turned off
 							if tool_options.path_editing_mode.segment_editing_mode {
 								let transform = document.metadata().transform_to_viewport(closest_segment.layer());
 								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
@@ -1476,7 +1475,7 @@ impl Fsm for PathToolFsmState {
 						let polygon = &tool_data.lasso_polygon;
 
 						match (selection_shape, selection_mode, tool_data.started_drawing_from_inside) {
-							// Don't draw this if it is from inside a shape and selection just began
+							// Don't draw box if it is from inside a shape and selection just began
 							(SelectionShapeType::Box, SelectionMode::Enclosed, false) => overlay_context.dashed_quad(quad, None, fill_color, Some(4.), Some(4.), Some(0.5)),
 							(SelectionShapeType::Lasso, SelectionMode::Enclosed, _) => overlay_context.dashed_polygon(polygon, None, fill_color, Some(4.), Some(4.), Some(0.5)),
 							(SelectionShapeType::Box, _, false) => overlay_context.quad(quad, None, fill_color),
@@ -1527,12 +1526,14 @@ impl Fsm for PathToolFsmState {
 					lasso_select,
 					handle_drag_from_anchor,
 					drag_restore_handle,
+					molding_in_segment_edit,
 				},
 			) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let lasso_select = input.keyboard.get(lasso_select as usize);
 				let handle_drag_from_anchor = input.keyboard.get(handle_drag_from_anchor as usize);
 				let drag_zero_handle = input.keyboard.get(drag_restore_handle as usize);
+				let molding_in_segment_edit = input.keyboard.get(molding_in_segment_edit as usize);
 
 				tool_data.selection_mode = None;
 				tool_data.lasso_polygon.clear();
@@ -1546,6 +1547,7 @@ impl Fsm for PathToolFsmState {
 					lasso_select,
 					handle_drag_from_anchor,
 					drag_zero_handle,
+					molding_in_segment_edit,
 					tool_options.path_overlay_mode,
 					tool_options.path_editing_mode.segment_editing_mode,
 					tool_options.path_editing_mode.point_editing_mode,
@@ -1625,15 +1627,6 @@ impl Fsm for PathToolFsmState {
 				if !tool_data.saved_points_before_handle_drag.is_empty() && (tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD) && (selected_only_handles) {
 					tool_data.handle_drag_toggle = true;
 				}
-
-				// This is responsible for selecting all the anchors if nothing is selected
-				// Should also check that if there is some segment selection or not
-
-				// if tool_data.selection_status.is_none() {
-				// 	if let Some(layer) = document.click(input) {
-				// 		shape_editor.select_all_anchors_in_layer(document, layer);
-				// 	}
-				// }
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
@@ -1913,7 +1906,7 @@ impl Fsm for PathToolFsmState {
 				};
 
 				if tool_data.drag_start_pos == previous_mouse {
-					// If the click happened inside of a node then don't set selected nodes to empty array
+					// If click happens inside of a shape then don't set selected nodes to empty
 					if document.click(&input).is_none() {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 					}
@@ -2006,7 +1999,6 @@ impl Fsm for PathToolFsmState {
 				}
 				// Segment editing mode
 				else if let Some(nearest_segment) = nearest_segment {
-					//Condition this upon whether user has selected segment editing mode or not
 					if segment_mode {
 						let clicked_selected = shape_editor.selected_segments().any(|&segment| segment == nearest_segment.segment());
 						if !drag_occurred && extend_selection {
@@ -2408,7 +2400,14 @@ fn calculate_adjacent_anchor_tangent(
 	}
 }
 
-fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Message>, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, tool_data: &PathToolData) {
+fn update_dynamic_hints(
+	state: PathToolFsmState,
+	responses: &mut VecDeque<Message>,
+	shape_editor: &mut ShapeState,
+	document: &DocumentMessageHandler,
+	tool_data: &PathToolData,
+	tool_options: &PathToolOptions,
+) {
 	// Condinting based on currently selected segment if it has any one g1 continuous handle
 
 	let hint_data = match state {
@@ -2442,12 +2441,27 @@ fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Messag
 				drag_selected_hints.push(HintInfo::multi_keys([[Key::Control], [Key::Shift]], "Slide").prepend_plus());
 			}
 
-			let mut hint_data = vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
-				HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
-			];
+			let mut hint_data = match (tool_data.segment.is_some(), tool_options.path_editing_mode.segment_editing_mode) {
+				(true, true) => {
+					vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Segment"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+						HintGroup(vec![HintInfo::keys_and_mouse([Key::KeyA], MouseMotion::Lmb, "Mold Segment")]),
+					]
+				}
+				(true, false) => {
+					vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Mold Segment")]),
+						HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Delete Segment")]),
+					]
+				}
+				(false, _) => {
+					vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Control], "Lasso").prepend_plus()]),
+					]
+				}
+			};
 
 			if at_least_one_anchor_selected {
 				// TODO: Dynamically show either "Smooth" or "Sharp" based on the current state
