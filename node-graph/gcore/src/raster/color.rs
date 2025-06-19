@@ -85,8 +85,7 @@ impl Pixel for RGBA16F {}
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
 pub struct SRGBA8 {
 	red: u8,
 	green: u8,
@@ -167,8 +166,7 @@ impl Pixel for SRGBA8 {}
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
 pub struct Luma(pub f32);
 
 impl Luminance for Luma {
@@ -209,8 +207,7 @@ impl Pixel for Luma {}
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -798,7 +795,6 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a261", color.to_rgba_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
-	#[cfg(feature = "std")]
 	pub fn to_rgba_hex_srgb(&self) -> String {
 		let gamma = self.to_gamma_srgb();
 		format!(
@@ -816,7 +812,6 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
-	#[cfg(feature = "std")]
 	pub fn to_rgb_hex_srgb(&self) -> String {
 		self.to_gamma_srgb().to_rgb_hex_srgb_from_gamma()
 	}
@@ -827,7 +822,6 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
-	#[cfg(feature = "std")]
 	pub fn to_rgb_hex_srgb_from_gamma(&self) -> String {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}

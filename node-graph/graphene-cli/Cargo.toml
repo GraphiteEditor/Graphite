@@ -15,7 +15,6 @@ passthrough = ["wgpu-executor/passthrough"]
 gpu = [
 	"interpreted-executor/gpu",
 	"graphene-std/gpu",
-	"graphene-core/gpu",
 	"wgpu-executor",
 ]
 

@@ -243,38 +243,6 @@ impl GraphicElement {
 	}
 }
 
-// // TODO: Rename to Raster
-// #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-// pub enum RasterDataType {
-// 	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-// 	// TODO: Rename to ImageTable
-// 	RasterData(RasterDataTable<CPU>),
-// 	/// A GPU texture with a finite position and extent
-// 	// TODO: Rename to ImageTextureTable
-// 	TextureData(TextureDataTable),
-// }
-
-// impl<'de> serde::Deserialize<'de> for RasterDataType {
-// 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-// 	where
-// 		D: serde::Deserializer<'de>,
-// 	{
-// 		Ok(RasterDataType::RasterData(RasterDataTable::new(Image::deserialize(deserializer)?)))
-// 	}
-// }
-
-// impl serde::Serialize for RasterDataType {
-// 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-// 	where
-// 		S: serde::Serializer,
-// 	{
-// 		match self {
-// 			RasterDataType::RasterData(_) => self.serialize(serializer),
-// 			RasterDataType::TextureData(_) => todo!(),
-// 		}
-// 	}
-// }
-
 impl<'de> serde::Deserialize<'de> for Raster<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where

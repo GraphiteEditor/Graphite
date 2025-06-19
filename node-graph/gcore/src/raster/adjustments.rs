@@ -1,9 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
-#[cfg(feature = "alloc")]
 use crate::raster::curve::{Curve, ValueMapperNode};
-#[cfg(feature = "alloc")]
 use crate::raster::image::Image;
 use crate::raster::{Channel, Color, Pixel};
 use crate::raster_types::{CPU, Raster, RasterDataTable};
@@ -35,8 +33,7 @@ use spirv_std::num_traits::float::Float;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
@@ -49,8 +46,7 @@ pub enum LuminanceCalculation {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type)]
 #[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
 	// Basic group
@@ -924,8 +920,7 @@ async fn vibrance<T: Adjust<Color>>(
 
 /// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -936,8 +931,7 @@ pub enum RedGreenBlue {
 
 /// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
@@ -949,8 +943,7 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -966,8 +959,7 @@ pub enum NoiseType {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 /// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
@@ -984,8 +976,7 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -996,8 +987,7 @@ pub enum CellularDistanceFunction {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -1017,8 +1007,7 @@ pub enum CellularReturnType {
 
 /// Type of domain warp
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -1128,8 +1117,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -1139,8 +1127,7 @@ pub enum RelativeAbsolute {
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1422,7 +1409,6 @@ async fn exposure<T: Adjust<Color>>(
 
 const WINDOW_SIZE: usize = 1024;
 
-#[cfg(feature = "alloc")]
 #[node_macro::node(category(""))]
 fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
@@ -1463,7 +1449,6 @@ fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve
 	ValueMapperNode::new(lut)
 }
 
-#[cfg(feature = "alloc")]
 #[node_macro::node(category("Raster: Adjustment"))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
@@ -1491,10 +1476,8 @@ fn color_overlay<T: Adjust<Color>>(
 	image
 }
 
-// #[cfg(feature = "alloc")]
 // pub use index_node::IndexNode;
 
-// #[cfg(feature = "alloc")]
 // mod index_node {
 // 	use crate::raster::{Color, Image};
 // 	use crate::Ctx;

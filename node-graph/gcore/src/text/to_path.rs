@@ -23,7 +23,7 @@ impl Builder {
 impl OutlineBuilder for Builder {
 	fn move_to(&mut self, x: f32, y: f32) {
 		if !self.current_subpath.is_empty() {
-			self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+			self.other_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 		}
 		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
 	}
@@ -47,7 +47,7 @@ impl OutlineBuilder for Builder {
 
 	fn close(&mut self) {
 		self.current_subpath.set_closed(true);
-		self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		self.other_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 	}
 }
 
@@ -139,7 +139,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, typesetting: Types
 				builder.offset = DVec2::new(glyph_position.x_offset as f64, glyph_position.y_offset as f64) * builder.scale;
 				buzz_face.outline_glyph(glyph_id, &mut builder);
 				if !builder.current_subpath.is_empty() {
-					builder.other_subpaths.push(core::mem::replace(&mut builder.current_subpath, Subpath::new(Vec::new(), false)));
+					builder.other_subpaths.push(std::mem::replace(&mut builder.current_subpath, Subpath::new(Vec::new(), false)));
 				}
 
 				builder.text_cursor += DVec2::new(glyph_position.x_advance as f64 * typesetting.character_spacing, glyph_position.y_advance as f64) * builder.scale;

@@ -142,7 +142,6 @@ impl<T: PartialEq> PartialEq for Instances<T> {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<T: StaticType + 'static> StaticType for Instances<T> {
 	type Static = Instances<T>;
 }

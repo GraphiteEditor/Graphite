@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["wasm", "imaginate"]
-gpu = [ "graphene-core/gpu" ]
+gpu = []
 wgpu = ["gpu", "graph-craft/wgpu"]
 wasm = ["wasm-bindgen", "web-sys"]
 imaginate = ["image/png", "base64", "web-sys", "wasm-bindgen-futures"]
@@ -22,11 +22,7 @@ wayland = ["graph-craft/wayland"]
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive", "reqwest"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 wgpu-executor = { path = "../wgpu-executor" }
-graphene-core = { path = "../gcore", default-features = false, features = [
-	"std",
-	"serde",
-	"alloc",
-] }
+graphene-core = { path = "../gcore", default-features = false, features = ["serde"] }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
