@@ -494,7 +494,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::IncreaseSides) => {
 				if let Some(layer) = tool_data.data.layer {
-					let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface))
+					let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface))
 					else {
 						return self;
 					};
@@ -523,7 +523,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::Drawing(_), ShapeToolMessage::DecreaseSides) => {
 				if let Some(layer) = tool_data.data.layer {
-					let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface))
+					let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface).or(graph_modification_utils::get_star_id(layer, &document.network_interface))
 					else {
 						return self;
 					};

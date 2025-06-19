@@ -137,10 +137,6 @@ impl PointDomain {
 		&self.position
 	}
 
-	pub fn position_ids(&self) -> impl Iterator<Item = (PointId, &DVec2)> {
-		self.id.iter().copied().zip(self.positions())
-	}
-
 	pub fn positions_mut(&mut self) -> impl Iterator<Item = (PointId, &mut DVec2)> {
 		self.id.iter().copied().zip(self.position.iter_mut())
 	}
