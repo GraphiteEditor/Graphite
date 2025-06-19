@@ -8,14 +8,14 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::RasterDataTable;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_core::{Artboard, Color};
+use graphene_std::raster::BlendMode;
+use graphene_std::raster::image::RasterDataTable;
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::brush_stroke::BrushStroke;
+use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
+use graphene_std::{Artboard, Color};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -124,7 +124,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroupTable::default()), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),

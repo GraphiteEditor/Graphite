@@ -7,9 +7,9 @@ use crate::messages::portfolio::document::utility_types::network_interface::Flow
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
+use graphene_std::Color;
+use graphene_std::raster::BlendMode;
+use graphene_std::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 

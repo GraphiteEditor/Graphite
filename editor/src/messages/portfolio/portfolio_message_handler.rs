@@ -22,8 +22,8 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, TypesettingConfig};
+use graphene_std::renderer::Quad;
+use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, FillType, Gradient, PaintOrder, StrokeAlign};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::vec;
@@ -1546,7 +1546,7 @@ impl PortfolioMessageHandler {
 			responses.add(ToolMessage::DeactivateTools);
 		} else {
 			// Load the default font upon creating the first document
-			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
+			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
 			responses.add(FrontendMessage::TriggerFontLoad { font });
 		}
 

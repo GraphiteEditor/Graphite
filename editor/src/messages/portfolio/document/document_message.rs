@@ -8,12 +8,12 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeId;
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::Image;
-use graphene_core::vector::style::ViewMode;
+use graphene_std::Color;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster::Image;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::style::ViewMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

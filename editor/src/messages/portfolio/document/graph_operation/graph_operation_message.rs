@@ -5,14 +5,14 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::RasterDataTable;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::PointId;
-use graphene_core::vector::VectorModificationType;
-use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::{Artboard, Color};
+use graphene_std::raster::BlendMode;
+use graphene_std::raster::image::RasterDataTable;
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::PointId;
+use graphene_std::vector::VectorModificationType;
+use graphene_std::vector::brush_stroke::BrushStroke;
+use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::{Artboard, Color};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

@@ -14,14 +14,14 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::image::RasterDataTable;
-use graphene_core::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::transform::Footprint;
-use graphene_core::vector::VectorDataTable;
-use graphene_core::*;
 use graphene_std::ops::XY;
+use graphene_std::raster::brush_cache::BrushCache;
+use graphene_std::raster::image::RasterDataTable;
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::transform::Footprint;
+use graphene_std::vector::VectorDataTable;
+use graphene_std::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct NodePropertiesContext<'a> {
@@ -370,7 +370,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								manual_composition: Some(concrete!(Context)),
 								inputs: vec![
-									NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(ArtboardGroupTable))), 0),
+									NodeInput::network(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(concrete!(ArtboardGroupTable))), 0),
 									NodeInput::node(NodeId(1), 0),
 									NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath),
 								],
@@ -1028,7 +1028,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: vec![DocumentNode {
 							inputs: vec![
 								NodeInput::network(concrete!(RasterDataTable<Color>), 0),
-								NodeInput::network(concrete!(Vec<graphene_core::vector::brush_stroke::BrushStroke>), 1),
+								NodeInput::network(concrete!(Vec<graphene_std::vector::brush_stroke::BrushStroke>), 1),
 								NodeInput::network(concrete!(BrushCache), 2),
 							],
 							manual_composition: Some(concrete!(Context)),
@@ -1481,7 +1481,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_core::vector::VectorModification), 1)],
+								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_std::vector::VectorModification), 1)],
 								manual_composition: Some(generic!(T)),
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::vector_data::modification::PathModifyNode")),
 								..Default::default()
@@ -1547,7 +1547,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::scope("editor-api"),
 						NodeInput::value(TaggedValue::String("Lorem ipsum".to_string()), false),
 						NodeInput::value(
-							TaggedValue::Font(Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into())),
+							TaggedValue::Font(Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into())),
 							false,
 						),
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().font_size), false),
@@ -1830,14 +1830,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						exports: vec![NodeInput::node(NodeId(4), 0)], // Taken from output 0 of Sample Points
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0)],
+								inputs: vec![NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SubpathSegmentLengthsNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0),
+									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
 									NodeInput::network(concrete!(f64), 1),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
 									NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
@@ -1874,7 +1874,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::F64(100.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
@@ -1983,7 +1983,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![
-									NodeInput::network(concrete!(graphene_core::vector::VectorDataTable), 0),
+									NodeInput::network(concrete!(graphene_std::vector::VectorDataTable), 0),
 									NodeInput::network(concrete!(f64), 1),
 									NodeInput::network(concrete!(u32), 2),
 								],
@@ -2017,7 +2017,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						..Default::default()
 					}),
 					inputs: vec![
-						NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorDataTable::default()), true),
+						NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorDataTable::default()), true),
 						NodeInput::value(TaggedValue::F64(10.), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 					],
@@ -2112,9 +2112,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}
 		};
 	}
-	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-	'outer: for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
-		use graphene_core::registry::*;
+	let node_registry = graphene_std::registry::NODE_REGISTRY.lock().unwrap();
+	'outer: for (id, metadata) in graphene_std::registry::NODE_METADATA.lock().unwrap().iter() {
+		use graphene_std::registry::*;
 		let id = id.clone();
 
 		for node in custom.iter() {
@@ -2900,8 +2900,8 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.collect();
 	let mut extracted_node_types = Vec::new();
 
-	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-	let node_metadata = graphene_core::registry::NODE_METADATA.lock().unwrap();
+	let node_registry = graphene_std::registry::NODE_REGISTRY.lock().unwrap();
+	let node_metadata = graphene_std::registry::NODE_METADATA.lock().unwrap();
 	for (id, metadata) in node_metadata.iter() {
 		if let Some(implementations) = node_registry.get(id) {
 			let identifier = match id_to_identifier_map.get(id) {

@@ -11,7 +11,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::compass_rose::Axis;
 use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use glam::{DAffine2, DMat2, DVec2};
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 
 /// (top, bottom, left, right)
