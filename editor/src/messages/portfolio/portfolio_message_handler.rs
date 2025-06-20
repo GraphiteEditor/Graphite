@@ -467,7 +467,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 36] = [
+				const REPLACEMENTS: [(&str, &str); 37] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -485,7 +485,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::raster::GradientMapNode", "graphene_core::raster::adjustments::GradientMapNode"),
 					("graphene_core::raster::HueSaturationNode", "graphene_core::raster::adjustments::HueSaturationNode"),
 					("graphene_core::raster::InvertNode", "graphene_core::raster::adjustments::InvertNode"),
-					// ("graphene_core::raster::IndexNode", "graphene_core::raster::adjustments::IndexNode"),
 					("graphene_core::raster::InvertRGBNode", "graphene_core::raster::adjustments::InvertNode"),
 					("graphene_core::raster::LevelsNode", "graphene_core::raster::adjustments::LevelsNode"),
 					("graphene_core::raster::LuminanceNode", "graphene_core::raster::adjustments::LuminanceNode"),
@@ -508,6 +507,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_std::raster::SampleNode", "graphene_std::raster::SampleImageNode"),
 					("graphene_core::transform::CullNode", "graphene_core::ops::IdentityNode"),
 					("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
+					("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
 				];
 				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);
@@ -930,6 +930,39 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
 						// We have removed the last input, so we don't add index 3
 					}
+
+					if reference == "Brush" && inputs_count == 4 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						// We have removed the second input ("bounds"), so we don't add index 1 and we shift the rest of the inputs down by one
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
+					}
+
+					if reference == "Flatten Vector Elements" {
+						let node_definition = resolve_document_node_type("Flatten Path").unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+
+						document.network_interface.replace_reference_name(node_id, network_path, "Flatten Path".to_string());
+					}
 				}
 
 				// TODO: Eventually remove this document upgrade code
@@ -1003,6 +1036,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
+					let mut all_new_ids = Vec::new();
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
 						let parent = document.new_layer_parent(false);
 						let mut layers = Vec::new();
@@ -1019,12 +1053,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
+							all_new_ids.extend(new_ids.values().cloned());
+
 							responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 							responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
 							layers.push(layer);
 						}
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
 						responses.add(Message::StartBuffer);
 						responses.add(PortfolioMessage::CenterPastedLayers { layers });
 					}

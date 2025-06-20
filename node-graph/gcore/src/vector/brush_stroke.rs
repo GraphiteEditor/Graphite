@@ -37,6 +37,7 @@ impl Hash for BrushStyle {
 		self.hardness.to_bits().hash(state);
 		self.flow.to_bits().hash(state);
 		self.spacing.to_bits().hash(state);
+		self.blend_mode.hash(state);
 	}
 }
 

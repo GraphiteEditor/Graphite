@@ -164,7 +164,7 @@ fn grid<T: GridSpacing>(
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
 
-	let mut vector_data = VectorData::empty();
+	let mut vector_data = VectorData::default();
 	let mut segment_id = SegmentId::ZERO;
 	let mut point_id = PointId::ZERO;
 
@@ -253,9 +253,9 @@ fn isometric_grid_test() {
 
 	// Works properly
 	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
+	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		assert!(
 			((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
@@ -268,9 +268,9 @@ fn isometric_grid_test() {
 #[test]
 fn skew_isometric_grid_test() {
 	let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
-	assert_eq!(grid.one_instance_ref().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.one_instance_ref().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.one_instance_ref().instance.segment_bezier_iter() {
+	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
+	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+	for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
 		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
 		let vector = bezier.start - bezier.end;
 		let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;

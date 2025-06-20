@@ -1,6 +1,5 @@
-use crate::instances::Instances;
 use crate::text::FontCache;
-use crate::transform::{Footprint, Transform, TransformMut};
+use crate::transform::Footprint;
 use crate::vector::style::ViewMode;
 use alloc::sync::Arc;
 use core::fmt::Debug;
@@ -37,17 +36,6 @@ impl Hash for SurfaceFrame {
 	}
 }
 
-impl Transform for SurfaceFrame {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-impl TransformMut for SurfaceFrame {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
-}
-
 #[cfg(feature = "dyn-any")]
 unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;
@@ -64,8 +52,7 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-// TODO: Rename to ImageTextureTable
-pub type TextureFrameTable = Instances<ImageTexture>;
+// pub type TextureDataTable = Instances<ImageTexture>;
 
 #[derive(Debug, Clone)]
 pub struct ImageTexture {
@@ -150,18 +137,6 @@ pub struct SurfaceHandleFrame<Surface> {
 #[cfg(feature = "dyn-any")]
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
 	type Static = SurfaceHandleFrame<T>;
-}
-
-impl<T> Transform for SurfaceHandleFrame<T> {
-	fn transform(&self) -> DAffine2 {
-		self.transform
-	}
-}
-
-impl<T> TransformMut for SurfaceHandleFrame<T> {
-	fn transform_mut(&mut self) -> &mut DAffine2 {
-		&mut self.transform
-	}
 }
 
 // TODO: think about how to automatically clean up memory

@@ -6,6 +6,7 @@ pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::raster_types::CPU;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -109,9 +110,7 @@ macro_rules! tagged_value {
 			}
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
-					Type::Generic(_) => {
-						None
-					}
+					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
 						let internal_id = concrete_type.id?;
 						use std::any::TypeId;
@@ -189,8 +188,8 @@ tagged_value! {
 	GraphicElement(graphene_core::GraphicElement),
 	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
 	VectorData(graphene_core::vector::VectorDataTable),
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
 	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(graphene_core::GraphicGroupTable),
 	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code

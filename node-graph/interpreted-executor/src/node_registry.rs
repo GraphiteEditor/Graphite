@@ -3,8 +3,8 @@ use glam::{DVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::raster::color::Color;
-use graphene_core::raster::image::ImageFrameTable;
 use graphene_core::raster::*;
+use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_core::vector::VectorDataTable;
 use graphene_core::{Artboard, GraphicGroupTable, concrete, generic};
 use graphene_core::{Cow, ProtoNodeIdentifier, Type};
@@ -21,30 +21,31 @@ use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "gpu")]
 use wgpu_executor::ShaderInputFrame;
-use wgpu_executor::{WgpuSurface, WindowHandle};
+use wgpu_executor::{WgpuExecutor, WgpuSurface, WindowHandle};
 
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let node_types: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 		into_node!(from: f64, to: f64),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
-		into_node!(from: f64, to: f64),
 		into_node!(from: u32, to: f64),
 		into_node!(from: u8, to: u32),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
-		into_node!(from: VectorDataTable, to: GraphicGroupTable),
+		into_node!(from: VectorDataTable, to: VectorDataTable),
 		into_node!(from: VectorDataTable, to: GraphicElement),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicElement),
-		into_node!(from: GraphicGroupTable, to: GraphicElement),
 		into_node!(from: VectorDataTable, to: GraphicGroupTable),
-		into_node!(from: ImageFrameTable<Color>, to: GraphicGroupTable),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageFrameTable<Color>]),
+		into_node!(from: GraphicGroupTable, to: GraphicGroupTable),
+		into_node!(from: GraphicGroupTable, to: GraphicElement),
+		into_node!(from: RasterDataTable<CPU>, to: RasterDataTable<CPU>),
+		// into_node!(from: RasterDataTable<CPU>, to: RasterDataTable<SRGBA8>),
+		into_node!(from: RasterDataTable<CPU>, to: GraphicElement),
+		into_node!(from: RasterDataTable<CPU>, to: GraphicGroupTable),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<CPU>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => ImageTexture]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => VectorDataTable]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GraphicGroupTable]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => GraphicElement]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Artboard]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::RasterFrame]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<CPU>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<GPU>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::instances::Instances<Artboard>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => String]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => glam::IVec2]),
@@ -68,9 +69,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Vec<graphene_core::uuid::NodeId>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::Color]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Box<graphene_core::vector::VectorModification>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::vector::misc::CentroidType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => VectorDataTable]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => ImageFrameTable<Color>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RasterDataTable<CPU>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => GraphicGroupTable]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Arc<WasmSurfaceHandle>]),
@@ -111,6 +113,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => wgpu_executor::WgpuSurface]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => ShaderInputFrame]),
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Context, fn_params: [Context => RasterDataTable<GPU>]),
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RasterDataTable<GPU>]),
+		#[cfg(feature = "gpu")]
+		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
 		#[cfg(feature = "gpu")]
 		(
 			ProtoNodeIdentifier::new(stringify!(wgpu_executor::CreateGpuSurfaceNode<_>)),

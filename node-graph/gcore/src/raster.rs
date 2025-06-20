@@ -1,7 +1,7 @@
 pub use self::color::{Color, Luma, SRGBA8};
 use crate::Ctx;
 use crate::GraphicGroupTable;
-use crate::raster::image::ImageFrameTable;
+use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
 use bytemuck::{Pod, Zeroable};
@@ -310,7 +310,7 @@ impl SetBlendMode for GraphicGroupTable {
 		}
 	}
 }
-impl SetBlendMode for ImageFrameTable<Color> {
+impl SetBlendMode for RasterDataTable<CPU> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.blend_mode = blend_mode;
@@ -324,7 +324,7 @@ fn blend_mode<T: SetBlendMode>(
 	#[implementations(
 		GraphicGroupTable,
 		VectorDataTable,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 	)]
 	mut value: T,
 	blend_mode: BlendMode,
@@ -340,7 +340,7 @@ fn opacity<T: MultiplyAlpha>(
 	#[implementations(
 		GraphicGroupTable,
 		VectorDataTable,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 	)]
 	mut value: T,
 	#[default(100.)] factor: Percentage,
