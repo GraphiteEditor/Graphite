@@ -57,8 +57,10 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	}
 
 	// Move the `second_layer` below the `first_layer` for positioning purposes
-	let first_layer_parent = first_layer.parent(document.metadata()).unwrap();
-	let first_layer_index = first_layer_parent.children(document.metadata()).position(|child| child == first_layer).unwrap();
+	let Some(first_layer_parent) = first_layer.parent(document.metadata()) else { return };
+	let Some(first_layer_index) = first_layer_parent.children(document.metadata()).position(|child| child == first_layer) else {
+		return;
+	};
 	responses.add(NodeGraphMessage::MoveLayerToStack {
 		layer: second_layer,
 		parent: first_layer_parent,
