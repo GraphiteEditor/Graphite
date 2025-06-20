@@ -528,6 +528,14 @@ impl StrokeCap {
 			StrokeCap::Square => "square",
 		}
 	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			StrokeCap::Butt => String::from("butt"),
+			StrokeCap::Round => String::from("round"),
+			StrokeCap::Square => String::from("square"),
+		}
+	}
 }
 
 #[repr(C)]
@@ -546,6 +554,14 @@ impl StrokeJoin {
 			StrokeJoin::Bevel => "bevel",
 			StrokeJoin::Miter => "miter",
 			StrokeJoin::Round => "round",
+		}
+	}
+
+	pub fn html_canvas_name(&self) -> String {
+		match self {
+			StrokeJoin::Bevel => String::from("bevel"),
+			StrokeJoin::Miter => String::from("miter"),
+			StrokeJoin::Round => String::from("round"),
 		}
 	}
 }

@@ -8,7 +8,6 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::Artboard;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, RasterDataTable};
 use graphene_std::text::{Font, TypesettingConfig};
@@ -16,6 +15,7 @@ use graphene_std::vector::brush_stroke::BrushStroke;
 use graphene_std::vector::style::{Fill, Stroke};
 use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
+use graphene_std::{Artboard, Color};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -379,6 +379,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
+	}
+
+	pub fn stroke_color_set(&mut self, color: Option<Color>) {
+		let Some(stroke_node_id) = self.existing_node_id("Stroke", false) else { return };
+
+		let input_connector = InputConnector::node(stroke_node_id, 1);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(color), false), false);
 	}
 
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.
