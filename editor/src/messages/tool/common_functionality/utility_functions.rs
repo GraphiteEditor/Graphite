@@ -5,7 +5,7 @@ use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{FontCache, load_face};
+use graphene_std::text::{FontCache, load_font};
 use graphene_std::vector::{HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -63,8 +63,8 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
 
-	let buzz_face = font_cache.get(font).map(|data| load_face(data));
-	let far = graphene_std::text::bounding_box(text, buzz_face.as_ref(), typesetting, false);
+	let font_data = font_cache.get(font).map(|data| load_font(data));
+	let far = graphene_std::text::bounding_box(text, font_data, typesetting, false);
 
 	Quad::from_box([DVec2::ZERO, far])
 }
