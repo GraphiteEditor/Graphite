@@ -1,5 +1,6 @@
-use super::algorithms::bezpath_algorithms::{self, PERIMETER_ACCURACY, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
+use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
@@ -8,15 +9,15 @@ use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
-use crate::vector::PointDomain;
 use crate::vector::misc::dvec2_to_point;
 use crate::vector::style::{LineCap, LineJoin};
+use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
-use bezier_rs::{Join, ManipulatorGroup, Subpath, SubpathTValue};
+use bezier_rs::{Join, ManipulatorGroup, Subpath};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Point, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::TAU;
@@ -357,20 +358,19 @@ where
 	result_table
 }
 
-// TODO: Make this node return Instances<I> instead of GraphicGroupTable, while preserving the current transform behavior as the `reference_point` and `offset` parameters are varied
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
-	#[default(ReferencePoint::Center)] reference_point: ReferencePoint,
+	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> GraphicGroupTable
+) -> Instances<I>
 where
 	Instances<I>: GraphicElementRendered,
 {
-	let mut result_table = GraphicGroupTable::default();
+	let mut result_table = Instances::default();
 
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
@@ -380,12 +380,8 @@ where
 		return result_table;
 	};
 
-	// TODO: If the reference point is not None, use the current behavior but make it work correctly with local pivot origins of each Instances<I> row
-	let reference_point_location = reference_point.point_in_bounding_box((bounding_box[0], bounding_box[1]).into()).unwrap_or_else(|| {
-		// TODO: In this None case, use the input's local pivot origin point instead of a point relative to its bounding box
-		(bounding_box[0] + bounding_box[1]) / 2.
-	});
-	let mirror_reference_point = reference_point_location + normal * offset;
+	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
+	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
 
 	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
@@ -397,25 +393,25 @@ where
 	);
 
 	// Apply reflection around the reference point
-	let transform = DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point);
+	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
+		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
+	} else {
+		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
+	};
 
 	// Add original instance depending on the keep_original flag
 	if keep_original {
-		result_table.push(Instance {
-			instance: instance.to_graphic_element().clone(),
-			transform: DAffine2::IDENTITY,
-			alpha_blending: Default::default(),
-			source_node_id: None,
-		});
+		for instance in instance.clone().instance_iter() {
+			result_table.push(instance);
+		}
 	}
 
 	// Create and add mirrored instance
-	result_table.push(Instance {
-		instance: instance.to_graphic_element(),
-		transform,
-		alpha_blending: Default::default(),
-		source_node_id: None,
-	});
+	for mut instance in instance.instance_iter() {
+		instance.transform = reflected_transform * instance.transform;
+		instance.source_node_id = None;
+		result_table.push(instance);
+	}
 
 	result_table
 }
@@ -767,69 +763,25 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn remove_handles(
-	_: impl Ctx,
-	vector_data: VectorDataTable,
-	#[default(10.)]
-	#[soft_min(0.)]
-	max_handle_distance: f64,
-) -> VectorDataTable {
-	let mut result_table = VectorDataTable::default();
-
-	for mut vector_data_instance in vector_data.instance_iter() {
-		let mut vector_data = vector_data_instance.instance;
-
-		for (_, handles, start, end) in vector_data.segment_domain.handles_mut() {
-			// Only convert to linear if handles are within the threshold distance
-			match *handles {
-				bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
-					let start_pos = vector_data.point_domain.positions()[start];
-					let end_pos = vector_data.point_domain.positions()[end];
-
-					let start_handle_distance = (handle_start - start_pos).length();
-					let end_handle_distance = (handle_end - end_pos).length();
-
-					// If handles are close enough to their anchor points, make the segment linear
-					if start_handle_distance <= max_handle_distance && end_handle_distance <= max_handle_distance {
-						*handles = bezier_rs::BezierHandles::Linear;
-					}
-				}
-				bezier_rs::BezierHandles::Quadratic { handle } => {
-					let start_pos = vector_data.point_domain.positions()[start];
-					let end_pos = vector_data.point_domain.positions()[end];
-
-					// Use average distance from handle to both points
-					let avg_distance = ((handle - start_pos).length() + (handle - end_pos).length()) / 2.;
-
-					if avg_distance <= max_handle_distance {
-						*handles = bezier_rs::BezierHandles::Linear;
-					}
-				}
-				_ => {}
-			}
-		}
-
-		vector_data_instance.instance = vector_data;
-		vector_data_instance.source_node_id = None;
-		result_table.push(vector_data_instance);
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn generate_handles(
+/// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
+#[node_macro::node(category("Vector"), name("Auto-Tangents"), path(graphene_core::vector))]
+async fn auto_tangents(
 	_: impl Ctx,
 	source: VectorDataTable,
-	#[default(0.4)]
+	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
+	#[default(0.5)]
 	#[range((0., 1.))]
-	curvature: f64,
+	spread: f64,
+	/// If active, existing non-zero handles won't be affected.
+	#[default(true)]
+	preserve_existing: bool,
 ) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
 	for source in source.instance_ref_iter() {
-		let source_transform = *source.transform;
+		let transform = *source.transform;
+		let alpha_blending = *source.alpha_blending;
+		let source_node_id = *source.source_node_id;
 		let source = source.instance;
 
 		let mut result = VectorData {
@@ -838,11 +790,11 @@ async fn generate_handles(
 		};
 
 		for mut subpath in source.stroke_bezier_paths() {
-			subpath.apply_transform(source_transform);
+			subpath.apply_transform(transform);
 
 			let groups = subpath.manipulator_groups();
 			if groups.len() < 2 {
-				// Not enough points for softening
+				// Not enough points for softening or handle removal
 				result.append_subpath(subpath, true);
 				continue;
 			}
@@ -853,16 +805,30 @@ async fn generate_handles(
 			for i in 0..groups.len() {
 				let curr = &groups[i];
 
-				// Check if this point has handles
-				let has_handles =
-					(curr.in_handle.is_some() && !curr.in_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5)) || (curr.out_handle.is_some() && !curr.out_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5));
+				if preserve_existing {
+					// Check if this point has handles that are meaningfully different from the anchor
+					let has_handles = (curr.in_handle.is_some() && !curr.in_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5))
+						|| (curr.out_handle.is_some() && !curr.out_handle.unwrap().abs_diff_eq(curr.anchor, 1e-5));
 
-				if has_handles || (!is_closed && (i == 0 || i == groups.len() - 1)) {
-					new_groups.push(*curr);
+					// If the point already has handles, or if it's an endpoint of an open path, keep it as is.
+					if has_handles || (!is_closed && (i == 0 || i == groups.len() - 1)) {
+						new_groups.push(*curr);
+						continue;
+					}
+				}
+
+				// If spread is 0, remove handles for this point, making it a sharp corner.
+				if spread == 0. {
+					new_groups.push(ManipulatorGroup {
+						anchor: curr.anchor,
+						in_handle: None,
+						out_handle: None,
+						id: curr.id,
+					});
 					continue;
 				}
 
-				// Get previous and next points
+				// Get previous and next points for auto-tangent calculation
 				let prev_idx = if i == 0 { if is_closed { groups.len() - 1 } else { i } } else { i - 1 };
 				let next_idx = if i == groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
 
@@ -870,25 +836,33 @@ async fn generate_handles(
 				let curr_pos = curr.anchor;
 				let next = groups[next_idx].anchor;
 
-				// Calculate directions to adjacent points
+				// Calculate directions from current point to adjacent points
 				let dir_prev = (prev - curr_pos).normalize_or_zero();
 				let dir_next = (next - curr_pos).normalize_or_zero();
 
-				// Check if we have valid directions
+				// Check if we have valid directions (e.g., points are not coincident)
 				if dir_prev.length_squared() < 1e-5 || dir_next.length_squared() < 1e-5 {
+					// Fallback: keep the original manipulator group (which has no active handles here)
 					new_groups.push(*curr);
 					continue;
 				}
 
-				// Calculate handle direction (perpendicular to the angle bisector)
-				let handle_dir = (dir_prev - dir_next).try_normalize().unwrap_or(dir_prev.perp());
-				let handle_dir = if dir_prev.dot(handle_dir) < 0. { -handle_dir } else { handle_dir };
+				// Calculate handle direction (colinear, pointing along the line from prev to next)
+				// Original logic: (dir_prev - dir_next) is equivalent to (prev - curr) - (next - curr) = prev - next
+				// The handle_dir will be along the line connecting prev and next, or perpendicular if they are coincident.
+				let mut handle_dir = (dir_prev - dir_next).try_normalize().unwrap_or_else(|| dir_prev.perp());
 
-				// Calculate handle lengths - 1/3 of distance to adjacent points, scaled by curvature
-				let in_length = (curr_pos - prev).length() / 3. * curvature;
-				let out_length = (next - curr_pos).length() / 3. * curvature;
+				// Ensure consistent orientation of the handle_dir
+				// This makes the `+ handle_dir` for in_handle and `- handle_dir` for out_handle consistent
+				if dir_prev.dot(handle_dir) < 0. {
+					handle_dir = -handle_dir;
+				}
 
-				// Create new manipulator group with handles
+				// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
+				let in_length = (curr_pos - prev).length() / 3. * spread;
+				let out_length = (next - curr_pos).length() / 3. * spread;
+
+				// Create new manipulator group with calculated auto-tangents
 				new_groups.push(ManipulatorGroup {
 					anchor: curr_pos,
 					in_handle: Some(curr_pos + handle_dir * in_length),
@@ -898,15 +872,15 @@ async fn generate_handles(
 			}
 
 			let mut softened_subpath = Subpath::new(new_groups, is_closed);
-			softened_subpath.apply_transform(source_transform.inverse());
+			softened_subpath.apply_transform(transform.inverse());
 			result.append_subpath(softened_subpath, true);
 		}
 
 		result_table.push(Instance {
 			instance: result,
-			transform: source_transform,
-			alpha_blending: Default::default(),
-			source_node_id: None,
+			transform,
+			alpha_blending,
+			source_node_id,
 		});
 	}
 
@@ -1033,9 +1007,14 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 		let vector_data = vector_data_instance.instance;
 
 		let mut result = vector_data
-			.bounding_box()
-			.map(|bounding_box| VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1])))
+			.bounding_box_rect()
+			.map(|bbox| {
+				let mut vector_data = VectorData::default();
+				vector_data.append_bezpath(bbox.to_path(DEFAULT_ACCURACY));
+				vector_data
+			})
 			.unwrap_or_default();
+
 		result.style = vector_data.style.clone();
 		result.style.set_stroke_transform(DAffine2::IDENTITY);
 
@@ -1055,6 +1034,53 @@ async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
 		.reduce(|[acc_top_left, acc_bottom_right], [top_left, bottom_right]| [acc_top_left.min(top_left), acc_bottom_right.max(bottom_right)])
 		.map(|[top_left, bottom_right]| bottom_right - top_left)
 		.unwrap_or_default()
+}
+
+/// Converts a coordinate value into a vector anchor point.
+///
+/// This is useful in conjunction with nodes that repeat it, followed by the "Points to Polyline" node to string together a path of the points.
+#[node_macro::node(category("Vector"), name("Coordinate to Point"), path(graphene_core::vector))]
+async fn position_to_point(_: impl Ctx, coordinate: DVec2) -> VectorDataTable {
+	let mut result_table = VectorDataTable::default();
+
+	let mut point_domain = PointDomain::new();
+	point_domain.push(PointId::generate(), coordinate);
+
+	result_table.push(Instance {
+		instance: VectorData { point_domain, ..Default::default() },
+		..Default::default()
+	});
+
+	result_table
+}
+
+/// Creates a polyline from a series of vector points, replacing any existing segments and regions that may already exist.
+#[node_macro::node(category("Vector"), name("Points to Polyline"), path(graphene_core::vector))]
+async fn points_to_polyline(_: impl Ctx, mut points: VectorDataTable, #[default(true)] closed: bool) -> VectorDataTable {
+	for instance in points.instance_mut_iter() {
+		let mut segment_domain = SegmentDomain::new();
+
+		let points_count = instance.instance.point_domain.ids().len();
+
+		if points_count > 2 {
+			(0..points_count - 1).for_each(|i| {
+				segment_domain.push(SegmentId::generate(), i, i + 1, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+			});
+
+			if closed {
+				segment_domain.push(SegmentId::generate(), points_count - 1, 0, bezier_rs::BezierHandles::Linear, StrokeId::generate());
+
+				instance
+					.instance
+					.region_domain
+					.push(RegionId::generate(), segment_domain.ids()[0]..=*segment_domain.ids().last().unwrap(), FillId::generate());
+			}
+		}
+
+		instance.instance.segment_domain = segment_domain;
+	}
+
+	points
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
@@ -1418,7 +1444,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 				.stroke_bezpath_iter()
 				.flat_map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.segments().map(|segment| segment.perimeter(PERIMETER_ACCURACY)).collect::<Vec<f64>>()
+					bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>()
 				})
 				.collect::<Vec<f64>>()
 		})
@@ -1436,15 +1462,15 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 		}
 
 		let mut segment_domain = SegmentDomain::default();
-		for subpath in vector_data_instance.instance.stroke_bezier_paths() {
-			let positions = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
-			let closed = subpath.closed() && positions.len() > 2;
+		for (manipulator_groups, closed) in vector_data_instance.instance.stroke_manipulator_groups() {
+			let positions = manipulator_groups.iter().map(|group| group.anchor).collect::<Vec<_>>();
+			let closed = closed && positions.len() > 2;
 
 			// Compute control point handles for Bezier spline.
 			let first_handles = if closed {
-				bezier_rs::solve_spline_first_handle_closed(&positions)
+				solve_spline_first_handle_closed(&positions)
 			} else {
-				bezier_rs::solve_spline_first_handle_open(&positions)
+				solve_spline_first_handle_open(&positions)
 			};
 
 			let stroke_id = StrokeId::ZERO;
@@ -1453,8 +1479,8 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 			for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
 				let next_index = (i + 1) % positions.len();
 
-				let start_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[i].id).unwrap();
-				let end_index = vector_data_instance.instance.point_domain.resolve_id(subpath.manipulator_groups()[next_index].id).unwrap();
+				let start_index = vector_data_instance.instance.point_domain.resolve_id(manipulator_groups[i].id).unwrap();
+				let end_index = vector_data_instance.instance.point_domain.resolve_id(manipulator_groups[next_index].id).unwrap();
 
 				let handle_start = first_handles[i];
 				let handle_end = positions[next_index] * 2. - first_handles[next_index];
@@ -1526,6 +1552,46 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction) -> VectorDataTable {
+	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
+	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
+		let bezpath_segment_count = bezpath.segments().count();
+
+		if count == 0 || bezpath_segment_count == 0 {
+			return;
+		}
+
+		// Initially push the last segment of the bezpath
+		let mut new_segments = vec![bezpath.get_seg(bezpath_segment_count).unwrap()];
+
+		// Generate new segments by subdividing last segment
+		for _ in 0..count {
+			let last = new_segments.pop().unwrap();
+			let (first, second) = last.subdivide();
+			new_segments.push(first);
+			new_segments.push(second);
+		}
+
+		// Append the new segments.
+		if count != 0 {
+			// Remove the last segment as it is already appended to the new_segments.
+			let mut is_closed = false;
+			if let Some(last_element) = bezpath.pop() {
+				if last_element == PathEl::ClosePath {
+					is_closed = true;
+					_ = bezpath.pop();
+				}
+			}
+
+			for segment in new_segments {
+				bezpath.push(segment.as_path_el());
+			}
+
+			if is_closed {
+				bezpath.close_path();
+			}
+		}
+	}
+
 	let time = time.clamp(0., 1.);
 
 	let mut result_table = VectorDataTable::default();
@@ -1542,65 +1608,99 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		let target_transform = target_instance.transform;
 
 		// Before and after paths
-		let source_paths = source_instance.instance.stroke_bezier_paths();
-		let target_paths = target_instance.instance.stroke_bezier_paths();
-		for (mut source_path, mut target_path) in source_paths.zip(target_paths) {
-			source_path.apply_transform(source_transform);
-			target_path.apply_transform(target_transform);
+		let source_bezpaths = source_instance.instance.stroke_bezpath_iter();
+		let target_bezpaths = target_instance.instance.stroke_bezpath_iter();
 
-			// Align point counts by inserting mid‐segment points until their counts match
-			while source_path.manipulator_groups().len() < target_path.manipulator_groups().len() {
-				let last = source_path.len() - 1;
-				source_path.insert(SubpathTValue::Parametric { segment_index: last, t: 0.5 });
+		for (mut source_bezpath, mut target_bezpath) in source_bezpaths.zip(target_bezpaths) {
+			if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
+				continue;
 			}
-			while target_path.manipulator_groups().len() < source_path.manipulator_groups().len() {
-				let last = target_path.len() - 1;
-				target_path.insert(SubpathTValue::Parametric { segment_index: last, t: 0.5 });
-			}
+
+			source_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
+			target_bezpath.apply_affine(Affine::new(target_transform.to_cols_array()));
+
+			let target_segment_len = target_bezpath.segments().count();
+			let source_segment_len = source_bezpath.segments().count();
+
+			// Insert new segments to align the number of segments in sorce_bezpath and target_bezpath.
+			make_new_segments(&mut source_bezpath, target_segment_len.max(source_segment_len) - source_segment_len);
+			make_new_segments(&mut target_bezpath, source_segment_len.max(target_segment_len) - target_segment_len);
+
+			let source_segments = source_bezpath.segments().collect::<Vec<PathSeg>>();
+			let target_segments = target_bezpath.segments().collect::<Vec<PathSeg>>();
 
 			// Interpolate anchors and handles
-			for (source_manipulators, target_manipulators) in source_path.manipulator_groups_mut().iter_mut().zip(target_path.manipulator_groups()) {
-				let source_anchor = source_manipulators.anchor;
-				let target_anchor = target_manipulators.anchor;
-				source_manipulators.anchor = source_anchor.lerp(target_anchor, time);
-
-				let source_in_handle = source_manipulators.in_handle.unwrap_or(source_anchor);
-				let target_in_handle = target_manipulators.in_handle.unwrap_or(target_anchor);
-				source_manipulators.in_handle = Some(source_in_handle.lerp(target_in_handle, time));
-
-				let source_out_handle = source_manipulators.out_handle.unwrap_or(source_anchor);
-				let target_out_handle = target_manipulators.out_handle.unwrap_or(target_anchor);
-				source_manipulators.out_handle = Some(source_out_handle.lerp(target_out_handle, time));
+			for (i, (source_element, target_element)) in source_bezpath.elements_mut().iter_mut().zip(target_bezpath.elements_mut().iter_mut()).enumerate() {
+				match source_element {
+					PathEl::MoveTo(point) => *point = point.lerp(target_element.end_point().unwrap(), time),
+					PathEl::ClosePath => {}
+					elm => {
+						let mut source_segment = source_segments.get(i - 1).unwrap().to_cubic();
+						let target_segment = target_segments.get(i - 1).unwrap().to_cubic();
+						source_segment.p0 = source_segment.p0.lerp(target_segment.p0, time);
+						source_segment.p1 = source_segment.p1.lerp(target_segment.p1, time);
+						source_segment.p2 = source_segment.p2.lerp(target_segment.p2, time);
+						source_segment.p3 = source_segment.p3.lerp(target_segment.p3, time);
+						*elm = PathSeg::Cubic(source_segment).as_path_el();
+					}
+				}
 			}
 
-			vector_data_instance.append_subpath(source_path.clone(), true);
+			vector_data_instance.append_bezpath(source_bezpath.clone());
 		}
 
 		// Deal with unmatched extra paths by collapsing them
-		let source_paths_count = source_instance.instance.stroke_bezier_paths().count();
-		let target_paths_count = target_instance.instance.stroke_bezier_paths().count();
-		let source_paths = source_instance.instance.stroke_bezier_paths().skip(target_paths_count);
-		let target_paths = target_instance.instance.stroke_bezier_paths().skip(source_paths_count);
+		let source_paths_count = source_instance.instance.stroke_bezpath_iter().count();
+		let target_paths_count = target_instance.instance.stroke_bezpath_iter().count();
+		let source_paths = source_instance.instance.stroke_bezpath_iter().skip(target_paths_count);
+		let target_paths = target_instance.instance.stroke_bezpath_iter().skip(source_paths_count);
 
 		for mut source_path in source_paths {
-			source_path.apply_transform(source_transform);
-			let end = source_path.manipulator_groups().last().map(|group| group.anchor).unwrap_or_default();
-			for group in source_path.manipulator_groups_mut() {
-				group.anchor = group.anchor.lerp(end, time);
-				group.in_handle = group.in_handle.map(|handle| handle.lerp(end, time));
-				group.out_handle = group.out_handle.map(|handle| handle.lerp(end, time));
+			source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
+
+			let end: Point = source_path.elements().last().and_then(|element| element.end_point()).unwrap_or_default();
+
+			for element in source_path.elements_mut() {
+				match element {
+					PathEl::MoveTo(point) => *point = point.lerp(end, time),
+					PathEl::LineTo(point) => *point = point.lerp(end, time),
+					PathEl::QuadTo(point, point1) => {
+						*point = point.lerp(end, time);
+						*point1 = point1.lerp(end, time);
+					}
+					PathEl::CurveTo(point, point1, point2) => {
+						*point = point.lerp(end, time);
+						*point1 = point1.lerp(end, time);
+						*point2 = point2.lerp(end, time);
+					}
+					PathEl::ClosePath => {}
+				}
 			}
-			vector_data_instance.append_subpath(source_path, true);
+			vector_data_instance.append_bezpath(source_path);
 		}
+
 		for mut target_path in target_paths {
-			target_path.apply_transform(target_transform);
-			let start = target_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default();
-			for group in target_path.manipulator_groups_mut() {
-				group.anchor = start.lerp(group.anchor, time);
-				group.in_handle = group.in_handle.map(|handle| start.lerp(handle, time));
-				group.out_handle = group.out_handle.map(|handle| start.lerp(handle, time));
+			target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
+
+			let end: Point = target_path.elements().last().and_then(|element| element.end_point()).unwrap_or_default();
+
+			for element in target_path.elements_mut() {
+				match element {
+					PathEl::MoveTo(point) => *point = point.lerp(end, time),
+					PathEl::LineTo(point) => *point = point.lerp(end, time),
+					PathEl::QuadTo(point, point1) => {
+						*point = point.lerp(end, time);
+						*point1 = point1.lerp(end, time);
+					}
+					PathEl::CurveTo(point, point1, point2) => {
+						*point = point.lerp(end, time);
+						*point1 = point1.lerp(end, time);
+						*point2 = point2.lerp(end, time);
+					}
+					PathEl::ClosePath => {}
+				}
 			}
-			vector_data_instance.append_subpath(target_path, true);
+			vector_data_instance.append_bezpath(target_path);
 		}
 
 		result_table.push(Instance {
