@@ -8,18 +8,13 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["wasm", "imaginate"]
-gpu = [
-	"graphene-core/gpu",
-	"gpu-compiler-bin-wrapper",
-	"compilation-client",
-	"gpu-executor",
-]
-wgpu = ["gpu", "dep:wgpu", "graph-craft/wgpu"]
-wasm = ["wasm-bindgen", "web-sys", "js-sys"]
-imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
-image-compare = ["dep:image-compare"]
-vello = ["dep:vello", "resvg", "gpu"]
-resvg = ["dep:resvg"]
+gpu = []
+wgpu = ["gpu", "graph-craft/wgpu"]
+wasm = ["wasm-bindgen", "web-sys"]
+imaginate = ["image/png", "base64", "web-sys", "wasm-bindgen-futures"]
+image-compare = []
+vello = ["dep:vello", "gpu", "graphene-core/vello"]
+resvg = []
 wayland = ["graph-craft/wayland"]
 
 [dependencies]
@@ -27,11 +22,7 @@ wayland = ["graph-craft/wayland"]
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive", "reqwest"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 wgpu-executor = { path = "../wgpu-executor" }
-graphene-core = { path = "../gcore", default-features = false, features = [
-	"std",
-	"serde",
-	"alloc",
-] }
+graphene-core = { path = "../gcore", default-features = false, features = ["serde"] }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
@@ -40,13 +31,8 @@ bezier-rs = { workspace = true, features = ["serde"] }
 path-bool = { workspace = true, features = ["parsing"] }
 glam = { workspace = true, features = ["serde"] }
 node-macro = { workspace = true }
-rustc-hash = { workspace = true }
-serde_json = { workspace = true }
 reqwest = { workspace = true }
 futures = { workspace = true }
-wgpu-types = { workspace = true }
-winit = { workspace = true }
-url = { workspace = true }
 usvg = { workspace = true }
 rand_chacha = { workspace = true }
 rand = { workspace = true, default-features = false, features = [
@@ -59,20 +45,12 @@ image = { workspace = true, default-features = false, features = [
 	"jpeg",
 ] }
 
-# Optional local dependencies
-gpu-executor = { path = "../gpu-executor", optional = true }
-gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
-compilation-client = { path = "../compilation-client", optional = true }
-
 # Optional workspace dependencies
 base64 = { workspace = true, optional = true }
-wgpu = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
-js-sys = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["fs", "io-std"] }
 vello = { workspace = true, optional = true }
-resvg = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive"] }
 web-sys = { workspace = true, optional = true, features = [
 	"Window",
@@ -87,7 +65,6 @@ web-sys = { workspace = true, optional = true, features = [
 ] }
 
 # Optional dependencies
-image-compare = { version = "0.4.1", optional = true }
 ndarray = "0.16.1"
 
 [dev-dependencies]

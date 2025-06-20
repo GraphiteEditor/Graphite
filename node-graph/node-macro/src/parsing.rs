@@ -474,7 +474,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let unit = extract_attribute(attrs, "unit")
-		.map(|attr| attr.parse_args::<LitStr>().map_err(|e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
+		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
 		.transpose()?;
 
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")

@@ -4,9 +4,9 @@ use crate::messages::portfolio::document::utility_types::misc::{DistributionSnap
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use bezier_rs::Bezier;
 use glam::DVec2;
-use graphene_core::renderer::Quad;
-use graphene_core::vector::PointId;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
+use graphene_std::vector::PointId;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]

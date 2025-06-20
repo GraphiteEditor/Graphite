@@ -485,7 +485,7 @@ impl NodeNetworkInterface {
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
 					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_core::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
+					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_types(encapsulating_node_id, encapsulating_node_id_path).into_iter().nth(export_index).flatten();
@@ -1158,6 +1158,13 @@ impl NodeNetworkInterface {
 	pub fn input_properties_row(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> Option<&PropertiesRow> {
 		self.node_metadata(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.input_properties.get(index))
+	}
+
+	pub fn insert_input_properties_row(&mut self, node_id: &NodeId, index: usize, network_path: &[NodeId]) {
+		let row = ("", "TODO").into();
+		let _ = self
+			.node_metadata_mut(node_id, network_path)
+			.map(|node_metadata| node_metadata.persistent_metadata.input_properties.insert(index - 1, row));
 	}
 
 	pub fn input_metadata(&self, node_id: &NodeId, index: usize, field: &str, network_path: &[NodeId]) -> Option<&Value> {
@@ -3124,7 +3131,7 @@ impl NodeNetworkInterface {
 				self.node_click_targets(node_id, network_path)
 					.and_then(|transient_node_metadata| transient_node_metadata.node_click_target.bounding_box())
 			})
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph

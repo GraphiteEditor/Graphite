@@ -245,35 +245,39 @@ fn grid<T: GridSpacing>(
 	VectorDataTable::new(vector_data)
 }
 
-#[test]
-fn isometric_grid_test() {
-	// Doesn't crash with weird angles
-	grid((), (), GridType::Isometric, 0., (0., 0.).into(), 5, 5);
-	grid((), (), GridType::Isometric, 90., (90., 90.).into(), 5, 5);
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn isometric_grid_test() {
+		// Doesn't crash with weird angles
+		grid((), (), GridType::Isometric, 0., (0., 0.).into(), 5, 5);
+		grid((), (), GridType::Isometric, 90., (90., 90.).into(), 5, 5);
 
-	// Works properly
-	let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
-	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
-		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
-		assert!(
-			((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
-			"Length of {} should be 10",
-			(bezier.start - bezier.end).length()
-		);
+		// Works properly
+		let grid = grid((), (), GridType::Isometric, 10., (30., 30.).into(), 5, 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
+			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+			assert!(
+				((bezier.start - bezier.end).length() - 10.).abs() < 1e-5,
+				"Length of {} should be 10",
+				(bezier.start - bezier.end).length()
+			);
+		}
 	}
-}
 
-#[test]
-fn skew_isometric_grid_test() {
-	let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
-	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
-	assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
-	for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
-		assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
-		let vector = bezier.start - bezier.end;
-		let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
-		assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {}", angle)
+	#[test]
+	fn skew_isometric_grid_test() {
+		let grid = grid((), (), GridType::Isometric, 10., (40., 30.).into(), 5, 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.point_domain.ids().len(), 5 * 5);
+		assert_eq!(grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter().count(), 4 * 5 + 4 * 9);
+		for (_, bezier, _, _) in grid.instance_ref_iter().next().unwrap().instance.segment_bezier_iter() {
+			assert_eq!(bezier.handles, bezier_rs::BezierHandles::Linear);
+			let vector = bezier.start - bezier.end;
+			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
+			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {}", angle)
+		}
 	}
 }

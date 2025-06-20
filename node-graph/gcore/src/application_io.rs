@@ -36,7 +36,6 @@ impl Hash for SurfaceFrame {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl StaticType for SurfaceFrame {
 	type Static = SurfaceFrame;
 }
@@ -51,8 +50,6 @@ impl Size for web_sys::HtmlCanvasElement {
 		UVec2::new(self.width(), self.height())
 	}
 }
-
-// pub type TextureDataTable = Instances<ImageTexture>;
 
 #[derive(Debug, Clone)]
 pub struct ImageTexture {
@@ -84,7 +81,6 @@ impl PartialEq for ImageTexture {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl StaticType for ImageTexture {
 	type Static = ImageTexture;
 }
@@ -123,7 +119,6 @@ impl<S: Size> Size for SurfaceHandle<S> {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
 	type Static = SurfaceHandle<T>;
 }
@@ -134,7 +129,6 @@ pub struct SurfaceHandleFrame<Surface> {
 	pub transform: DAffine2,
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
 	type Static = SurfaceHandleFrame<T>;
 }
@@ -309,7 +303,6 @@ impl<T> Debug for EditorApi<T> {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<T: StaticTypeSized> StaticType for EditorApi<T> {
 	type Static = EditorApi<T::Static>;
 }

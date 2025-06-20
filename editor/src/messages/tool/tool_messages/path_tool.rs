@@ -17,9 +17,9 @@ use crate::messages::tool::common_functionality::shape_editor::{
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate};
 use bezier_rs::{Bezier, TValue};
-use graphene_core::renderer::Quad;
-use graphene_core::vector::{ManipulatorPointId, PointId, VectorModificationType};
+use graphene_std::renderer::Quad;
 use graphene_std::vector::{HandleId, NoHashBuilder, SegmentId, VectorData};
+use graphene_std::vector::{ManipulatorPointId, PointId, VectorModificationType};
 use std::vec;
 
 #[derive(Default)]

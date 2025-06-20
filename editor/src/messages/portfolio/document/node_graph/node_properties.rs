@@ -11,23 +11,23 @@ use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graphene_core::raster::curve::Curve;
-use graphene_core::raster::{
+use graphene_std::animation::RealTimeMode;
+use graphene_std::ops::XY;
+use graphene_std::raster::curve::Curve;
+use graphene_std::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
-use graphene_core::raster_types::{CPU, GPU, RasterDataTable};
-use graphene_core::text::Font;
-use graphene_core::vector::generator_nodes::grid;
-use graphene_core::vector::misc::CentroidType;
-use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
-use graphene_std::animation::RealTimeMode;
-use graphene_std::ops::XY;
+use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
+use graphene_std::vector::generator_nodes::grid;
 use graphene_std::vector::misc::ArcType;
+use graphene_std::vector::misc::CentroidType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
+use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -233,8 +233,10 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<DomainWarpType>() => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<RelativeAbsolute>() => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if x == TypeId::of::<GridType>() => enum_choice::<GridType>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<LineCap>() => enum_choice::<LineCap>().for_socket(default_info).property_row(),
-						Some(x) if x == TypeId::of::<LineJoin>() => enum_choice::<LineJoin>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<StrokeCap>() => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<StrokeJoin>() => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
@@ -1159,13 +1161,6 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	]
 }
 
-#[cfg(feature = "gpu")]
-pub(crate) fn _gpu_map_properties(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<LayoutGroup> {
-	let map = text_widget(parameter_widgets_info);
-
-	vec![LayoutGroup::Row { widgets: map }]
-}
-
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let grid_type_index = grid::GridTypeInput::INDEX;
 	let spacing_index = grid::SpacingInput::<f64>::INDEX;
@@ -1412,7 +1407,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				let mut unit_suffix = None;
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
-						if let Some(field) = graphene_core::registry::NODE_METADATA
+						if let Some(field) = graphene_std::registry::NODE_METADATA
 							.lock()
 							.unwrap()
 							.get(&proto_node_identifier.name.clone().into_owned())
@@ -1679,20 +1674,43 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 			return Vec::new();
 		}
 	};
-	let color_index = 1;
-	let weight_index = 2;
-	let dash_lengths_index = 3;
-	let dash_offset_index = 4;
-	let line_cap_index = 5;
-	let line_join_index = 6;
-	let miter_limit_index = 7;
+	let color_index = graphene_std::vector::stroke::ColorInput::<Option<Color>>::INDEX;
+	let weight_index = graphene_std::vector::stroke::WeightInput::INDEX;
+	let align_index = graphene_std::vector::stroke::AlignInput::INDEX;
+	let cap_index = graphene_std::vector::stroke::CapInput::INDEX;
+	let join_index = graphene_std::vector::stroke::JoinInput::INDEX;
+	let miter_limit_index = graphene_std::vector::stroke::MiterLimitInput::INDEX;
+	let paint_order_index = graphene_std::vector::stroke::PaintOrderInput::INDEX;
+	let dash_lengths_index = graphene_std::vector::stroke::DashLengthsInput::INDEX;
+	let dash_offset_index = graphene_std::vector::stroke::DashOffsetInput::INDEX;
 
 	let color = color_widget(ParameterWidgetsInfo::from_index(document_node, node_id, color_index, true, context), ColorInput::default());
 	let weight = number_widget(
 		ParameterWidgetsInfo::from_index(document_node, node_id, weight_index, true, context),
 		NumberInput::default().unit(" px").min(0.),
 	);
-
+	let align = enum_choice::<StrokeAlign>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, align_index, true, context))
+		.property_row();
+	let cap = enum_choice::<StrokeCap>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, cap_index, true, context))
+		.property_row();
+	let join = enum_choice::<StrokeJoin>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, join_index, true, context))
+		.property_row();
+	let miter_limit = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context),
+		NumberInput::default().min(0.).disabled({
+			let join_value = match &document_node.inputs[join_index].as_value() {
+				Some(TaggedValue::StrokeJoin(x)) => x,
+				_ => &StrokeJoin::Miter,
+			};
+			join_value != &StrokeJoin::Miter
+		}),
+	);
+	let paint_order = enum_choice::<PaintOrder>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, paint_order_index, true, context))
+		.property_row();
 	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
 		Some(TaggedValue::VecF64(x)) => x,
 		_ => &vec![],
@@ -1703,29 +1721,17 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	);
 	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
 	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, dash_offset_index, true, context), number_input);
-	let line_cap = enum_choice::<LineCap>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_cap_index, true, context))
-		.property_row();
-	let line_join = enum_choice::<LineJoin>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context))
-		.property_row();
-	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
-		Some(TaggedValue::LineJoin(x)) => x,
-		_ => &LineJoin::Miter,
-	};
-	let miter_limit = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context),
-		NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter),
-	);
 
 	vec![
 		color,
 		LayoutGroup::Row { widgets: weight },
+		align,
+		cap,
+		join,
+		LayoutGroup::Row { widgets: miter_limit },
+		paint_order,
 		LayoutGroup::Row { widgets: dash_lengths },
 		LayoutGroup::Row { widgets: dash_offset },
-		line_cap,
-		line_join,
-		LayoutGroup::Row { widgets: miter_limit },
 	]
 }
 
@@ -1737,25 +1743,27 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let distance_index = 1;
-	let line_join_index = 2;
-	let miter_limit_index = 3;
+	let distance_index = graphene_std::vector::offset_path::DistanceInput::INDEX;
+	let join_index = graphene_std::vector::offset_path::JoinInput::INDEX;
+	let miter_limit_index = graphene_std::vector::offset_path::MiterLimitInput::INDEX;
 
 	let number_input = NumberInput::default().unit(" px");
 	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, distance_index, true, context), number_input);
 
-	let line_join = enum_choice::<LineJoin>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, line_join_index, true, context))
+	let join = enum_choice::<StrokeJoin>()
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, join_index, true, context))
 		.property_row();
-	let line_join_val = match &document_node.inputs[line_join_index].as_value() {
-		Some(TaggedValue::LineJoin(x)) => x,
-		_ => &LineJoin::Miter,
-	};
 
-	let number_input = NumberInput::default().min(0.).disabled(line_join_val != &LineJoin::Miter);
+	let number_input = NumberInput::default().min(0.).disabled({
+		let join_val = match &document_node.inputs[join_index].as_value() {
+			Some(TaggedValue::StrokeJoin(x)) => x,
+			_ => &StrokeJoin::Miter,
+		};
+		join_val != &StrokeJoin::Miter
+	});
 	let miter_limit = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context), number_input);
 
-	vec![LayoutGroup::Row { widgets: distance }, line_join, LayoutGroup::Row { widgets: miter_limit }]
+	vec![LayoutGroup::Row { widgets: distance }, join, LayoutGroup::Row { widgets: miter_limit }]
 }
 
 pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1859,7 +1867,7 @@ pub mod choice {
 	use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 	use crate::messages::tool::tool_messages::tool_prelude::*;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_core::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
+	use graphene_std::registry::{ChoiceTypeStatic, ChoiceWidgetHint};
 	use std::marker::PhantomData;
 
 	pub trait WidgetFactory {

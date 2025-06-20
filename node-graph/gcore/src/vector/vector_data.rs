@@ -677,45 +677,49 @@ fn assert_subpath_eq(generated: &[bezier_rs::Subpath<PointId>], expected: &[bezi
 	}
 }
 
-#[test]
-fn construct_closed_subpath() {
-	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
-	let vector_data = VectorData::from_subpath(&circle);
-	assert_eq!(vector_data.point_domain.ids().len(), 4);
-	let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-	assert_eq!(bezier_paths.len(), 4);
-	assert!(bezier_paths.iter().all(|&bezier| circle.iter().any(|original_bezier| original_bezier == bezier)));
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn construct_closed_subpath() {
+		let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+		let vector_data = VectorData::from_subpath(&circle);
+		assert_eq!(vector_data.point_domain.ids().len(), 4);
+		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(bezier_paths.len(), 4);
+		assert!(bezier_paths.iter().all(|&bezier| circle.iter().any(|original_bezier| original_bezier == bezier)));
 
-	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &[circle]);
-}
+		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		assert_subpath_eq(&generated, &[circle]);
+	}
 
-#[test]
-fn construct_open_subpath() {
-	let bezier = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
-	let subpath = bezier_rs::Subpath::from_bezier(&bezier);
-	let vector_data = VectorData::from_subpath(&subpath);
-	assert_eq!(vector_data.point_domain.ids().len(), 2);
-	let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-	assert_eq!(bezier_paths, vec![bezier]);
+	#[test]
+	fn construct_open_subpath() {
+		let bezier = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
+		let subpath = bezier_rs::Subpath::from_bezier(&bezier);
+		let vector_data = VectorData::from_subpath(&subpath);
+		assert_eq!(vector_data.point_domain.ids().len(), 2);
+		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(bezier_paths, vec![bezier]);
 
-	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &[subpath]);
-}
+		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		assert_subpath_eq(&generated, &[subpath]);
+	}
 
-#[test]
-fn construct_many_subpath() {
-	let curve = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
-	let curve = bezier_rs::Subpath::from_bezier(&curve);
-	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+	#[test]
+	fn construct_many_subpath() {
+		let curve = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
+		let curve = bezier_rs::Subpath::from_bezier(&curve);
+		let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
 
-	let vector_data = VectorData::from_subpaths([&curve, &circle], false);
-	assert_eq!(vector_data.point_domain.ids().len(), 6);
+		let vector_data = VectorData::from_subpaths([&curve, &circle], false);
+		assert_eq!(vector_data.point_domain.ids().len(), 6);
 
-	let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
-	assert_eq!(bezier_paths.len(), 5);
-	assert!(bezier_paths.iter().all(|&bezier| circle.iter().chain(curve.iter()).any(|original_bezier| original_bezier == bezier)));
+		let bezier_paths = vector_data.segment_bezier_iter().map(|(_, bezier, _, _)| bezier).collect::<Vec<_>>();
+		assert_eq!(bezier_paths.len(), 5);
+		assert!(bezier_paths.iter().all(|&bezier| circle.iter().chain(curve.iter()).any(|original_bezier| original_bezier == bezier)));
 
-	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &[curve, circle]);
+		let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+		assert_subpath_eq(&generated, &[curve, circle]);
+	}
 }

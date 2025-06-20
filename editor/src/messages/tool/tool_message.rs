@@ -1,7 +1,7 @@
 use super::utility_types::ToolType;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use graphene_core::raster::color::Color;
+use graphene_std::raster::color::Color;
 
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

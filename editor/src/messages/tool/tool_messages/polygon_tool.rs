@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
+use graphene_std::Color;
 
 #[derive(Default)]
 pub struct PolygonTool {

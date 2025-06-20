@@ -1,5 +1,4 @@
 use crate::{Node, WasmNotSend};
-#[cfg(feature = "alloc")]
 use alloc::sync::Arc;
 use core::future::Future;
 use core::ops::Deref;
@@ -106,7 +105,6 @@ pub struct IORecord<I, O> {
 	pub output: O,
 }
 
-#[cfg(feature = "alloc")]
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
 pub struct MonitorNode<I, T, N> {
@@ -115,7 +113,6 @@ pub struct MonitorNode<I, T, N> {
 	node: N,
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, T, I, N> Node<'i, I> for MonitorNode<I, T, N>
 where
 	I: Clone + 'static + Send + Sync,
@@ -139,7 +136,6 @@ where
 	}
 }
 
-#[cfg(feature = "alloc")]
 impl<I, T, N> MonitorNode<I, T, N> {
 	pub fn new(node: N) -> MonitorNode<I, T, N> {
 		MonitorNode { io: Arc::new(Mutex::new(None)), node }
@@ -173,7 +169,6 @@ impl<T: Hash + serde::Serialize> serde::Serialize for MemoHash<T> {
 	}
 }
 
-#[cfg(feature = "std")]
 impl<T: Hash> MemoHash<T> {
 	pub fn new(value: T) -> Self {
 		let hash = Self::calc_hash(&value);

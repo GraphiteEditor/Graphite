@@ -9,8 +9,8 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_core::vector::ManipulatorPointId;
+use graphene_std::renderer::Quad;
+use graphene_std::vector::ManipulatorPointId;
 use graphene_std::vector::{VectorData, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
@@ -736,7 +736,7 @@ mod test_transform_layer {
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::PointId;
+	use graphene_std::vector::PointId;
 	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
