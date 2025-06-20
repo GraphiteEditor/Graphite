@@ -22,6 +22,7 @@ pub mod instances;
 pub mod logic;
 pub mod misc;
 pub mod ops;
+pub mod raster_types;
 pub mod structural;
 #[cfg(feature = "std")]
 pub mod text;

@@ -874,7 +874,7 @@ mod tests {
 	fn test_node_with_implementations() {
 		let attr = quote!(category("Raster: Adjustment"));
 		let input = quote!(
-			fn levels<P: Pixel>(image: ImageFrameTable<P>, #[implementations(f32, f64)] shadows: f64) -> ImageFrameTable<P> {
+			fn levels<P: Pixel>(image: RasterDataTable<P>, #[implementations(f32, f64)] shadows: f64) -> RasterDataTable<P> {
 				// Implementation details...
 			}
 		);
@@ -895,10 +895,10 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("image"),
-				ty: parse_quote!(ImageFrameTable<P>),
+				ty: parse_quote!(RasterDataTable<P>),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrameTable<P>),
+			output_type: parse_quote!(RasterDataTable<P>),
 			is_async: false,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("shadows"),
@@ -992,7 +992,7 @@ mod tests {
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
-			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> ImageFrameTable<Color> {
+			async fn load_image(api: &WasmEditorApi, #[expose] path: String) -> RasterDataTable<CPU> {
 				// Implementation details...
 			}
 		);
@@ -1016,7 +1016,7 @@ mod tests {
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
 			},
-			output_type: parse_quote!(ImageFrameTable<Color>),
+			output_type: parse_quote!(RasterDataTable<CPU>),
 			is_async: true,
 			fields: vec![ParsedField::Regular {
 				pat_ident: pat_ident("path"),
@@ -1132,7 +1132,7 @@ mod tests {
 	fn test_invalid_implementation_syntax() {
 		let attr = quote!(category("Test"));
 		let input = quote!(
-			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, ImageFrameTable<Color>))] input: impl Node<Footprint, Output = T>) -> T {
+			fn test_node(_: (), #[implementations((Footprint, Color), (Footprint, RasterDataTable<CPU>))] input: impl Node<Footprint, Output = T>) -> T {
 				// Implementation details...
 			}
 		);
@@ -1158,10 +1158,10 @@ mod tests {
 				#[implementations((), #tuples, Footprint)] footprint: F,
 				#[implementations(
 				() -> Color,
-				() -> ImageFrameTable<Color>,
+				() -> RasterDataTable<CPU>,
 				() -> GradientStops,
 				Footprint -> Color,
-				Footprint -> ImageFrameTable<Color>,
+				Footprint -> RasterDataTable<CPU>,
 				Footprint -> GradientStops,
 			)]
 				image: impl Node<F, Output = T>,

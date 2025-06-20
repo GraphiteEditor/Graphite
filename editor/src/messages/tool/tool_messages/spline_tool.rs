@@ -670,7 +670,9 @@ mod test_spline_tool {
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
 		// Evaluate the graph to ensure everything is processed
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -708,7 +710,9 @@ mod test_spline_tool {
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
 		// Evaluating the graph to ensure everything is processed
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -744,7 +748,9 @@ mod test_spline_tool {
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
 		// Evaluating the graph to ensure everything is processed
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -781,7 +787,9 @@ mod test_spline_tool {
 		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
