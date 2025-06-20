@@ -208,7 +208,7 @@ pub fn bounding_box(str: &str, buzz_face: Option<&rustybuzz::Face>, typesetting:
 	bounds
 }
 
-pub fn load_face(data: &[u8]) -> rustybuzz::Face {
+pub fn load_face(data: &[u8]) -> rustybuzz::Face<'_> {
 	rustybuzz::Face::from_slice(data, 0).expect("Loading font failed")
 }
 

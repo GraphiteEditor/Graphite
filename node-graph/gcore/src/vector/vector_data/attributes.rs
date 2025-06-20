@@ -849,7 +849,7 @@ impl VectorData {
 			})
 	}
 
-	pub fn build_stroke_path_iter(&self) -> StrokePathIter {
+	pub fn build_stroke_path_iter(&self) -> StrokePathIter<'_> {
 		let mut points = vec![StrokePathIterPointMetadata::default(); self.point_domain.ids().len()];
 		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
 			points[start].set(StrokePathIterPointSegmentMetadata::new(segment_index, false));

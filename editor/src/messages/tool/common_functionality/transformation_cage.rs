@@ -578,7 +578,9 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
 		) {
-			horizontal_edges.map(|point| draw_handle(point, horizontal_angle));
+			for point in horizontal_edges {
+				draw_handle(point, horizontal_angle);
+			}
 		}
 
 		// Draw the vertical midpoint drag handles
@@ -586,7 +588,9 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
 		) {
-			vertical_edges.map(|point| draw_handle(point, vertical_angle));
+			for point in vertical_edges {
+				draw_handle(point, vertical_angle);
+			}
 		}
 
 		let angle = quad
@@ -601,7 +605,9 @@ impl BoundingBoxManager {
 			category,
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::ReducedBoth | TransformCageSizeCategory::ReducedLandscape | TransformCageSizeCategory::ReducedPortrait
 		) {
-			quad.0.map(|point| draw_handle(point, angle));
+			for point in quad.0 {
+				draw_handle(point, angle);
+			}
 		}
 
 		// Draw the flat line endpoint drag handles
