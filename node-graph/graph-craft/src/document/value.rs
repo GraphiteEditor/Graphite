@@ -246,6 +246,7 @@ tagged_value! {
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
+	TextAlignment(graphene_core::text::TextAlignment),
 
 	// ImaginateCache(ImaginateCache),
 	// ImaginateSamplingMethod(ImaginateSamplingMethod),
