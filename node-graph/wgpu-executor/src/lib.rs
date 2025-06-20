@@ -1,5 +1,6 @@
 mod context;
 mod executor;
+mod gcore_shader_nodes;
 
 use anyhow::{Result, bail};
 pub use context::Context;
