@@ -319,10 +319,27 @@ impl Fsm for LineToolFsmState {
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);
-				tool_data.editing_layer.take();
-				input.mouse.finish_transaction(tool_data.drag_start, responses);
+
+				if let Some(layer) = tool_data.editing_layer.take() {
+					let Some(&[start, end]) = tool_data.selected_layers_with_position.get(&layer) else {
+						input.mouse.finish_transaction(tool_data.drag_start, responses);
+						return LineToolFsmState::Ready;
+					};
+
+					if start.abs_diff_eq(end, f64::EPSILON * 1000.) {
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![layer.to_node()],
+							delete_children: true,
+						});
+						responses.add(DocumentMessage::AbortTransaction);
+					} else {
+						input.mouse.finish_transaction(tool_data.drag_start, responses);
+					}
+				}
+
 				LineToolFsmState::Ready
 			}
+
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.editing_layer.take();
