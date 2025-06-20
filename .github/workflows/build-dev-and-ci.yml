@@ -84,6 +84,8 @@ jobs:
           mold -run cargo fmt --all -- --check
 
       - name: 🦀 Build Rust code
+        env:
+          RUST_FLAGS: -Dwarnings
         run: |
           mold -run cargo build --all-features
 
