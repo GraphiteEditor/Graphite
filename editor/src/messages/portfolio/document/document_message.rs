@@ -16,7 +16,8 @@ use graphene_std::transform::Footprint;
 use graphene_std::vector::style::ViewMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
+#[derivative(Debug, PartialEq)]
 pub enum DocumentMessage {
 	Noop,
 	// Sub-messages
@@ -157,6 +158,7 @@ pub enum DocumentMessage {
 	},
 	SetSnapping {
 		#[serde(skip)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},
