@@ -13,8 +13,23 @@ use std::ops::Mul;
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
 
+/// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category(""))]
-async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
+async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
+	_: impl Ctx,
+	/// The group of paths to perform the boolean operation on. Nested groups are automatically flattened.
+	#[implementations(GraphicGroupTable, VectorDataTable)]
+	group_of_paths: I,
+	/// Which boolean operation to perform on the paths.
+	///
+	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
+	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
+	/// Intersection cuts away all but the overlapping areas shared by every path.
+	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	operation: BooleanOperation,
+) -> VectorDataTable {
+	let group_of_paths = group_of_paths.into();
+
 	// The first index is the bottom of the stack
 	let mut result_vector_data_table = boolean_operation_on_vector_data_table(flatten_vector_data(&group_of_paths).instance_ref_iter(), operation);
 

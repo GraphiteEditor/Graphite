@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -361,6 +361,9 @@ struct PenToolData {
 	current_layer: Option<LayerNodeIdentifier>,
 	prior_segment_endpoint: Option<PointId>,
 	prior_segment: Option<SegmentId>,
+
+	/// For vector meshes, storing all the previous segments the last anchor point was connected to
+	prior_segments: Option<Vec<SegmentId>>,
 	handle_type: TargetHandle,
 	handle_start_offset: Option<DVec2>,
 	handle_end_offset: Option<DVec2>,
@@ -533,7 +536,15 @@ impl PenToolData {
 	}
 
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
-	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2, layer: LayerNodeIdentifier, preferences: &PreferencesMessageHandler) {
+	fn bend_from_previous_point(
+		&mut self,
+		snap_data: SnapData,
+		transform: DAffine2,
+		layer: LayerNodeIdentifier,
+		preferences: &PreferencesMessageHandler,
+		shape_editor: &mut ShapeState,
+		responses: &mut VecDeque<Message>,
+	) {
 		self.g1_continuous = true;
 		let document = snap_data.document;
 		self.next_handle_start = self.next_point;
@@ -567,6 +578,43 @@ impl PenToolData {
 		}
 
 		// Closing path
+		let closing_path_on_point = self.close_path_on_point(snap_data, &vector_data, document, preferences, id, &transform);
+		if !closing_path_on_point && preferences.vector_meshes {
+			// Attempt to find nearest segment and close path on segment by creating an anchor point on it
+			let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+			if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, transform.transform_point2(self.next_point), tolerance) {
+				let (point, _) = closest_segment.adjusted_insert(responses);
+
+				self.update_handle_type(TargetHandle::PreviewInHandle);
+				self.handle_end_offset = None;
+				self.path_closed = true;
+				self.next_handle_start = self.next_point;
+
+				self.prior_segment_endpoint = Some(point);
+				self.prior_segment_layer = Some(closest_segment.layer());
+				self.prior_segments = None;
+				self.prior_segment = None;
+
+				// Should also update the SnapCache here?
+
+				self.handle_mode = HandleMode::Free;
+				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
+					self.set_lock_angle(&vector_data, prior_endpoint, self.prior_segment);
+					self.switch_to_free_on_ctrl_release = true;
+				}
+			}
+		}
+	}
+
+	fn close_path_on_point(
+		&mut self,
+		snap_data: SnapData,
+		vector_data: &VectorData,
+		document: &DocumentMessageHandler,
+		preferences: &PreferencesMessageHandler,
+		id: PointId,
+		transform: &DAffine2,
+	) -> bool {
 		for id in vector_data.extendable_points(preferences.vector_meshes).filter(|&point| point != id) {
 			let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
@@ -577,14 +625,16 @@ impl PenToolData {
 				self.handle_end_offset = None;
 				self.path_closed = true;
 				self.next_handle_start = self.next_point;
-				self.store_clicked_endpoint(document, &transform, snap_data.input, preferences);
+				self.store_clicked_endpoint(document, transform, snap_data.input, preferences);
 				self.handle_mode = HandleMode::Free;
 				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
-					self.set_lock_angle(&vector_data, prior_endpoint, self.prior_segment);
+					self.set_lock_angle(vector_data, prior_endpoint, self.prior_segment);
 					self.switch_to_free_on_ctrl_release = true;
 				}
+				return true;
 			}
 		}
+		false
 	}
 
 	fn finish_placing_handle(&mut self, snap_data: SnapData, transform: DAffine2, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
@@ -656,6 +706,7 @@ impl PenToolData {
 					layer,
 					modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
 				});
+				self.cleanup(responses);
 			}
 		}
 
@@ -1122,6 +1173,7 @@ impl PenToolData {
 		transform.inverse().transform_point2(document_pos)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn create_initial_point(
 		&mut self,
 		document: &DocumentMessageHandler,
@@ -1130,6 +1182,7 @@ impl PenToolData {
 		tool_options: &PenOptions,
 		append: bool,
 		preferences: &PreferencesMessageHandler,
+		shape_editor: &mut ShapeState,
 	) {
 		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
@@ -1145,6 +1198,20 @@ impl PenToolData {
 			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
 			return;
+		} else if preferences.vector_meshes {
+			if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+				let (point, segments) = closest_segment.adjusted_insert(responses);
+				let layer = closest_segment.layer();
+				let position = closest_segment.closest_point_document();
+
+				// Setting any one of the new segments created as the previous segment
+				self.prior_segment_endpoint = Some(point);
+				self.prior_segment_layer = Some(layer);
+				self.prior_segments = Some(segments.to_vec());
+
+				self.extend_existing_path(document, layer, point, position);
+				return;
+			}
 		}
 
 		if append {
@@ -1186,6 +1253,7 @@ impl PenToolData {
 		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 		self.prior_segment = None;
+		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 		// This causes the following message to be run only after the next graph evaluation runs and the transforms are updated
@@ -1266,6 +1334,7 @@ impl PenToolData {
 		self.prior_segment = None;
 		self.prior_segment_endpoint = None;
 		self.prior_segment_layer = None;
+		self.prior_segments = None;
 
 		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences) {
 			self.prior_segment_endpoint = Some(point);
@@ -1493,6 +1562,22 @@ impl Fsm for PenToolFsmState {
 						path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
 					}
 				}
+				// Check if there is an anchor within threshold
+				// If not check if there is a closest segment within threshold, if yes then draw overlay
+				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+
+				let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
+				if preferences.vector_meshes && !close_to_point {
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+						let pos = closest_segment.closest_point_to_viewport();
+						let perp = closest_segment.calculate_perp(document);
+						overlay_context.manipulator_anchor(pos, true, None);
+						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+					}
+				}
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
@@ -1530,6 +1615,7 @@ impl Fsm for PenToolFsmState {
 					// Draw the line between the currently-being-placed anchor and its currently-being-dragged-out outgoing handle (opposite the one currently being dragged out)
 					overlay_context.line(next_anchor, next_handle_start, None, None);
 				}
+
 				match tool_options.pen_overlay_mode {
 					PenOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1537,6 +1623,12 @@ impl Fsm for PenToolFsmState {
 					PenOverlayMode::FrontierHandles => {
 						if let Some(latest_segment) = tool_data.prior_segment {
 							path_overlays(document, DrawHandles::SelectedAnchors(vec![latest_segment]), shape_editor, &mut overlay_context);
+						}
+						// If a vector mesh then there can be more than one prior segments
+						else if let Some(segments) = tool_data.prior_segments.clone() {
+							if preferences.vector_meshes {
+								path_overlays(document, DrawHandles::SelectedAnchors(segments), shape_editor, &mut overlay_context);
+							}
 						} else {
 							path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
 						};
@@ -1596,6 +1688,22 @@ impl Fsm for PenToolFsmState {
 				if self == PenToolFsmState::DraggingHandle(tool_data.handle_mode) && display_anchors {
 					// Draw the anchor square for the most recently placed anchor
 					overlay_context.manipulator_anchor(next_anchor, false, None);
+				}
+
+				if self == PenToolFsmState::PlacingAnchor && preferences.vector_meshes {
+					let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
+					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
+					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+					let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
+					if !close_to_point {
+						if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+							let pos = closest_segment.closest_point_to_viewport();
+							let perp = closest_segment.calculate_perp(document);
+							overlay_context.manipulator_anchor(pos, true, None);
+							overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
+						}
+					}
 				}
 
 				// Display a filled overlay of the shape if the new point closes the path
@@ -1663,8 +1771,10 @@ impl Fsm for PenToolFsmState {
 				tool_data.handle_mode = HandleMode::Free;
 
 				// Get the closest point and the segment it is on
+				let append = input.keyboard.key(append_to_selected);
+
 				tool_data.store_clicked_endpoint(document, &transform, input, preferences);
-				tool_data.create_initial_point(document, input, responses, tool_options, input.keyboard.key(append_to_selected), preferences);
+				tool_data.create_initial_point(document, input, responses, tool_options, append, preferences, shape_editor);
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle(tool_data.handle_mode)
@@ -1688,7 +1798,7 @@ impl Fsm for PenToolFsmState {
 					if let Some(layer) = layer {
 						tool_data.buffering_merged_vector = false;
 						tool_data.handle_mode = HandleMode::ColinearLocked;
-						tool_data.bend_from_previous_point(SnapData::new(document, input), transform, layer, preferences);
+						tool_data.bend_from_previous_point(SnapData::new(document, input), transform, layer, preferences, shape_editor, responses);
 						tool_data.place_anchor(SnapData::new(document, input), transform, input.mouse.position, preferences, responses);
 					}
 					tool_data.buffering_merged_vector = false;
