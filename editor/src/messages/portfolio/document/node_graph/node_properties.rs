@@ -26,8 +26,7 @@ use graphene_std::vector::generator_nodes::grid;
 use graphene_std::vector::misc::ArcType;
 use graphene_std::vector::misc::CentroidType;
 use graphene_std::vector::misc::{BooleanOperation, GridType};
-use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops};
-use graphene_std::vector::style::{GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{CircularSpacing, Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, Spacing, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -140,6 +139,15 @@ pub(crate) fn property_from_type(
 
 	let (mut number_min, mut number_max, range) = number_options;
 	let mut number_input = NumberInput::default();
+	if let Some(unit) = unit {
+		number_input = number_input.unit(unit);
+	}
+	if let Some(display_decimal_places) = display_decimal_places {
+		number_input = number_input.display_decimal_places(display_decimal_places);
+	}
+	if let Some(step) = step {
+		number_input = number_input.step(step);
+	}
 	if let Some((range_start, range_end)) = range {
 		number_min = Some(range_start);
 		number_max = Some(range_end);
@@ -239,6 +247,8 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<Spacing>() => enum_choice::<Spacing>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<CircularSpacing>() => enum_choice::<CircularSpacing>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
 						// =====

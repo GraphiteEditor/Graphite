@@ -243,6 +243,8 @@ tagged_value! {
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),
+	Spacing(graphene_core::vector::style::Spacing),
+	CircularSpacing(graphene_core::vector::style::CircularSpacing),
 	ReferencePoint(graphene_core::transform::ReferencePoint),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
