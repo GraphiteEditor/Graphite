@@ -15,15 +15,12 @@ default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 gpu = [
 	"interpreted-executor/gpu",
-	"graphene-std/gpu",
-	"graphene-core/gpu",
 	"wgpu-executor",
-	"gpu-executor",
 ]
 tauri = ["ron", "decouple-execution"]
 decouple-execution = []
 resvg = ["graphene-std/resvg"]
-vello = ["graphene-std/vello", "resvg", "graphene-core/vello"]
+vello = ["graphene-std/vello", "resvg"]
 ron = ["dep:ron"]
 
 [dependencies]
@@ -33,14 +30,12 @@ graph-craft = { path = "../node-graph/graph-craft" }
 interpreted-executor = { path = "../node-graph/interpreted-executor", features = [
 	"serde",
 ] }
-graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 
 # Workspace dependencies
 js-sys = { workspace = true }
 log = { workspace = true }
 bitflags = { workspace = true }
-convert_case = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -67,12 +62,10 @@ web-sys = { workspace = true, features = [
 ] }
 
 # Required dependencies
-async-mutex = "1.4.0"
 spin = "0.9.8"
 
 # Optional local dependencies
 wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
-gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }

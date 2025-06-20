@@ -10,7 +10,7 @@ use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, 
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::misc::dvec2_to_point;
-use crate::vector::style::{LineCap, LineJoin, Spacing};
+use crate::vector::style::{PaintOrder, Spacing, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath};
@@ -167,17 +167,22 @@ async fn stroke<C: Into<Option<Color>> + 'n + Send, V>(
 	#[default(2.)]
 	/// The stroke weight.
 	weight: f64,
-	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: Vec<f64>,
-	/// The offset distance from the starting point of the dash pattern.
-	dash_offset: f64,
+	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
+	align: StrokeAlign,
 	/// The shape of the stroke at open endpoints.
-	line_cap: crate::vector::style::LineCap,
+	cap: StrokeCap,
 	/// The curvature of the bent stroke at sharp corners.
-	line_join: LineJoin,
+	join: StrokeJoin,
 	#[default(4.)]
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	miter_limit: f64,
+	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
+	/// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
+	paint_order: PaintOrder,
+	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
+	dash_lengths: Vec<f64>,
+	/// The phase offset distance from the starting point of the dash pattern.
+	dash_offset: f64,
 ) -> Instances<V>
 where
 	Instances<V>: VectorDataTableIterMut + 'n + Send,
@@ -187,12 +192,15 @@ where
 		weight,
 		dash_lengths,
 		dash_offset,
-		line_cap,
-		line_join,
-		line_join_miter_limit: miter_limit,
+		cap,
+		join,
+		join_miter_limit: miter_limit,
+		align,
 		transform: DAffine2::IDENTITY,
 		non_scaling: false,
+		paint_order,
 	};
+
 	for vector in vector_data.vector_iter_mut() {
 		let mut stroke = stroke.clone();
 		stroke.transform *= *vector.transform;
@@ -1130,7 +1138,7 @@ async fn points_to_polyline(_: impl Ctx, mut points: VectorDataTable, #[default(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
-async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, line_join: LineJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
+async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
 	for mut vector_data_instance in vector_data.instance_iter() {
@@ -1152,10 +1160,10 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, l
 			let mut subpath_out = offset_subpath(
 				&subpath,
 				-distance,
-				match line_join {
-					LineJoin::Miter => Join::Miter(Some(miter_limit)),
-					LineJoin::Bevel => Join::Bevel,
-					LineJoin::Round => Join::Round,
+				match join {
+					StrokeJoin::Miter => Join::Miter(Some(miter_limit)),
+					StrokeJoin::Bevel => Join::Bevel,
+					StrokeJoin::Round => Join::Round,
 				},
 			);
 
@@ -1185,19 +1193,19 @@ async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDat
 		let mut result = VectorData::default();
 
 		// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
-		let join = match stroke.line_join {
-			LineJoin::Miter => kurbo::Join::Miter,
-			LineJoin::Bevel => kurbo::Join::Bevel,
-			LineJoin::Round => kurbo::Join::Round,
+		let join = match stroke.join {
+			StrokeJoin::Miter => kurbo::Join::Miter,
+			StrokeJoin::Bevel => kurbo::Join::Bevel,
+			StrokeJoin::Round => kurbo::Join::Round,
 		};
-		let cap = match stroke.line_cap {
-			LineCap::Butt => kurbo::Cap::Butt,
-			LineCap::Round => kurbo::Cap::Round,
-			LineCap::Square => kurbo::Cap::Square,
+		let cap = match stroke.cap {
+			StrokeCap::Butt => kurbo::Cap::Butt,
+			StrokeCap::Round => kurbo::Cap::Round,
+			StrokeCap::Square => kurbo::Cap::Square,
 		};
 		let dash_offset = stroke.dash_offset;
 		let dash_pattern = stroke.dash_lengths;
-		let miter_limit = stroke.line_join_miter_limit;
+		let miter_limit = stroke.join_miter_limit;
 
 		let stroke_style = kurbo::Stroke::new(stroke.weight)
 			.with_caps(cap)

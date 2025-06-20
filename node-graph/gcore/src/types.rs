@@ -1,8 +1,5 @@
 use core::any::TypeId;
 
-#[cfg(not(feature = "std"))]
-pub use alloc::borrow::Cow;
-#[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
 #[macro_export]
@@ -215,7 +212,6 @@ impl Default for Type {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl dyn_any::StaticType for Type {
 	type Static = Self;
 }

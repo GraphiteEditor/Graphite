@@ -17,7 +17,7 @@ std = ["alloc", "rc", "glam/default"]
 large-atomics = []
 alloc = []
 derive = ["dyn-any-derive"]
-log-bad-types = ["log"]
+log-bad-types = []
 # Opt into impls for Rc<T> and Arc<T>.
 rc = []
 # Opt into impls for some glam types
@@ -28,7 +28,6 @@ glam = ["dep:glam"]
 dyn-any-derive = { path = "derive", optional = true }
 
 # Optional dependencies
-log = { version = "0.4", optional = true }
 glam = { version = "0.29", optional = true, default-features = false }
 reqwest = { version = "0.12", optional = true, default-features = false }
 

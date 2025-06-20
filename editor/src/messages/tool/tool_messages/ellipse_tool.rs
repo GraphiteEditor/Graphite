@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
+use graphene_std::Color;
 
 #[derive(Default)]
 pub struct EllipseTool {
@@ -320,7 +320,7 @@ impl Fsm for EllipseToolFsmState {
 mod test_ellipse {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::generator_nodes::ellipse;
+	use graphene_std::vector::generator_nodes::ellipse;
 
 	#[derive(Debug, PartialEq)]
 	struct ResolvedEllipse {
