@@ -1,9 +1,10 @@
+use super::ShapeToolData;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage, Responses};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -12,13 +13,10 @@ use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::ClickTargetType;
-use graphene_std::vector::PointId;
 use graphene_std::vector::misc::dvec2_to_point;
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
-
-use super::ShapeToolData;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ShapeType {
@@ -133,7 +131,7 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 				.metadata()
 				.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 		})
-		.reduce(graphene_core::renderer::Quad::combine_bounds);
+		.reduce(graphene_std::renderer::Quad::combine_bounds);
 
 	if let Some(bounds) = bounds {
 		let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
@@ -232,8 +230,7 @@ pub fn star_outline(layer: LayerNodeIdentifier, document: &DocumentMessageHandle
 		anchors.push(point);
 	}
 
-	let subpath: Vec<Subpath<PointId>> = vec![Subpath::from_anchors_linear(anchors, true)];
-
+	let subpath = vec![ClickTargetType::Subpath(Subpath::from_anchors_linear(anchors, true))];
 	overlay_context.outline(subpath.iter(), viewport, None);
 }
 
