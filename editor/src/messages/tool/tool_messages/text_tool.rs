@@ -18,7 +18,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_face};
+use graphene_std::text::{Font, FontCache, TypesettingConfig, lines_clipping, load_font};
 use graphene_std::vector::style::Fill;
 
 #[derive(Default)]
@@ -468,8 +468,8 @@ impl Fsm for TextToolFsmState {
 					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_mut() {
-					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_std::text::bounding_box(&tool_data.new_text, buzz_face.as_ref(), editing_text.typesetting, false);
+					let font_data = font_cache.get(&editing_text.font).map(|data| load_font(data));
+					let far = graphene_std::text::bounding_box(&tool_data.new_text, font_data, editing_text.typesetting, false);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -517,8 +517,8 @@ impl Fsm for TextToolFsmState {
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
 						if let Some((text, font, typesetting)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
-							let buzz_face = font_cache.get(font).map(|data| load_face(data));
-							if lines_clipping(text.as_str(), buzz_face, typesetting) {
+							let font_data = font_cache.get(font).map(|data| load_font(data));
+							if lines_clipping(text.as_str(), font_data, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
 							}
 						}
