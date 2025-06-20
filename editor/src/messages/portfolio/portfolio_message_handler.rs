@@ -467,7 +467,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					}
 				};
 
-				const REPLACEMENTS: [(&str, &str); 40] = [
+				const REPLACEMENTS: [(&str, &str); 53] = [
 					("graphene_core::AddArtboardNode", "graphene_core::graphic_element::AppendArtboardNode"),
 					("graphene_core::ConstructArtboardNode", "graphene_core::graphic_element::ToArtboardNode"),
 					("graphene_core::ToGraphicElementNode", "graphene_core::graphic_element::ToElementNode"),
@@ -511,6 +511,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					("graphene_core::transform::CullNode", "graphene_core::ops::IdentityNode"),
 					("graphene_std::raster::MaskImageNode", "graphene_std::raster::MaskNode"),
 					("graphene_core::vector::FlattenVectorElementsNode", "graphene_core::vector::FlattenPathNode"),
+					("graphene_core::logic::StringConcatenateNode", "graphene_core::ops::StringConcatenateNode"),
+					("graphene_core::ops::LogicalOrNode", "graphene_core::logic::LogicalOrNode"),
+					("graphene_core::ops::NotEqualsNode", "graphene_core::logic::NotEqualsNode"),
+					("graphene_core::ops::LogicalNotNode", "graphene_core::logic::LogicalNotNode"),
+					("graphene_core::logic::StringLengthNode", "graphene_core::ops::StringLengthNode"),
+					("graphene_core::logic::LogToConsoleNode", "graphene_core::ops::LogToConsoleNode"),
+					("graphene_core::ops::LogicalAndNode", "graphene_core::logic::LogicalAndNode"),
+					("graphene_core::logic::ToStringNode", "graphene_core::ops::ToStringNode"),
+					("graphene_core::ops::EqualsNode", "graphene_core::logic::EqualsNode"),
+					("graphene_core::logic::StringSliceNode", "graphene_core::ops::StringSliceNode"),
+					("graphene_core::ops::LessThanNode", "graphene_core::logic::LessThanNode"),
+					("graphene_core::logic::StringReplaceNode", "graphene_core::ops::StringReplaceNode"),
+					("graphene_core::ops::GreaterThanNode", "graphene_core::logic::GreaterThanNode"),
 				];
 				let mut network = document.network_interface.document_network().clone();
 				network.generate_node_paths(&[]);

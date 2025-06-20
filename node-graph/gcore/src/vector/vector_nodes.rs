@@ -211,162 +211,6 @@ where
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
-	#[default(100., 100.)]
-	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: PixelSize,
-	angle: Angle,
-	#[default(4)] instances: IntegerCount,
-) -> Instances<I>
-where
-	Instances<I>: GraphicElementRendered,
-{
-	let angle = angle.to_radians();
-	let count = instances.max(1);
-	let total = (count - 1) as f64;
-
-	let mut result_table = Instances::<I>::default();
-
-	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
-
-		for instance in instance.instance_ref_iter() {
-			let mut instance = instance.to_instance_cloned();
-
-			let local_translation = DAffine2::from_translation(instance.transform.translation);
-			let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
-			instance.transform = local_translation * transform * local_matrix;
-
-			result_table.push(instance);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn circular_repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	// TODO: Implement other GraphicElementRendered types.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
-	angle_offset: Angle,
-	#[default(5)] radius: f64,
-	#[default(5)] instances: IntegerCount,
-) -> Instances<I>
-where
-	Instances<I>: GraphicElementRendered,
-{
-	let count = instances.max(1);
-
-	let mut result_table = Instances::<I>::default();
-
-	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
-		let translation = DAffine2::from_translation(radius * DVec2::Y);
-		let transform = angle * translation;
-
-		for instance in instance.instance_ref_iter() {
-			let mut instance = instance.to_instance_cloned();
-
-			let local_translation = DAffine2::from_translation(instance.transform.translation);
-			let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
-			instance.transform = local_translation * transform * local_matrix;
-
-			result_table.push(instance);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(name("Copy to Points"), category("Vector"), path(graphene_core::vector))]
-async fn copy_to_points<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	points: VectorDataTable,
-	#[expose]
-	/// Artwork to be copied and placed at each point.
-	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)]
-	instance: Instances<I>,
-	/// Minimum range of randomized sizes given to each instance.
-	#[default(1)]
-	#[range((0., 2.))]
-	#[unit("x")]
-	random_scale_min: Multiplier,
-	/// Maximum range of randomized sizes given to each instance.
-	#[default(1)]
-	#[range((0., 2.))]
-	#[unit("x")]
-	random_scale_max: Multiplier,
-	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
-	#[range((-50., 50.))]
-	random_scale_bias: f64,
-	/// Seed to determine unique variations on all the randomized instance sizes.
-	random_scale_seed: SeedValue,
-	/// Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise.
-	#[range((0., 360.))]
-	random_rotation: Angle,
-	/// Seed to determine unique variations on all the randomized instance angles.
-	random_rotation_seed: SeedValue,
-) -> Instances<I>
-where
-	Instances<I>: GraphicElementRendered,
-{
-	let mut result_table = Instances::<I>::default();
-
-	let random_scale_difference = random_scale_max - random_scale_min;
-
-	for point_instance in points.instance_iter() {
-		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
-
-		let do_scale = random_scale_difference.abs() > 1e-6;
-		let do_rotation = random_rotation.abs() > 1e-6;
-
-		let points_transform = point_instance.transform;
-		for &point in point_instance.instance.point_domain.positions() {
-			let translation = points_transform.transform_point2(point);
-
-			let rotation = if do_rotation {
-				let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
-				degrees / 360. * TAU
-			} else {
-				0.
-			};
-
-			let scale = if do_scale {
-				if random_scale_bias.abs() < 1e-6 {
-					// Linear
-					random_scale_min + scale_rng.random::<f64>() * random_scale_difference
-				} else {
-					// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-					let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-					let scale_factor = (1. - scale_rng.random::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
-					random_scale_min + scale_factor * random_scale_difference
-				}
-			} else {
-				random_scale_min
-			};
-
-			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
-
-			for mut instance in instance.instance_ref_iter().map(|instance| instance.to_instance_cloned()) {
-				let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
-				instance.transform = transform * local_matrix;
-
-				result_table.push(instance);
-			}
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
@@ -1942,6 +1786,7 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl N
 mod test {
 	use super::*;
 	use crate::Node;
+	use crate::vector::algorithms::instance::repeat;
 	use bezier_rs::Bezier;
 	use std::pin::Pin;
 
@@ -1961,22 +1806,10 @@ mod test {
 	}
 
 	#[tokio::test]
-	async fn repeat() {
-		let direction = DVec2::X * 1.5;
-		let instances = 3;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
-		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
-		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 3);
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
-			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
-		}
-	}
-	#[tokio::test]
 	async fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let instances = 8;
-		let repeated = super::repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
+		let repeated = repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)), direction, 0., instances).await;
 		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
 		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
 		assert_eq!(vector_data.region_bezier_paths().count(), 8);
@@ -1984,22 +1817,7 @@ mod test {
 			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
-	#[tokio::test]
-	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)), 45., 4., 8).await;
-		let vector_data = super::flatten_path(Footprint::default(), repeated).await;
-		let vector_data = vector_data.instance_ref_iter().next().unwrap().instance;
-		assert_eq!(vector_data.region_bezier_paths().count(), 8);
 
-		for (index, (_, subpath)) in vector_data.region_bezier_paths().enumerate() {
-			let expected_angle = (index as f64 + 1.) * 45.;
-
-			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
-
-			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
-		}
-	}
 	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), vector_node(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))).await;
@@ -2025,27 +1843,7 @@ mod test {
 			assert_eq!(subpath.anchors()[i], expected_bounding_box[i]);
 		}
 	}
-	#[tokio::test]
-	async fn copy_to_points() {
-		let points = Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.);
-		let instance = Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE);
 
-		let expected_points = VectorData::from_subpath(points.clone()).point_domain.positions().to_vec();
-
-		let copy_to_points = super::copy_to_points(Footprint::default(), vector_node(points), vector_node(instance), 1., 1., 0., 0, 0., 0).await;
-		let flatten_path = super::flatten_path(Footprint::default(), copy_to_points).await;
-		let flattened_copy_to_points = flatten_path.instance_ref_iter().next().unwrap().instance;
-
-		assert_eq!(flattened_copy_to_points.region_bezier_paths().count(), expected_points.len());
-
-		for (index, (_, subpath)) in flattened_copy_to_points.region_bezier_paths().enumerate() {
-			let offset = expected_points[index];
-			assert_eq!(
-				&subpath.anchors(),
-				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
-			);
-		}
-	}
 	#[tokio::test]
 	async fn sample_points() {
 		let path = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
