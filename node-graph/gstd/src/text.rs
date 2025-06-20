@@ -15,8 +15,6 @@ fn text<'i: 'n>(
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
 ) -> VectorDataTable {
-	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
-
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
@@ -25,7 +23,9 @@ fn text<'i: 'n>(
 		max_height,
 	};
 
-	let result = VectorData::from_subpaths(to_path(&text, buzz_face, typesetting), false);
+	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
+
+	let result = VectorData::from_subpaths(to_path(&text, font_data, typesetting), false);
 
 	VectorDataTable::new(result)
 }
