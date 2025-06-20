@@ -1,13 +1,14 @@
 use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
 pub struct OverlaysMessageData<'a> {
 	pub visibility_settings: OverlaysVisibilitySettings,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub device_pixel_ratio: f64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
 	#[cfg(target_arch = "wasm32")]
@@ -16,6 +17,7 @@ pub struct OverlaysMessageHandler {
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
+#[message_handler_data]
 impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
 		let OverlaysMessageData { visibility_settings, ipp, .. } = data;

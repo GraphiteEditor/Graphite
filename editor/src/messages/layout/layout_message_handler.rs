@@ -6,7 +6,7 @@ use graphene_std::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ExtractField)]
 pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
@@ -338,6 +338,11 @@ impl LayoutMessageHandler {
 	}
 }
 
+pub fn custom_data() -> MessageData {
+	MessageData::new(String::from("Function"), vec![(String::from("Fn(&MessageDiscriminant) -> Vec<KeysGroup>"), 346)], file!())
+}
+
+#[message_handler_data(CustomData)]
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		match message {

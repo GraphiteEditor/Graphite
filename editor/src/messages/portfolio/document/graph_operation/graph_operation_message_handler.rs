@@ -21,17 +21,19 @@ struct ArtboardInfo {
 	merge_node: NodeId,
 }
 
+#[derive(ExtractField)]
 pub struct GraphOperationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, ExtractField)]
 pub struct GraphOperationMessageHandler {}
 
 // GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
+#[message_handler_data]
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
 		let network_interface = data.network_interface;

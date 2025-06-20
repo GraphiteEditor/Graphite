@@ -13,6 +13,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 
+#[derive(ExtractField)]
 pub struct NavigationMessageData<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub breadcrumb_network_path: &'a [NodeId],
@@ -23,7 +24,7 @@ pub struct NavigationMessageData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, ExtractField)]
 pub struct NavigationMessageHandler {
 	navigation_operation: NavigationOperation,
 	mouse_position: ViewportPosition,
@@ -31,6 +32,7 @@ pub struct NavigationMessageHandler {
 	abortable_pan_start: Option<f64>,
 }
 
+#[message_handler_data]
 impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for NavigationMessageHandler {
 	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, data: NavigationMessageData) {
 		let NavigationMessageData {
