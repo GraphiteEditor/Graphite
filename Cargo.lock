@@ -2266,6 +2266,7 @@ dependencies = [
  "image",
  "interpreted-executor",
  "js-sys",
+ "kurbo",
  "log",
  "num_enum",
  "once_cell",
