@@ -11,8 +11,8 @@ use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use glam::DVec2;
 use graph_craft::document::DocumentNode;
-use graphene_core::InputAccessor;
-use graphene_core::raster::color::Color;
+use graphene_std::InputAccessor;
+use graphene_std::raster::color::Color;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -234,7 +234,7 @@ impl EditorTestUtils {
 		self.handle_message(Message::Tool(ToolMessage::SelectSecondaryColor { color })).await;
 	}
 
-	pub async fn create_raster_image(&mut self, image: graphene_core::raster::Image<Color>, mouse: Option<(f64, f64)>) {
+	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
 		self.handle_message(PortfolioMessage::PasteImage {
 			name: None,
 			image,
@@ -328,9 +328,9 @@ pub mod test_prelude {
 	pub use glam::DVec2;
 	pub use glam::IVec2;
 	pub use graph_craft::document::DocumentNode;
-	pub use graphene_core::raster::{Color, Image};
-	pub use graphene_core::{InputAccessor, InputAccessorSource};
+	pub use graphene_std::raster::{Color, Image};
 	pub use graphene_std::transform::Footprint;
+	pub use graphene_std::{InputAccessor, InputAccessorSource};
 
 	#[macro_export]
 	macro_rules! float_eq {

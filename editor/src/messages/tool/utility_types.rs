@@ -13,8 +13,8 @@ use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use graphene_core::raster::color::Color;
-use graphene_core::text::FontCache;
+use graphene_std::raster::color::Color;
+use graphene_std::text::FontCache;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 

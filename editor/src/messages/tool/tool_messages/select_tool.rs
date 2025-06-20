@@ -25,7 +25,7 @@ use crate::messages::tool::common_functionality::utility_functions::{resize_boun
 use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::BooleanOperation;
@@ -180,7 +180,7 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let list = <BooleanOperation as graphene_core::registry::ChoiceTypeStatic>::list();
+		let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
 		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
 			if let Some(doc) = info.docstring.as_deref() {
@@ -562,7 +562,7 @@ impl Fsm for SelectToolFsmState {
 							.metadata()
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
-					.reduce(graphene_core::renderer::Quad::combine_bounds);
+					.reduce(graphene_std::renderer::Quad::combine_bounds);
 
 				// When not in Drawing State
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)

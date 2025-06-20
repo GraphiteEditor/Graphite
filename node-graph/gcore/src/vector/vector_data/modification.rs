@@ -436,64 +436,6 @@ async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modificat
 	vector_data
 }
 
-#[test]
-fn modify_new() {
-	let vector_data = VectorData::from_subpaths(
-		[bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), bezier_rs::Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)],
-		false,
-	);
-
-	let modify = VectorModification::create_from_vector(&vector_data);
-
-	let mut new = VectorData::default();
-	modify.apply(&mut new);
-	assert_eq!(vector_data, new);
-}
-
-#[test]
-fn modify_existing() {
-	use bezier_rs::{Bezier, Subpath};
-	let subpaths = [
-		Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE),
-		Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO),
-		Subpath::from_beziers(
-			&[
-				Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(10., 0.)),
-				Bezier::from_quadratic_dvec2(DVec2::new(10., 0.), DVec2::new(15., 10.), DVec2::new(20., 0.)),
-			],
-			false,
-		),
-	];
-	let mut vector_data = VectorData::from_subpaths(subpaths, false);
-
-	let mut modify_new = VectorModification::create_from_vector(&vector_data);
-	let mut modify_original = VectorModification::default();
-
-	for modification in [&mut modify_new, &mut modify_original] {
-		let point = vector_data.point_domain.ids()[0];
-		modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X * 0.5 });
-		let point = vector_data.point_domain.ids()[9];
-		modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X });
-	}
-
-	let mut new = VectorData::default();
-	modify_new.apply(&mut new);
-
-	modify_original.apply(&mut vector_data);
-
-	assert_eq!(vector_data, new);
-	assert_eq!(vector_data.point_domain.positions()[0], DVec2::X);
-	assert_eq!(vector_data.point_domain.positions()[9], DVec2::new(11., 0.));
-	assert_eq!(
-		vector_data.segment_bezier_iter().nth(8).unwrap().1,
-		Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(11., 0.))
-	);
-	assert_eq!(
-		vector_data.segment_bezier_iter().nth(9).unwrap().1,
-		Bezier::from_quadratic_dvec2(DVec2::new(11., 0.), DVec2::new(16., 10.), DVec2::new(20., 0.))
-	);
-}
-
 // Do we want to enforce that all serialized/deserialized hashmaps are a vec of tuples?
 // TODO: Eventually remove this document upgrade code
 use serde::de::{SeqAccess, Visitor};
@@ -641,6 +583,15 @@ impl<'a> AppendBezpath<'a> {
 		self.last_point_index = Some(next_point_index);
 	}
 
+	fn reset(&mut self) {
+		self.first_point = None;
+		self.last_point = None;
+		self.first_point_index = None;
+		self.last_point_index = None;
+		self.first_segment_id = None;
+		self.last_segment_id = None;
+	}
+
 	pub fn append_bezpath(vector_data: &'a mut VectorData, bezpath: BezPath) {
 		let mut this = Self::new(vector_data);
 		let mut elements = bezpath.elements().iter().peekable();
@@ -679,10 +630,73 @@ impl<'a> AppendBezpath<'a> {
 					}
 				}
 				PathEl::ClosePath => {
-					// Already handled using `append_segment_and_close_path()`;
-					break;
+					// Already handled using `append_segment_and_close_path()` hence we reset state and continue.
+					this.reset();
 				}
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn modify_new() {
+		let vector_data = VectorData::from_subpaths(
+			[bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), bezier_rs::Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)],
+			false,
+		);
+
+		let modify = VectorModification::create_from_vector(&vector_data);
+
+		let mut new = VectorData::default();
+		modify.apply(&mut new);
+		assert_eq!(vector_data, new);
+	}
+
+	#[test]
+	fn modify_existing() {
+		use bezier_rs::{Bezier, Subpath};
+		let subpaths = [
+			Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE),
+			Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO),
+			Subpath::from_beziers(
+				&[
+					Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(10., 0.)),
+					Bezier::from_quadratic_dvec2(DVec2::new(10., 0.), DVec2::new(15., 10.), DVec2::new(20., 0.)),
+				],
+				false,
+			),
+		];
+		let mut vector_data = VectorData::from_subpaths(subpaths, false);
+
+		let mut modify_new = VectorModification::create_from_vector(&vector_data);
+		let mut modify_original = VectorModification::default();
+
+		for modification in [&mut modify_new, &mut modify_original] {
+			let point = vector_data.point_domain.ids()[0];
+			modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X * 0.5 });
+			let point = vector_data.point_domain.ids()[9];
+			modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::X });
+		}
+
+		let mut new = VectorData::default();
+		modify_new.apply(&mut new);
+
+		modify_original.apply(&mut vector_data);
+
+		assert_eq!(vector_data, new);
+		assert_eq!(vector_data.point_domain.positions()[0], DVec2::X);
+		assert_eq!(vector_data.point_domain.positions()[9], DVec2::new(11., 0.));
+		assert_eq!(
+			vector_data.segment_bezier_iter().nth(8).unwrap().1,
+			Bezier::from_quadratic_dvec2(DVec2::new(0., 0.), DVec2::new(5., 10.), DVec2::new(11., 0.))
+		);
+		assert_eq!(
+			vector_data.segment_bezier_iter().nth(9).unwrap().1,
+			Bezier::from_quadratic_dvec2(DVec2::new(11., 0.), DVec2::new(16., 10.), DVec2::new(20., 0.))
+		);
 	}
 }

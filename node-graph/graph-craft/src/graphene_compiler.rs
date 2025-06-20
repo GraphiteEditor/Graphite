@@ -34,9 +34,3 @@ impl Compiler {
 pub trait Executor<I, O> {
 	fn execute(&self, input: I) -> LocalFuture<Result<O, Box<dyn Error>>>;
 }
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[cfg(feature = "wgpu")]
-pub struct CompileRequest {
-	pub networks: Vec<ProtoNetwork>,
-	pub io: wgpu_executor::ShaderIO,
-}

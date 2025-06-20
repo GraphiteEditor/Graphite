@@ -22,9 +22,9 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, FillType, Gradient};
+use graphene_std::renderer::Quad;
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::style::{Fill, FillType, Gradient, PaintOrder, StrokeAlign};
 use graphene_std::vector::{VectorData, VectorDataTable};
 use std::vec;
 
@@ -676,6 +676,30 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::Gradient(gradient), false), network_path);
 							}
 						}
+					}
+
+					// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
+					if reference == "Stroke" && inputs_count == 8 {
+						let node_definition = resolve_document_node_type(reference).unwrap();
+						let document_node = node_definition.default_node_template().document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document.network_interface.insert_input_properties_row(node_id, 8, network_path);
+						document.network_interface.insert_input_properties_row(node_id, 9, network_path);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+						let align_input = NodeInput::value(TaggedValue::StrokeAlign(StrokeAlign::Center), false);
+						let paint_order_input = NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeAbove), false);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 3), align_input, network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[6].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[7].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 7), paint_order_input, network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 8), old_inputs[3].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
 					}
 
 					// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node
@@ -1522,7 +1546,7 @@ impl PortfolioMessageHandler {
 			responses.add(ToolMessage::DeactivateTools);
 		} else {
 			// Load the default font upon creating the first document
-			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
+			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
 			responses.add(FrontendMessage::TriggerFontLoad { font });
 		}
 

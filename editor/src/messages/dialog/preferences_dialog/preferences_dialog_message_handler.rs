@@ -187,7 +187,8 @@ impl PreferencesDialogMessageHandler {
 		];
 
 		let mut checkbox_id = CheckboxId::default();
-		let vector_mesh_tooltip = "Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle line joins and fills.";
+		let vector_mesh_tooltip =
+			"Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle stroke joins and fills.";
 		let vector_meshes = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),

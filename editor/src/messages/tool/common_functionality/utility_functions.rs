@@ -7,10 +7,9 @@ use crate::messages::tool::common_functionality::transformation_cage::SelectedEd
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
 use crate::messages::tool::utility_types::ToolType;
 use bezier_rs::Bezier;
-use glam::DVec2;
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_core::text::{FontCache, load_face};
+use graphene_std::renderer::Quad;
+use graphene_std::text::{FontCache, load_face};
 use graphene_std::vector::{HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
 
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
@@ -72,7 +71,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	};
 
 	let buzz_face = font_cache.get(font).map(|data| load_face(data));
-	let far = graphene_core::text::bounding_box(text, buzz_face.as_ref(), typesetting, false);
+	let far = graphene_std::text::bounding_box(text, buzz_face.as_ref(), typesetting, false);
 
 	Quad::from_box([DVec2::ZERO, far])
 }

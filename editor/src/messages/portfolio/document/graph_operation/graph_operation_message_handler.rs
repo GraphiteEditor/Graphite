@@ -5,13 +5,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
-use graphene_core::renderer::Quad;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
+use graphene_std::Color;
+use graphene_std::renderer::Quad;
+use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::convert_usvg_path;
+use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 #[derive(Debug, Clone)]
 struct ArtboardInfo {
@@ -41,6 +42,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.fill_set(fill);
 				}
 			}
+			GraphOperationMessage::BlendingFillSet { layer, fill } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.blending_fill_set(fill);
+				}
+			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_set(opacity);
@@ -49,6 +55,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
+				}
+			}
+			GraphOperationMessage::ClipModeToggle { layer } => {
+				let clip_mode = get_clip_mode(layer, network_interface);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.clip_mode_toggle(clip_mode);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
@@ -362,7 +374,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			warn!("Skip image")
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
+			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
@@ -376,18 +388,20 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 			weight: stroke.width().get() as f64,
 			dash_lengths: stroke.dasharray().as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
 			dash_offset: stroke.dashoffset() as f64,
-			line_cap: match stroke.linecap() {
-				usvg::LineCap::Butt => LineCap::Butt,
-				usvg::LineCap::Round => LineCap::Round,
-				usvg::LineCap::Square => LineCap::Square,
+			cap: match stroke.linecap() {
+				usvg::LineCap::Butt => StrokeCap::Butt,
+				usvg::LineCap::Round => StrokeCap::Round,
+				usvg::LineCap::Square => StrokeCap::Square,
 			},
-			line_join: match stroke.linejoin() {
-				usvg::LineJoin::Miter => LineJoin::Miter,
-				usvg::LineJoin::MiterClip => LineJoin::Miter,
-				usvg::LineJoin::Round => LineJoin::Round,
-				usvg::LineJoin::Bevel => LineJoin::Bevel,
+			join: match stroke.linejoin() {
+				usvg::LineJoin::Miter => StrokeJoin::Miter,
+				usvg::LineJoin::MiterClip => StrokeJoin::Miter,
+				usvg::LineJoin::Round => StrokeJoin::Round,
+				usvg::LineJoin::Bevel => StrokeJoin::Bevel,
 			},
-			line_join_miter_limit: stroke.miterlimit().get() as f64,
+			join_miter_limit: stroke.miterlimit().get() as f64,
+			align: StrokeAlign::Center,
+			paint_order: PaintOrder::StrokeAbove,
 			transform,
 			non_scaling: false,
 		})
