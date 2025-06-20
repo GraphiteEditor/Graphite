@@ -89,6 +89,19 @@ impl OriginalTransforms {
 						continue;
 					};
 
+					let Some(selected_segments) = shape_editor.selected_segments_in_layer(layer) else {
+						continue;
+					};
+
+					let mut selected_points = selected_points.clone();
+
+					for (segmentid, _, start, end) in vector_data.segment_bezier_iter() {
+						if selected_segments.contains(&segmentid) {
+							selected_points.insert(ManipulatorPointId::Anchor(start));
+							selected_points.insert(ManipulatorPointId::Anchor(end));
+						}
+					}
+
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
 					let anchors = anchor_ids.filter_map(|id| vector_data.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));

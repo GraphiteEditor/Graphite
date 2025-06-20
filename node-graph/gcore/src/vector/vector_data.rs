@@ -10,6 +10,7 @@ use crate::{AlphaBlending, Color, GraphicGroupTable};
 pub use attributes::*;
 use bezier_rs::ManipulatorGroup;
 use core::borrow::Borrow;
+use core::hash::{Hash, Hasher};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
