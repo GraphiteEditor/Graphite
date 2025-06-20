@@ -26,7 +26,7 @@ use crate::messages::tool::common_functionality::utility_functions::text_boundin
 use bezier_rs::Subpath;
 use glam::DMat2;
 use graph_craft::document::NodeId;
-use graphene_core::renderer::Quad;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::BooleanOperation;
@@ -181,7 +181,7 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
-		let list = <BooleanOperation as graphene_core::registry::ChoiceTypeStatic>::list();
+		let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
 		list.into_iter().map(|i| i.into_iter()).flatten().map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
 			if let Some(doc) = info.docstring.as_deref() {
@@ -527,10 +527,11 @@ impl Fsm for SelectToolFsmState {
 						.selected_visible_and_unlocked_layers(&document.network_interface)
 						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					{
-						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), None);
+						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-							let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}
@@ -562,7 +563,7 @@ impl Fsm for SelectToolFsmState {
 							.metadata()
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
-					.reduce(graphene_core::renderer::Quad::combine_bounds);
+					.reduce(graphene_std::renderer::Quad::combine_bounds);
 
 				// When not in Drawing State
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
@@ -573,13 +574,14 @@ impl Fsm for SelectToolFsmState {
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						if overlay_context.visibility_settings.hover_outline() {
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
 										overlay_context.quad(Quad::from_box(bounds), color, None);
 									}
 								} else {
-									overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), color);
+									overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, color);
 								}
 							};
 							let layer = match tool_data.nested_selection_behavior {
@@ -817,7 +819,8 @@ impl Fsm for SelectToolFsmState {
 					if overlay_context.visibility_settings.selection_outline() {
 						// Draws a temporary outline on the layers that will be selected by the current box/lasso area
 						for layer in layers_to_outline {
-							overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), None);
+							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+							overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 						}
 					}
 

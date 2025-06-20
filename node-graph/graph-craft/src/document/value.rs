@@ -6,6 +6,7 @@ pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::raster_types::CPU;
 use graphene_core::renderer::RenderMetadata;
 use graphene_core::transform::ReferencePoint;
 use graphene_core::uuid::NodeId;
@@ -187,8 +188,8 @@ tagged_value! {
 	GraphicElement(graphene_core::GraphicElement),
 	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
 	VectorData(graphene_core::vector::VectorDataTable),
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	ImageFrame(graphene_core::raster::image::ImageFrameTable<Color>),
+	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
 	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(graphene_core::GraphicGroupTable),
 	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
@@ -233,8 +234,12 @@ tagged_value! {
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
-	LineCap(graphene_core::vector::style::LineCap),
-	LineJoin(graphene_core::vector::style::LineJoin),
+	#[serde(alias = "LineCap")]
+	StrokeCap(graphene_core::vector::style::StrokeCap),
+	#[serde(alias = "LineJoin")]
+	StrokeJoin(graphene_core::vector::style::StrokeJoin),
+	StrokeAlign(graphene_core::vector::style::StrokeAlign),
+	PaintOrder(graphene_core::vector::style::PaintOrder),
 	FillType(graphene_core::vector::style::FillType),
 	FillChoice(graphene_core::vector::style::FillChoice),
 	GradientType(graphene_core::vector::style::GradientType),

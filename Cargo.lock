@@ -231,15 +231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-mutex"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "479db852db25d9dbf6204e6cb6253698f175c15726470f78af0d918e99d6156e"
-dependencies = [
- "event-listener",
-]
-
-[[package]]
 name = "atk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,7 +376,6 @@ dependencies = [
  "dyn-any",
  "glam",
  "kurbo",
- "log",
  "serde",
 ]
 
@@ -862,37 +852,6 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
  "memchr",
-]
-
-[[package]]
-name = "compilation-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dyn-any",
- "gpu-compiler-bin-wrapper",
- "gpu-executor",
- "graph-craft",
- "graphene-core",
- "reqwest",
- "serde_json",
- "wgpu-executor",
-]
-
-[[package]]
-name = "compilation-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "futures",
- "gpu-compiler-bin-wrapper",
- "graph-craft",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower-http",
 ]
 
 [[package]]
@@ -1390,7 +1349,6 @@ version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
  "glam",
- "log",
  "reqwest",
 ]
 
@@ -1502,12 +1460,6 @@ checksum = "ad9cdb4b747e485a12abb0e6566612956c7a1bafa3bdb8d682c5b6d403589e48"
 dependencies = [
  "num-traits",
 ]
-
-[[package]]
-name = "event-listener"
-version = "2.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "exr"
@@ -2030,8 +1982,6 @@ version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc46dd3ec48fdd8e693a98d2b8bafae273a2d54c1de02a2a7e3d57d501f39677"
 dependencies = [
- "bytemuck",
- "libm",
  "serde",
 ]
 
@@ -2152,19 +2102,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpu-compiler-bin-wrapper"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "gpu-executor",
- "graph-craft",
- "log",
- "serde",
- "serde_json",
- "wgpu-executor",
-]
-
-[[package]]
 name = "gpu-descriptor"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2185,40 +2122,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpu-executor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bytemuck",
- "dyn-any",
- "futures",
- "glam",
- "graphene-core",
- "log",
- "node-macro",
- "num-traits",
- "serde",
- "web-sys",
-]
-
-[[package]]
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "bezier-rs",
- "bytemuck",
  "criterion",
  "dyn-any",
- "futures",
  "glam",
  "graph-craft",
  "graphene-core",
  "iai-callgrind",
  "js-sys",
  "log",
- "num-traits",
  "pretty_assertions",
  "reqwest",
  "rustc-hash 2.1.1",
@@ -2228,7 +2143,6 @@ dependencies = [
  "tokio",
  "url",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
  "winit",
@@ -2238,25 +2152,16 @@ dependencies = [
 name = "graphene-cli"
 version = "0.1.0"
 dependencies = [
- "bezier-rs",
- "bitflags 2.9.0",
  "chrono",
  "clap",
- "dyn-any",
  "fern",
  "futures",
- "glam",
- "gpu-executor",
  "graph-craft",
  "graphene-core",
  "graphene-std",
- "image",
  "interpreted-executor",
  "log",
- "serde",
- "serde_json",
  "tokio",
- "wasm-bindgen",
  "wgpu",
  "wgpu-executor",
 ]
@@ -2273,7 +2178,6 @@ dependencies = [
  "glam",
  "half",
  "image",
- "js-sys",
  "kurbo",
  "log",
  "math-parser",
@@ -2288,12 +2192,10 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
- "spirv-std",
  "tinyvec",
  "tokio",
  "usvg",
  "vello",
- "wasm-bindgen",
  "web-sys",
  "wgpu",
 ]
@@ -2305,18 +2207,13 @@ dependencies = [
  "base64 0.22.1",
  "bezier-rs",
  "bytemuck",
- "compilation-client",
  "dyn-any",
  "fastnoise-lite",
  "futures",
  "glam",
- "gpu-compiler-bin-wrapper",
- "gpu-executor",
  "graph-craft",
  "graphene-core",
  "image",
- "image-compare",
- "js-sys",
  "log",
  "ndarray",
  "node-macro",
@@ -2324,21 +2221,14 @@ dependencies = [
  "rand 0.9.0",
  "rand_chacha 0.9.0",
  "reqwest",
- "resvg",
- "rustc-hash 2.1.1",
  "serde",
- "serde_json",
  "tokio",
- "url",
  "usvg",
  "vello",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "wgpu",
  "wgpu-executor",
- "wgpu-types",
- "winit",
 ]
 
 [[package]]
@@ -2352,8 +2242,6 @@ dependencies = [
  "graphite-editor",
  "log",
  "ron",
- "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-http",
@@ -2365,18 +2253,14 @@ dependencies = [
 name = "graphite-editor"
 version = "0.0.0"
 dependencies = [
- "async-mutex",
  "bezier-rs",
  "bitflags 2.9.0",
- "convert_case 0.7.1",
  "derivative",
  "dyn-any",
  "env_logger",
  "futures",
  "glam",
- "gpu-executor",
  "graph-craft",
- "graphene-core",
  "graphene-std",
  "graphite-proc-macros",
  "image",
@@ -2403,7 +2287,6 @@ dependencies = [
 name = "graphite-proc-macros"
 version = "0.0.0"
 dependencies = [
- "convert_case 0.7.1",
  "graphite-editor",
  "proc-macro2",
  "quote",
@@ -2415,8 +2298,6 @@ dependencies = [
 name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
- "bezier-rs",
- "futures",
  "glam",
  "graph-craft",
  "graphene-core",
@@ -2424,7 +2305,6 @@ dependencies = [
  "js-sys",
  "log",
  "math-parser",
- "ron",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
@@ -2964,18 +2844,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "image-compare"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96cd73af13ae2e7220a1c02fe7d6bb53be50612ba7fabbb5c88e7753645f1f3c"
-dependencies = [
- "image",
- "itertools 0.12.1",
- "rayon",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "image-webp"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3063,17 +2931,12 @@ dependencies = [
  "dyn-any",
  "futures",
  "glam",
- "glob",
- "gpu-executor",
  "graph-craft",
  "graphene-core",
  "graphene-std",
- "iai-callgrind",
  "log",
- "num-traits",
  "once_cell",
  "serde",
- "wgpu",
  "wgpu-executor",
 ]
 
@@ -3478,7 +3341,6 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "lazy_static",
- "log",
  "num-complex",
  "pest",
  "pest_derive",
@@ -3811,7 +3673,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
- "libm",
 ]
 
 [[package]]
@@ -3833,15 +3694,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.99",
-]
-
-[[package]]
-name = "nvtx"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad2e855e8019f99e4b94ac33670eb4e4f570a2e044f3749a0b2c7f83b841e52c"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -5692,15 +5544,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
-name = "signal-hook-registry"
-version = "1.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9e9e0b4211b72e7b8b6e85c807d36c212bdb33ea8587f7569562a84df5465b1"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "simd-adler32"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5905,34 +5748,6 @@ checksum = "eda41003dc44290527a59b13432d4a0379379fa074b70174882adfbdfd917844"
 dependencies = [
  "bitflags 2.9.0",
 ]
-
-[[package]]
-name = "spirv-std"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git#6e2c84d4fe64e32df4c060c5a7f3e35a32e45421"
-dependencies = [
- "bitflags 1.3.2",
- "glam",
- "num-traits",
- "spirv-std-macros",
- "spirv-std-types",
-]
-
-[[package]]
-name = "spirv-std-macros"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git#6e2c84d4fe64e32df4c060c5a7f3e35a32e45421"
-dependencies = [
- "proc-macro2",
- "quote",
- "spirv-std-types",
- "syn 2.0.99",
-]
-
-[[package]]
-name = "spirv-std-types"
-version = "0.9.0"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git#6e2c84d4fe64e32df4c060c5a7f3e35a32e45421"
 
 [[package]]
 name = "stable_deref_trait"
@@ -6643,9 +6458,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
- "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",
@@ -6765,20 +6578,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "tower-http"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "403fa3b783d4b626a8ad51d766ab03cb6d2dbfc46b1c5d4448395e6628dc9697"
-dependencies = [
- "bitflags 2.9.0",
- "bytes",
- "http",
- "pin-project-lite",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
@@ -7585,21 +7384,11 @@ name = "wgpu-executor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
- "bytemuck",
  "dyn-any",
  "futures",
- "futures-intrusive",
  "glam",
- "gpu-executor",
  "graphene-core",
- "half",
- "log",
  "node-macro",
- "num-traits",
- "nvtx",
- "serde",
- "spirv",
  "vello",
  "web-sys",
  "wgpu",

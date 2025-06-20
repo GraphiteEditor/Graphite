@@ -15,12 +15,13 @@ use crate::messages::portfolio::document::utility_types::network_interface::{
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
-use graphene_core::*;
+use graphene_std::*;
 use renderer::Quad;
 use std::cmp::Ordering;
 
@@ -566,10 +567,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::AddTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
+				let nodes: Vec<_> = new_ids.iter().map(|(_, id)| *id).collect();
 				responses.add(NodeGraphMessage::AddNodes {
 					nodes: data,
 					new_ids: new_ids.clone(),
 				});
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes })
 			}
 			NodeGraphMessage::PointerDown {
 				shift_click,
@@ -995,11 +998,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
 					self.preview_on_mouse_up = None;
 				}
-				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
-					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
-					new_selected_nodes.remove(node_to_deselect);
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
-					self.deselect_on_pointer_up = None;
+				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take() {
+					if !self.drag_start.as_ref().is_some_and(|t| t.1) {
+						let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+						new_selected_nodes.remove(node_to_deselect);
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+						return;
+					}
 				}
 				let point = network_metadata
 					.persistent_metadata
@@ -2438,6 +2443,7 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
+				let clippable = layer.can_be_clipped(network_interface.document_metadata());
 				let data = LayerPanelEntry {
 					id: node_id,
 					alias: network_interface.display_name(&node_id, &[]),
@@ -2457,6 +2463,8 @@ impl NodeGraphMessageHandler {
 					selected: selected_layers.contains(&node_id),
 					ancestor_of_selected: ancestors_of_selected.contains(&node_id),
 					descendant_of_selected: descendants_of_selected.contains(&node_id),
+					clipped: get_clip_mode(layer, network_interface).unwrap_or(false) && clippable,
+					clippable,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}

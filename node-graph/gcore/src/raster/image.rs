@@ -1,11 +1,14 @@
+use crate::{
+	AlphaBlending,
+	instances::{Instance, Instances},
+	raster_types::Raster,
+};
+
 use super::Color;
 use super::discrete_srgb::float_to_srgb_u8;
-use crate::AlphaBlending;
-use crate::GraphicElement;
-use crate::instances::{Instance, Instances};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
-use dyn_any::StaticType;
+use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 
 #[cfg(feature = "serde")]
@@ -16,19 +19,13 @@ mod base64_serde {
 	use base64::Engine;
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-	pub fn as_base64<S, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
+	pub fn as_base64<S: Serializer, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error> {
 		let u8_data = bytemuck::cast_slice(key);
 		let string = base64::engine::general_purpose::STANDARD.encode(u8_data);
 		(key.len() as u64, string).serialize(serializer)
 	}
 
-	pub fn from_base64<'a, D, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error>
-	where
-		D: Deserializer<'a>,
-	{
+	pub fn from_base64<'a, D: Deserializer<'a>, P: Pixel>(deserializer: D) -> Result<Vec<P>, D::Error> {
 		use serde::de::Error;
 		<(u64, &[u8])>::deserialize(deserializer)
 			.and_then(|(len, str)| {
@@ -69,7 +66,6 @@ impl<P: Pixel + Debug> Debug for Image<P> {
 	}
 }
 
-#[cfg(feature = "dyn-any")]
 unsafe impl<P> StaticType for Image<P>
 where
 	P: dyn_any::StaticTypeSized + Pixel,
@@ -214,8 +210,38 @@ impl<P: Pixel> IntoIterator for Image<P> {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ImageFrameTable<Color>, D::Error> {
+pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<RasterDataTable<CPU>, D::Error> {
 	use serde::Deserialize;
+
+	type ImageFrameTable<P> = Instances<Image<P>>;
+
+	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	enum RasterFrame {
+		/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+		ImageFrame(ImageFrameTable<Color>),
+	}
+	impl<'de> serde::Deserialize<'de> for RasterFrame {
+		fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+			Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
+		}
+	}
+	impl serde::Serialize for RasterFrame {
+		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+			match self {
+				RasterFrame::ImageFrame(image_instances) => image_instances.serialize(serializer),
+			}
+		}
+	}
+
+	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub enum GraphicElement {
+		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
+		GraphicGroup(GraphicGroupTable),
+		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
+		VectorData(VectorDataTable),
+		RasterFrame(RasterFrame),
+	}
 
 	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -224,13 +250,13 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	}
 	impl From<ImageFrame<Color>> for GraphicElement {
 		fn from(image_frame: ImageFrame<Color>) -> Self {
-			GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(ImageFrameTable::new(image_frame.image)))
+			GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame.image)))
 		}
 	}
 	impl From<GraphicElement> for ImageFrame<Color> {
 		fn from(element: GraphicElement) -> Self {
 			match element {
-				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
+				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
 					image: image.instance_ref_iter().next().unwrap().instance.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
@@ -238,7 +264,6 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		}
 	}
 
-	#[cfg(feature = "dyn-any")]
 	unsafe impl<P> StaticType for ImageFrame<P>
 	where
 		P: dyn_any::StaticTypeSized + Pixel,
@@ -262,25 +287,57 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 		OldImageFrame(OldImageFrame<Color>),
 		ImageFrame(Instances<ImageFrame<Color>>),
 		ImageFrameTable(ImageFrameTable<Color>),
+		RasterDataTable(RasterDataTable<CPU>),
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
-		FormatVersions::Image(image) => ImageFrameTable::new(image),
+		FormatVersions::Image(image) => RasterDataTable::new(Raster::new_cpu(image)),
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => {
 			let OldImageFrame { image, transform, alpha_blending } = image_frame_with_transform_and_blending;
-			let mut image_frame_table = ImageFrameTable::new(image);
+			let mut image_frame_table = RasterDataTable::new(Raster::new_cpu(image));
 			*image_frame_table.instance_mut_iter().next().unwrap().transform = transform;
 			*image_frame_table.instance_mut_iter().next().unwrap().alpha_blending = alpha_blending;
 			image_frame_table
 		}
-		FormatVersions::ImageFrame(image_frame) => ImageFrameTable::new(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),
-		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table,
+		FormatVersions::ImageFrame(image_frame) => RasterDataTable::new(Raster::new_cpu(image_frame.instance_ref_iter().next().unwrap().instance.image.clone())),
+		FormatVersions::ImageFrameTable(image_frame_table) => RasterDataTable::new(Raster::new_cpu(image_frame_table.instance_ref_iter().next().unwrap().instance.clone())),
+		FormatVersions::RasterDataTable(raster_data_table) => raster_data_table,
 	})
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Instance<Image<Color>>, D::Error> {
+pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Instance<Raster<CPU>>, D::Error> {
 	use serde::Deserialize;
+
+	type ImageFrameTable<P> = Instances<Image<P>>;
+
+	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	enum RasterFrame {
+		/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+		ImageFrame(ImageFrameTable<Color>),
+	}
+	impl<'de> serde::Deserialize<'de> for RasterFrame {
+		fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+			Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
+		}
+	}
+	impl serde::Serialize for RasterFrame {
+		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+			match self {
+				RasterFrame::ImageFrame(image_instances) => image_instances.serialize(serializer),
+			}
+		}
+	}
+
+	#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	pub enum GraphicElement {
+		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
+		GraphicGroup(GraphicGroupTable),
+		/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
+		VectorData(VectorDataTable),
+		RasterFrame(RasterFrame),
+	}
 
 	#[derive(Clone, Default, Debug, PartialEq, specta::Type)]
 	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -289,13 +346,13 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 	}
 	impl From<ImageFrame<Color>> for GraphicElement {
 		fn from(image_frame: ImageFrame<Color>) -> Self {
-			GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(ImageFrameTable::new(image_frame.image)))
+			GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame.image)))
 		}
 	}
 	impl From<GraphicElement> for ImageFrame<Color> {
 		fn from(element: GraphicElement) -> Self {
 			match element {
-				GraphicElement::RasterFrame(crate::RasterFrame::ImageFrame(image)) => Self {
+				GraphicElement::RasterFrame(RasterFrame::ImageFrame(image)) => Self {
 					image: image.instance_ref_iter().next().unwrap().instance.clone(),
 				},
 				_ => panic!("Expected Image, found {:?}", element),
@@ -303,7 +360,6 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		}
 	}
 
-	#[cfg(feature = "dyn-any")]
 	unsafe impl<P> StaticType for ImageFrame<P>
 	where
 		P: dyn_any::StaticTypeSized + Pixel,
@@ -326,32 +382,31 @@ pub fn migrate_image_frame_instance<'de, D: serde::Deserializer<'de>>(deserializ
 		Image(Image<Color>),
 		OldImageFrame(OldImageFrame<Color>),
 		ImageFrame(Instances<ImageFrame<Color>>),
-		ImageFrameTable(ImageFrameTable<Color>),
-		ImageInstance(Instance<Image<Color>>),
+		RasterDataTable(RasterDataTable<CPU>),
+		ImageInstance(Instance<Raster<CPU>>),
 	}
 
 	Ok(match FormatVersions::deserialize(deserializer)? {
 		FormatVersions::Image(image) => Instance {
-			instance: image,
+			instance: Raster::new_cpu(image),
 			..Default::default()
 		},
 		FormatVersions::OldImageFrame(image_frame_with_transform_and_blending) => Instance {
-			instance: image_frame_with_transform_and_blending.image,
+			instance: Raster::new_cpu(image_frame_with_transform_and_blending.image),
 			transform: image_frame_with_transform_and_blending.transform,
 			alpha_blending: image_frame_with_transform_and_blending.alpha_blending,
 			source_node_id: None,
 		},
 		FormatVersions::ImageFrame(image_frame) => Instance {
-			instance: image_frame.instance_ref_iter().next().unwrap().instance.image.clone(),
+			instance: Raster::new_cpu(image_frame.instance_ref_iter().next().unwrap().instance.image.clone()),
 			..Default::default()
 		},
-		FormatVersions::ImageFrameTable(image_frame_table) => image_frame_table.instance_iter().next().unwrap_or_default(),
+		FormatVersions::RasterDataTable(image_frame_table) => image_frame_table.instance_iter().next().unwrap_or_default(),
 		FormatVersions::ImageInstance(image_instance) => image_instance,
 	})
 }
 
-// TODO: Rename to ImageTable
-pub type ImageFrameTable<P> = Instances<Image<P>>;
+// pub type RasterDataTable<P> = Instances<Image<P>>;
 
 impl<P: Debug + Copy + Pixel> Sample for Image<P> {
 	type Pixel = P;
@@ -399,22 +454,22 @@ impl From<Image<Color>> for Image<SRGBA8> {
 	}
 }
 
-impl From<ImageFrameTable<Color>> for ImageFrameTable<SRGBA8> {
-	fn from(image_frame_table: ImageFrameTable<Color>) -> Self {
-		let mut result_table = ImageFrameTable::<SRGBA8>::default();
+// impl From<RasterDataTable<CPU>> for RasterDataTable<SRGBA8> {
+// 	fn from(image_frame_table: RasterDataTable<CPU>) -> Self {
+// 		let mut result_table = RasterDataTable::<SRGBA8>::default();
 
-		for image_frame_instance in image_frame_table.instance_iter() {
-			result_table.push(Instance {
-				instance: image_frame_instance.instance.into(),
-				transform: image_frame_instance.transform,
-				alpha_blending: image_frame_instance.alpha_blending,
-				source_node_id: image_frame_instance.source_node_id,
-			});
-		}
+// 		for image_frame_instance in image_frame_table.instance_iter() {
+// 			result_table.push(Instance {
+// 				instance: image_frame_instance.instance,
+// 				transform: image_frame_instance.transform,
+// 				alpha_blending: image_frame_instance.alpha_blending,
+// 				source_node_id: image_frame_instance.source_node_id,
+// 			});
+// 		}
 
-		result_table
-	}
-}
+// 		result_table
+// 	}
+// }
 
 impl From<Image<SRGBA8>> for Image<Color> {
 	fn from(image: Image<SRGBA8>) -> Self {

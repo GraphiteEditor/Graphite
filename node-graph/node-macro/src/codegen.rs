@@ -163,6 +163,41 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			_ => quote!(None),
 		})
 		.collect();
+	let number_display_decimal_places: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular {
+				number_display_decimal_places: Some(decimal_places),
+				..
+			}
+			| ParsedField::Node {
+				number_display_decimal_places: Some(decimal_places),
+				..
+			} => {
+				quote!(Some(#decimal_places))
+			}
+			_ => quote!(None),
+		})
+		.collect();
+	let number_step: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { number_step: Some(step), .. } | ParsedField::Node { number_step: Some(step), .. } => {
+				quote!(Some(#step))
+			}
+			_ => quote!(None),
+		})
+		.collect();
+
+	let unit_suffix: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { unit: Some(unit), .. } | ParsedField::Node { unit: Some(unit), .. } => {
+				quote!(Some(#unit))
+			}
+			_ => quote!(None),
+		})
+		.collect();
 
 	let exposed: Vec<_> = fields
 		.iter()
@@ -375,6 +410,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 								number_min: #number_min_values,
 								number_max: #number_max_values,
 								number_mode_range: #number_mode_range_values,
+								number_display_decimal_places: #number_display_decimal_places,
+								number_step: #number_step,
+								unit: #unit_suffix,
 							},
 						)*
 					],

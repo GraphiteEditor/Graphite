@@ -11,7 +11,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::Color;
+use graphene_std::Color;
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 
 #[derive(Default)]
@@ -541,8 +541,8 @@ mod test_spline_tool {
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::VectorData;
 	use graphene_std::vector::PointId;
+	use graphene_std::vector::VectorData;
 
 	fn assert_point_positions(vector_data: &VectorData, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
 		let points_in_viewport: Vec<DVec2> = vector_data
@@ -670,7 +670,9 @@ mod test_spline_tool {
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
 		// Evaluate the graph to ensure everything is processed
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -708,7 +710,9 @@ mod test_spline_tool {
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
 		// Evaluating the graph to ensure everything is processed
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -744,7 +748,9 @@ mod test_spline_tool {
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
 		// Evaluating the graph to ensure everything is processed
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -781,7 +787,9 @@ mod test_spline_tool {
 		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150.0, 100.0), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
-		editor.eval_graph().await;
+		if let Err(e) = editor.eval_graph().await {
+			panic!("Graph evaluation failed: {}", e);
+		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();

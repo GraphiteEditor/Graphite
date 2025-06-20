@@ -1,11 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::raster::curve::{CubicSplines, CurveManipulatorGroup};
-#[cfg(feature = "alloc")]
 use crate::raster::curve::{Curve, ValueMapperNode};
-#[cfg(feature = "alloc")]
-use crate::raster::image::{Image, ImageFrameTable};
+use crate::raster::image::Image;
 use crate::raster::{Channel, Color, Pixel};
+use crate::raster_types::{CPU, Raster, RasterDataTable};
 use crate::registry::types::{Angle, Percentage, SignedPercentage};
 use crate::vector::VectorDataTable;
 use crate::vector::style::GradientStops;
@@ -34,8 +33,7 @@ use spirv_std::num_traits::float::Float;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
@@ -48,8 +46,7 @@ pub enum LuminanceCalculation {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type)]
 #[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
 	// Basic group
@@ -265,7 +262,7 @@ fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -289,7 +286,7 @@ fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -312,7 +309,7 @@ fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -337,7 +334,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 	Color,
-	ImageFrameTable<Color>,
+	RasterDataTable<CPU>,
 	GradientStops,
 )]
 	mut input: T,
@@ -426,7 +423,7 @@ fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -493,7 +490,7 @@ async fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -565,7 +562,7 @@ async fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -599,7 +596,7 @@ async fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -621,7 +618,7 @@ async fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -663,19 +660,19 @@ impl Blend<Color> for Option<Color> {
 		}
 	}
 }
-impl Blend<Color> for ImageFrameTable<Color> {
+impl Blend<Color> for RasterDataTable<CPU> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
 		let mut result_table = self.clone();
 
 		for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
 			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
 
-			*over.instance = Image {
+			*over.instance = Raster::new_cpu(Image {
 				data,
 				width: over.instance.width,
 				height: over.instance.height,
 				base64_string: None,
-			};
+			});
 		}
 
 		result_table
@@ -706,14 +703,14 @@ async fn blend<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	over: T,
 	#[expose]
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	under: T,
@@ -795,13 +792,13 @@ impl Adjust<Color> for GradientStops {
 		}
 	}
 }
-impl<P: Pixel> Adjust<P> for ImageFrameTable<P>
+impl Adjust<Color> for RasterDataTable<CPU>
 where
-	GraphicElement: From<Image<P>>,
+	GraphicElement: From<Image<Color>>,
 {
-	fn adjust(&mut self, map_fn: impl Fn(&P) -> P) {
+	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
 		for instance in self.instance_mut_iter() {
-			for c in instance.instance.data.iter_mut() {
+			for c in instance.instance.data_mut().data.iter_mut() {
 				*c = map_fn(c);
 			}
 		}
@@ -829,7 +826,7 @@ async fn gradient_map<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -865,7 +862,7 @@ async fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -923,8 +920,7 @@ async fn vibrance<T: Adjust<Color>>(
 
 /// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -935,8 +931,7 @@ pub enum RedGreenBlue {
 
 /// Color Channel
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
@@ -948,8 +943,7 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -965,8 +959,7 @@ pub enum NoiseType {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 /// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
@@ -983,8 +976,7 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -995,8 +987,7 @@ pub enum CellularDistanceFunction {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -1016,8 +1007,7 @@ pub enum CellularReturnType {
 
 /// Type of domain warp
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -1037,7 +1027,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1127,8 +1117,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -1138,8 +1127,7 @@ pub enum RelativeAbsolute {
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1166,7 +1154,7 @@ async fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1309,13 +1297,43 @@ impl MultiplyAlpha for GraphicGroupTable {
 		}
 	}
 }
-impl<P: Pixel> MultiplyAlpha for ImageFrameTable<P>
+impl MultiplyAlpha for RasterDataTable<CPU>
 where
-	GraphicElement: From<Image<P>>,
+	GraphicElement: From<Image<Color>>,
 {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.opacity *= factor as f32;
+		}
+	}
+}
+
+pub(super) trait MultiplyFill {
+	fn multiply_fill(&mut self, factor: f64);
+}
+impl MultiplyFill for Color {
+	fn multiply_fill(&mut self, factor: f64) {
+		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
+	}
+}
+impl MultiplyFill for VectorDataTable {
+	fn multiply_fill(&mut self, factor: f64) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.fill *= factor as f32;
+		}
+	}
+}
+impl MultiplyFill for GraphicGroupTable {
+	fn multiply_fill(&mut self, factor: f64) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.fill *= factor as f32;
+		}
+	}
+}
+impl MultiplyFill for RasterDataTable<CPU> {
+	fn multiply_fill(&mut self, factor: f64) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.fill *= factor as f32;
 		}
 	}
 }
@@ -1331,7 +1349,7 @@ async fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -1364,7 +1382,7 @@ async fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut input: T,
@@ -1391,7 +1409,6 @@ async fn exposure<T: Adjust<Color>>(
 
 const WINDOW_SIZE: usize = 1024;
 
-#[cfg(feature = "alloc")]
 #[node_macro::node(category(""))]
 fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve, #[implementations(f32, f64)] _target_format: C) -> ValueMapperNode<C> {
 	use bezier_rs::{Bezier, TValue};
@@ -1432,13 +1449,12 @@ fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve
 	ValueMapperNode::new(lut)
 }
 
-#[cfg(feature = "alloc")]
 #[node_macro::node(category("Raster: Adjustment"))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
 		Color,
-		ImageFrameTable<Color>,
+		RasterDataTable<CPU>,
 		GradientStops,
 	)]
 	mut image: T,
@@ -1460,10 +1476,8 @@ fn color_overlay<T: Adjust<Color>>(
 	image
 }
 
-// #[cfg(feature = "alloc")]
 // pub use index_node::IndexNode;
 
-// #[cfg(feature = "alloc")]
 // mod index_node {
 // 	use crate::raster::{Color, Image};
 // 	use crate::Ctx;
@@ -1488,7 +1502,8 @@ fn color_overlay<T: Adjust<Color>>(
 #[cfg(test)]
 mod test {
 	use crate::raster::adjustments::BlendMode;
-	use crate::raster::image::{Image, ImageFrameTable};
+	use crate::raster::image::Image;
+	use crate::raster_types::{Raster, RasterDataTable};
 	use crate::{Color, Node};
 	use std::pin::Pin;
 
@@ -1514,7 +1529,7 @@ mod test {
 		// 100% of the output should come from the multiplied value
 		let opacity = 100_f64;
 
-		let result = super::color_overlay((), ImageFrameTable::new(image.clone()), overlay_color, BlendMode::Multiply, opacity);
+		let result = super::color_overlay((), RasterDataTable::new(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
 		let result = result.instance_ref_iter().next().unwrap().instance;
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)

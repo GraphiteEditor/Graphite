@@ -55,7 +55,6 @@ pub struct AsyncComposeNode<First, Second, I> {
 	phantom: PhantomData<I>,
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, Input: 'static, First, Second> Node<'i, Input> for AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
@@ -71,7 +70,6 @@ where
 	}
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, First, Second, Input: 'i> AsyncComposeNode<First, Second, Input>
 where
 	First: Node<'i, Input>,
@@ -95,7 +93,6 @@ pub trait Then<'i, Input: 'i>: Sized {
 
 impl<'i, First: Node<'i, Input>, Input: 'i> Then<'i, Input> for First {}
 
-#[cfg(feature = "alloc")]
 pub trait AndThen<'i, Input: 'i>: Sized {
 	fn and_then<Second>(self, second: Second) -> AsyncComposeNode<Self, Second, Input>
 	where
@@ -107,7 +104,6 @@ pub trait AndThen<'i, Input: 'i>: Sized {
 	}
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, First: Node<'i, Input>, Input: 'i> AndThen<'i, Input> for First {}
 
 pub struct ConsNode<I: From<()>, Root>(pub Root, PhantomData<I>);

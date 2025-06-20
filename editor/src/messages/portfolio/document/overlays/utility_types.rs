@@ -8,10 +8,9 @@ use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, TAU};
 use glam::{DAffine2, DVec2};
-use graphene_core::Color;
-use graphene_core::renderer::Quad;
+use graphene_std::Color;
 use graphene_std::renderer::ClickTargetType;
-use graphene_std::transform::Transform;
+use graphene_std::renderer::Quad;
 use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, SegmentId, VectorData};
 use std::collections::HashMap;
@@ -674,13 +673,24 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	/// Used by the Select tool to outline a path selected or hovered.
-	pub fn outline(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: Option<&str>) {
-		self.draw_path_from_subpaths(subpaths, transform);
+	/// Used by the Select tool to outline a path or a free point when selected or hovered.
+	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
+		let mut subpaths: Vec<bezier_rs::Subpath<PointId>> = vec![];
 
-		let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
-		self.render_context.set_stroke_style_str(color);
-		self.render_context.stroke();
+		target_types.for_each(|target_type| match target_type.borrow() {
+			ClickTargetType::FreePoint(point) => {
+				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+			}
+			ClickTargetType::Subpath(subpath) => subpaths.push(subpath.clone()),
+		});
+
+		if !subpaths.is_empty() {
+			self.draw_path_from_subpaths(subpaths.iter(), transform);
+
+			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
+			self.render_context.set_stroke_style_str(color);
+			self.render_context.stroke();
+		}
 	}
 
 	/// Default canvas pattern used for filling stroke or fill of a path.
@@ -718,7 +728,15 @@ impl OverlayContext {
 
 	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
 	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color, with_pattern: bool, clear_stroke_part: bool, stroke_width: Option<f64>) {
+	pub fn fill_path(
+		&mut self,
+		subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>,
+		transform: DAffine2,
+		color: &Color,
+		with_pattern: bool,
+		clear_stroke_part: bool,
+		stroke_width: Option<f64>,
+	) {
 		self.render_context.save();
 		self.render_context.set_line_width(stroke_width.unwrap_or(1.));
 		self.draw_path_from_subpaths(subpaths, transform);
@@ -750,9 +768,9 @@ impl OverlayContext {
 
 		self.render_context
 			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
-		self.render_context.set_line_cap(overlay_stroke.line_cap.html_canvas_name().as_str());
-		self.render_context.set_line_join(overlay_stroke.line_join.html_canvas_name().as_str());
-		self.render_context.set_miter_limit(overlay_stroke.line_join_miter_limit);
+		self.render_context.set_line_cap(overlay_stroke.cap.html_canvas_name().as_str());
+		self.render_context.set_line_join(overlay_stroke.join.html_canvas_name().as_str());
+		self.render_context.set_miter_limit(overlay_stroke.join_miter_limit);
 		self.render_context.stroke();
 
 		self.render_context.restore();

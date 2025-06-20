@@ -2,9 +2,8 @@ use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
 use graph_craft::document::value::TaggedValue;
-use graphene_core::vector::style::Fill;
 use graphene_std::vector::PointId;
-use graphene_std::vector::style::Stroke;
+use graphene_std::vector::style::{Fill, Stroke};
 
 #[derive(Default)]
 pub struct FillTool {
@@ -139,11 +138,11 @@ impl Fsm for FillToolFsmState {
 								let mut stroke = Stroke::new(Some(preview_color), modified_stroke_width);
 								stroke.transform = document.metadata().transform_to_viewport(layer);
 								let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
-								stroke.line_cap = if let TaggedValue::LineCap(line_cap) = line_cap { *line_cap } else { return None };
+								stroke.cap = if let TaggedValue::StrokeCap(line_cap) = line_cap { *line_cap } else { return None };
 								let line_join = graph_layer.find_input("Stroke", 6).unwrap();
-								stroke.line_join = if let TaggedValue::LineJoin(line_join) = line_join { *line_join } else { return None };
+								stroke.join = if let TaggedValue::StrokeJoin(line_join) = line_join { *line_join } else { return None };
 								let miter_limit = graph_layer.find_input("Stroke", 7).unwrap();
-								stroke.line_join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { return None };
+								stroke.join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { return None };
 
 								Some(stroke)
 							};
@@ -154,7 +153,14 @@ impl Fsm for FillToolFsmState {
 							}
 						} else if fill_exists_and_visible {
 							subpaths = vector_data.stroke_bezier_paths();
-							overlay_context.fill_path(subpaths, document.metadata().transform_to_viewport(layer), &preview_color, true, stroke_exists_and_visible, Some(modified_stroke_width));
+							overlay_context.fill_path(
+								subpaths,
+								document.metadata().transform_to_viewport(layer),
+								&preview_color,
+								true,
+								stroke_exists_and_visible,
+								Some(modified_stroke_width),
+							);
 						}
 					}
 				}
@@ -238,11 +244,14 @@ impl Fsm for FillToolFsmState {
 #[cfg(test)]
 mod test_fill {
 	pub use crate::test_utils::test_prelude::*;
-	use graphene_core::vector::fill;
+	use graphene_std::vector::fill;
 	use graphene_std::vector::style::Fill;
 
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Fill> {
-		let instrumented = editor.eval_graph().await;
+		let instrumented = match editor.eval_graph().await {
+			Ok(instrumented) => instrumented,
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
+		};
 
 		instrumented.grab_all_input::<fill::FillInput<Fill>>(&editor.runtime).collect()
 	}

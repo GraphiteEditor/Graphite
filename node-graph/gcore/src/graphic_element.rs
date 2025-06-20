@@ -1,7 +1,7 @@
-use crate::application_io::{ImageTexture, TextureFrameTable};
 use crate::instances::{Instance, Instances};
 use crate::raster::BlendMode;
-use crate::raster::image::{Image, ImageFrameTable};
+use crate::raster::image::Image;
+use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
 use crate::transform::TransformMut;
 use crate::uuid::NodeId;
 use crate::vector::{VectorData, VectorDataTable};
@@ -14,9 +14,12 @@ pub mod renderer;
 
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[serde(default)]
 pub struct AlphaBlending {
-	pub opacity: f32,
 	pub blend_mode: BlendMode,
+	pub opacity: f32,
+	pub fill: f32,
+	pub clip: bool,
 }
 impl Default for AlphaBlending {
 	fn default() -> Self {
@@ -26,14 +29,32 @@ impl Default for AlphaBlending {
 impl core::hash::Hash for AlphaBlending {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
+		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
+		self.clip.hash(state);
 	}
 }
+impl std::fmt::Display for AlphaBlending {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let round = |x: f32| (x * 1e3).round() / 1e3;
+		write!(
+			f,
+			"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
+			self.blend_mode,
+			round(self.opacity * 100.),
+			round(self.fill * 100.),
+			if self.clip { "Yes" } else { "No" }
+		)
+	}
+}
+
 impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
 			opacity: 1.,
+			fill: 1.,
 			blend_mode: BlendMode::Normal,
+			clip: false,
 		}
 	}
 
@@ -42,7 +63,9 @@ impl AlphaBlending {
 
 		AlphaBlending {
 			opacity: lerp(self.opacity, other.opacity, t),
+			fill: lerp(self.fill, other.fill, t),
 			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
+			clip: if t < 0.5 { self.clip } else { other.clip },
 		}
 	}
 }
@@ -124,22 +147,17 @@ impl From<VectorDataTable> for GraphicGroupTable {
 }
 impl From<Image<Color>> for GraphicGroupTable {
 	fn from(image: Image<Color>) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image))))
+		Self::new(GraphicElement::RasterDataCPU(RasterDataTable::<CPU>::new(Raster::new_cpu(image))))
 	}
 }
-impl From<ImageFrameTable<Color>> for GraphicGroupTable {
-	fn from(image_frame: ImageFrameTable<Color>) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame)))
+impl From<RasterDataTable<CPU>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<CPU>) -> Self {
+		Self::new(GraphicElement::RasterDataCPU(raster_data_table))
 	}
 }
-impl From<ImageTexture> for GraphicGroupTable {
-	fn from(image_texture: ImageTexture) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(image_texture))))
-	}
-}
-impl From<TextureFrameTable> for GraphicGroupTable {
-	fn from(texture_frame: TextureFrameTable) -> Self {
-		Self::new(GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture_frame)))
+impl From<RasterDataTable<GPU>> for GraphicGroupTable {
+	fn from(raster_data_table: RasterDataTable<GPU>) -> Self {
+		Self::new(GraphicElement::RasterDataGPU(raster_data_table))
 	}
 }
 
@@ -151,7 +169,8 @@ pub enum GraphicElement {
 	GraphicGroup(GraphicGroupTable),
 	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
 	VectorData(VectorDataTable),
-	RasterFrame(RasterFrame),
+	RasterDataCPU(RasterDataTable<CPU>),
+	RasterDataGPU(RasterDataTable<GPU>),
 }
 
 impl Default for GraphicElement {
@@ -189,50 +208,73 @@ impl GraphicElement {
 		}
 	}
 
-	pub fn as_raster(&self) -> Option<&RasterFrame> {
+	pub fn as_raster(&self) -> Option<&RasterDataTable<CPU>> {
 		match self {
-			GraphicElement::RasterFrame(raster) => Some(raster),
+			GraphicElement::RasterDataCPU(raster) => Some(raster),
 			_ => None,
 		}
 	}
 
-	pub fn as_raster_mut(&mut self) -> Option<&mut RasterFrame> {
+	pub fn as_raster_mut(&mut self) -> Option<&mut RasterDataTable<CPU>> {
 		match self {
-			GraphicElement::RasterFrame(raster) => Some(raster),
+			GraphicElement::RasterDataCPU(raster) => Some(raster),
 			_ => None,
+		}
+	}
+
+	pub fn had_clip_enabled(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::GraphicGroup(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterDataCPU(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterDataGPU(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+		}
+	}
+
+	pub fn can_reduce_to_clip_path(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
+				let style = &instance_data.instance.style;
+				let alpha_blending = &instance_data.alpha_blending;
+				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			}),
+			_ => false,
 		}
 	}
 }
 
-// TODO: Rename to Raster
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-pub enum RasterFrame {
-	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-	// TODO: Rename to ImageTable
-	ImageFrame(ImageFrameTable<Color>),
-	/// A GPU texture with a finite position and extent
-	// TODO: Rename to ImageTextureTable
-	TextureFrame(TextureFrameTable),
-}
-
-impl<'de> serde::Deserialize<'de> for RasterFrame {
+impl<'de> serde::Deserialize<'de> for Raster<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
 	{
-		Ok(RasterFrame::ImageFrame(ImageFrameTable::new(Image::deserialize(deserializer)?)))
+		Ok(Raster::new_cpu(Image::deserialize(deserializer)?))
 	}
 }
 
-impl serde::Serialize for RasterFrame {
+impl serde::Serialize for Raster<CPU> {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: serde::Serializer,
 	{
-		match self {
-			RasterFrame::ImageFrame(_) => self.serialize(serializer),
-			RasterFrame::TextureFrame(_) => todo!(),
-		}
+		self.data().serialize(serializer)
+	}
+}
+impl<'de> serde::Deserialize<'de> for Raster<GPU> {
+	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		unimplemented!()
+	}
+}
+
+impl serde::Serialize for Raster<GPU> {
+	fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		unimplemented!()
 	}
 }
 
@@ -324,8 +366,8 @@ async fn to_element<Data: Into<GraphicElement> + 'n>(
 	#[implementations(
 		GraphicGroupTable,
 	 	VectorDataTable,
-		ImageFrameTable<Color>,
-	 	TextureFrameTable,
+		RasterDataTable<CPU>,
+	 	RasterDataTable<GPU>,
 	)]
 	data: Data,
 ) -> GraphicElement {
@@ -338,8 +380,8 @@ async fn to_group<Data: Into<GraphicGroupTable> + 'n>(
 	#[implementations(
 		GraphicGroupTable,
 		VectorDataTable,
-		ImageFrameTable<Color>,
-		TextureFrameTable,
+		RasterDataTable<CPU>,
+		RasterDataTable<GPU>,
 	)]
 	element: Data,
 ) -> GraphicGroupTable {
@@ -385,14 +427,59 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 	output
 }
 
+#[node_macro::node(category("General"))]
+async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTable {
+	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
+	fn flatten_group(output_group_table: &mut VectorDataTable, current_group_table: GraphicGroupTable) {
+		for current_instance in current_group_table.instance_ref_iter() {
+			let current_element = current_instance.instance.clone();
+			let reference = *current_instance.source_node_id;
+
+			match current_element {
+				// If we're allowed to recurse, flatten any GraphicGroups we encounter
+				GraphicElement::GraphicGroup(mut current_element) => {
+					// Apply the parent group's transform to all child elements
+					for graphic_element in current_element.instance_mut_iter() {
+						*graphic_element.transform = *current_instance.transform * *graphic_element.transform;
+					}
+
+					flatten_group(output_group_table, current_element);
+				}
+				// Handle any leaf elements we encounter, which can be either non-GraphicGroup elements or GraphicGroups that we don't want to flatten
+				GraphicElement::VectorData(vector_instance) => {
+					for current_element in vector_instance.instance_ref_iter() {
+						output_group_table.push(Instance {
+							instance: current_element.instance.clone(),
+							transform: *current_instance.transform * *current_element.transform,
+							alpha_blending: AlphaBlending {
+								blend_mode: current_element.alpha_blending.blend_mode,
+								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
+								fill: current_element.alpha_blending.fill,
+								clip: current_element.alpha_blending.clip,
+							},
+							source_node_id: reference,
+						});
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+
+	let mut output = VectorDataTable::default();
+	flatten_group(&mut output, group);
+
+	output
+}
+
 #[node_macro::node(category(""))]
 async fn to_artboard<Data: Into<GraphicGroupTable> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> GraphicGroupTable,
 		Context -> VectorDataTable,
-		Context -> ImageFrameTable<Color>,
-		Context -> TextureFrameTable,
+		Context -> RasterDataTable<CPU>,
+		Context -> RasterDataTable<GPU>,
 	)]
 	contents: impl Node<Context<'static>, Output = Data>,
 	label: String,
@@ -437,24 +524,28 @@ async fn append_artboard(_ctx: impl Ctx, mut artboards: ArtboardGroupTable, artb
 
 // TODO: Remove this one
 impl From<Image<Color>> for GraphicElement {
-	fn from(image_frame: Image<Color>) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::ImageFrame(ImageFrameTable::new(image_frame)))
+	fn from(raster_data: Image<Color>) -> Self {
+		GraphicElement::RasterDataCPU(RasterDataTable::<CPU>::new(Raster::new_cpu(raster_data)))
 	}
 }
-impl From<ImageFrameTable<Color>> for GraphicElement {
-	fn from(image_frame: ImageFrameTable<Color>) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::ImageFrame(image_frame))
+impl From<RasterDataTable<CPU>> for GraphicElement {
+	fn from(raster_data: RasterDataTable<CPU>) -> Self {
+		GraphicElement::RasterDataCPU(raster_data)
 	}
 }
-// TODO: Remove this one
-impl From<ImageTexture> for GraphicElement {
-	fn from(texture: ImageTexture) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::TextureFrame(TextureFrameTable::new(texture)))
+impl From<RasterDataTable<GPU>> for GraphicElement {
+	fn from(raster_data: RasterDataTable<GPU>) -> Self {
+		GraphicElement::RasterDataGPU(raster_data)
 	}
 }
-impl From<TextureFrameTable> for GraphicElement {
-	fn from(texture: TextureFrameTable) -> Self {
-		GraphicElement::RasterFrame(RasterFrame::TextureFrame(texture))
+impl From<Raster<CPU>> for GraphicElement {
+	fn from(raster_data: Raster<CPU>) -> Self {
+		GraphicElement::RasterDataCPU(RasterDataTable::new(raster_data))
+	}
+}
+impl From<Raster<GPU>> for GraphicElement {
+	fn from(raster_data: Raster<GPU>) -> Self {
+		GraphicElement::RasterDataGPU(RasterDataTable::new(raster_data))
 	}
 }
 // TODO: Remove this one

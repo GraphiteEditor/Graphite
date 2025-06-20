@@ -3,9 +3,8 @@ use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
-use graphene_core::renderer::ClickTarget;
-use graphene_core::renderer::Quad;
-use graphene_core::transform::Footprint;
+use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
+use graphene_std::transform::Footprint;
 use graphene_std::vector::{PointId, VectorData};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
@@ -134,7 +133,10 @@ impl DocumentMetadata {
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.click_targets(layer)?
 			.iter()
-			.filter_map(|click_target| click_target.subpath().bounding_box_with_transform(transform))
+			.filter_map(|click_target| match click_target.target_type() {
+				ClickTargetType::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
+				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
+			})
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -177,7 +179,16 @@ impl DocumentMetadata {
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
-		click_targets.iter().map(ClickTarget::subpath)
+		click_targets.iter().filter_map(|target| match target.target_type() {
+			ClickTargetType::Subpath(subpath) => Some(subpath),
+			_ => None,
+		})
+	}
+
+	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
+		static EMPTY: Vec<ClickTarget> = Vec::new();
+		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
+		click_targets.iter().map(|target| target.target_type())
 	}
 
 	pub fn is_clip(&self, node: NodeId) -> bool {
@@ -274,6 +285,12 @@ impl LayerNodeIdentifier {
 	/// Is the layer an ancestor of the given layer?
 	pub fn is_ancestor_of(self, metadata: &DocumentMetadata, child: &LayerNodeIdentifier) -> bool {
 		child.ancestors(metadata).any(|ancestor| ancestor == self)
+	}
+
+	/// Is the layer last child of parent group? Used for clipping
+	pub fn can_be_clipped(self, metadata: &DocumentMetadata) -> bool {
+		self.parent(metadata)
+			.map_or(false, |layer| layer.last_child(metadata).expect("Parent accessed via child should have children") != self)
 	}
 
 	/// Iterator over all direct children (excluding self and recursive children)
@@ -505,49 +522,53 @@ pub struct NodeRelations {
 // Helper functions
 // ================
 
-#[test]
-fn test_tree() {
-	let mut metadata = DocumentMetadata::default();
-	let root = LayerNodeIdentifier::ROOT_PARENT;
-	let metadata = &mut metadata;
-	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(3)));
-	assert_eq!(root.children(metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);
-	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(6)));
-	assert_eq!(root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
-	assert_eq!(root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
-	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(4)));
-	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(2)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(5)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(9)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(8)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).push_front_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(7)));
-	root.push_front_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(1)));
-	assert_eq!(
-		root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
-		vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(9)]
-	);
-	assert_eq!(
-		root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
-		vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(7), NodeId(8), NodeId(9)]
-	);
-	assert_eq!(
-		root.descendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
-		vec![NodeId(9), NodeId(8), NodeId(7), NodeId(6), NodeId(5), NodeId(4), NodeId(3), NodeId(2), NodeId(1)]
-	);
-	assert!(root.children(metadata).all(|child| child.parent(metadata) == Some(root)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).delete(metadata);
-	LayerNodeIdentifier::new_unchecked(NodeId(1)).delete(metadata);
-	LayerNodeIdentifier::new_unchecked(NodeId(9)).push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(10)));
-	assert_eq!(
-		root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
-		vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9)]
-	);
-	assert_eq!(
-		root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
-		vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9), NodeId(10)]
-	);
-	assert_eq!(
-		root.descendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
-		vec![NodeId(10), NodeId(9), NodeId(5), NodeId(4), NodeId(3), NodeId(2)]
-	);
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn test_tree() {
+		let mut metadata = DocumentMetadata::default();
+		let root = LayerNodeIdentifier::ROOT_PARENT;
+		let metadata = &mut metadata;
+		root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(3)));
+		assert_eq!(root.children(metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);
+		root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(6)));
+		assert_eq!(root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
+		assert_eq!(root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
+		LayerNodeIdentifier::new_unchecked(NodeId(3)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(4)));
+		LayerNodeIdentifier::new_unchecked(NodeId(3)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(2)));
+		LayerNodeIdentifier::new_unchecked(NodeId(6)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(5)));
+		LayerNodeIdentifier::new_unchecked(NodeId(6)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(9)));
+		LayerNodeIdentifier::new_unchecked(NodeId(6)).push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(8)));
+		LayerNodeIdentifier::new_unchecked(NodeId(6)).push_front_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(7)));
+		root.push_front_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(1)));
+		assert_eq!(
+			root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+			vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(9)]
+		);
+		assert_eq!(
+			root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+			vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(7), NodeId(8), NodeId(9)]
+		);
+		assert_eq!(
+			root.descendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
+			vec![NodeId(9), NodeId(8), NodeId(7), NodeId(6), NodeId(5), NodeId(4), NodeId(3), NodeId(2), NodeId(1)]
+		);
+		assert!(root.children(metadata).all(|child| child.parent(metadata) == Some(root)));
+		LayerNodeIdentifier::new_unchecked(NodeId(6)).delete(metadata);
+		LayerNodeIdentifier::new_unchecked(NodeId(1)).delete(metadata);
+		LayerNodeIdentifier::new_unchecked(NodeId(9)).push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(10)));
+		assert_eq!(
+			root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+			vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9)]
+		);
+		assert_eq!(
+			root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+			vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9), NodeId(10)]
+		);
+		assert_eq!(
+			root.descendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
+			vec![NodeId(10), NodeId(9), NodeId(5), NodeId(4), NodeId(3), NodeId(2)]
+		);
+	}
 }

@@ -6,8 +6,9 @@ use graphene_core::instances::Instance;
 use graphene_core::raster::adjustments::blend_colors;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::image::{Image, ImageFrameTable};
+use graphene_core::raster::image::Image;
 use graphene_core::raster::{Alpha, BitmapMut, BlendMode, Color, Pixel, Sample};
+use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::renderer::GraphicElementRendered;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
@@ -80,11 +81,10 @@ fn brush_stamp_generator(diameter: f64, color: Color, hardness: f64, flow: f64) 
 }
 
 #[node_macro::node(skip_impl)]
-fn blit<P, BlendFn>(mut target: ImageFrameTable<P>, texture: Image<P>, positions: Vec<DVec2>, blend_mode: BlendFn) -> ImageFrameTable<P>
+fn blit<BlendFn>(mut target: RasterDataTable<CPU>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> RasterDataTable<CPU>
 where
-	P: Pixel + Alpha + std::fmt::Debug,
-	BlendFn: for<'any_input> Node<'any_input, (P, P), Output = P>,
-	GraphicElement: From<Image<P>>,
+	BlendFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color>,
+	GraphicElement: From<Raster<CPU>>,
 {
 	if positions.is_empty() {
 		return target;
@@ -122,7 +122,7 @@ where
 			for y in blit_area_offset.y..blit_area_offset.y + blit_area_dimensions.y {
 				for x in blit_area_offset.x..blit_area_offset.x + blit_area_dimensions.x {
 					let src_pixel = texture.data[texture_index(x, y)];
-					let dst_pixel = &mut target_instance.instance.data[target_index(x + clamp_start.x, y + clamp_start.y)];
+					let dst_pixel = &mut target_instance.instance.data_mut().data[target_index(x + clamp_start.x, y + clamp_start.y)];
 					*dst_pixel = blend_mode.eval((src_pixel, *dst_pixel));
 				}
 			}
@@ -132,7 +132,7 @@ where
 	target
 }
 
-pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
+pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 	let stamp = brush_stamp_generator(brush_style.diameter, brush_style.color, brush_style.hardness, brush_style.flow);
 	let transform = DAffine2::from_scale_angle_translation(DVec2::splat(brush_style.diameter), 0., -DVec2::splat(brush_style.diameter / 2.));
 	let blank_texture = empty_image((), transform, Color::TRANSPARENT).instance_iter().next().unwrap_or_default();
@@ -141,7 +141,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Image<Color> {
 	image.instance
 }
 
-pub fn blend_with_mode(background: Instance<Image<Color>>, foreground: Instance<Image<Color>>, blend_mode: BlendMode, opacity: f64) -> Instance<Image<Color>> {
+pub fn blend_with_mode(background: Instance<Raster<CPU>>, foreground: Instance<Raster<CPU>>, blend_mode: BlendMode, opacity: f64) -> Instance<Raster<CPU>> {
 	let opacity = opacity / 100.;
 	match std::hint::black_box(blend_mode) {
 		// Normal group
@@ -184,12 +184,12 @@ pub fn blend_with_mode(background: Instance<Image<Color>>, foreground: Instance<
 }
 
 #[node_macro::node(category("Raster"))]
-async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strokes: Vec<BrushStroke>, cache: BrushCache) -> ImageFrameTable<Color> {
+async fn brush(_: impl Ctx, mut image_frame_table: RasterDataTable<CPU>, strokes: Vec<BrushStroke>, cache: BrushCache) -> RasterDataTable<CPU> {
+	if image_frame_table.is_empty() {
+		image_frame_table.push(Instance::default());
+	}
 	// TODO: Find a way to handle more than one instance
-	let Some(image_frame_instance) = image_frame_table.instance_ref_iter().next() else {
-		return ImageFrameTable::default();
-	};
-	let image_frame_instance = image_frame_instance.to_instance_cloned();
+	let image_frame_instance = image_frame_table.instance_ref_iter().next().expect("Expected the one instance we just pushed").to_instance_cloned();
 
 	let [start, end] = image_frame_instance.clone().to_table().bounding_box(DAffine2::IDENTITY, false).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 	let image_bbox = AxisAlignedBbox { start, end };
@@ -204,7 +204,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strok
 
 	// TODO: Find a way to handle more than one instance
 	let Some(mut actual_image) = extend_image_to_bounds((), brush_plan.background.to_table(), background_bounds).instance_iter().next() else {
-		return ImageFrameTable::default();
+		return RasterDataTable::default();
 	};
 
 	let final_stroke_idx = brush_plan.strokes.len().saturating_sub(1);
@@ -268,7 +268,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strok
 	if has_erase_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = Instance {
-			instance: opaque_image,
+			instance: Raster::new_cpu(opaque_image),
 			transform: background_bounds,
 			..Default::default()
 		};
@@ -320,7 +320,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: ImageFrameTable<Color>, strok
 	image_frame_table
 }
 
-pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: Instance<Image<Color>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Image<Color>> {
+pub fn blend_image_closure(foreground: Instance<Raster<CPU>>, mut background: Instance<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Raster<CPU>> {
 	let foreground_size = DVec2::new(foreground.instance.width as f64, foreground.instance.height as f64);
 	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
 
@@ -340,7 +340,7 @@ pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: I
 			let foreground_point = background_to_foreground.transform_point2(background_point);
 
 			let source_pixel = foreground.instance.sample(foreground_point);
-			let Some(destination_pixel) = background.instance.get_pixel_mut(x, y) else { continue };
+			let Some(destination_pixel) = background.instance.data_mut().get_pixel_mut(x, y) else { continue };
 
 			*destination_pixel = map_fn(source_pixel, *destination_pixel);
 		}
@@ -349,7 +349,7 @@ pub fn blend_image_closure(foreground: Instance<Image<Color>>, mut background: I
 	background
 }
 
-pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: Instance<Image<Color>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Image<Color>> {
+pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut background: Instance<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> Instance<Raster<CPU>> {
 	let background_size = DVec2::new(background.instance.width as f64, background.instance.height as f64);
 
 	// Transforms a point from the background image to the foreground image
@@ -369,7 +369,7 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 			let foreground_point = background_to_foreground.transform_point2(background_point);
 
 			let Some(source_pixel) = foreground.sample(foreground_point, area) else { continue };
-			let Some(destination_pixel) = background.instance.get_pixel_mut(x, y) else { continue };
+			let Some(destination_pixel) = background.instance.data_mut().get_pixel_mut(x, y) else { continue };
 
 			*destination_pixel = map_fn(source_pixel, *destination_pixel);
 		}
@@ -397,7 +397,7 @@ mod test {
 	async fn test_brush_output_size() {
 		let image = brush(
 			(),
-			ImageFrameTable::<Color>::new(Image::<Color>::default()),
+			RasterDataTable::<CPU>::new(Raster::new_cpu(Image::<Color>::default())),
 			vec![BrushStroke {
 				trace: vec![crate::vector::brush_stroke::BrushInputSample { position: DVec2::ZERO }],
 				style: BrushStyle {

@@ -20,7 +20,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_opacity};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -29,10 +29,10 @@ use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::vector::style::ViewMode;
-use graphene_std::renderer::{ClickTarget, Quad};
+use graphene_std::raster::BlendMode;
+use graphene_std::raster_types::{Raster, RasterDataTable};
+use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
+use graphene_std::vector::style::ViewMode;
 use graphene_std::vector::{PointId, path_bool_lib};
 use std::time::Duration;
 
@@ -864,7 +864,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(ImageFrameTable::new(image), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(RasterDataTable::new(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -1082,6 +1082,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
+			DocumentMessage::ClipLayer { id } => {
+				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
+
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(GraphOperationMessage::ClipModeToggle { layer });
+			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface, &[]);
 
@@ -1174,6 +1180,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let opacity = opacity.clamp(0., 1.);
 				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
+				}
+			}
+			DocumentMessage::SetFillForSelectedLayers { fill } => {
+				let fill = fill.clamp(0., 1.);
+				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
+					responses.add(GraphOperationMessage::BlendingFillSet { layer, fill });
 				}
 			}
 			DocumentMessage::SetOverlaysVisibility { visible, overlays_type } => {
@@ -1580,7 +1592,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		let document_to_viewport = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 		let document_quad = document_to_viewport.inverse() * viewport_quad;
 
@@ -1588,7 +1600,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad; ignoring artboards
-	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+	pub fn intersect_quad_no_artboards<'a>(&'a self, viewport_quad: graphene_std::renderer::Quad, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.intersect_quad(viewport_quad, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
@@ -1605,7 +1617,7 @@ impl DocumentMessageHandler {
 		self.intersect_polygon(viewport_polygon, ipp).filter(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_core::renderer::Quad) -> bool {
+	pub fn is_layer_fully_inside(&self, layer: &LayerNodeIdentifier, quad: graphene_std::renderer::Quad) -> bool {
 		// Get the bounding box of the layer in document space
 		let Some(bounding_box) = self.metadata().bounding_box_viewport(*layer) else { return false };
 
@@ -1636,10 +1648,17 @@ impl DocumentMessageHandler {
 		let layer_transform = self.network_interface.document_metadata().transform_to_document(*layer);
 
 		layer_click_targets.is_some_and(|targets| {
-			targets.iter().all(|target| {
-				let mut subpath = target.subpath().clone();
-				subpath.apply_transform(layer_transform);
-				subpath.is_inside_subpath(&viewport_polygon, None, None)
+			targets.iter().all(|target| match target.target_type() {
+				ClickTargetType::Subpath(subpath) => {
+					let mut subpath = subpath.clone();
+					subpath.apply_transform(layer_transform);
+					subpath.is_inside_subpath(&viewport_polygon, None, None)
+				}
+				ClickTargetType::FreePoint(point) => {
+					let mut point = point.clone();
+					point.apply_transform(layer_transform);
+					viewport_polygon.contains_point(point.position)
+				}
 			})
 		})
 	}
@@ -1692,7 +1711,7 @@ impl DocumentMessageHandler {
 			.selected_nodes()
 			.selected_visible_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
@@ -1700,7 +1719,7 @@ impl DocumentMessageHandler {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
+			.reduce(graphene_std::renderer::Quad::combine_bounds)
 	}
 
 	pub fn document_network(&self) -> &NodeNetwork {
@@ -2546,38 +2565,47 @@ impl DocumentMessageHandler {
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
-		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
+		let mut blending_options = selected_layers_except_artboards.map(|layer| {
 			(
 				get_opacity(layer, &self.network_interface).unwrap_or(100.),
+				get_fill(layer, &self.network_interface).unwrap_or(100.),
 				get_blend_mode(layer, &self.network_interface).unwrap_or_default(),
 			)
 		});
-		let first_opacity_and_blend_mode = opacity_and_blend_mode.next();
-		let result_opacity_and_blend_mode = opacity_and_blend_mode;
+		let first_blending_options = blending_options.next();
+		let result_blending_options = blending_options;
 
 		// If there are no selected layers, disable the opacity and blend mode widgets.
-		let disabled = first_opacity_and_blend_mode.is_none();
+		let disabled = first_blending_options.is_none();
 
 		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
 		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.
 		// If identical, we display the value in the widget. If not, we display a dash indicating dissimilarity.
-		let (opacity, blend_mode) = first_opacity_and_blend_mode
-			.map(|(first_opacity, first_blend_mode)| {
+		let (opacity, fill, blend_mode) = first_blending_options
+			.map(|(first_opacity, first_fill, first_blend_mode)| {
 				let mut opacity_identical = true;
+				let mut fill_identical = true;
 				let mut blend_mode_identical = true;
 
-				for (opacity, blend_mode) in result_opacity_and_blend_mode {
+				for (opacity, fill, blend_mode) in result_blending_options {
 					if (opacity - first_opacity).abs() > (f64::EPSILON * 100.) {
 						opacity_identical = false;
+					}
+					if (fill - first_fill).abs() > (f64::EPSILON * 100.) {
+						fill_identical = false;
 					}
 					if blend_mode != first_blend_mode {
 						blend_mode_identical = false;
 					}
 				}
 
-				(opacity_identical.then_some(first_opacity), blend_mode_identical.then_some(first_blend_mode))
+				(
+					opacity_identical.then_some(first_opacity),
+					fill_identical.then_some(first_fill),
+					blend_mode_identical.then_some(first_blend_mode),
+				)
 			})
-			.unwrap_or((None, None));
+			.unwrap_or((None, None, None));
 
 		let blend_mode_menu_entries = BlendMode::list_svg_subset()
 			.iter()
@@ -2635,6 +2663,28 @@ impl DocumentMessageHandler {
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
 				.max_width(100)
 				.tooltip("Opacity")
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(fill)
+				.label("Fill")
+				.unit("%")
+				.display_decimal_places(0)
+				.disabled(disabled)
+				.min(0.)
+				.max(100.)
+				.range_min(Some(0.))
+				.range_max(Some(100.))
+				.mode_range()
+				.on_update(|number_input: &NumberInput| {
+					if let Some(value) = number_input.value {
+						DocumentMessage::SetFillForSelectedLayers { fill: value / 100. }.into()
+					} else {
+						Message::NoOp
+					}
+				})
+				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.max_width(100)
+				.tooltip("Fill")
 				.widget_holder(),
 		];
 		let layers_panel_control_bar_left = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
@@ -2862,7 +2912,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_core::ArtboardGroupTable::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), -1, "", &[]);
 	network_interface
 }
 
@@ -2900,7 +2950,14 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
 	};
 	click_targets
-		.flat_map(|target| target.subpath().iter())
+		.filter_map(|target| {
+			if let ClickTargetType::Subpath(subpath) = target.target_type() {
+				Some(subpath.iter())
+			} else {
+				None
+			}
+		})
+		.flatten()
 		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
 		.collect()
 }

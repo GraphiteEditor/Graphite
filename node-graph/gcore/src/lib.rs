@@ -1,17 +1,10 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
-#[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(feature = "alloc")]
-use core::future::Future;
 
-#[cfg_attr(feature = "log", macro_use)]
-#[cfg(feature = "log")]
+#[macro_use]
 extern crate log;
 pub use crate as graphene_core;
 pub use num_traits;
 
-#[cfg(feature = "reflections")]
 pub use ctor;
 
 pub mod animation;
@@ -22,38 +15,28 @@ pub mod instances;
 pub mod logic;
 pub mod misc;
 pub mod ops;
+pub mod raster_types;
 pub mod structural;
-#[cfg(feature = "std")]
 pub mod text;
-#[cfg(feature = "std")]
 pub mod uuid;
 pub mod value;
 
-#[cfg(feature = "gpu")]
-pub mod gpu;
-
-#[cfg(feature = "alloc")]
 pub mod memo;
 
 pub mod raster;
-#[cfg(feature = "alloc")]
 pub mod transform;
 
-#[cfg(feature = "alloc")]
 mod graphic_element;
-#[cfg(feature = "alloc")]
 pub use graphic_element::*;
-#[cfg(feature = "alloc")]
 pub mod vector;
 
-#[cfg(feature = "alloc")]
 pub mod application_io;
 
-#[cfg(feature = "reflections")]
 pub mod registry;
 
 pub use context::*;
 use core::any::TypeId;
+use core::future::Future;
 use core::pin::Pin;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
 pub use memo::MemoHash;
@@ -74,16 +57,13 @@ pub trait Node<'i, Input> {
 		core::any::type_name::<Self>()
 	}
 	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
-	#[cfg(feature = "std")]
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
 		log::warn!("Node::serialize not implemented for {}", core::any::type_name::<Self>());
 		None
 	}
 }
 
-#[cfg(feature = "alloc")]
 mod types;
-#[cfg(feature = "alloc")]
 pub use types::*;
 
 pub trait NodeIO<'i, Input>: Node<'i, Input>
@@ -103,7 +83,6 @@ where
 	fn output_type_name(&self) -> &'static str {
 		core::any::type_name::<Self::Output>()
 	}
-	#[cfg(feature = "alloc")]
 	fn to_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes {
 		NodeIOTypes {
 			call_argument: concrete!(<Input as StaticTypeSized>::Static),
@@ -111,7 +90,6 @@ where
 			inputs,
 		}
 	}
-	#[cfg(feature = "alloc")]
 	fn to_async_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes
 	where
 		<Self::Output as Future>::Output: StaticTypeSized,
@@ -138,14 +116,12 @@ impl<'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
 		(*self).eval(input)
 	}
 }
-#[cfg(feature = "alloc")]
 impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
 		(**self).eval(input)
 	}
 }
-#[cfg(feature = "alloc")]
 impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for alloc::sync::Arc<N> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
@@ -153,7 +129,6 @@ impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for allo
 	}
 }
 
-#[cfg(feature = "alloc")]
 impl<'i, I, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
 	type Output = O;
 	fn eval(&'i self, input: I) -> O {
@@ -167,7 +142,6 @@ impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)>
 	}
 }
 
-#[cfg(feature = "alloc")]
 pub use crate::application_io::{SurfaceFrame, SurfaceId};
 #[cfg(feature = "wasm")]
 pub type WasmSurfaceHandle = application_io::SurfaceHandle<web_sys::HtmlCanvasElement>;

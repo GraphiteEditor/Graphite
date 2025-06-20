@@ -1,6 +1,5 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
-use graphene_core::RasterFrame;
 use graphene_core::instances::{Instance, InstanceRef};
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
@@ -14,8 +13,23 @@ use std::ops::Mul;
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
 
+/// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
 #[node_macro::node(category(""))]
-async fn boolean_operation(_: impl Ctx, group_of_paths: GraphicGroupTable, operation: BooleanOperation) -> VectorDataTable {
+async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
+	_: impl Ctx,
+	/// The group of paths to perform the boolean operation on. Nested groups are automatically flattened.
+	#[implementations(GraphicGroupTable, VectorDataTable)]
+	group_of_paths: I,
+	/// Which boolean operation to perform on the paths.
+	///
+	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
+	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
+	/// Intersection cuts away all but the overlapping areas shared by every path.
+	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	operation: BooleanOperation,
+) -> VectorDataTable {
+	let group_of_paths = group_of_paths.into();
+
 	// The first index is the bottom of the stack
 	let mut result_vector_data_table = boolean_operation_on_vector_data_table(flatten_vector_data(&group_of_paths).instance_ref_iter(), operation);
 
@@ -203,7 +217,7 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 					result_table.push(sub_vector_data);
 				}
 			}
-			GraphicElement::RasterFrame(image) => {
+			GraphicElement::RasterDataCPU(image) => {
 				let make_instance = |transform| {
 					// Convert the image frame into a rectangular subpath with the image's transform
 					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
@@ -217,17 +231,26 @@ fn flatten_vector_data(graphic_group_table: &GraphicGroupTable) -> VectorDataTab
 				};
 
 				// Apply the parent group's transform to each element of raster data
-				match image {
-					RasterFrame::ImageFrame(image) => {
-						for instance in image.instance_ref_iter() {
-							result_table.push(make_instance(*element.transform * *instance.transform));
-						}
-					}
-					RasterFrame::TextureFrame(image) => {
-						for instance in image.instance_ref_iter() {
-							result_table.push(make_instance(*element.transform * *instance.transform));
-						}
-					}
+				for instance in image.instance_ref_iter() {
+					result_table.push(make_instance(*element.transform * *instance.transform));
+				}
+			}
+			GraphicElement::RasterDataGPU(image) => {
+				let make_instance = |transform| {
+					// Convert the image frame into a rectangular subpath with the image's transform
+					let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+					subpath.apply_transform(transform);
+
+					// Create a vector data table row from the rectangular subpath, with a default black fill
+					let mut instance = VectorData::from_subpath(subpath);
+					instance.style.set_fill(Fill::Solid(Color::BLACK));
+
+					Instance { instance, ..Default::default() }
+				};
+
+				// Apply the parent group's transform to each element of raster data
+				for instance in image.instance_ref_iter() {
+					result_table.push(make_instance(*element.transform * *instance.transform));
 				}
 			}
 			GraphicElement::GraphicGroup(mut graphic_group) => {

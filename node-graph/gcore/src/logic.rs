@@ -44,12 +44,26 @@ async fn switch<T, C: Send + 'n + Clone>(
 	condition: bool,
 	#[expose]
 	#[implementations(
-		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
+		Context -> String,
+		Context -> bool,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> VectorDataTable,
+		Context -> DAffine2,
 	)]
 	if_true: impl Node<C, Output = T>,
 	#[expose]
 	#[implementations(
-		Context -> String, Context -> bool, Context -> f64, Context -> u32, Context -> u64, Context -> DVec2, Context -> VectorDataTable, Context -> DAffine2,
+		Context -> String,
+		Context -> bool,
+		Context -> f64,
+		Context -> u32,
+		Context -> u64,
+		Context -> DVec2,
+		Context -> VectorDataTable,
+		Context -> DAffine2,
 	)]
 	if_false: impl Node<C, Output = T>,
 ) -> T {

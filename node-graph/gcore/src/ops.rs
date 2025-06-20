@@ -1,6 +1,6 @@
 use crate::Ctx;
 use crate::raster::BlendMode;
-use crate::raster::image::ImageFrameTable;
+use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
@@ -230,7 +230,7 @@ fn cosine_inverse<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 
 /// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
 /// atan: the angle whose tangent is the specified scalar number.
-/// atan2: the angle of a ray from the origin to the specified vector2 point.
+/// atan2: the angle of a ray from the origin to the specified coordinate.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent_inverse<U: TangentInverse>(_: impl Ctx, #[implementations(f64, f32, DVec2)] value: U, radians: bool) -> U::Output {
 	value.atan(radians)
@@ -434,8 +434,8 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
 }
 
 /// Constructs a two-dimensional vector value which may be set to any XY coordinate.
-#[node_macro::node(name("Vector2 Value"), category("Value"))]
-fn vector2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
+#[node_macro::node(category("Value"))]
+fn coordinate_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
 
@@ -453,7 +453,7 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 // 	_: impl Ctx,
 // 	#[implementations(
 // 		Color,
-// 		ImageFrameTable<Color>,
+// 		RasterDataTable<CPU>,
 // 		GradientStops,
 // 	)]
 // 	mut image: T,
@@ -495,7 +495,6 @@ fn string_value(_: impl Ctx, _primary: (), string: String) -> String {
 }
 
 /// Meant for debugging purposes, not general use. Returns the size of the input type in bytes.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Debug"))]
 fn size_of(_: impl Ctx, ty: crate::Type) -> Option<usize> {
 	ty.size()
@@ -515,7 +514,7 @@ fn unwrap<T: Default>(_: impl Ctx, #[implementations(Option<f64>, Option<f32>, O
 
 /// Meant for debugging purposes, not general use. Clones the input value.
 #[node_macro::node(category("Debug"))]
-fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&ImageFrameTable<Color>)] value: &'i T) -> T {
+fn clone<'i, T: Clone + 'i>(_: impl Ctx, #[implementations(&RasterDataTable<CPU>)] value: &'i T) -> T {
 	value.clone()
 }
 
@@ -524,7 +523,7 @@ fn dot_product(_: impl Ctx, vector_a: DVec2, vector_b: DVec2) -> f64 {
 	vector_a.dot(vector_b)
 }
 
-/// Obtain the X or Y component of a vector2.
+/// Obtain the X or Y component of a coordinate.
 #[node_macro::node(name("Extract XY"), category("Math: Vector"))]
 fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2)] vector: T, axis: XY) -> f64 {
 	match axis {
@@ -533,10 +532,9 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 	}
 }
 
-/// The X or Y component of a vector2.
+/// The X or Y component of a coordinate.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
 #[widget(Dropdown)]
 pub enum XY {
 	#[default]
@@ -587,7 +585,6 @@ impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Nod
 // Into
 pub struct IntoNode<O>(PhantomData<O>);
 impl<O> IntoNode<O> {
-	#[cfg(feature = "alloc")]
 	pub const fn new() -> Self {
 		Self(core::marker::PhantomData)
 	}

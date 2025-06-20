@@ -8,15 +8,15 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::image::ImageFrameTable;
-use graphene_core::text::{Font, TypesettingConfig};
-use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_core::{Artboard, Color};
-use graphene_std::GraphicGroupTable;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster_types::{CPU, RasterDataTable};
+use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::brush_stroke::BrushStroke;
+use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::vector::{PointId, VectorModificationType};
 use graphene_std::vector::{VectorData, VectorDataTable};
+use graphene_std::{Artboard, Color};
+use graphene_std::{GraphicGroupTable, NodeInputDecleration};
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -58,13 +58,13 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Non layer nodes directly upstream of a layer are treated as part of that layer. See insert_index == 2 in the diagram
 	///       -----> Post node
 	///      |      if insert_index == 0, return (Post node, Some(Layer1))
-	/// -> Layer1   
+	/// -> Layer1
 	///      ↑      if insert_index == 1, return (Layer1, Some(Layer2))
-	/// -> Layer2   
+	/// -> Layer2
 	///      ↑
 	/// -> NonLayerNode
 	///      ↑      if insert_index == 2, return (NonLayerNode, Some(Layer3))
-	/// -> Layer3  
+	/// -> Layer3
 	///             if insert_index == 3, return (Layer3, None)
 	pub fn get_post_node_with_index(network_interface: &NodeNetworkInterface, parent: LayerNodeIdentifier, insert_index: usize) -> InputConnector {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
@@ -124,7 +124,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> LayerNodeIdentifier {
 		let artboard_node_template = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
 			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), true)),
-			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroupTable::default()), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_std::GraphicGroupTable::default()), true)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -209,11 +209,11 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&stroke_id, layer, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image_frame: ImageFrameTable<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, image_frame: RasterDataTable<CPU>, layer: LayerNodeIdentifier) {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
-		let image = resolve_document_node_type("Image")
-			.expect("Image node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
+		let image = resolve_document_node_type("Image Value")
+			.expect("ImageValue node does not exist")
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::None, false)), Some(NodeInput::value(TaggedValue::RasterData(image_frame), false))]);
 
 		let image_id = NodeId::new();
 		self.network_interface.insert_node(image_id, image, &[]);
@@ -289,17 +289,17 @@ impl<'a> ModifyInputsContext<'a> {
 			log::error!("Node type {} does not exist in ModifyInputsContext::existing_node_id", reference);
 			return None;
 		};
-		// If inserting a path node, insert a flatten vector elements if the type is a graphic group.
+		// If inserting a path node, insert a Flatten Path if the type is a graphic group.
 		// TODO: Allow the path node to operate on Graphic Group data by utilizing the reference for each vector data in a group.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
 			if layer_input_type == concrete!(GraphicGroupTable) {
-				let Some(flatten_vector_elements_definition) = resolve_document_node_type("Flatten Vector Elements") else {
-					log::error!("Flatten Vector Elements does not exist in ModifyInputsContext::existing_node_id");
+				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
+					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
 				};
 				let node_id = NodeId::new();
-				self.network_interface.insert_node(node_id, flatten_vector_elements_definition.default_node_template(), &[]);
+				self.network_interface.insert_node(node_id, flatten_path_definition.default_node_template(), &[]);
 				self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
 			}
 		}
@@ -333,37 +333,52 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Fill(fill), false), false);
 	}
 
+	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 1);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
+	}
+
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(opacity_node_id) = self.existing_node_id("Opacity", true) else { return };
-		let input_connector = InputConnector::node(opacity_node_id, 1);
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 2);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
-	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_mode_node_id) = self.existing_node_id("Blend Mode", true) else {
-			return;
-		};
-		let input_connector = InputConnector::node(blend_mode_node_id, 1);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
+	pub fn blending_fill_set(&mut self, fill: f64) {
+		let Some(blend_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(blend_node_id, 3);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
+	}
+
+	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
+		let clip = !clip_mode.unwrap_or(false);
+		let Some(clip_node_id) = self.existing_node_id("Blending", true) else { return };
+		let input_connector = InputConnector::node(clip_node_id, 4);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
 	}
 
 	pub fn stroke_set(&mut self, stroke: Stroke) {
 		let Some(stroke_node_id) = self.existing_node_id("Stroke", true) else { return };
 
-		let input_connector = InputConnector::node(stroke_node_id, 1);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::ColorInput::<Option<graphene_std::Color>>::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 2);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 3);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeCap(stroke.cap), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 4);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 5);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::LineCap(stroke.line_cap), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 6);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::LineJoin(stroke.line_join), false), true);
-		let input_connector = InputConnector::node(stroke_node_id, 7);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false), false);
 	}
 
 	pub fn stroke_color_set(&mut self, color: Option<Color>) {

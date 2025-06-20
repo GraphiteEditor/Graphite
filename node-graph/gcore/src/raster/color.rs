@@ -85,8 +85,7 @@ impl Pixel for RGBA16F {}
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
 pub struct SRGBA8 {
 	red: u8,
 	green: u8,
@@ -167,8 +166,7 @@ impl Pixel for SRGBA8 {}
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
 pub struct Luma(pub f32);
 
 impl Luminance for Luma {
@@ -209,8 +207,7 @@ impl Pixel for Luma {}
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, Pod, Zeroable, specta::Type)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -515,6 +512,11 @@ impl Color {
 	}
 
 	#[inline(always)]
+	pub fn is_opaque(&self) -> bool {
+		self.alpha > 1. - f32::EPSILON
+	}
+
+	#[inline(always)]
 	pub fn average_rgb_channels(&self) -> f32 {
 		(self.red + self.green + self.blue) / 3.
 	}
@@ -793,7 +795,6 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a261", color.to_rgba_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
-	#[cfg(feature = "std")]
 	pub fn to_rgba_hex_srgb(&self) -> String {
 		let gamma = self.to_gamma_srgb();
 		format!(
@@ -811,7 +812,6 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
-	#[cfg(feature = "std")]
 	pub fn to_rgb_hex_srgb(&self) -> String {
 		self.to_gamma_srgb().to_rgb_hex_srgb_from_gamma()
 	}
@@ -822,7 +822,6 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61); // Premultiplied alpha
 	/// assert_eq!("3240a2", color.to_rgb_hex_srgb()); // Equivalent hex incorporating premultiplied alpha
 	/// ```
-	#[cfg(feature = "std")]
 	pub fn to_rgb_hex_srgb_from_gamma(&self) -> String {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
@@ -1053,37 +1052,41 @@ impl Color {
 	}
 }
 
-#[test]
-fn hsl_roundtrip() {
-	for (red, green, blue) in [
-		(24, 98, 118),
-		(69, 11, 89),
-		(54, 82, 38),
-		(47, 76, 50),
-		(25, 15, 73),
-		(62, 57, 33),
-		(55, 2, 18),
-		(12, 3, 82),
-		(91, 16, 98),
-		(91, 39, 82),
-		(97, 53, 32),
-		(76, 8, 91),
-		(54, 87, 19),
-		(56, 24, 88),
-		(14, 82, 34),
-		(61, 86, 31),
-		(73, 60, 75),
-		(95, 79, 88),
-		(13, 34, 4),
-		(82, 84, 84),
-		(255, 255, 178),
-	] {
-		let col = Color::from_rgb8_srgb(red, green, blue);
-		let [hue, saturation, lightness, alpha] = col.to_hsla();
-		let result = Color::from_hsla(hue, saturation, lightness, alpha);
-		assert!((col.r() - result.r()) < f32::EPSILON * 100.);
-		assert!((col.g() - result.g()) < f32::EPSILON * 100.);
-		assert!((col.b() - result.b()) < f32::EPSILON * 100.);
-		assert!((col.a() - result.a()) < f32::EPSILON * 100.);
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn hsl_roundtrip() {
+		for (red, green, blue) in [
+			(24, 98, 118),
+			(69, 11, 89),
+			(54, 82, 38),
+			(47, 76, 50),
+			(25, 15, 73),
+			(62, 57, 33),
+			(55, 2, 18),
+			(12, 3, 82),
+			(91, 16, 98),
+			(91, 39, 82),
+			(97, 53, 32),
+			(76, 8, 91),
+			(54, 87, 19),
+			(56, 24, 88),
+			(14, 82, 34),
+			(61, 86, 31),
+			(73, 60, 75),
+			(95, 79, 88),
+			(13, 34, 4),
+			(82, 84, 84),
+			(255, 255, 178),
+		] {
+			let col = Color::from_rgb8_srgb(red, green, blue);
+			let [hue, saturation, lightness, alpha] = col.to_hsla();
+			let result = Color::from_hsla(hue, saturation, lightness, alpha);
+			assert!((col.r() - result.r()) < f32::EPSILON * 100.);
+			assert!((col.g() - result.g()) < f32::EPSILON * 100.);
+			assert!((col.b() - result.b()) < f32::EPSILON * 100.);
+			assert!((col.a() - result.a()) < f32::EPSILON * 100.);
+		}
 	}
 }
