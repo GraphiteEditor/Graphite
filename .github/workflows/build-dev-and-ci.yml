@@ -85,7 +85,7 @@ jobs:
 
       - name: 🦀 Build Rust code
         env:
-          RUST_FLAGS: -Dwarnings
+          RUSTFLAGS: -Dwarnings
         run: |
           mold -run cargo build --all-features
 
