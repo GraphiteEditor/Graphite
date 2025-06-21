@@ -2263,7 +2263,6 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-proc-macros",
- "image",
  "interpreted-executor",
  "js-sys",
  "log",

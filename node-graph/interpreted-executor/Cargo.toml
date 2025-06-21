@@ -11,13 +11,13 @@ gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
 
 [dependencies]
 # Local dependencies
-graphene-std = { path = "../gstd", features = ["serde"] }
-graph-craft = { path = "../graph-craft" }
-wgpu-executor = { path = "../wgpu-executor" }
+graphene-std = { workspace = true, features = ["serde"] }
+graph-craft = { workspace = true }
+wgpu-executor = { workspace = true }
+graphene-core = { workspace = true }
+dyn-any = { workspace = true }
 
 # Workspace dependencies
-graphene-core = { workspace = true }
-dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
 log = { workspace = true }
 glam = { workspace = true }
 futures = { workspace = true }
@@ -29,9 +29,7 @@ serde = { workspace = true, optional = true }
 [dev-dependencies]
 # Workspace dependencies
 graph-craft = { workspace = true, features = ["loading"] }
-
-# Required dependencies
-criterion = { version = "0.5", features = ["html_reports"]}
+criterion = { workspace = true }
 
 # Benchmarks
 [[bench]]
