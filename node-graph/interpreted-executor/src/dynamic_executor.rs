@@ -33,23 +33,20 @@ impl Default for DynamicExecutor {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeTypes {
 	pub inputs: Vec<Type>,
 	pub output: Type,
 }
 
-#[derive(PartialEq, Clone, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedDocumentNodeTypes {
 	pub types: HashMap<Vec<NodeId>, NodeTypes>,
 }
 
 type Path = Box<[NodeId]>;
 
-#[derive(PartialEq, Clone, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedDocumentNodeTypesDelta {
 	pub add: Vec<(Path, NodeTypes)>,
 	pub remove: Vec<Path>,

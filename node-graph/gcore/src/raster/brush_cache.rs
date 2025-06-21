@@ -3,28 +3,27 @@ use crate::raster_types::CPU;
 use crate::raster_types::Raster;
 use crate::vector::brush_stroke::BrushStroke;
 use crate::vector::brush_stroke::BrushStyle;
-use core::hash::Hash;
 use dyn_any::DynAny;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 struct BrushCacheImpl {
 	// The full previous input that was cached.
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
 	background: Instance<Raster<CPU>>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
 	blended_image: Instance<Raster<CPU>>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
 	last_stroke_texture: Instance<Raster<CPU>>,
 
 	// A cache for brush textures.
-	#[cfg_attr(feature = "serde", serde(skip))]
+	#[serde(skip)]
 	brush_texture_cache: HashMap<BrushStyle, Raster<CPU>>,
 }
 
@@ -53,7 +52,7 @@ impl BrushCacheImpl {
 
 		// Take our previous blended image (and invalidate the cache).
 		// Since we're about to replace our cache anyway, this saves a clone.
-		background = core::mem::take(&mut self.blended_image);
+		background = std::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
 		let mut first_stroke_texture = Instance {
@@ -70,7 +69,7 @@ impl BrushCacheImpl {
 			let new_points = strokes[0].compute_blit_points();
 			let is_point_prefix = new_points.get(..prev_points.len()) == Some(&prev_points);
 			if same_style && is_point_prefix {
-				first_stroke_texture = core::mem::take(&mut self.last_stroke_texture);
+				first_stroke_texture = std::mem::take(&mut self.last_stroke_texture);
 				first_stroke_point_skip = prev_points.len();
 			}
 		}
@@ -93,7 +92,7 @@ impl BrushCacheImpl {
 
 impl Hash for BrushCacheImpl {
 	// Zero hash.
-	fn hash<H: core::hash::Hasher>(&self, _state: &mut H) {}
+	fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -104,8 +103,7 @@ pub struct BrushPlan {
 	pub first_stroke_point_skip: usize,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, DynAny)]
+#[derive(Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
 	proto: bool,
@@ -151,7 +149,7 @@ impl PartialEq for BrushCache {
 }
 
 impl Hash for BrushCache {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.inner.lock().unwrap().hash(state);
 	}
 }

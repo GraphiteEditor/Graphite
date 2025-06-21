@@ -1,28 +1,26 @@
-use crate::text::FontCache;
-use crate::transform::Footprint;
-use crate::vector::style::ViewMode;
-use alloc::sync::Arc;
-use core::fmt::Debug;
-use core::future::Future;
-use core::hash::{Hash, Hasher};
-use core::pin::Pin;
-use core::ptr::addr_of;
-use core::time::Duration;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
+use graphene_core::text::FontCache;
+use graphene_core::transform::Footprint;
+use graphene_core::vector::style::ViewMode;
+use std::fmt::Debug;
+use std::future::Future;
+use std::hash::{Hash, Hasher};
+use std::pin::Pin;
+use std::ptr::addr_of;
+use std::sync::Arc;
+use std::time::Duration;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceId(pub u64);
 
-impl core::fmt::Display for SurfaceId {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for SurfaceId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("{}", self.0))
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceFrame {
 	pub surface_id: SurfaceId,
 	pub resolution: UVec2,
@@ -132,6 +130,11 @@ pub struct SurfaceHandleFrame<Surface> {
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
 	type Static = SurfaceHandleFrame<T>;
 }
+
+#[cfg(feature = "wasm")]
+pub type WasmSurfaceHandle = SurfaceHandle<web_sys::HtmlCanvasElement>;
+#[cfg(feature = "wasm")]
+pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<web_sys::HtmlCanvasElement>;
 
 // TODO: think about how to automatically clean up memory
 /*
@@ -298,7 +301,7 @@ impl<Io> PartialEq for EditorApi<Io> {
 }
 
 impl<T> Debug for EditorApi<T> {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("EditorApi").field("font_cache", &self.font_cache).finish()
 	}
 }

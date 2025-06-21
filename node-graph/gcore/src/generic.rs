@@ -1,5 +1,5 @@
 use crate::Node;
-use core::marker::PhantomData;
+use std::marker::PhantomData;
 #[derive(Clone)]
 pub struct FnNode<T: Fn(I) -> O, I, O>(T, PhantomData<(I, O)>);
 

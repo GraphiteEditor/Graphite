@@ -280,7 +280,7 @@ fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegme
 	path
 }
 
-fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
+fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<PointId>, transform: DAffine2) {
 	use path_bool::PathSegment;
 	let mut global_start = None;
 	let mut global_end = DVec2::ZERO;

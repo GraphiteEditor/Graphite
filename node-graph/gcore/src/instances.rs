@@ -128,8 +128,8 @@ impl<T> Default for Instances<T> {
 	}
 }
 
-impl<T: Hash> core::hash::Hash for Instances<T> {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl<T: Hash> Hash for Instances<T> {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		for instance in &self.instance {
 			instance.hash(state);
 		}
