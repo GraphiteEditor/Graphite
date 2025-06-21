@@ -5,8 +5,7 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-#[derive(Default, Debug, Clone, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Default, Debug, Clone, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ImaginateCache(Arc<Mutex<graphene_core::raster::Image<Color>>>);
 
 impl ImaginateCache {
@@ -31,8 +30,7 @@ pub trait ImaginateTerminationHandle: Debug + Send + 'static {
 	fn terminate(&self);
 }
 
-#[derive(Default, Debug, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Default, Debug, specta::Type, serde::Serialize, serde::Deserialize)]
 struct InternalImaginateControl {
 	#[serde(skip)]
 	status: Mutex<ImaginateStatus>,
@@ -42,8 +40,7 @@ struct InternalImaginateControl {
 	termination_sender: Mutex<Option<Box<dyn ImaginateTerminationHandle>>>,
 }
 
-#[derive(Debug, Default, Clone, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ImaginateController(Arc<InternalImaginateControl>);
 
 impl ImaginateController {
@@ -90,8 +87,7 @@ impl core::hash::Hash for ImaginateController {
 	}
 }
 
-#[derive(Default, Debug, Clone, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Default, Debug, Clone, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum ImaginateStatus {
 	#[default]
 	Ready,
@@ -152,16 +148,14 @@ impl ImaginateServerStatus {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, specta::Type, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, specta::Type, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ImaginateMaskPaintMode {
 	#[default]
 	Inpaint,
 	Outpaint,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, specta::Type, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ImaginateMaskStartingFill {
 	#[default]
 	Fill,
@@ -192,8 +186,7 @@ impl std::fmt::Display for ImaginateMaskStartingFill {
 	}
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny, specta::Type, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, DynAny, specta::Type, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ImaginateSamplingMethod {
 	#[default]
 	EulerA,

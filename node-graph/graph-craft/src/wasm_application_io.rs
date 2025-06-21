@@ -315,8 +315,7 @@ pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 #[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandleFrame = graphene_core::application_io::SurfaceHandleFrame<wgpu_executor::Window>;
 
-#[derive(Clone, Debug, PartialEq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
 	// pub imaginate_hostname: String,
 	pub use_vello: bool,

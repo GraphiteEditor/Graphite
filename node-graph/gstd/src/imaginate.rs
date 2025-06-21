@@ -178,20 +178,17 @@ impl core::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-#[derive(Default, Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[derive(Default, Debug, Clone, serde::Deserialize)]
 struct ImageResponse {
 	images: Vec<String>,
 }
 
-#[derive(Default, Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[derive(Default, Debug, Clone, serde::Deserialize)]
 struct ProgressResponse {
 	progress: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 struct ImaginateTextToImageRequestOverrideSettings {
 	show_progress_every_n_steps: u32,
 }
@@ -204,8 +201,7 @@ impl Default for ImaginateTextToImageRequestOverrideSettings {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 struct ImaginateImageToImageRequestOverrideSettings {
 	show_progress_every_n_steps: u32,
 	img2img_fix_steps: bool,
@@ -220,16 +216,14 @@ impl Default for ImaginateImageToImageRequestOverrideSettings {
 	}
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize)]
 struct ImaginateTextToImageRequest<'a> {
-	#[cfg_attr(feature = "serde", serde(flatten))]
+	#[serde(flatten)]
 	common: ImaginateCommonImageRequest<'a>,
 	override_settings: ImaginateTextToImageRequestOverrideSettings,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize)]
 struct ImaginateMask {
 	mask: String,
 	mask_blur: String,
@@ -238,21 +232,19 @@ struct ImaginateMask {
 	inpainting_mask_invert: u32,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize)]
 struct ImaginateImageToImageRequest<'a> {
-	#[cfg_attr(feature = "serde", serde(flatten))]
+	#[serde(flatten)]
 	common: ImaginateCommonImageRequest<'a>,
 	override_settings: ImaginateImageToImageRequestOverrideSettings,
 
 	init_images: Vec<String>,
 	denoising_strength: f64,
-	#[cfg_attr(feature = "serde", serde(flatten))]
+	#[serde(flatten)]
 	mask: Option<ImaginateMask>,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[derive(Debug, Clone, serde::Serialize)]
 struct ImaginateCommonImageRequest<'a> {
 	prompt: String,
 	seed: f64,

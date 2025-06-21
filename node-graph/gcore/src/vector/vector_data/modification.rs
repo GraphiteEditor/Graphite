@@ -9,8 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
@@ -81,8 +80,7 @@ impl PointModification {
 }
 
 /// Represents a procedural change to the [`SegmentDomain`] in [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
@@ -254,8 +252,7 @@ impl SegmentModification {
 }
 
 /// Represents a procedural change to the [`RegionDomain`] in [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
@@ -299,8 +296,7 @@ impl RegionModification {
 }
 
 /// Represents a procedural change to the [`VectorData`].
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,

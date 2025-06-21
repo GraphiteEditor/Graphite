@@ -11,8 +11,7 @@ use std::ptr::addr_of;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceId(pub u64);
 
 impl std::fmt::Display for SurfaceId {
@@ -21,8 +20,7 @@ impl std::fmt::Display for SurfaceId {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceFrame {
 	pub surface_id: SurfaceId,
 	pub resolution: UVec2,

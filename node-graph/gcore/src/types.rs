@@ -124,8 +124,7 @@ impl std::fmt::Debug for NodeIOTypes {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
@@ -156,10 +155,9 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	Ok(Cow::Owned(name))
 }
 
-#[derive(Clone, Debug, Eq, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Eq, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct TypeDescriptor {
-	#[cfg_attr(feature = "serde", serde(skip))]
+	#[serde(skip)]
 	#[specta(skip)]
 	pub id: Option<TypeId>,
 	#[serde(deserialize_with = "migrate_type_descriptor_names")]
@@ -192,8 +190,7 @@ impl PartialEq for TypeDescriptor {
 }
 
 /// Graph runtime type information used for type inference.
-#[derive(Clone, PartialEq, Eq, Hash, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),

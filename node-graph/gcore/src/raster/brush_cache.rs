@@ -9,22 +9,21 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 struct BrushCacheImpl {
 	// The full previous input that was cached.
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
 	background: Instance<Raster<CPU>>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
 	blended_image: Instance<Raster<CPU>>,
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance"))]
+	#[serde(deserialize_with = "crate::graphene_core::raster::image::migrate_image_frame_instance")]
 	last_stroke_texture: Instance<Raster<CPU>>,
 
 	// A cache for brush textures.
-	#[cfg_attr(feature = "serde", serde(skip))]
+	#[serde(skip)]
 	brush_texture_cache: HashMap<BrushStyle, Raster<CPU>>,
 }
 
@@ -104,8 +103,7 @@ pub struct BrushPlan {
 	pub first_stroke_point_skip: usize,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, DynAny)]
+#[derive(Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct BrushCache {
 	inner: Arc<Mutex<BrushCacheImpl>>,
 	proto: bool,

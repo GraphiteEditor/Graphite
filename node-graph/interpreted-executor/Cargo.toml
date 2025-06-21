@@ -6,12 +6,11 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = []
-serde = ["dep:serde", "graphene-std/serde", "glam/serde"]
 gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
 
 [dependencies]
 # Local dependencies
-graphene-std = { workspace = true, features = ["serde"] }
+graphene-std = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
@@ -22,9 +21,7 @@ log = { workspace = true }
 glam = { workspace = true }
 futures = { workspace = true }
 once_cell = { workspace = true }
-
-# Optional workspace dependencies
-serde = { workspace = true, optional = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
