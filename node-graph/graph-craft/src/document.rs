@@ -683,6 +683,7 @@ pub struct NodeNetwork {
 	#[serde(default)]
 	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
+	pub generated: bool,
 }
 
 impl Hash for NodeNetwork {
@@ -797,7 +798,9 @@ impl NodeNetwork {
 	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
 		for (node_id, node) in &mut self.nodes {
 			let mut new_path = prefix.to_vec();
-			new_path.push(*node_id);
+			if !self.generated {
+				new_path.push(*node_id);
+			}
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
 				network.generate_node_paths(new_path.as_slice());
 			}

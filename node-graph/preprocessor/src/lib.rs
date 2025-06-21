@@ -102,7 +102,6 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 			.collect();
 
 		if generated_nodes == 0 {
-			log::debug!("skipping {}", id);
 			continue;
 		}
 
@@ -127,6 +126,7 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 				}],
 				nodes,
 				scope_injections: Default::default(),
+				generated: true,
 			}),
 			visible: true,
 			skip_deduplication: false,
