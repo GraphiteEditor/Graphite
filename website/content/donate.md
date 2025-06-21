@@ -2,7 +2,7 @@
 title = "Donate"
 
 [extra]
-css = ["/page/donate.css", "/component/feature-box.css"]
+css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-icons.css"]
 +++
 
 <section>
@@ -25,6 +25,45 @@ css = ["/page/donate.css", "/component/feature-box.css"]
 </span>
 
 </p>
+
+<div class="feature-icons four-wide statistics" data-statistics>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+		<span data-statistics-dollars></span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
+		<span data-statistics-members></span>
+	</div>
+	<div class="feature-icon">
+		<img class="atlas" style="--atlas-index: 47" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+		<span data-statistics-donors></span>
+	</div>
+</div>
+
+<script>
+(async () => {
+	const element = document.querySelector("[data-statistics]");
+	const dollarsElement = document.querySelector("[data-statistics-dollars]");
+	const membersElement = document.querySelector("[data-statistics-members]");
+	const donorsElement = document.querySelector("[data-statistics-donors]");
+	if (!dollarsElement || !membersElement || !donorsElement) return;
+	try {
+		const response = await fetch("https://graphite.rs/sponsorship-stats");
+		const json = await response.json();
+		if (!json || !json.recurring || !json.one_time_prior_3_month_sum) throw new Error();
+		const recurringDollars = parseInt(json.recurring.cents) / 100;
+		const oneTimeAverageDollars = parseInt(json.one_time_prior_3_month_sum.cents) / 100 / 3;
+		dollarsElement.innerText = "$" + Math.round(recurringDollars + oneTimeAverageDollars).toLocaleString("en-US") + " / month";
+		membersElement.innerText = json.recurring.count.toLocaleString("en-US") + " members (supporting monthly)";
+		donorsElement.innerText = Math.round(json.one_time_prior_3_month_sum.count / 3).toLocaleString("en-US") + " one-time donors (past month)";
+		// Force repaint to work around Safari bug <https://bugs.webkit.org/show_bug.cgi?id=286403> (remove this and its data attribute when the bug is fixed and widely deployed)
+		element.style.transform = "scale(1)";
+	} catch {
+		element.remove();
+	}
+})();
+</script>
 
 Graphite is 100% built and funded by the community. Your contributions directly help us level up the scope and speed of the project's development. Resources are put towards infrastructure, operational costs, swag to keep contributors happy and motivated, and outreach like exhibiting at conventions and traveling to conferences to foster industry relationships. Hiring full-time developers is the next crucial milestone.
 
