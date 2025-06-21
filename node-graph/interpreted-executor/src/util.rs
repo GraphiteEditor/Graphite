@@ -74,9 +74,12 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 		},
 	];
 
+	log::debug!("This is here so this gets noticed in code review");
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))].into_iter().collect(),
+		// TODO: check if it makes sense to set generated to true
+		generated: false,
 	}
 }
