@@ -110,12 +110,10 @@ impl<T: Rec709Primaries> RGBPrimaries for T {
 
 pub trait SRGB: Rec709Primaries {}
 
-#[cfg(feature = "serde")]
 pub trait Serde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
 #[cfg(not(feature = "serde"))]
 pub trait Serde {}
 
-#[cfg(feature = "serde")]
 impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 #[cfg(not(feature = "serde"))]
 impl<T> Serde for T {}
