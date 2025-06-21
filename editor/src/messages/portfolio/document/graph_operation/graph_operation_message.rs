@@ -52,9 +52,9 @@ pub enum GraphOperationMessage {
 		transform_in: TransformIn,
 		skip_rerender: bool,
 	},
-	TransformSetPivot {
+	TransformSetOrigin {
 		layer: LayerNodeIdentifier,
-		pivot: DVec2,
+		origin: DVec2,
 	},
 	Vector {
 		layer: LayerNodeIdentifier,

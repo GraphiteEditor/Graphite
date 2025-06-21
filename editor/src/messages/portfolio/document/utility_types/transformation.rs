@@ -531,7 +531,7 @@ impl<'a> Selected<'a> {
 		let xy_summation = self
 			.selected
 			.iter()
-			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.network_interface))
+			.map(|&layer| graph_modification_utils::get_viewport_origin(layer, self.network_interface))
 			.reduce(|a, b| a + b)
 			.unwrap_or_default();
 

@@ -18,6 +18,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::measure;
+use crate::messages::tool::common_functionality::origin::Origin;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
@@ -54,6 +55,13 @@ pub enum NestedSelectionBehavior {
 	#[default]
 	Shallowest,
 	Deepest,
+}
+
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+enum DotType {
+	#[default]
+	Origin,
+	Pivot,
 }
 
 impl fmt::Display for NestedSelectionBehavior {
@@ -97,6 +105,9 @@ pub enum SelectToolMessage {
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot {
+		position: ReferencePoint,
+	},
+	SetOrigin {
 		position: ReferencePoint,
 	},
 }
@@ -312,6 +323,7 @@ enum SelectToolFsmState {
 	},
 	RotatingBounds,
 	DraggingPivot,
+	DraggingOrigin,
 }
 
 impl Default for SelectToolFsmState {
@@ -336,6 +348,8 @@ struct SelectToolData {
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
+	origin: Origin,
+	dot_type: Option<DotType>,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -501,6 +515,14 @@ impl SelectToolData {
 		responses.add(NodeGraphMessage::SendGraph);
 		self.layers_dragging = original;
 	}
+
+	fn is_over(&self, mouse: DVec2) -> bool {
+		let Some(dot_type) = self.dot_type else { return false };
+		match dot_type {
+			DotType::Pivot => self.pivot.is_over(mouse),
+			DotType::Origin => self.origin.is_over(mouse),
+		}
+	}
 }
 
 impl Fsm for SelectToolFsmState {
@@ -510,6 +532,7 @@ impl Fsm for SelectToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
+		tool_data.dot_type = Some(DotType::Pivot);
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
@@ -715,7 +738,11 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context, Some((angle,)));
+				match tool_data.dot_type {
+					Some(DotType::Pivot) => tool_data.pivot.update(document, &mut overlay_context, Some((angle,))),
+					Some(DotType::Origin) => tool_data.origin.update(document, &mut overlay_context),
+					_ => (),
+				};
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -903,7 +930,6 @@ impl Fsm for SelectToolFsmState {
 				let angle = bounds.map_or(0., |quad| (quad.top_left() - quad.top_right()).to_angle());
 				let mouse_position = input.mouse.position;
 				let compass_rose_state = tool_data.compass_rose.compass_rose_state(mouse_position, angle);
-				let is_over_pivot = tool_data.pivot.is_over(mouse_position);
 
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
@@ -915,13 +941,16 @@ impl Fsm for SelectToolFsmState {
 
 				let state =
 				// Dragging the pivot
-				if is_over_pivot {
+				if tool_data.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					SelectToolFsmState::DraggingPivot
+					match tool_data.dot_type.unwrap_or_default(){
+						DotType::Pivot => SelectToolFsmState::DraggingPivot,
+						DotType::Origin => SelectToolFsmState::DraggingOrigin,
+					}
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if dragging_bounds.is_some() && !is_flat_layer {
@@ -1047,6 +1076,12 @@ impl Fsm for SelectToolFsmState {
 				state
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				let selection = tool_data.nested_selection_behavior;
+				SelectToolFsmState::Ready { selection }
+			}
+			(SelectToolFsmState::DraggingOrigin, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1244,7 +1279,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
-				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
+				tool_data.pivot.set_viewport_position(snapped_mouse_position);
 
 				// Auto-panning
 				let messages = [
@@ -1254,6 +1289,20 @@ impl Fsm for SelectToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SelectToolFsmState::DraggingPivot
+			}
+			(SelectToolFsmState::DraggingOrigin, SelectToolMessage::PointerMove(modifier_keys)) => {
+				let mouse_position = input.mouse.position;
+				let snapped_mouse_position = mouse_position;
+				tool_data.origin.set_viewport_position(snapped_mouse_position, document, responses);
+
+				// Auto-panning
+				let messages = [
+					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+					SelectToolMessage::PointerMove(modifier_keys).into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+				SelectToolFsmState::DraggingOrigin
 			}
 			(SelectToolFsmState::Drawing { selection_shape, has_drawn }, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if !has_drawn {
@@ -1289,7 +1338,9 @@ impl Fsm for SelectToolFsmState {
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true, dragging_bounds, Some(tool_data.skew_edge)));
 
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.is_over(input.mouse.position) {
+				let mouse = input.mouse.position;
+				let is_over_override = tool_data.pivot.is_over(mouse) || tool_data.origin.is_over(mouse);
+				if is_over_override {
 					cursor = MouseCursorIcon::Move;
 				}
 
@@ -1339,7 +1390,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::DraggingPivot | SelectToolFsmState::DraggingOrigin, SelectToolMessage::PointerOutsideViewport(_)) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
@@ -1437,7 +1488,8 @@ impl Fsm for SelectToolFsmState {
 				| SelectToolFsmState::SkewingBounds { .. }
 				| SelectToolFsmState::RotatingBounds
 				| SelectToolFsmState::Dragging { .. }
-				| SelectToolFsmState::DraggingPivot,
+				| SelectToolFsmState::DraggingPivot
+				| SelectToolFsmState::DraggingOrigin,
 				SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter,
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
@@ -1446,7 +1498,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 
-				if !matches!(self, SelectToolFsmState::DraggingPivot) {
+				if !matches!(self, SelectToolFsmState::DraggingPivot | SelectToolFsmState::DraggingOrigin) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_transforms.clear();
 					}
@@ -1577,7 +1629,15 @@ impl Fsm for SelectToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				let pos: Option<DVec2> = position.into();
-				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
+				tool_data.pivot.set_normalized_position(pos.unwrap());
+
+				self
+			}
+			(_, SelectToolMessage::SetOrigin { position }) => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				let pos: Option<DVec2> = position.into();
+				tool_data.origin.set_normalized_position(pos.unwrap(), document, responses);
 
 				self
 			}
@@ -1680,7 +1740,7 @@ impl Fsm for SelectToolFsmState {
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
-			SelectToolFsmState::DraggingPivot => {
+			SelectToolFsmState::DraggingPivot | SelectToolFsmState::DraggingOrigin => {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}

@@ -1,7 +1,7 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER,
-	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	COMPASS_ROSE_RING_INNER_DIAMETER, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, DOWEL_PIN_RADIUS
 };
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
@@ -546,6 +546,36 @@ impl OverlayContext {
 		self.render_context.stroke();
 
 		self.render_context.set_line_cap("butt");
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn draw_origin(&mut self, position: DVec2) {
+		use std::f64::consts::PI;
+		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+
+		self.start_dpi_aware_transform();
+
+		// Draw the background circle with a white fill and blue outline
+		self.render_context.begin_path();
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_WHITE);
+		self.render_context.fill();
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.stroke();
+
+		// Draw the two blue filled sectors
+		self.render_context.begin_path();
+		// Top-left sector
+		self.render_context.move_to(x, y);
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, FRAC_PI_2, PI).expect("Failed to draw arc");
+		self.render_context.close_path();
+		// Bottom-right sector
+		self.render_context.move_to(x, y);
+		self.render_context.arc(x, y, DOWEL_PIN_RADIUS, PI + FRAC_PI_2, TAU).expect("Failed to draw arc");
+		self.render_context.close_path();
+		self.render_context.set_fill_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.fill();
 
 		self.end_dpi_aware_transform();
 	}

@@ -1627,7 +1627,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
-						NodeInput::value(TaggedValue::DVec2(DVec2::splat(0.5)), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -1715,6 +1715,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						PropertiesRow::with_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
 						PropertiesRow::with_override("Pivot", "TODO", WidgetOverride::Hidden),
+						PropertiesRow::with_override(
+							"Origin Offset",
+							"TODO",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
 					],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
