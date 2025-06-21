@@ -373,7 +373,7 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
-	/// Inserts a [`graphene_core::structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
+	/// Inserts a [`structural::ComposeNode`] for each node that has a [`ProtoNodeInput::Node`]. The compose node evaluates the first node, and then sends the result into the second node.
 	pub fn resolve_inputs(&mut self) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
@@ -542,7 +542,7 @@ pub enum GraphErrorType {
 	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
 	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
 }
-impl core::fmt::Debug for GraphErrorType {
+impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -603,7 +603,7 @@ impl GraphError {
 		}
 	}
 }
-impl core::fmt::Debug for GraphError {
+impl Debug for GraphError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("NodeGraphError")
 			.field("path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())

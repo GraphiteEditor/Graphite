@@ -3,10 +3,10 @@ use crate::Ctx;
 use crate::instances::Instance;
 use crate::uuid::generate_uuid;
 use bezier_rs::BezierHandles;
-use core::hash::BuildHasher;
 use dyn_any::DynAny;
 use kurbo::{BezPath, PathEl, Point};
 use std::collections::{HashMap, HashSet};
+use std::hash::BuildHasher;
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -260,7 +260,7 @@ pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
-	segment_range: HashMap<RegionId, core::ops::RangeInclusive<SegmentId>>,
+	segment_range: HashMap<RegionId, std::ops::RangeInclusive<SegmentId>>,
 	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	fill: HashMap<RegionId, FillId>,
 }
@@ -416,8 +416,8 @@ impl VectorModification {
 	}
 }
 
-impl core::hash::Hash for VectorModification {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl Hash for VectorModification {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		generate_uuid().hash(state)
 	}
 }

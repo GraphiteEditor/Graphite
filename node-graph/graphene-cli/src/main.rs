@@ -174,7 +174,7 @@ fn fix_nodes(network: &mut NodeNetwork) {
 				if (proto_node_identifier.name.starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.name.starts_with("graphene_core::AddArtboardNode"))
 					&& node.inputs.len() < 3 =>
 			{
-				node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
+				node.inputs.push(NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath));
 			}
 			_ => {}
 		}

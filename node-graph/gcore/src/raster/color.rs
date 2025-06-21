@@ -1,14 +1,13 @@
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use super::{Alpha, AlphaMut, AssociatedAlpha, Luminance, LuminanceMut, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use bytemuck::{Pod, Zeroable};
-use core::hash::Hash;
 use dyn_any::DynAny;
 use half::f16;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Euclid;
-#[cfg(feature = "serde")]
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
+use std::hash::Hash;
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -217,7 +216,7 @@ pub struct Color {
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Color {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.red.to_bits().hash(state);
 		self.green.to_bits().hash(state);
 		self.blue.to_bits().hash(state);

@@ -1,7 +1,7 @@
 use crate::transform::Footprint;
-use core::any::Any;
-use core::borrow::Borrow;
-use core::panic::Location;
+use std::any::Any;
+use std::borrow::Borrow;
+use std::panic::Location;
 use std::sync::Arc;
 
 pub trait Ctx: Clone + Send {}
@@ -240,7 +240,7 @@ type DynBox = Box<dyn Any + Send + Sync>;
 
 #[derive(dyn_any::DynAny)]
 pub struct OwnedContextImpl {
-	footprint: Option<crate::transform::Footprint>,
+	footprint: Option<Footprint>,
 	varargs: Option<Arc<[DynBox]>>,
 	parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
 	// This could be converted into a single enum to save extra bytes
@@ -249,8 +249,8 @@ pub struct OwnedContextImpl {
 	animation_time: Option<f64>,
 }
 
-impl core::fmt::Debug for OwnedContextImpl {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Debug for OwnedContextImpl {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OwnedContextImpl")
 			.field("footprint", &self.footprint)
 			.field("varargs", &self.varargs)
@@ -269,8 +269,8 @@ impl Default for OwnedContextImpl {
 	}
 }
 
-impl core::hash::Hash for OwnedContextImpl {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for OwnedContextImpl {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.footprint.hash(state);
 		self.varargs.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
 		self.parent.as_ref().map(|x| Arc::as_ptr(x).addr()).hash(state);
@@ -348,7 +348,7 @@ impl OwnedContextImpl {
 
 #[derive(Default, Clone, Copy, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
-	pub(crate) footprint: Option<&'a crate::transform::Footprint>,
+	pub(crate) footprint: Option<&'a Footprint>,
 	varargs: Option<&'a [DynRef<'a>]>,
 	// This could be converted into a single enum to save extra bytes
 	index: Option<usize>,

@@ -1,9 +1,9 @@
 use crate::{Node, WasmNotSend};
-use alloc::sync::Arc;
-use core::future::Future;
-use core::ops::Deref;
 use dyn_any::DynFuture;
+use std::future::Future;
 use std::hash::DefaultHasher;
+use std::ops::Deref;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Caches the output of a given Node and acts as a proxy
@@ -15,7 +15,7 @@ pub struct MemoNode<T, CachedNode> {
 impl<'i, I: Hash + 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for MemoNode<T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
-	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + WasmNotSend,
+	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
 {
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
@@ -63,7 +63,7 @@ pub struct ImpureMemoNode<I, T, CachedNode> {
 impl<'i, I: 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
 where
 	CachedNode: for<'any_input> Node<'any_input, I>,
-	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + WasmNotSend,
+	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
 {
 	// TODO: This should return a reference to the cached cached_value
 	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
@@ -93,7 +93,7 @@ impl<T, I, CachedNode> ImpureMemoNode<I, T, CachedNode> {
 		ImpureMemoNode {
 			cache: Default::default(),
 			node,
-			_phantom: core::marker::PhantomData,
+			_phantom: std::marker::PhantomData,
 		}
 	}
 }
@@ -130,9 +130,9 @@ where
 		})
 	}
 
-	fn serialize(&self) -> Option<Arc<dyn core::any::Any + Send + Sync>> {
+	fn serialize(&self) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
 		let io = self.io.lock().unwrap();
-		(io).as_ref().map(|output| output.clone() as Arc<dyn core::any::Any + Send + Sync>)
+		(io).as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
 	}
 }
 
@@ -142,7 +142,7 @@ impl<I, T, N> MonitorNode<I, T, N> {
 	}
 }
 
-use core::hash::{Hash, Hasher};
+use std::hash::{Hash, Hasher};
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct MemoHash<T: Hash> {
 	hash: u64,
@@ -179,7 +179,7 @@ impl<T: Hash> MemoHash<T> {
 	}
 
 	fn calc_hash(data: &T) -> u64 {
-		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		let mut hasher = DefaultHasher::new();
 		data.hash(&mut hasher);
 		hasher.finish()
 	}
@@ -206,7 +206,7 @@ impl<T: Hash> Hash for MemoHash<T> {
 	}
 }
 
-impl<T: Hash> core::ops::Deref for MemoHash<T> {
+impl<T: Hash> Deref for MemoHash<T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -218,14 +218,14 @@ pub struct MemoHashGuard<'a, T: Hash> {
 	inner: &'a mut MemoHash<T>,
 }
 
-impl<T: Hash> core::ops::Drop for MemoHashGuard<'_, T> {
+impl<T: Hash> Drop for MemoHashGuard<'_, T> {
 	fn drop(&mut self) {
 		let hash = MemoHash::<T>::calc_hash(&self.inner.value);
 		self.inner.hash = hash;
 	}
 }
 
-impl<T: Hash> core::ops::Deref for MemoHashGuard<'_, T> {
+impl<T: Hash> Deref for MemoHashGuard<'_, T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -233,7 +233,7 @@ impl<T: Hash> core::ops::Deref for MemoHashGuard<'_, T> {
 	}
 }
 
-impl<T: Hash> core::ops::DerefMut for MemoHashGuard<'_, T> {
+impl<T: Hash> std::ops::DerefMut for MemoHashGuard<'_, T> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.inner.value
 	}

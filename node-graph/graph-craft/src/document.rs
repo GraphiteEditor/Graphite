@@ -147,7 +147,7 @@ pub struct DocumentNode {
 	#[cfg_attr(feature = "serde", serde(default = "return_true"))]
 	pub visible: bool,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub skip_deduplication: bool,
@@ -602,7 +602,7 @@ pub struct OldDocumentNode {
 	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
 	pub metadata: OldDocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub skip_deduplication: bool,
@@ -710,8 +710,8 @@ pub struct NodeNetwork {
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 }
 
-impl std::hash::Hash for NodeNetwork {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for NodeNetwork {
+	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.exports.hash(state);
 		let mut nodes: Vec<_> = self.nodes.iter().collect();
 		nodes.sort_by_key(|(id, _)| *id);
