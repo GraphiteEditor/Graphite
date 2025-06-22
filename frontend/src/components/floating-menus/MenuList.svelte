@@ -245,22 +245,27 @@
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry) {
-		// Close the containing menu
-		let childReference = getChildReference(menuListEntry);
+		// Notify the parent about the clicked entry as the new active entry
+		dispatch("activeEntry", menuListEntry);
+		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
+
+		// Close the child menu, which we will re-open by calling `onPointerEnter` below, in order to remove its highlighted state
+		let childReference = highlighted && getChildReference(highlighted);
 		if (childReference) {
 			openChildValue = undefined;
 			reactiveEntries = reactiveEntries;
 		}
-		dispatch("open", false);
-		open = false;
-		reactiveEntries = reactiveEntries;
 
-		// Notify the parent about the clicked entry as the new active entry
-		dispatch("activeEntry", menuListEntry);
-		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
+		// Remove the highlighted state from the current (clicked) entry
+		setHighlighted(undefined);
+
+		// Re-spawn the child menu that we have clicked on, just like we hovered over it (`onPointerEnter`)
+		onEntryPointerEnter(menuListEntry);
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
+		if (highlighted) return;
+
 		if (!menuListEntry.children?.length) {
 			dispatch("hoverInEntry", menuListEntry);
 			return;
@@ -276,6 +281,8 @@
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
+		if (highlighted) return;
+
 		if (!menuListEntry.children?.length) {
 			dispatch("hoverOutEntry");
 			return;
@@ -309,23 +316,21 @@
 
 	function openSubmenu(highlightedEntry: MenuListEntry): boolean {
 		let childReference = getChildReference(highlightedEntry);
-		// No submenu to open
+
+		// Exit if there is no submenu to open
 		if (!childReference || !highlightedEntry.children?.length) return false;
 
 		openChildValue = highlightedEntry.value;
-		// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
-		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `childReference.open` property.
-		highlighted = highlighted;
 
-		// Highlight first item
-		childReference.setHighlighted(highlightedEntry.children[0][0]);
+		// Ensure this item in the parent menu is highlighted
+		setHighlighted(highlightedEntry);
 
 		// Submenu was opened
 		return true;
 	}
 
 	/// Handles keyboard navigation for the menu.
-	// Returns a boolean indicating whether the entire menu stack should be dismissed.
+	/// Returns a boolean indicating whether the entire menu stack should be dismissed.
 	export function keydown(e: KeyboardEvent, submenu = false): boolean {
 		const menuOpen = open;
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
@@ -340,22 +345,36 @@
 			return false;
 		}
 
+		console.log("openChild:", openChild, "highlighted:", highlighted, "menuOpen:", menuOpen);
+
 		// If a submenu is open, have it handle this instead
 		if (menuOpen && openChild >= 0) {
 			const childMenuListEntry = flatEntries[openChild];
 			const childMenu = getChildReference(childMenuListEntry);
+			console.log("openChild:", openChild, "childMenu:", childMenu);
 
-			// Redirect the keyboard navigation to a submenu if one is open
-			const shouldCloseStack = childMenu?.keydown(e, true) || false;
+			if (!highlighted && (e.key === "ArrowRight" || e.key === " " || e.key === "Enter")) {
+				openSubmenu(childMenuListEntry);
+			}
 
 			// Highlight the menu item in the parent list that corresponds with the open submenu
 			if (highlighted && e.key !== "Escape") setHighlighted(childMenuListEntry);
+
+			// Redirect the keyboard navigation to a submenu if one is open
+			const shouldCloseStack = childMenu?.keydown(e, true) || false;
 
 			// Handle the child closing the entire menu stack
 			if (shouldCloseStack) open = false;
 
 			// Keep the menu stack open
 			return shouldCloseStack;
+		}
+
+		// If this is the deepest sub-menu being activated by keyboard navigation, highlight its first entry
+		if (menuOpen && openChild === -1 && !highlighted && (e.key === "ArrowRight" || e.key === " " || e.key === "Enter")) {
+			// If no entry is highlighted, highlight the first entry
+			highlighted = flatEntries[0];
+			setHighlighted(highlighted);
 		}
 
 		// Navigate to the next and previous entries with arrow keys
@@ -379,9 +398,10 @@
 			return false;
 		}
 
-		// Close menu with escape key
+		// Close menu with escape key, or un-highlight the current entry if it's highlighted
 		if (menuOpen && e.key === "Escape") {
-			open = false;
+			// Close the menu
+			if (submenu || !highlighted) open = false;
 
 			// Reset active to before open
 			setHighlighted(activeEntry);
@@ -420,6 +440,8 @@
 				open = false;
 
 				e.preventDefault();
+			} else if (highlighted) {
+				setHighlighted(activeEntry);
 			}
 
 			// Keep the menu stack open
