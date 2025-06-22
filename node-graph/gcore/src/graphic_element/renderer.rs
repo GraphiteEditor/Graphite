@@ -39,7 +39,7 @@ impl FreePoint {
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ClickTargetType {
-	Subpath(bezier_rs::Subpath<PointId>),
+	Subpath(Subpath<PointId>),
 	FreePoint(FreePoint),
 }
 
@@ -75,7 +75,7 @@ impl MaskType {
 }
 
 impl ClickTarget {
-	pub fn new_with_subpath(subpath: bezier_rs::Subpath<PointId>, stroke_width: f64) -> Self {
+	pub fn new_with_subpath(subpath: Subpath<PointId>, stroke_width: f64) -> Self {
 		let bounding_box = subpath.loose_bounding_box();
 		Self {
 			target_type: ClickTargetType::Subpath(subpath),
@@ -300,7 +300,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "wgpu")]
-	pub resource_overrides: std::collections::HashMap<u64, alloc::sync::Arc<wgpu::Texture>>,
+	pub resource_overrides: HashMap<u64, std::sync::Arc<wgpu::Texture>>,
 }
 
 /// Static state used whilst rendering
@@ -350,8 +350,7 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 
 // TODO: Click targets can be removed from the render output, since the vector data is available in the vector modify data from Monitor nodes.
 // This will require that the transform for child layers into that layer space be calculated, or it could be returned from the RenderOutput instead of click targets.
-#[derive(Debug, Default, Clone, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
@@ -468,7 +467,7 @@ impl GraphicElementRendered for GraphicGroupTable {
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 						opacity,
 						kurbo::Affine::IDENTITY,
-						&vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
+						&kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
 					);
 					layer = true;
 				}
@@ -756,9 +755,9 @@ impl GraphicElementRendered for VectorDataTable {
 					let outline_stroke = kurbo::Stroke {
 						width: LAYER_OUTLINE_STROKE_WEIGHT,
 						miter_limit: 4.,
-						join: kurbo::Join::Miter,
-						start_cap: kurbo::Cap::Butt,
-						end_cap: kurbo::Cap::Butt,
+						join: Join::Miter,
+						start_cap: Cap::Butt,
+						end_cap: Cap::Butt,
 						dash_pattern: Default::default(),
 						dash_offset: 0.,
 					};
@@ -913,7 +912,7 @@ impl GraphicElementRendered for VectorDataTable {
 			if let Some(element_id) = element_id {
 				let stroke_width = instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 				let filled = instance.style.fill() != &Fill::None;
-				let fill = |mut subpath: bezier_rs::Subpath<_>| {
+				let fill = |mut subpath: Subpath<_>| {
 					if filled {
 						subpath.set_closed(true);
 					}
@@ -953,7 +952,7 @@ impl GraphicElementRendered for VectorDataTable {
 		for instance in self.instance_ref_iter() {
 			let stroke_width = instance.instance.style.stroke().as_ref().map_or(0., Stroke::weight);
 			let filled = instance.instance.style.fill() != &Fill::None;
-			let fill = |mut subpath: bezier_rs::Subpath<_>| {
+			let fill = |mut subpath: Subpath<_>| {
 				if filled {
 					subpath.set_closed(true);
 				}
@@ -1186,10 +1185,10 @@ impl GraphicElementRendered for RasterDataTable<CPU> {
 			if image.data.is_empty() {
 				return;
 			}
-			let image = vello::peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
+			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::Format::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 			let transform = transform * *instance.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
-			scene.draw_image(&image, vello::kurbo::Affine::new(transform.to_cols_array()));
+			scene.draw_image(&image, kurbo::Affine::new(transform.to_cols_array()));
 		}
 	}
 
@@ -1385,7 +1384,7 @@ impl GraphicElementRendered for GraphicElement {
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
-trait Primitive: core::fmt::Display {}
+trait Primitive: std::fmt::Display {}
 impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}

@@ -35,7 +35,7 @@ resvg = "0.44"
 image = "0.25"
 
 # Required dependencies
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { workspace = true }
 
 # Benchmarks
 [[bench]]

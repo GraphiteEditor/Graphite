@@ -111,12 +111,8 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 		})
 		.collect();
 
-	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		syn::Error::new(
-			proc_macro2::Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e),
-		)
-	})?;
+	let crate_name = proc_macro_crate::crate_name("graphene-core")
+		.map_err(|e| syn::Error::new(Span::call_site(), format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {}", e)))?;
 	let crate_name = match crate_name {
 		proc_macro_crate::FoundCrate::Itself => quote!(crate),
 		proc_macro_crate::FoundCrate::Name(name) => {
@@ -144,19 +140,19 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 					let docstring = match &variant.basic_item.description {
 						Some(s) => {
 							let s = s.trim();
-							quote! { Some(::alloc::borrow::Cow::Borrowed(#s)) }
+							quote! { Some(::std::borrow::Cow::Borrowed(#s)) }
 						}
 						None => quote! { None },
 					};
 					let icon = match &variant.basic_item.icon {
-						Some(s) => quote! { Some(::alloc::borrow::Cow::Borrowed(#s)) },
+						Some(s) => quote! { Some(::std::borrow::Cow::Borrowed(#s)) },
 						None => quote! { None },
 					};
 					quote! {
 						(
 							#name::#vname, #crate_name::registry::VariantMetadata {
-								name: ::alloc::borrow::Cow::Borrowed(#vname_str),
-								label: ::alloc::borrow::Cow::Borrowed(#label),
+								name: ::std::borrow::Cow::Borrowed(#vname_str),
+								label: ::std::borrow::Cow::Borrowed(#label),
 								docstring: #docstring,
 								icon: #icon,
 							}
