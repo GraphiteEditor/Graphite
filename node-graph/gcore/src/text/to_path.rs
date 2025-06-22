@@ -89,7 +89,7 @@ impl Default for TypesettingConfig {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			character_spacing: 1.,
+			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
 		}

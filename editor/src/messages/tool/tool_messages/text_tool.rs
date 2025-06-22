@@ -42,7 +42,7 @@ impl Default for TextOptions {
 		Self {
 			font_size: 24.,
 			line_height_ratio: 1.2,
-			character_spacing: 1.,
+			character_spacing: 0.,
 			font_name: graphene_std::consts::DEFAULT_FONT_FAMILY.into(),
 			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),

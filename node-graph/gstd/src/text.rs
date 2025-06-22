@@ -11,7 +11,7 @@ fn text<'i: 'n>(
 	font_name: Font,
 	#[default(24.)] font_size: f64,
 	#[default(1.2)] line_height_ratio: f64,
-	#[default(1.)] character_spacing: f64,
+	#[default(0.)] character_spacing: f64,
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
 ) -> VectorDataTable {
