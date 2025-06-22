@@ -2271,7 +2271,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
- "skrifa 0.31.3",
+ "skrifa 0.32.0",
  "specta",
  "tinyvec",
  "tokio",
@@ -5084,6 +5084,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "192735ef611aac958468e670cb98432c925426f3cb71521fda202130f7388d91"
+dependencies = [
+ "bytemuck",
+ "font-types 0.9.0",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5757,6 +5767,16 @@ checksum = "dbeb4ca4399663735553a09dd17ce7e49a0a0203f03b706b39628c4d913a8607"
 dependencies = [
  "bytemuck",
  "read-fonts 0.29.3",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6d632b5a73f566303dbeabd344dc3e716fd4ddc9a70d6fc8ea8e6f06617da97"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.30.1",
 ]
 
 [[package]]

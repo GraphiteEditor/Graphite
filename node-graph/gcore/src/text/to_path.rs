@@ -1,16 +1,15 @@
-use core::cell::RefCell;
-use std::sync::Arc;
-
 use crate::vector::PointId;
 use bezier_rs::{ManipulatorGroup, Subpath};
+use core::cell::RefCell;
 use glam::DVec2;
-use parley::{Alignment, AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty, fontique::Blob};
-use skrifa::{
-	GlyphId, MetadataProvider, OutlineGlyph,
-	instance::{LocationRef, NormalizedCoord, Size},
-	outline::{DrawSettings, OutlinePen},
-	raw::FontRef as ReadFontsRef,
-};
+use parley::fontique::Blob;
+use parley::{Alignment, AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use skrifa::GlyphId;
+use skrifa::instance::{LocationRef, NormalizedCoord, Size};
+use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::FontRef as ReadFontsRef;
+use skrifa::{MetadataProvider, OutlineGlyph};
+use std::sync::Arc;
 
 thread_local! {
 	static FONT_CONTEXT: RefCell<FontContext> = RefCell::new(FontContext::new());
@@ -20,20 +19,18 @@ thread_local! {
 struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	other_subpaths: Vec<Subpath<PointId>>,
-	x: f32,
-	y: f32,
+	origin: DVec2,
 	scale: f64,
 	id: PointId,
 }
 
 impl PathBuilder {
 	fn point(&self, x: f32, y: f32) -> DVec2 {
-		DVec2::new((self.x + x) as f64, (self.y - y) as f64) * self.scale
+		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
 	}
 
-	fn set_origin(&mut self, x: f32, y: f32) {
-		self.x = x;
-		self.y = y;
+	fn set_origin(&mut self, x: f64, y: f64) {
+		self.origin = DVec2::new(x, y);
 	}
 
 	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord]) {
@@ -122,7 +119,7 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 
 		let glyph_id = GlyphId::from(glyph.id);
 		if let Some(glyph_outline) = outlines.get(glyph_id) {
-			path_builder.set_origin(glyph_x, glyph_y);
+			path_builder.set_origin(glyph_x as f64, glyph_y as f64);
 			path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords);
 		}
 	}
@@ -138,11 +135,11 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 		font_cx
 			.collection
 			.register_fonts(font_data, None)
-			.get(0)
+			.first()
 			.and_then(|(family_id, _)| font_cx.collection.family_name(*family_id).map(String::from))
 	})?;
 
-	const DISPLAY_SCALE: f32 = 1.0;
+	const DISPLAY_SCALE: f32 = 1.;
 	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, true);
 
 	builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
@@ -159,15 +156,12 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 }
 
 pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Vec<Subpath<PointId>> {
-	let Some(layout) = layout_text(str, font_data, typesetting) else {
-		return vec![];
-	};
+	let Some(layout) = layout_text(str, font_data, typesetting) else { return Vec::new() };
 
 	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
 		other_subpaths: Vec::new(),
-		x: 0.,
-		y: 0.,
+		origin: DVec2::ZERO,
 		scale: layout.scale() as f64,
 		id: PointId::ZERO,
 	};
@@ -195,9 +189,7 @@ pub fn bounding_box(str: &str, font_data: Option<Blob<u8>>, typesetting: Typeset
 		}
 	}
 
-	let Some(layout) = layout_text(str, font_data, typesetting) else {
-		return DVec2::ZERO;
-	};
+	let Some(layout) = layout_text(str, font_data, typesetting) else { return DVec2::ZERO };
 
 	DVec2::new(layout.full_width() as f64, layout.height() as f64)
 }
