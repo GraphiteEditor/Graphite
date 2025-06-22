@@ -1,3 +1,5 @@
+use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
+use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -11,9 +13,6 @@ use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::text::{FontCache, load_face};
 use graphene_std::vector::{HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
-
-use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
-use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(
@@ -238,9 +237,8 @@ pub fn resize_bounds(
 				false
 			}
 		});
-		let selected = &dragging_layers;
-		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.network_interface, None, &tool, None);
 
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &dragging_layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 	}
 }
@@ -278,6 +276,7 @@ pub fn rotate_bounds(
 			false
 		}
 	});
+
 	let mut selected = Selected::new(
 		&mut bounds.original_transforms,
 		&mut bounds.center_of_transformation,
@@ -288,7 +287,6 @@ pub fn rotate_bounds(
 		&tool,
 		None,
 	);
-
 	selected.update_transforms(delta, None, None);
 }
 
@@ -302,6 +300,8 @@ pub fn skew_bounds(
 	tool: ToolType,
 ) {
 	if let Some(movement) = &mut bounds.selected_edges {
+		let mut pivot = DVec2::ZERO;
+
 		let transformation = movement.skew_transform(mouse_position, bounds.original_bound_transform, free_movement);
 
 		layers.retain(|layer| {
@@ -312,14 +312,14 @@ pub fn skew_bounds(
 				false
 			}
 		});
-		let selected = &layers;
-		let mut pivot = DVec2::ZERO;
-		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.network_interface, None, &tool, None);
 
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
 	}
 }
 
+// TODO: Replace returned tuple (where at most 1 element is true at a time) with an enum.
+/// Returns the tuple (resize, rotate, skew).
 pub fn transforming_transform_cage(
 	document: &DocumentMessageHandler,
 	mut bounding_box_manager: &mut Option<BoundingBoxManager>,
@@ -379,10 +379,13 @@ pub fn transforming_transform_cage(
 			if let Some(edges) = edges {
 				let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
 				if bounds.check_skew_handle(input.mouse.position, closest_edge) {
+					// No resize or rotate, just skew
 					return (false, false, true);
 				}
 			}
 		}
+
+		// Just resize, no rotate or skew
 		return (true, false, false);
 	}
 
@@ -415,9 +418,11 @@ pub fn transforming_transform_cage(
 
 		*layers_dragging = selected;
 
+		// No resize or skew, just rotate
 		return (false, true, false);
 	}
 
+	// No resize, rotate, or skew
 	return (false, false, false);
 }
 

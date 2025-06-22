@@ -69,28 +69,28 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
 			}
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
-			ToolMessage::ActivateShapeRectangle | ToolMessage::ActivateShapeEllipse | ToolMessage::ActivateShapeLine => {
-				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
+			ToolMessage::ActivateToolShapeLine | ToolMessage::ActivateToolShapeRectangle | ToolMessage::ActivateToolShapeEllipse => {
 				let shape = match message {
-					ToolMessage::ActivateShapeLine => Line,
-					ToolMessage::ActivateShapeEllipse => Ellipse,
-					ToolMessage::ActivateShapeRectangle => Rectangle,
+					ToolMessage::ActivateToolShapeLine => Line,
+					ToolMessage::ActivateToolShapeRectangle => Rectangle,
+					ToolMessage::ActivateToolShapeEllipse => Ellipse,
 					_ => unreachable!(),
 				};
+
 				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
+				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
 				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
 				responses.add(ShapeToolMessage::SetShape(shape));
 			}
 			// ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
-				let old_tool = tool_data.active_tool_type;
-
+				let old_tool = tool_data.active_tool_type.get_tool();
 				let tool_type = tool_type.get_tool();
-				let old_tool = old_tool.get_tool();
 
 				responses.add(ToolMessage::RefreshToolOptions);
 				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+
 				// Do nothing if switching to the same tool
 				if self.tool_is_active && tool_type == old_tool {
 					return;
@@ -99,6 +99,7 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 				if tool_type != ToolType::Shape {
 					tool_data.active_shape_type = None;
 				}
+
 				self.tool_is_active = true;
 
 				// Send the old and new tools a transition to their FSM Abort states
@@ -325,7 +326,6 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolArtboard,
 			ActivateToolNavigate,
 			ActivateToolEyedropper,
-			ActivateToolText,
 			ActivateToolFill,
 			ActivateToolGradient,
 
@@ -333,16 +333,14 @@ impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
 			ActivateToolPen,
 			ActivateToolFreehand,
 			ActivateToolSpline,
-				ActivateToolShape,
-
-			ActivateToolPolygon,
+			ActivateToolShapeLine,
+			ActivateToolShapeRectangle,
+			ActivateToolShapeEllipse,
+			ActivateToolShape,
+			ActivateToolText,
 
 			ActivateToolBrush,
 			// ActivateToolImaginate,
-
-				ActivateShapeRectangle,
-			ActivateShapeEllipse,
-			ActivateShapeLine,
 
 			SelectRandomPrimaryColor,
 			ResetColors,

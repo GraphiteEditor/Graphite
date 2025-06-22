@@ -70,9 +70,7 @@ impl AlignmentSnapper {
 			if let Some(quad) = target_point.quad.map(|q| q.0) {
 				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
 					let [p1, p2, ..] = quad;
-					let Some(direction) = (p2 - p1).try_normalize() else {
-						return;
-					};
+					let Some(direction) = (p2 - p1).try_normalize() else { return };
 					let normal = DVec2::new(-direction.y, direction.x);
 
 					for endpoint in [p1, p2] {

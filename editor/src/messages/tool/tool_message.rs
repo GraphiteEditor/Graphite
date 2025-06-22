@@ -56,7 +56,6 @@ pub enum ToolMessage {
 	ActivateToolArtboard,
 	ActivateToolNavigate,
 	ActivateToolEyedropper,
-	ActivateToolText,
 	ActivateToolFill,
 	ActivateToolGradient,
 
@@ -64,11 +63,11 @@ pub enum ToolMessage {
 	ActivateToolPen,
 	ActivateToolFreehand,
 	ActivateToolSpline,
+	ActivateToolShapeLine,
+	ActivateToolShapeRectangle,
+	ActivateToolShapeEllipse,
 	ActivateToolShape,
-	ActivateShapeRectangle,
-	ActivateShapeEllipse,
-	ActivateShapeLine,
-	ActivateToolPolygon,
+	ActivateToolText,
 
 	ActivateToolBrush,
 	// ActivateToolImaginate,

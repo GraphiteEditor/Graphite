@@ -37,7 +37,7 @@ pub struct Line;
 
 impl Line {
 	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
+		let node_type = resolve_document_node_type("Line").expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
@@ -53,10 +53,12 @@ impl Line {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let (center, snap_angle, lock_angle) = (modifier[0], modifier[3], modifier[2]);
+		let [center, _, lock_angle, snap_angle] = modifier;
+
 		shape_tool_data.line_data.drag_current = ipp.mouse.position;
+
 		let keyboard = &ipp.keyboard;
-		let ignore = vec![layer];
+		let ignore = [layer];
 		let snap_data = SnapData::ignore(document, ipp, &ignore);
 		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
@@ -315,8 +317,8 @@ mod test_line_tool {
 				(start_input, end_input) => {
 					let expected_start = DVec2::new(0., 100.);
 					let expected_end = DVec2::new(200., 100.);
-					assert!((start_input - expected_start).length() < 1., "start point should be near (0,100)");
-					assert!((end_input - expected_end).length() < 1., "end point should be near (200,100)");
+					assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
+					assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
 				}
 			}
 		}
@@ -352,7 +354,7 @@ mod test_line_tool {
 		editor
 			.handle_message(GraphOperationMessage::TransformChange {
 				layer: artboard_id,
-				transform: DAffine2::from_angle(45.0_f64.to_radians()),
+				transform: DAffine2::from_angle(45_f64.to_radians()),
 				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			})
@@ -366,16 +368,16 @@ mod test_line_tool {
 		// Verifying the line is approximately 100*sqrt(2) units in length (diagonal of 100x100 square)
 		let line_length = line_vector.length();
 		assert!(
-			(line_length - 141.42).abs() < 1.0, // 100 * sqrt(2) ~= 141.42
+			(line_length - 141.42).abs() < 1., // 100 * sqrt(2) ~= 141.42
 			"Line length should be approximately 141.42 units. Got: {line_length}"
 		);
-		assert!((line_vector.x - 100.0).abs() < 1.0, "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
+		assert!((line_vector.x - 100.).abs() < 1., "X-component of line vector should be approximately 100. Got: {}", line_vector.x);
 		assert!(
-			(line_vector.y.abs() - 100.0).abs() < 1.0,
+			(line_vector.y.abs() - 100.).abs() < 1.,
 			"Absolute Y-component of line vector should be approximately 100. Got: {}",
 			line_vector.y.abs()
 		);
 		let angle_degrees = line_vector.angle_to(DVec2::X).to_degrees();
-		assert!((angle_degrees - (-45.0)).abs() < 1.0, "Line angle should be close to -45 degrees. Got: {angle_degrees}");
+		assert!((angle_degrees - (-45.)).abs() < 1., "Line angle should be close to -45 degrees. Got: {angle_degrees}");
 	}
 }

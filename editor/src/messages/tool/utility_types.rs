@@ -262,9 +262,9 @@ impl LayoutHolder for ToolData {
 						.tooltip_shortcut(tooltip_shortcut)
 						.on_update(move |_| {
 							match tool_type {
-								ToolType::Line => ToolMessage::ActivateShapeLine.into(),
-								ToolType::Ellipse => ToolMessage::ActivateShapeEllipse.into(),
-								ToolType::Rectangle => ToolMessage::ActivateShapeRectangle.into(),
+								ToolType::Line => ToolMessage::ActivateToolShapeLine.into(),
+								ToolType::Rectangle => ToolMessage::ActivateToolShapeRectangle.into(),
+								ToolType::Ellipse => ToolMessage::ActivateToolShapeEllipse.into(),
 								ToolType::Shape => ToolMessage::ActivateToolShape.into(),
 								_ => {
 									if !tooltip.contains("Coming Soon") { (ToolMessage::ActivateTool { tool_type }).into() } else { (DialogMessage::RequestComingSoonDialog { issue: None }).into() }
@@ -351,12 +351,10 @@ pub enum ToolType {
 	Freehand,
 	Spline,
 	Shape,
+	Line,      // Shape tool alias
+	Rectangle, // Shape tool alias
+	Ellipse,   // Shape tool alias
 	Text,
-
-	// Shape group
-	Rectangle,
-	Ellipse,
-	Line,
 
 	// Raster tool group
 	Brush,
@@ -381,6 +379,7 @@ impl ToolType {
 		if self.get_shape().is_some() { ToolType::Shape } else { self }
 	}
 }
+
 enum ToolAvailability {
 	Available(Box<Tool>),
 	AvailableAsShape(ShapeType),
@@ -441,7 +440,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Pen(_) => ToolType::Pen,
 		ToolMessage::Freehand(_) => ToolType::Freehand,
 		ToolMessage::Spline(_) => ToolType::Spline,
-		ToolMessage::Shape(_) => ToolType::Shape,
+		ToolMessage::Shape(_) => ToolType::Shape, // Includes the Line, Rectangle, and Ellipse aliases
 		ToolMessage::Text(_) => ToolType::Text,
 
 		// Raster tool group
@@ -471,11 +470,11 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Pen => ToolMessageDiscriminant::ActivateToolPen,
 		ToolType::Freehand => ToolMessageDiscriminant::ActivateToolFreehand,
 		ToolType::Spline => ToolMessageDiscriminant::ActivateToolSpline,
+		ToolType::Line => ToolMessageDiscriminant::ActivateToolShapeLine,           // Shape tool alias
+		ToolType::Rectangle => ToolMessageDiscriminant::ActivateToolShapeRectangle, // Shape tool alias
+		ToolType::Ellipse => ToolMessageDiscriminant::ActivateToolShapeEllipse,     // Shape tool alias
 		ToolType::Shape => ToolMessageDiscriminant::ActivateToolShape,
 		ToolType::Text => ToolMessageDiscriminant::ActivateToolText,
-		ToolType::Rectangle => ToolMessageDiscriminant::ActivateShapeRectangle,
-		ToolType::Ellipse => ToolMessageDiscriminant::ActivateShapeEllipse,
-		ToolType::Line => ToolMessageDiscriminant::ActivateShapeLine,
 
 		// Raster tool group
 		ToolType::Brush => ToolMessageDiscriminant::ActivateToolBrush,

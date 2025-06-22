@@ -1,10 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COMPASS_ROSE_HOVER_RING_DIAMETER, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE,
-	SELECTION_TOLERANCE,
-};
+use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;

@@ -16,7 +16,7 @@ pub struct Ellipse;
 
 impl Ellipse {
 	pub fn create_node() -> NodeTemplate {
-		let node_type = resolve_document_node_type("Ellipse").expect("Ellipse node does not exist");
+		let node_type = resolve_document_node_type("Ellipse").expect("Ellipse node can't be found");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
 	}
 
@@ -28,7 +28,8 @@ impl Ellipse {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let (center, lock_ratio) = (modifier[0], modifier[1]);
+		let [center, lock_ratio, _, _] = modifier;
+
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_ellipse_id(layer, &document.network_interface) else {
 				return;
@@ -56,7 +57,7 @@ impl Ellipse {
 mod test_ellipse {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::generator_nodes::ellipse;
+	use graphene_std::vector::generator_nodes::ellipse;
 
 	#[derive(Debug, PartialEq)]
 	struct ResolvedEllipse {

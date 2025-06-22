@@ -17,7 +17,7 @@ pub struct Star;
 
 impl Star {
 	pub fn create_node(vertices: u32) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Star").expect(" Star node does not exist");
+		let node_type = resolve_document_node_type("Star").expect("Star node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::U32(vertices), false)),
@@ -34,16 +34,17 @@ impl Star {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let (center, lock_ratio) = (modifier[0], modifier[1]);
+		let [center, lock_ratio, _, _] = modifier;
+
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			update_radius_sign(end, start, layer, document, responses);
 
 			let dimensions = (start - end).abs();
-			let mut scale = DVec2::ONE;
-			let radius: f64;
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
+			let mut scale = DVec2::ONE;
+			let radius: f64;
 			if dimensions.x > dimensions.y {
 				scale.x = dimensions.x / dimensions.y;
 				radius = dimensions.y / 2.;
@@ -63,12 +64,12 @@ impl Star {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 3),
-				input: NodeInput::value(TaggedValue::F64(radius / 2.0), false),
+				input: NodeInput::value(TaggedValue::F64(radius / 2.), false),
 			});
 
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_scale_angle_translation(scale, 0.0, (start + end) / 2.0),
+				transform: DAffine2::from_scale_angle_translation(scale, 0., (start + end) / 2.),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: false,
 			});

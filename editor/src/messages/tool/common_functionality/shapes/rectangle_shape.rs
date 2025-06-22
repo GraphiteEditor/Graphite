@@ -16,7 +16,7 @@ pub struct Rectangle;
 
 impl Rectangle {
 	pub fn create_node() -> NodeTemplate {
-		let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
+		let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node can't be found");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))])
 	}
 
@@ -28,7 +28,8 @@ impl Rectangle {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let (center, lock_ratio) = (modifier[0], modifier[1]);
+		let [center, lock_ratio, _, _] = modifier;
+
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
 				return;

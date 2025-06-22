@@ -1,27 +1,22 @@
-use crate::messages::tool::{
-	common_functionality::shapes::shape_utility::{calculate_polygon_vertex_position, extract_polygon_parameters, inside_polygon, inside_star},
-	tool_messages::tool_prelude::Key,
+use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_HANDLE_SPOKE_EXTENSION, NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
+use crate::messages::frontend::utility_types::MouseCursorIcon;
+use crate::messages::message::Message;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::prelude::Responses;
+use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{
+	extract_polygon_parameters, extract_star_parameters, inside_polygon, inside_star, polygon_vertex_position, star_vertex_position,
 };
-use std::{collections::VecDeque, f64::consts::TAU};
-
-use crate::messages::{portfolio::document::utility_types::document_metadata::LayerNodeIdentifier, prelude::Responses};
+use crate::messages::tool::tool_messages::tool_prelude::Key;
 use glam::{DAffine2, DVec2};
-use graph_craft::document::{NodeInput, value::TaggedValue};
-
-use crate::{
-	consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_HANDLE_SPOKE_EXTENSION, NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD},
-	messages::{
-		frontend::utility_types::MouseCursorIcon,
-		message::Message,
-		portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector},
-		prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage},
-		tool::common_functionality::{
-			graph_modification_utils,
-			shape_editor::ShapeState,
-			shapes::shape_utility::{calculate_star_vertex_position, extract_star_parameters},
-		},
-	},
-};
+use graph_craft::document::NodeInput;
+use graph_craft::document::value::TaggedValue;
+use std::collections::VecDeque;
+use std::f64::consts::TAU;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum NumberOfPointsHandleState {
@@ -43,6 +38,7 @@ impl NumberOfPointsHandle {
 		self.handle_state = NumberOfPointsHandleState::Inactive;
 		self.layer = None;
 	}
+
 	pub fn update_state(&mut self, state: NumberOfPointsHandleState) {
 		self.handle_state = state;
 	}
@@ -69,18 +65,16 @@ impl NumberOfPointsHandle {
 
 		match &self.handle_state {
 			NumberOfPointsHandleState::Inactive => {
-				for layer in document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| {
-						graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some() || graph_modification_utils::get_polygon_id(*layer, &document.network_interface).is_some()
-					}) {
+				let selected_nodes = document.network_interface.selected_nodes();
+				let layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface).filter(|layer| {
+					graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some() || graph_modification_utils::get_polygon_id(*layer, &document.network_interface).is_some()
+				});
+				for layer in layers {
 					if let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
 						let viewport = document.metadata().transform_to_viewport(layer);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
-						let point_on_max_radius = calculate_star_vertex_position(viewport, 0, n, radius1, radius2);
+						let point_on_max_radius = star_vertex_position(viewport, 0, n, radius1, radius2);
 
 						if mouse_position.distance(center) < NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
 							self.layer = Some(layer);
@@ -94,7 +88,7 @@ impl NumberOfPointsHandle {
 						let viewport = document.metadata().transform_to_viewport(layer);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
-						let point_on_max_radius = calculate_polygon_vertex_position(viewport, 0, n, radius);
+						let point_on_max_radius = polygon_vertex_position(viewport, 0, n, radius);
 
 						if mouse_position.distance(center) < NUMBER_OF_POINTS_HANDLE_SPOKE_LENGTH && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
 							self.layer = Some(layer);
@@ -106,13 +100,11 @@ impl NumberOfPointsHandle {
 				}
 			}
 			NumberOfPointsHandleState::Hover | NumberOfPointsHandleState::Dragging => {
-				let Some(layer) = self.layer else {
-					return;
-				};
+				let Some(layer) = self.layer else { return };
 
 				let Some((n, radius)) = extract_star_parameters(Some(layer), document)
 					.map(|(n, r1, r2)| (n, r1.max(r2)))
-					.or_else(|| extract_polygon_parameters(Some(layer), document).map(|(n, r)| (n, r)))
+					.or_else(|| extract_polygon_parameters(Some(layer), document))
 				else {
 					return;
 				};
@@ -125,8 +117,6 @@ impl NumberOfPointsHandle {
 					self.layer = None;
 					self.draw_spokes(center, viewport, n, radius, overlay_context);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-
-					return;
 				}
 			}
 		}
@@ -146,13 +136,11 @@ impl NumberOfPointsHandle {
 
 		match &self.handle_state {
 			NumberOfPointsHandleState::Inactive => {
-				for layer in document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| {
-						graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some() || graph_modification_utils::get_polygon_id(*layer, &document.network_interface).is_some()
-					}) {
+				let selected_nodes = document.network_interface.selected_nodes();
+				let layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface).filter(|layer| {
+					graph_modification_utils::get_star_id(*layer, &document.network_interface).is_some() || graph_modification_utils::get_polygon_id(*layer, &document.network_interface).is_some()
+				});
+				for layer in layers {
 					if let Some((n, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
 						let radius = radius1.max(radius2);
 						let viewport = document.metadata().transform_to_viewport(layer);
@@ -163,7 +151,7 @@ impl NumberOfPointsHandle {
 								return;
 							}
 						}
-						let point_on_max_radius = calculate_star_vertex_position(viewport, 0, n, radius1, radius2);
+						let point_on_max_radius = star_vertex_position(viewport, 0, n, radius1, radius2);
 
 						if inside_star(viewport, n, radius1, radius2, mouse_position) && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
 							self.draw_spokes(center, viewport, n, radius, overlay_context);
@@ -180,7 +168,7 @@ impl NumberOfPointsHandle {
 								return;
 							}
 						}
-						let point_on_max_radius = calculate_polygon_vertex_position(viewport, 0, n, radius);
+						let point_on_max_radius = polygon_vertex_position(viewport, 0, n, radius);
 
 						if inside_polygon(viewport, n, radius, mouse_position) && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
 							self.draw_spokes(center, viewport, n, radius, overlay_context);
@@ -190,13 +178,11 @@ impl NumberOfPointsHandle {
 				}
 			}
 			NumberOfPointsHandleState::Hover | NumberOfPointsHandleState::Dragging => {
-				let Some(layer) = self.layer else {
-					return;
-				};
+				let Some(layer) = self.layer else { return };
 
 				let Some((n, radius)) = extract_star_parameters(Some(layer), document)
 					.map(|(n, r1, r2)| (n, r1.max(r2)))
-					.or_else(|| extract_polygon_parameters(Some(layer), document).map(|(n, r)| (n, r)))
+					.or_else(|| extract_polygon_parameters(Some(layer), document))
 				else {
 					return;
 				};
@@ -218,9 +204,7 @@ impl NumberOfPointsHandle {
 				y: -radius * angle.cos(),
 			});
 
-			let Some(direction) = (point - center).try_normalize() else {
-				continue;
-			};
+			let Some(direction) = (point - center).try_normalize() else { continue };
 
 			// If the user zooms out such that shape is very small hide the gizmo
 			if point.distance(center) < GIZMO_HIDE_THRESHOLD {
@@ -236,15 +220,12 @@ impl NumberOfPointsHandle {
 		}
 	}
 
-	pub fn update_no_of_sides(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+	pub fn update_number_of_sides(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
 		let delta = input.mouse.position - document.metadata().document_to_viewport.transform_point2(drag_start);
 		let sign = (input.mouse.position.x - document.metadata().document_to_viewport.transform_point2(drag_start).x).signum();
-		let net_delta = (delta.length() / 25.0).round() * sign;
+		let net_delta = (delta.length() / 25.).round() * sign;
 
-		let Some(layer) = self.layer else {
-			return;
-		};
-
+		let Some(layer) = self.layer else { return };
 		let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface).or(graph_modification_utils::get_polygon_id(layer, &document.network_interface)) else {
 			return;
 		};

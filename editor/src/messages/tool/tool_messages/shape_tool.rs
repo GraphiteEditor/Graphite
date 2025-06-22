@@ -6,8 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use crate::messages::tool::common_functionality::graph_modification_utils::{self};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shape_gizmos::number_of_points_handle::{NumberOfPointsHandle, NumberOfPointsHandleState};
 use crate::messages::tool::common_functionality::shape_gizmos::point_radius_handle::{PointRadiusHandle, PointRadiusHandleState};
@@ -23,7 +22,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use std::vec;
 
 #[derive(Default)]
 pub struct ShapeTool {
@@ -91,15 +89,14 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 	NumberInput::new(Some(vertices as f64))
 		.label("Sides")
 		.int()
-		.min(3.0)
-		.max(1000.0)
+		.min(3.)
+		.max(1000.)
 		.mode(NumberInputMode::Increment)
 		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::Vertices(number_input.value.unwrap() as u32)).into())
 		.widget_holder()
 }
 
 fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
-	log::info!("shape_type {:?}", shape_type);
 	let entries = vec![vec![
 		MenuListEntry::new("Polygon")
 			.label("Polygon")
@@ -115,7 +112,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
-		.min(0.0)
+		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| ShapeToolMessage::UpdateOptions(ShapeOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
@@ -266,14 +263,14 @@ pub enum ShapeToolFsmState {
 	Ready(ShapeType),
 	Drawing(ShapeType),
 
-	// Line Shape Specific
+	// Line shape-specific
 	DraggingLineEndpoints,
 
-	// Star Shape Specific
+	// Star shape-specific
 	DraggingStarInnerRadius,
 	DraggingStarNumberPointHandle,
 
-	// Transform Cage
+	// Transform cage
 	ResizingBounds,
 	RotatingBounds,
 	SkewingBounds { skew: Key },
@@ -293,7 +290,7 @@ pub struct ShapeToolData {
 	// In viewport space
 	pub last_mouse_position: DVec2,
 
-	// Hide the dropdown menu when using line,rectangle or ellipse aliases
+	// Hide the dropdown menu when using Line, Rectangle, or Ellipse aliases
 	pub hide_shape_option_widget: bool,
 
 	// Shape-specific data
@@ -309,7 +306,7 @@ pub struct ShapeToolData {
 	// Current shape which is being drawn
 	current_shape: ShapeType,
 
-	// Gizmo-data
+	// Gizmo data
 	pub point_radius_handle: PointRadiusHandle,
 	pub number_of_points_handle: NumberOfPointsHandle,
 }
@@ -374,9 +371,8 @@ impl Fsm for ShapeToolFsmState {
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.all(|layer| graph_modification_utils::get_line_id(layer, &document.network_interface).is_some());
 
-		let ToolMessage::Shape(event) = event else {
-			return self;
-		};
+		let ToolMessage::Shape(event) = event else { return self };
+
 		match (self, event) {
 			(_, ShapeToolMessage::Overlays(mut overlay_context)) => {
 				let mouse_position = tool_data
@@ -389,10 +385,10 @@ impl Fsm for ShapeToolFsmState {
 				let dragging_start_gizmos = matches!(self, Self::DraggingStarInnerRadius);
 
 				if matches!(self, ShapeToolFsmState::DraggingStarInnerRadius | Self::DraggingStarNumberPointHandle | Self::Ready(_)) && !input.keyboard.key(Key::Control) {
-					// Manage state handling of Number of Point Gizmo
+					// Manage state handling of the number of point gizmos
 					tool_data.number_of_points_handle.handle_actions(document, input, mouse_position, &mut overlay_context, responses);
 
-					// Manage state handling of Point-Radius-Handle Gizmo
+					// Manage state handling of point radius handle gizmo
 					tool_data.point_radius_handle.handle_actions(document, mouse_position);
 
 					tool_data.number_of_points_handle.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
@@ -553,7 +549,7 @@ impl Fsm for ShapeToolFsmState {
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
 				tool_data.line_data.drag_start = input.mouse.position;
 
-				// Snapped position in viewport-space.
+				// Snapped position in viewport space
 				let mouse_pos = tool_data
 					.data
 					.snap_manager
@@ -564,7 +560,6 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.line_data.drag_current = mouse_pos;
 
 				// Check if dragging the inner vertices of a star
-
 				if tool_data.point_radius_handle.hovered() {
 					tool_data.last_mouse_position = mouse_pos;
 					tool_data.point_radius_handle.update_state(PointRadiusHandleState::Dragging);
@@ -576,7 +571,7 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::DraggingStarInnerRadius;
 				}
 
-				// Check if dragging the Number of Points handle of a star or polygon
+				// Check if dragging the number of points handle of a star or polygon
 				if tool_data.number_of_points_handle.is_hovering() {
 					tool_data.last_mouse_position = mouse_pos;
 					tool_data.number_of_points_handle.update_state(NumberOfPointsHandleState::Dragging);
@@ -638,7 +633,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
-					ShapeType::Line => Line::create_node(&document, tool_data.data.drag_start),
+					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -646,12 +641,11 @@ impl Fsm for ShapeToolFsmState {
 
 				responses.add(Message::StartBuffer);
 
-				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				match tool_data.current_shape {
 					ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Polygon | ShapeType::Star => {
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0.0, input.mouse.position),
+							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
@@ -659,11 +653,12 @@ impl Fsm for ShapeToolFsmState {
 						tool_options.fill.apply_fill(layer, responses);
 					}
 					ShapeType::Line => {
-						tool_data.line_data.angle = 0.0;
+						tool_data.line_data.angle = 0.;
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 					}
 				}
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 
 				tool_data.data.layer = Some(layer);
 
@@ -675,11 +670,11 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Rectangle => Rectangle::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Ellipse => Ellipse::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Line => Line::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Polygon => Polygon::update_shape(&document, &input, layer, tool_data, modifier, responses),
-					ShapeType::Star => Star::update_shape(&document, &input, layer, tool_data, modifier, responses),
+					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -693,7 +688,7 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::Ready(tool_data.current_shape);
 				};
 
-				Line::update_shape(&document, &input, layer, tool_data, modifier, responses);
+				Line::update_shape(document, input, layer, tool_data, modifier, responses);
 				// Auto-panning
 				let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
@@ -711,7 +706,7 @@ impl Fsm for ShapeToolFsmState {
 				ShapeToolFsmState::DraggingStarInnerRadius
 			}
 			(ShapeToolFsmState::DraggingStarNumberPointHandle, ShapeToolMessage::PointerMove(..)) => {
-				tool_data.number_of_points_handle.update_no_of_sides(document, input, responses, tool_data.data.drag_start);
+				tool_data.number_of_points_handle.update_number_of_sides(document, input, responses, tool_data.data.drag_start);
 
 				tool_data.last_mouse_position = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
@@ -720,7 +715,7 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ResizingBounds, ShapeToolMessage::PointerMove(modifier)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					let messages = [ShapeToolMessage::PointerOutsideViewport(modifier.clone()).into(), ShapeToolMessage::PointerMove(modifier).into()];
+					let messages = [ShapeToolMessage::PointerOutsideViewport(modifier).into(), ShapeToolMessage::PointerMove(modifier).into()];
 					resize_bounds(
 						document,
 						responses,

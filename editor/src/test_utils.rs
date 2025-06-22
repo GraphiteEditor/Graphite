@@ -219,9 +219,9 @@ impl EditorTestUtils {
 
 	pub async fn select_tool(&mut self, tool_type: ToolType) {
 		match tool_type {
-			ToolType::Line => self.handle_message(Message::Tool(ToolMessage::ActivateShapeLine)).await,
-			ToolType::Rectangle => self.handle_message(Message::Tool(ToolMessage::ActivateShapeRectangle)).await,
-			ToolType::Ellipse => self.handle_message(Message::Tool(ToolMessage::ActivateShapeEllipse)).await,
+			ToolType::Line => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeLine)).await,
+			ToolType::Rectangle => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeRectangle)).await,
+			ToolType::Ellipse => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeEllipse)).await,
 			_ => self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await,
 		}
 	}
