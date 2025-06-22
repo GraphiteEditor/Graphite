@@ -535,7 +535,8 @@ impl Fsm for GradientToolFsmState {
 mod test_gradient {
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
 	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
-	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::fill;
