@@ -233,6 +233,7 @@ tagged_value! {
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
+	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]

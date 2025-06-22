@@ -9,7 +9,7 @@ use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
-use crate::vector::misc::dvec2_to_point;
+use crate::vector::misc::{MergeByDistanceAlgorithm, dvec2_to_point};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
@@ -549,135 +549,146 @@ async fn round_corners(
 	result_table
 }
 
-#[node_macro::node(name("Spatial Merge by Distance"), category("Debug"), path(graphene_core::vector))]
-async fn spatial_merge_by_distance(
+#[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
+pub fn merge_by_distance(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
 	#[default(0.1)]
 	#[hard_min(0.0001)]
-	distance: f64,
+	distance: Length,
+	algorithm: MergeByDistanceAlgorithm,
 ) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
-	for mut vector_data_instance in vector_data.instance_iter() {
-		let vector_data_transform = vector_data_instance.transform;
-		let vector_data = vector_data_instance.instance;
+	match algorithm {
+		MergeByDistanceAlgorithm::Spatial => {
+			for mut vector_data_instance in vector_data.instance_iter() {
+				let vector_data_transform = vector_data_instance.transform;
+				let vector_data = vector_data_instance.instance;
 
-		let point_count = vector_data.point_domain.positions().len();
+				let point_count = vector_data.point_domain.positions().len();
 
-		// Find min x and y for grid cell normalization
-		let mut min_x = f64::MAX;
-		let mut min_y = f64::MAX;
+				// Find min x and y for grid cell normalization
+				let mut min_x = f64::MAX;
+				let mut min_y = f64::MAX;
 
-		// Calculate mins without collecting all positions
-		for &pos in vector_data.point_domain.positions() {
-			let transformed_pos = vector_data_transform.transform_point2(pos);
-			min_x = min_x.min(transformed_pos.x);
-			min_y = min_y.min(transformed_pos.y);
-		}
+				// Calculate mins without collecting all positions
+				for &pos in vector_data.point_domain.positions() {
+					let transformed_pos = vector_data_transform.transform_point2(pos);
+					min_x = min_x.min(transformed_pos.x);
+					min_y = min_y.min(transformed_pos.y);
+				}
 
-		// Create a spatial grid with cell size of 'distance'
-		use std::collections::HashMap;
-		let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+				// Create a spatial grid with cell size of 'distance'
+				use std::collections::HashMap;
+				let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
 
-		// Add points to grid cells without collecting all positions first
-		for i in 0..point_count {
-			let pos = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
-			let grid_x = ((pos.x - min_x) / distance).floor() as i32;
-			let grid_y = ((pos.y - min_y) / distance).floor() as i32;
+				// Add points to grid cells without collecting all positions first
+				for i in 0..point_count {
+					let pos = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
+					let grid_x = ((pos.x - min_x) / distance).floor() as i32;
+					let grid_y = ((pos.y - min_y) / distance).floor() as i32;
 
-			grid.entry((grid_x, grid_y)).or_default().push(i);
-		}
+					grid.entry((grid_x, grid_y)).or_default().push(i);
+				}
 
-		// Create point index mapping for merged points
-		let mut point_index_map = vec![None; point_count];
-		let mut merged_positions = Vec::new();
-		let mut merged_indices = Vec::new();
+				// Create point index mapping for merged points
+				let mut point_index_map = vec![None; point_count];
+				let mut merged_positions = Vec::new();
+				let mut merged_indices = Vec::new();
 
-		// Process each point
-		for i in 0..point_count {
-			// Skip points that have already been processed
-			if point_index_map[i].is_some() {
-				continue;
-			}
+				// Process each point
+				for i in 0..point_count {
+					// Skip points that have already been processed
+					if point_index_map[i].is_some() {
+						continue;
+					}
 
-			let pos_i = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
-			let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
-			let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
+					let pos_i = vector_data_transform.transform_point2(vector_data.point_domain.positions()[i]);
+					let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
+					let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
 
-			let mut group = vec![i];
+					let mut group = vec![i];
 
-			// Check only neighboring cells (3x3 grid around current cell)
-			for dx in -1..=1 {
-				for dy in -1..=1 {
-					let neighbor_cell = (grid_x + dx, grid_y + dy);
+					// Check only neighboring cells (3x3 grid around current cell)
+					for dx in -1..=1 {
+						for dy in -1..=1 {
+							let neighbor_cell = (grid_x + dx, grid_y + dy);
 
-					if let Some(indices) = grid.get(&neighbor_cell) {
-						for &j in indices {
-							if j > i && point_index_map[j].is_none() {
-								let pos_j = vector_data_transform.transform_point2(vector_data.point_domain.positions()[j]);
-								if pos_i.distance(pos_j) <= distance {
-									group.push(j);
+							if let Some(indices) = grid.get(&neighbor_cell) {
+								for &j in indices {
+									if j > i && point_index_map[j].is_none() {
+										let pos_j = vector_data_transform.transform_point2(vector_data.point_domain.positions()[j]);
+										if pos_i.distance(pos_j) <= distance {
+											group.push(j);
+										}
+									}
 								}
 							}
 						}
 					}
+
+					// Create merged point - calculate positions as needed
+					let merged_position = group
+						.iter()
+						.map(|&idx| vector_data_transform.transform_point2(vector_data.point_domain.positions()[idx]))
+						.fold(DVec2::ZERO, |sum, pos| sum + pos)
+						/ group.len() as f64;
+
+					let merged_position = vector_data_transform.inverse().transform_point2(merged_position);
+					let merged_index = merged_positions.len();
+
+					merged_positions.push(merged_position);
+					merged_indices.push(vector_data.point_domain.ids()[group[0]]);
+
+					// Update mapping for all points in the group
+					for &idx in &group {
+						point_index_map[idx] = Some(merged_index);
+					}
 				}
-			}
 
-			// Create merged point - calculate positions as needed
-			let merged_position = group
-				.iter()
-				.map(|&idx| vector_data_transform.transform_point2(vector_data.point_domain.positions()[idx]))
-				.fold(DVec2::ZERO, |sum, pos| sum + pos)
-				/ group.len() as f64;
+				// Create new point domain with merged points
+				let mut new_point_domain = PointDomain::new();
+				for (idx, pos) in merged_indices.into_iter().zip(merged_positions) {
+					new_point_domain.push(idx, pos);
+				}
 
-			let merged_position = vector_data_transform.inverse().transform_point2(merged_position);
-			let merged_index = merged_positions.len();
+				// Update segment domain
+				let mut new_segment_domain = SegmentDomain::new();
+				for segment_idx in 0..vector_data.segment_domain.ids().len() {
+					let id = vector_data.segment_domain.ids()[segment_idx];
+					let start = vector_data.segment_domain.start_point()[segment_idx];
+					let end = vector_data.segment_domain.end_point()[segment_idx];
+					let handles = vector_data.segment_domain.handles()[segment_idx];
+					let stroke = vector_data.segment_domain.stroke()[segment_idx];
 
-			merged_positions.push(merged_position);
-			merged_indices.push(vector_data.point_domain.ids()[group[0]]);
+					// Get new indices for start and end points
+					let new_start = point_index_map[start].unwrap();
+					let new_end = point_index_map[end].unwrap();
 
-			// Update mapping for all points in the group
-			for &idx in &group {
-				point_index_map[idx] = Some(merged_index);
-			}
-		}
+					// Skip segments where start and end points were merged
+					if new_start != new_end {
+						new_segment_domain.push(id, new_start, new_end, handles, stroke);
+					}
+				}
 
-		// Create new point domain with merged points
-		let mut new_point_domain = PointDomain::new();
-		for (idx, pos) in merged_indices.into_iter().zip(merged_positions) {
-			new_point_domain.push(idx, pos);
-		}
+				// Create new vector data
+				let mut result = vector_data.clone();
+				result.point_domain = new_point_domain;
+				result.segment_domain = new_segment_domain;
 
-		// Update segment domain
-		let mut new_segment_domain = SegmentDomain::new();
-		for segment_idx in 0..vector_data.segment_domain.ids().len() {
-			let id = vector_data.segment_domain.ids()[segment_idx];
-			let start = vector_data.segment_domain.start_point()[segment_idx];
-			let end = vector_data.segment_domain.end_point()[segment_idx];
-			let handles = vector_data.segment_domain.handles()[segment_idx];
-			let stroke = vector_data.segment_domain.stroke()[segment_idx];
-
-			// Get new indices for start and end points
-			let new_start = point_index_map[start].unwrap();
-			let new_end = point_index_map[end].unwrap();
-
-			// Skip segments where start and end points were merged
-			if new_start != new_end {
-				new_segment_domain.push(id, new_start, new_end, handles, stroke);
+				// Create and return the result
+				vector_data_instance.instance = result;
+				vector_data_instance.source_node_id = None;
+				result_table.push(vector_data_instance);
 			}
 		}
-
-		// Create new vector data
-		let mut result = vector_data.clone();
-		result.point_domain = new_point_domain;
-		result.segment_domain = new_segment_domain;
-
-		// Create and return the result
-		vector_data_instance.instance = result;
-		vector_data_instance.source_node_id = None;
-		result_table.push(vector_data_instance);
+		MergeByDistanceAlgorithm::Topological => {
+			for mut source_instance in vector_data.instance_iter() {
+				source_instance.instance.merge_by_distance(distance);
+				result_table.push(source_instance);
+			}
+		}
 	}
 
 	result_table
@@ -1857,18 +1868,6 @@ fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 	source.instance_iter().any(|instance| instance.instance.check_point_inside_shape(instance.transform, point))
-}
-
-#[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
-fn merge_by_distance(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
-	let mut result_table = VectorDataTable::default();
-
-	for mut source_instance in source.instance_iter() {
-		source_instance.instance.merge_by_distance(distance);
-		result_table.push(source_instance);
-	}
-
-	result_table
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
