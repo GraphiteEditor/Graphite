@@ -2264,6 +2264,7 @@ dependencies = [
  "graphite-proc-macros",
  "interpreted-executor",
  "js-sys",
+ "kurbo",
  "log",
  "num_enum",
  "once_cell",
