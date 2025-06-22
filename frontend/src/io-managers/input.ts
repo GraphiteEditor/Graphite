@@ -22,7 +22,7 @@ export const PRESS_REPEAT_DELAY_MS = 400;
 export const PRESS_REPEAT_INTERVAL_MS = 72;
 export const PRESS_REPEAT_INTERVAL_RAPID_MS = 10;
 
-type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield";
+type EventName = keyof HTMLElementEventMap | keyof WindowEventHandlersEventMap | "modifyinputfield" | "pointerlockchange" | "pointerlockerror";
 type EventListenerTarget = {
 	addEventListener: typeof window.addEventListener;
 	removeEventListener: typeof window.removeEventListener;
@@ -35,6 +35,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let viewportPointerInteractionOngoing = false;
 	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
 	let canvasFocused = true;
+	let inPointerLock = false;
 
 	// Event listeners
 
@@ -55,6 +56,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 		{ target: window.document, eventName: "fullscreenchange", action: () => fullscreen.fullscreenModeChanged() },
 		{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => onPaste(e) },
+		{ target: window.document, eventName: "pointerlockchange", action: onPointerLockChange },
+		{ target: window.document, eventName: "pointerlockerror", action: onPointerLockChange },
 	];
 
 	// Event bindings
@@ -209,9 +212,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	}
 
 	function onPotentialDoubleClick(e: MouseEvent) {
-		if (textToolInteractiveInputElement) return;
+		if (textToolInteractiveInputElement || inPointerLock) return;
 
-		// Allow only double-clicks
+		// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
 		if (e.detail % 2 == 1) return;
 
 		// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
@@ -224,6 +227,10 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
+	}
+
+	function onPointerLockChange() {
+		inPointerLock = Boolean(window.document.pointerLockElement);
 	}
 
 	// Mouse events
