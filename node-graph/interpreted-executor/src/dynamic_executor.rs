@@ -120,7 +120,7 @@ impl<I> Executor<I, TaggedValue> for &DynamicExecutor
 where
 	I: StaticType + 'static + Send + Sync + std::panic::UnwindSafe,
 {
-	fn execute(&self, input: I) -> LocalFuture<Result<TaggedValue, Box<dyn Error>>> {
+	fn execute(&self, input: I) -> LocalFuture<'_, Result<TaggedValue, Box<dyn Error>>> {
 		Box::pin(async move {
 			use futures::FutureExt;
 

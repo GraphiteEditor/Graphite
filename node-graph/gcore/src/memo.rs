@@ -182,7 +182,7 @@ impl<T: Hash> MemoHash<T> {
 		hasher.finish()
 	}
 
-	pub fn inner_mut(&mut self) -> MemoHashGuard<T> {
+	pub fn inner_mut(&mut self) -> MemoHashGuard<'_, T> {
 		MemoHashGuard { inner: self }
 	}
 	pub fn into_inner(self) -> T {

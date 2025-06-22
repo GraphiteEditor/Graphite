@@ -389,7 +389,7 @@ impl NodeInput {
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
 	}
-	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
+	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<'_, TaggedValue>> {
 		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
 	}
 	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
@@ -1245,7 +1245,7 @@ impl NodeNetwork {
 	}
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
-	pub fn recursive_nodes(&self) -> RecursiveNodeIter {
+	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
 		let nodes = self.nodes.iter().collect();
 		RecursiveNodeIter { nodes }
 	}

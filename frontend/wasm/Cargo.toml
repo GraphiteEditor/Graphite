@@ -46,7 +46,7 @@ wasm-opt = false
 [package.metadata.wasm-pack.profile.dev.wasm-bindgen]
 debug-js-glue = true
 demangle-name-section = true
-dwarf-debug-info = true
+dwarf-debug-info = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Os", "-g"]

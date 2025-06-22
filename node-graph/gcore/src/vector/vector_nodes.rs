@@ -25,11 +25,11 @@ use std::hash::{Hash, Hasher};
 /// Implemented for types that can be converted to an iterator of vector data.
 /// Used for the fill and stroke node so they can be used on VectorData or GraphicGroup
 trait VectorDataTableIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<VectorData>>;
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<'_, VectorData>>;
 }
 
 impl VectorDataTableIterMut for GraphicGroupTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<VectorData>> {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<'_, VectorData>> {
 		// Grab only the direct children
 		self.instance_mut_iter()
 			.filter_map(|element| element.instance.as_vector_data_mut())
@@ -38,7 +38,7 @@ impl VectorDataTableIterMut for GraphicGroupTable {
 }
 
 impl VectorDataTableIterMut for VectorDataTable {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<VectorData>> {
+	fn vector_iter_mut(&mut self) -> impl Iterator<Item = InstanceMut<'_, VectorData>> {
 		self.instance_mut_iter()
 	}
 }
