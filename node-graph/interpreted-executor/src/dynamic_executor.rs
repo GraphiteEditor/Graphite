@@ -413,6 +413,8 @@ impl BorrowTree {
 mod test {
 	use super::*;
 	use graph_craft::document::value::TaggedValue;
+	use graph_craft::proto::ProtoNodeInput;
+	use graphene_std::*;
 
 	#[test]
 	fn push_node_sync() {
