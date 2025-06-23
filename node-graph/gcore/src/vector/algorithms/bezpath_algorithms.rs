@@ -35,7 +35,15 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 
 	// Determine the number of points to generate along the path.
 	let sample_count = if count_points {
-		spacing
+		if adaptive_spacing {
+			// In case of A.D the number of points is rounded
+			// This ensure equal spacing between the points
+			spacing.round()
+		} else {
+			let count = spacing.floor();
+			used_length -= used_length % spacing;
+			count
+		}
 	} else {
 		if adaptive_spacing {
 			// Calculate point count to evenly distribute points while covering the entire path.
