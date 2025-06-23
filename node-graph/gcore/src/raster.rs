@@ -18,6 +18,7 @@ pub mod color;
 pub mod curve;
 pub mod discrete_srgb;
 
+pub use crate::blending::*;
 pub use adjustments::*;
 
 pub trait Linear {

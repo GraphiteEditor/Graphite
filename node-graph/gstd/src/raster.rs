@@ -6,7 +6,7 @@ use graphene_core::raster::bbox::Bbox;
 pub use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
-use graphene_core::{AlphaBlending, Ctx, ExtractFootprint};
+use graphene_core::{Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;

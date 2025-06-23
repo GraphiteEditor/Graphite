@@ -1,5 +1,5 @@
+use crate::blending::AlphaBlending;
 use crate::instances::{Instance, Instances};
-use crate::raster::BlendMode;
 use crate::raster::image::Image;
 use crate::raster_types::{CPU, GPU, Raster, RasterDataTable};
 use crate::transform::TransformMut;
@@ -11,63 +11,6 @@ use glam::{DAffine2, IVec2};
 use std::hash::Hash;
 
 pub mod renderer;
-
-#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct AlphaBlending {
-	pub blend_mode: BlendMode,
-	pub opacity: f32,
-	pub fill: f32,
-	pub clip: bool,
-}
-impl Default for AlphaBlending {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-impl Hash for AlphaBlending {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.opacity.to_bits().hash(state);
-		self.fill.to_bits().hash(state);
-		self.blend_mode.hash(state);
-		self.clip.hash(state);
-	}
-}
-impl std::fmt::Display for AlphaBlending {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let round = |x: f32| (x * 1e3).round() / 1e3;
-		write!(
-			f,
-			"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
-			self.blend_mode,
-			round(self.opacity * 100.),
-			round(self.fill * 100.),
-			if self.clip { "Yes" } else { "No" }
-		)
-	}
-}
-
-impl AlphaBlending {
-	pub const fn new() -> Self {
-		Self {
-			opacity: 1.,
-			fill: 1.,
-			blend_mode: BlendMode::Normal,
-			clip: false,
-		}
-	}
-
-	pub fn lerp(&self, other: &Self, t: f32) -> Self {
-		let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
-
-		AlphaBlending {
-			opacity: lerp(self.opacity, other.opacity, t),
-			fill: lerp(self.fill, other.fill, t),
-			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
-			clip: if t < 0.5 { self.clip } else { other.clip },
-		}
-	}
-}
 
 // TODO: Eventually remove this migration document upgrade code
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
