@@ -22,7 +22,6 @@ use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
 use graphene_std::text::Font;
 use graphene_std::transform::{Footprint, ReferencePoint};
 use graphene_std::vector::VectorDataTable;
-use graphene_std::vector::generator_nodes::grid;
 use graphene_std::vector::misc::CentroidType;
 use graphene_std::vector::misc::{ArcType, MergeByDistanceAlgorithm};
 use graphene_std::vector::misc::{BooleanOperation, GridType};
@@ -939,8 +938,7 @@ pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext
 }
 
 pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, context: &'a NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, &'a str, &'a str), String> {
-	let node_id2 = node_id.clone();
-	let document_node = get_document_node(node_id2, context)?;
+	let document_node = get_document_node(node_id, context)?;
 	let input_name = context.network_interface.input_name(node_id, input_index, context.selection_network_path).unwrap_or_else(|| {
 		log::warn!("input name not found in query_node_and_input_info");
 		""
@@ -982,16 +980,19 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContex
 }
 
 pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesContext) -> Result<bool, String> {
+	use graphene_std::vector::assign_colors::*;
+
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
-	let randomize_index = 5;
-	Ok(match document_node.inputs.get(randomize_index).and_then(|input| input.as_value()) {
+	Ok(match document_node.inputs.get(RandomizeInput::INDEX).and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
 }
 
 pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::brightness_contrast::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1001,17 +1002,18 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	};
 
 	// Use Classic
-	let use_classic_index = 3;
-	let use_classic = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, use_classic_index, true, context), CheckboxInput::default());
-	let use_classic_value = match document_node.inputs[use_classic_index].as_value() {
+	let use_classic = bool_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, UseClassicInput::INDEX, true, context),
+		CheckboxInput::default(),
+	);
+	let use_classic_value = match document_node.inputs[UseClassicInput::INDEX].as_value() {
 		Some(TaggedValue::Bool(use_classic_choice)) => *use_classic_choice,
 		_ => false,
 	};
 
 	// Brightness
-	let brightness_index = 1;
 	let brightness = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, brightness_index, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, BrightnessInput::INDEX, true, context),
 		NumberInput::default()
 			.unit("%")
 			.mode_range()
@@ -1021,9 +1023,8 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	);
 
 	// Contrast
-	let contrast_index = 2;
 	let contrast = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, contrast_index, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, ContrastInput::INDEX, true, context),
 		NumberInput::default()
 			.unit("%")
 			.mode_range()
@@ -1042,6 +1043,8 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 }
 
 pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::channel_mixer::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1051,20 +1054,21 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	};
 
 	// Monochrome
-	let monochrome_index = 1;
-	let is_monochrome = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, monochrome_index, true, context), CheckboxInput::default());
-	let is_monochrome_value = match document_node.inputs[monochrome_index].as_value() {
+	let is_monochrome = bool_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, MonochromeInput::INDEX, true, context),
+		CheckboxInput::default(),
+	);
+	let is_monochrome_value = match document_node.inputs[MonochromeInput::INDEX].as_value() {
 		Some(TaggedValue::Bool(monochrome_choice)) => *monochrome_choice,
 		_ => false,
 	};
 
 	// Output channel choice
-	let output_channel_index = 18;
 	let output_channel = enum_choice::<RedGreenBlue>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, output_channel_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, OutputChannelInput::INDEX, true, context))
 		.exposable(false)
 		.property_row();
-	let output_channel_value = match &document_node.inputs[output_channel_index].as_value() {
+	let output_channel_value = match &document_node.inputs[OutputChannelInput::INDEX].as_value() {
 		Some(TaggedValue::RedGreenBlue(choice)) => choice,
 		_ => {
 			warn!("Channel Mixer node properties panel could not be displayed.");
@@ -1074,10 +1078,10 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 
 	// Output Channel modes
 	let (red_output_index, green_output_index, blue_output_index, constant_output_index) = match (is_monochrome_value, output_channel_value) {
-		(true, _) => (2, 3, 4, 5),
-		(false, RedGreenBlue::Red) => (6, 7, 8, 9),
-		(false, RedGreenBlue::Green) => (10, 11, 12, 13),
-		(false, RedGreenBlue::Blue) => (14, 15, 16, 17),
+		(true, _) => (MonochromeRInput::INDEX, MonochromeGInput::INDEX, MonochromeBInput::INDEX, MonochromeCInput::INDEX),
+		(false, RedGreenBlue::Red) => (RedRInput::INDEX, RedGInput::INDEX, RedBInput::INDEX, RedCInput::INDEX),
+		(false, RedGreenBlue::Green) => (GreenRInput::INDEX, GreenGInput::INDEX, GreenBInput::INDEX, GreenCInput::INDEX),
+		(false, RedGreenBlue::Blue) => (BlueRInput::INDEX, BlueGInput::INDEX, BlueBInput::INDEX, BlueCInput::INDEX),
 	};
 	let number_input = NumberInput::default().mode_range().min(-200.).max(200.).unit("%");
 	let red = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, red_output_index, true, context), number_input.clone());
@@ -1102,6 +1106,8 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 }
 
 pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::selective_color::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1109,15 +1115,14 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 			return Vec::new();
 		}
 	};
-	// Colors choice
-	let colors_index = 38;
 
+	// Colors choice
 	let colors = enum_choice::<SelectiveColorChoice>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, colors_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, ColorsInput::INDEX, true, context))
 		.exposable(false)
 		.property_row();
 
-	let colors_choice_index = match &document_node.inputs[colors_index].as_value() {
+	let colors_choice = match &document_node.inputs[ColorsInput::INDEX].as_value() {
 		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
 		_ => {
 			warn!("Selective Color node properties panel could not be displayed.");
@@ -1126,16 +1131,16 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	};
 
 	// CMYK
-	let (c_index, m_index, y_index, k_index) = match colors_choice_index {
-		SelectiveColorChoice::Reds => (2, 3, 4, 5),
-		SelectiveColorChoice::Yellows => (6, 7, 8, 9),
-		SelectiveColorChoice::Greens => (10, 11, 12, 13),
-		SelectiveColorChoice::Cyans => (14, 15, 16, 17),
-		SelectiveColorChoice::Blues => (18, 19, 20, 21),
-		SelectiveColorChoice::Magentas => (22, 23, 24, 25),
-		SelectiveColorChoice::Whites => (26, 27, 28, 29),
-		SelectiveColorChoice::Neutrals => (30, 31, 32, 33),
-		SelectiveColorChoice::Blacks => (34, 35, 36, 37),
+	let (c_index, m_index, y_index, k_index) = match colors_choice {
+		SelectiveColorChoice::Reds => (RCInput::INDEX, RMInput::INDEX, RYInput::INDEX, RKInput::INDEX),
+		SelectiveColorChoice::Yellows => (YCInput::INDEX, YMInput::INDEX, YYInput::INDEX, YKInput::INDEX),
+		SelectiveColorChoice::Greens => (GCInput::INDEX, GMInput::INDEX, GYInput::INDEX, GKInput::INDEX),
+		SelectiveColorChoice::Cyans => (CCInput::INDEX, CMInput::INDEX, CYInput::INDEX, CKInput::INDEX),
+		SelectiveColorChoice::Blues => (BCInput::INDEX, BMInput::INDEX, BYInput::INDEX, BKInput::INDEX),
+		SelectiveColorChoice::Magentas => (MCInput::INDEX, MMInput::INDEX, MYInput::INDEX, MKInput::INDEX),
+		SelectiveColorChoice::Whites => (WCInput::INDEX, WMInput::INDEX, WYInput::INDEX, WKInput::INDEX),
+		SelectiveColorChoice::Neutrals => (NCInput::INDEX, NMInput::INDEX, NYInput::INDEX, NKInput::INDEX),
+		SelectiveColorChoice::Blacks => (KCInput::INDEX, KMInput::INDEX, KYInput::INDEX, KKInput::INDEX),
 	};
 	let number_input = NumberInput::default().mode_range().min(-100.).max(100.).unit("%");
 	let cyan = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, c_index, true, context), number_input.clone());
@@ -1144,9 +1149,8 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	let black = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, k_index, true, context), number_input);
 
 	// Mode
-	let mode_index = 1;
 	let mode = enum_choice::<RelativeAbsolute>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, mode_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, ModeInput::INDEX, true, context))
 		.property_row();
 
 	vec![
@@ -1163,11 +1167,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 }
 
 pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let grid_type_index = grid::GridTypeInput::INDEX;
-	let spacing_index = grid::SpacingInput::<f64>::INDEX;
-	let angles_index = grid::AnglesInput::INDEX;
-	let rows_index = grid::RowsInput::INDEX;
-	let columns_index = grid::ColumnsInput::INDEX;
+	use graphene_std::vector::generator_nodes::grid::*;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -1177,36 +1177,48 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	};
 	let grid_type = enum_choice::<GridType>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, grid_type_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, GridTypeInput::INDEX, true, context))
 		.property_row();
 
 	let mut widgets = vec![grid_type];
 
-	let Some(grid_type_input) = document_node.inputs.get(grid_type_index) else {
+	let Some(grid_type_input) = document_node.inputs.get(GridTypeInput::INDEX) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
 		match grid_type {
 			GridType::Rectangular => {
-				let spacing = coordinate_widget(ParameterWidgetsInfo::from_index(document_node, node_id, spacing_index, true, context), "W", "H", " px", Some(0.));
+				let spacing = coordinate_widget(
+					ParameterWidgetsInfo::from_index(document_node, node_id, SpacingInput::<f64>::INDEX, true, context),
+					"W",
+					"H",
+					" px",
+					Some(0.),
+				);
 				widgets.push(spacing);
 			}
 			GridType::Isometric => {
 				let spacing = LayoutGroup::Row {
 					widgets: number_widget(
-						ParameterWidgetsInfo::from_index(document_node, node_id, spacing_index, true, context),
+						ParameterWidgetsInfo::from_index(document_node, node_id, SpacingInput::<f64>::INDEX, true, context),
 						NumberInput::default().label("H").min(0.).unit(" px"),
 					),
 				};
-				let angles = coordinate_widget(ParameterWidgetsInfo::from_index(document_node, node_id, angles_index, true, context), "", "", "°", None);
+				let angles = coordinate_widget(ParameterWidgetsInfo::from_index(document_node, node_id, AnglesInput::INDEX, true, context), "", "", "°", None);
 				widgets.extend([spacing, angles]);
 			}
 		}
 	}
 
-	let rows = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, rows_index, true, context), NumberInput::default().min(1.));
-	let columns = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, columns_index, true, context), NumberInput::default().min(1.));
+	let rows = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, RowsInput::INDEX, true, context),
+		NumberInput::default().min(1.),
+	);
+	let columns = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, ColumnsInput::INDEX, true, context),
+		NumberInput::default().min(1.),
+	);
 
 	widgets.extend([LayoutGroup::Row { widgets: rows }, LayoutGroup::Row { widgets: columns }]);
 
@@ -1214,6 +1226,8 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 }
 
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::exposure::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1221,10 +1235,16 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 			return Vec::new();
 		}
 	};
-	let exposure = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, 1, true, context), NumberInput::default().min(-20.).max(20.));
-	let offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, 2, true, context), NumberInput::default().min(-0.5).max(0.5));
+	let exposure = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, ExposureInput::INDEX, true, context),
+		NumberInput::default().min(-20.).max(20.),
+	);
+	let offset = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, OffsetInput::INDEX, true, context),
+		NumberInput::default().min(-0.5).max(0.5),
+	);
 	let gamma_correction = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, 3, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, GammaCorrectionInput::INDEX, true, context),
 		NumberInput::default().min(0.01).max(9.99).increment_step(0.1),
 	);
 
@@ -1236,6 +1256,8 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 }
 
 pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::generator_nodes::rectangle::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1243,21 +1265,15 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			return Vec::new();
 		}
 	};
-	let size_x_index = 1;
-	let size_y_index = 2;
-	let corner_rounding_type_index = 3;
-	let corner_radius_index = 4;
-	let clamped_index = 5;
-
 	// Size X
-	let size_x = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, size_x_index, true, context), NumberInput::default());
+	let size_x = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, WidthInput::INDEX, true, context), NumberInput::default());
 
 	// Size Y
-	let size_y = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, size_y_index, true, context), NumberInput::default());
+	let size_y = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, HeightInput::INDEX, true, context), NumberInput::default());
 
 	// Corner Radius
 	let mut corner_radius_row_1 = start_widgets(
-		ParameterWidgetsInfo::from_index(document_node, node_id, corner_radius_index, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, CornerRadiusInput::<f64>::INDEX, true, context),
 		FrontendGraphDataType::Number,
 	);
 	corner_radius_row_1.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -1266,13 +1282,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	corner_radius_row_2.push(TextLabel::new("").widget_holder());
 	add_blank_assist(&mut corner_radius_row_2);
 
-	let Some(input) = document_node.inputs.get(corner_rounding_type_index) else {
+	let Some(input) = document_node.inputs.get(IndividualCornerRadiiInput::INDEX) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(corner_radius_index) else {
+		let Some(input) = document_node.inputs.get(CornerRadiusInput::<f64>::INDEX) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -1294,13 +1310,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 				Message::Batched(Box::new([
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: corner_rounding_type_index,
+						input_index: IndividualCornerRadiiInput::INDEX,
 						value: TaggedValue::Bool(false),
 					}
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: corner_radius_index,
+						input_index: CornerRadiusInput::<f64>::INDEX,
 						value: TaggedValue::F64(uniform_val),
 					}
 					.into(),
@@ -1313,13 +1329,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 				Message::Batched(Box::new([
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: corner_rounding_type_index,
+						input_index: IndividualCornerRadiiInput::INDEX,
 						value: TaggedValue::Bool(true),
 					}
 					.into(),
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: corner_radius_index,
+						input_index: CornerRadiusInput::<f64>::INDEX,
 						value: TaggedValue::F64Array4(individual_val),
 					}
 					.into(),
@@ -1346,12 +1362,12 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			};
 			TextInput::default()
 				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, corner_radius_index))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, CornerRadiusInput::<f64>::INDEX))
 				.widget_holder()
 		} else {
 			NumberInput::default()
 				.value(Some(uniform_val))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, corner_radius_index))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, CornerRadiusInput::<f64>::INDEX))
 				.on_commit(commit_value)
 				.widget_holder()
 		};
@@ -1359,7 +1375,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	}
 
 	// Clamped
-	let clamped = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, clamped_index, true, context), CheckboxInput::default());
+	let clamped = bool_widget(ParameterWidgetsInfo::from_index(document_node, node_id, ClampedInput::INDEX, true, context), CheckboxInput::default());
 
 	vec![
 		LayoutGroup::Row { widgets: size_x },
@@ -1486,6 +1502,8 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 /// Fill Node Widgets LayoutGroup
 pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::fill::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1493,16 +1511,16 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let fill_index = 1;
-	let backup_color_index = 2;
-	let backup_gradient_index = 3;
 
-	let mut widgets_first_row = start_widgets(ParameterWidgetsInfo::from_index(document_node, node_id, fill_index, true, context), FrontendGraphDataType::General);
+	let mut widgets_first_row = start_widgets(
+		ParameterWidgetsInfo::from_index(document_node, node_id, FillInput::<Color>::INDEX, true, context),
+		FrontendGraphDataType::General,
+	);
 
 	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), &Some(&TaggedValue::OptionalColor(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
-		&document_node.inputs[fill_index].as_value(),
-		&document_node.inputs[backup_color_index].as_value(),
-		&document_node.inputs[backup_gradient_index].as_value(),
+		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
+		&document_node.inputs[BackupColorInput::INDEX].as_value(),
+		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
 	) {
 		(fill, backup_color, backup_gradient)
 	} else {
@@ -1521,26 +1539,26 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					match &fill2 {
 						Fill::None => NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: backup_color_index,
+							input_index: BackupColorInput::INDEX,
 							value: TaggedValue::OptionalColor(None),
 						}
 						.into(),
 						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: backup_color_index,
+							input_index: BackupColorInput::INDEX,
 							value: TaggedValue::OptionalColor(Some(*color)),
 						}
 						.into(),
 						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
 							node_id,
-							input_index: backup_gradient_index,
+							input_index: BackupGradientInput::INDEX,
 							value: TaggedValue::Gradient(gradient.clone()),
 						}
 						.into(),
 					},
 					NodeGraphMessage::SetInputValue {
 						node_id,
-						input_index: fill_index,
+						input_index: FillInput::<Color>::INDEX,
 						value: TaggedValue::Fill(x.value.to_fill(fill2.as_gradient())),
 					}
 					.into(),
@@ -1568,7 +1586,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							}
 						},
 						node_id,
-						fill_index,
+						FillInput::<Color>::INDEX,
 					))
 					.widget_holder();
 				row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -1579,11 +1597,11 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("solid")
 				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, fill_index))
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, FillInput::<Color>::INDEX))
 				.on_commit(commit_value),
 			RadioEntryData::new("gradient")
 				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, fill_index))
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, FillInput::<Color>::INDEX))
 				.on_commit(commit_value),
 		];
 
@@ -1618,7 +1636,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 							}
 						},
 						node_id,
-						fill_index,
+						FillInput::<Color>::INDEX,
 					))
 					.widget_holder();
 				row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -1639,7 +1657,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
-					fill_index,
+					FillInput::<Color>::INDEX,
 				))
 				.on_commit(commit_value),
 			RadioEntryData::new("Radial")
@@ -1651,7 +1669,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
-					fill_index,
+					FillInput::<Color>::INDEX,
 				))
 				.on_commit(commit_value),
 		];
@@ -1668,6 +1686,8 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 }
 
 pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::stroke::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1675,34 +1695,28 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 			return Vec::new();
 		}
 	};
-	let color_index = graphene_std::vector::stroke::ColorInput::<Option<Color>>::INDEX;
-	let weight_index = graphene_std::vector::stroke::WeightInput::INDEX;
-	let align_index = graphene_std::vector::stroke::AlignInput::INDEX;
-	let cap_index = graphene_std::vector::stroke::CapInput::INDEX;
-	let join_index = graphene_std::vector::stroke::JoinInput::INDEX;
-	let miter_limit_index = graphene_std::vector::stroke::MiterLimitInput::INDEX;
-	let paint_order_index = graphene_std::vector::stroke::PaintOrderInput::INDEX;
-	let dash_lengths_index = graphene_std::vector::stroke::DashLengthsInput::INDEX;
-	let dash_offset_index = graphene_std::vector::stroke::DashOffsetInput::INDEX;
 
-	let color = color_widget(ParameterWidgetsInfo::from_index(document_node, node_id, color_index, true, context), ColorInput::default());
+	let color = color_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, ColorInput::<Option<Color>>::INDEX, true, context),
+		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
+	);
 	let weight = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, weight_index, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, WeightInput::INDEX, true, context),
 		NumberInput::default().unit(" px").min(0.),
 	);
 	let align = enum_choice::<StrokeAlign>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, align_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, AlignInput::INDEX, true, context))
 		.property_row();
 	let cap = enum_choice::<StrokeCap>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, cap_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, CapInput::INDEX, true, context))
 		.property_row();
 	let join = enum_choice::<StrokeJoin>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, join_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, JoinInput::INDEX, true, context))
 		.property_row();
 	let miter_limit = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, MiterLimitInput::INDEX, true, context),
 		NumberInput::default().min(0.).disabled({
-			let join_value = match &document_node.inputs[join_index].as_value() {
+			let join_value = match &document_node.inputs[JoinInput::INDEX].as_value() {
 				Some(TaggedValue::StrokeJoin(x)) => x,
 				_ => &StrokeJoin::Miter,
 			};
@@ -1710,18 +1724,18 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		}),
 	);
 	let paint_order = enum_choice::<PaintOrder>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, paint_order_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, PaintOrderInput::INDEX, true, context))
 		.property_row();
-	let dash_lengths_val = match &document_node.inputs[dash_lengths_index].as_value() {
+	let dash_lengths_val = match &document_node.inputs[DashLengthsInput::INDEX].as_value() {
 		Some(TaggedValue::VecF64(x)) => x,
 		_ => &vec![],
 	};
 	let dash_lengths = array_of_number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, dash_lengths_index, true, context),
+		ParameterWidgetsInfo::from_index(document_node, node_id, DashLengthsInput::INDEX, true, context),
 		TextInput::default().centered(true),
 	);
 	let number_input = NumberInput::default().unit(" px").disabled(dash_lengths_val.is_empty());
-	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, dash_offset_index, true, context), number_input);
+	let dash_offset = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, DashOffsetInput::INDEX, true, context), number_input);
 
 	vec![
 		color,
@@ -1737,6 +1751,8 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 }
 
 pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::offset_path::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1744,30 +1760,28 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let distance_index = graphene_std::vector::offset_path::DistanceInput::INDEX;
-	let join_index = graphene_std::vector::offset_path::JoinInput::INDEX;
-	let miter_limit_index = graphene_std::vector::offset_path::MiterLimitInput::INDEX;
-
 	let number_input = NumberInput::default().unit(" px");
-	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, distance_index, true, context), number_input);
+	let distance = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, DistanceInput::INDEX, true, context), number_input);
 
 	let join = enum_choice::<StrokeJoin>()
-		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, join_index, true, context))
+		.for_socket(ParameterWidgetsInfo::from_index(document_node, node_id, JoinInput::INDEX, true, context))
 		.property_row();
 
 	let number_input = NumberInput::default().min(0.).disabled({
-		let join_val = match &document_node.inputs[join_index].as_value() {
+		let join_val = match &document_node.inputs[JoinInput::INDEX].as_value() {
 			Some(TaggedValue::StrokeJoin(x)) => x,
 			_ => &StrokeJoin::Miter,
 		};
 		join_val != &StrokeJoin::Miter
 	});
-	let miter_limit = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, miter_limit_index, true, context), number_input);
+	let miter_limit = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, MiterLimitInput::INDEX, true, context), number_input);
 
 	vec![LayoutGroup::Row { widgets: distance }, join, LayoutGroup::Row { widgets: miter_limit }]
 }
 
 pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::ops::math::*;
+
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -1776,16 +1790,13 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		}
 	};
 
-	let expression_index = 1;
-	let operation_b_index = 2;
-
 	let expression = (|| {
 		let mut widgets = start_widgets(
-			ParameterWidgetsInfo::from_index(document_node, node_id, expression_index, true, context),
+			ParameterWidgetsInfo::from_index(document_node, node_id, ExpressionInput::INDEX, true, context),
 			FrontendGraphDataType::General,
 		);
 
-		let Some(input) = document_node.inputs.get(expression_index) else {
+		let Some(input) = document_node.inputs.get(ExpressionInput::INDEX) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -1809,7 +1820,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 							})
 						},
 						node_id,
-						expression_index,
+						ExpressionInput::INDEX,
 					))
 					.on_commit(commit_value)
 					.widget_holder(),
@@ -1817,7 +1828,10 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		}
 		widgets
 	})();
-	let operand_b = number_widget(ParameterWidgetsInfo::from_index(document_node, node_id, operation_b_index, true, context), NumberInput::default());
+	let operand_b = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, OperandBInput::<f64>::INDEX, true, context),
+		NumberInput::default(),
+	);
 	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_holder()];
 
 	vec![
@@ -1925,17 +1939,16 @@ pub mod choice {
 			C: Fn(&()) -> Message + 'static + Send + Sync,
 		{
 			let items = E::list()
-				.into_iter()
+				.iter()
 				.map(|group| {
 					group
-						.into_iter()
+						.iter()
 						.map(|(item, metadata)| {
-							let item = item.clone();
 							let updater = updater_factory();
 							let committer = committer_factory();
 							MenuListEntry::new(metadata.name.as_ref())
 								.label(metadata.label.as_ref())
-								.on_update(move |_| updater(&item))
+								.on_update(move |_| updater(item))
 								.on_commit(committer)
 						})
 						.collect()
@@ -1950,14 +1963,12 @@ pub mod choice {
 			C: Fn(&()) -> Message + 'static + Send + Sync,
 		{
 			let items = E::list()
-				.into_iter()
-				.map(|group| group.into_iter())
-				.flatten()
+				.iter()
+				.flat_map(|group| group.iter())
 				.map(|(item, var_meta)| {
-					let item = item.clone();
 					let updater = updater_factory();
 					let committer = committer_factory();
-					let entry = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(&item)).on_commit(committer);
+					let entry = RadioEntryData::new(var_meta.name.as_ref()).on_update(move |_| updater(item)).on_commit(committer);
 					match (var_meta.icon.as_deref(), var_meta.docstring.as_deref()) {
 						(None, None) => entry.label(var_meta.label.as_ref()),
 						(None, Some(doc)) => entry.label(var_meta.label.as_ref()).tooltip(doc),
@@ -2027,7 +2038,7 @@ pub mod choice {
 				return LayoutGroup::Row { widgets: vec![] };
 			};
 
-			let input: Option<W::Value> = input.as_non_exposed_value().and_then(|v| <&W::Value as TryFrom<&TaggedValue>>::try_from(v).ok()).map(Clone::clone);
+			let input: Option<W::Value> = input.as_non_exposed_value().and_then(|v| <&W::Value as TryFrom<&TaggedValue>>::try_from(v).ok()).cloned();
 
 			if let Some(current) = input {
 				let committer = || super::commit_value;

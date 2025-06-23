@@ -1021,6 +1021,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	mut image: T,
 
 	monochrome: bool,
+
 	#[default(40.)]
 	#[name("Red")]
 	monochrome_r: f64,
@@ -1144,43 +1145,54 @@ async fn selective_color<T: Adjust<Color>>(
 		GradientStops,
 	)]
 	mut image: T,
+
 	mode: RelativeAbsolute,
+
 	#[name("(Reds) Cyan")] r_c: f64,
 	#[name("(Reds) Magenta")] r_m: f64,
 	#[name("(Reds) Yellow")] r_y: f64,
 	#[name("(Reds) Black")] r_k: f64,
+
 	#[name("(Yellows) Cyan")] y_c: f64,
 	#[name("(Yellows) Magenta")] y_m: f64,
 	#[name("(Yellows) Yellow")] y_y: f64,
 	#[name("(Yellows) Black")] y_k: f64,
+
 	#[name("(Greens) Cyan")] g_c: f64,
 	#[name("(Greens) Magenta")] g_m: f64,
 	#[name("(Greens) Yellow")] g_y: f64,
 	#[name("(Greens) Black")] g_k: f64,
+
 	#[name("(Cyans) Cyan")] c_c: f64,
 	#[name("(Cyans) Magenta")] c_m: f64,
 	#[name("(Cyans) Yellow")] c_y: f64,
 	#[name("(Cyans) Black")] c_k: f64,
+
 	#[name("(Blues) Cyan")] b_c: f64,
 	#[name("(Blues) Magenta")] b_m: f64,
 	#[name("(Blues) Yellow")] b_y: f64,
 	#[name("(Blues) Black")] b_k: f64,
+
 	#[name("(Magentas) Cyan")] m_c: f64,
 	#[name("(Magentas) Magenta")] m_m: f64,
 	#[name("(Magentas) Yellow")] m_y: f64,
 	#[name("(Magentas) Black")] m_k: f64,
+
 	#[name("(Whites) Cyan")] w_c: f64,
 	#[name("(Whites) Magenta")] w_m: f64,
 	#[name("(Whites) Yellow")] w_y: f64,
 	#[name("(Whites) Black")] w_k: f64,
+
 	#[name("(Neutrals) Cyan")] n_c: f64,
 	#[name("(Neutrals) Magenta")] n_m: f64,
 	#[name("(Neutrals) Yellow")] n_y: f64,
 	#[name("(Neutrals) Black")] n_k: f64,
+
 	#[name("(Blacks) Cyan")] k_c: f64,
 	#[name("(Blacks) Magenta")] k_m: f64,
 	#[name("(Blacks) Yellow")] k_y: f64,
 	#[name("(Blacks) Black")] k_k: f64,
+
 	_colors: SelectiveColorChoice,
 ) -> T {
 	image.adjust(|color| {
