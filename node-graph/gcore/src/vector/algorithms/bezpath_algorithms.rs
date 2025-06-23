@@ -157,7 +157,7 @@ pub fn t_value_to_parametric(bezpath: &BezPath, t: f64, euclidian: bool, segment
 
 /// Finds the t value of point on the given path segment i.e fractional distance along the segment's total length.
 /// It uses a binary search to find the value `t` such that the ratio `length_up_to_t / total_length` approximates the input `distance`.
-pub fn eval_pathseg_euclidean(path_segment: kurbo::PathSeg, distance: f64, accuracy: f64) -> f64 {
+pub fn eval_pathseg_euclidean(path_segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
 	let mut low_t = 0.;
 	let mut mid_t = 0.5;
 	let mut high_t = 1.;
@@ -188,7 +188,7 @@ pub fn eval_pathseg_euclidean(path_segment: kurbo::PathSeg, distance: f64, accur
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.
 /// The returned tuple represents the segment index and the `t` value along that segment.
 /// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
-fn global_euclidean_to_local_euclidean(bezpath: &kurbo::BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
+fn global_euclidean_to_local_euclidean(bezpath: &BezPath, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
 	let mut accumulator = 0.;
 	for (index, length) in lengths.iter().enumerate() {
 		let length_ratio = length / total_length;
@@ -207,7 +207,7 @@ enum BezPathTValue {
 
 /// Convert a [BezPathTValue] to a parametric `(segment_index, t)` tuple.
 /// - Asserts that `t` values contained within the `SubpathTValue` argument lie in the range [0, 1].
-fn bezpath_t_value_to_parametric(bezpath: &kurbo::BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
+fn bezpath_t_value_to_parametric(bezpath: &BezPath, t: BezPathTValue, precomputed_segments_length: Option<&[f64]>) -> (usize, f64) {
 	let segment_count = bezpath.segments().count();
 	assert!(segment_count >= 1);
 

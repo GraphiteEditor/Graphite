@@ -24,15 +24,14 @@ pub struct TaggedValueTypeError;
 macro_rules! tagged_value {
 	($ ($( #[$meta:meta] )* $identifier:ident ($ty:ty) ),* $(,)?) => {
 		/// A type that is known, allowing serialization (serde::Deserialize is not object safe)
-		#[derive(Clone, Debug, PartialEq)]
-		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+		#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 		#[allow(clippy::large_enum_variant)] // TODO(TrueDoctor): Properly solve this disparity between the size of the largest and next largest variants
 		pub enum TaggedValue {
 			None,
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			SurfaceFrame(graphene_core::SurfaceFrame),
-			#[cfg_attr(feature = "serde", serde(skip))]
+			#[serde(skip)]
 			EditorApi(Arc<WasmEditorApi>)
 		}
 
@@ -159,7 +158,7 @@ tagged_value! {
 	// ===============
 	// PRIMITIVE TYPES
 	// ===============
-	#[cfg_attr(feature = "serde", serde(alias = "F32"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "F32")] // TODO: Eventually remove this alias document upgrade code
 	F64(f64),
 	U32(u32),
 	U64(u64),
@@ -174,25 +173,25 @@ tagged_value! {
 	// ==========================
 	// PRIMITIVE COLLECTION TYPES
 	// ==========================
-	#[cfg_attr(feature = "serde", serde(alias = "VecF32"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
 	VecU64(Vec<u64>),
 	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
 	NodePath(Vec<NodeId>),
-	#[cfg_attr(feature = "serde", serde(alias = "ManipulatorGroupIds"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias document upgrade code
 	PointIds(Vec<graphene_core::vector::PointId>),
 	// ====================
 	// GRAPHICAL DATA TYPES
 	// ====================
 	GraphicElement(graphene_core::GraphicElement),
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::vector::migrate_vector_data"))] // TODO: Eventually remove this migration document upgrade code
 	VectorData(graphene_core::vector::VectorDataTable),
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(alias = "ImageFrame", deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
 	RasterData(graphene_core::raster_types::RasterDataTable<CPU>),
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::migrate_graphic_group"))] // TODO: Eventually remove this migration document upgrade code
 	GraphicGroup(graphene_core::GraphicGroupTable),
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_arch = "wasm32", serde(deserialize_with = "graphene_core::migrate_artboard_group"))] // TODO: Eventually remove this migration document upgrade code
 	ArtboardGroup(graphene_core::ArtboardGroupTable),
 	// ============
 	// STRUCT TYPES
@@ -206,7 +205,7 @@ tagged_value! {
 	Fill(graphene_core::vector::style::Fill),
 	Stroke(graphene_core::vector::style::Stroke),
 	Gradient(graphene_core::vector::style::Gradient),
-	#[cfg_attr(feature = "serde", serde(alias = "GradientPositions"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
 	GradientStops(graphene_core::vector::style::GradientStops),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),
@@ -234,6 +233,7 @@ tagged_value! {
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
+	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
@@ -422,15 +422,13 @@ impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderOutput {
 	pub data: RenderOutputType,
 	pub metadata: RenderMetadata,
 }
 
-#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
 	CanvasFrame(graphene_core::SurfaceFrame),
 	Svg(String),

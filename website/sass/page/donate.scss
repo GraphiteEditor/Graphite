@@ -21,6 +21,10 @@
 	}
 }
 
+.statistics:has(span:empty) {
+	visibility: hidden;
+}
+
 #supporter-memberships,
 #corporate-sponsorships {
 	.triptych {

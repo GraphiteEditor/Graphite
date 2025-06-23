@@ -10,12 +10,9 @@ use crate::vector::VectorDataTable;
 use crate::vector::style::GradientStops;
 use crate::{Ctx, Node};
 use crate::{GraphicElement, GraphicGroupTable};
-use core::cmp::Ordering;
-use core::fmt::Debug;
 use dyn_any::DynAny;
-#[cfg(feature = "serde")]
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
+use std::cmp::Ordering;
+use std::fmt::Debug;
 
 // TODO: Implement the following:
 // Color Balance
@@ -32,8 +29,7 @@ use spirv_std::num_traits::float::Float;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum LuminanceCalculation {
 	#[default]
@@ -45,8 +41,7 @@ pub enum LuminanceCalculation {
 	MaximumChannels,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 #[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
 	// Basic group
@@ -183,8 +178,8 @@ impl BlendMode {
 	}
 }
 
-impl core::fmt::Display for BlendMode {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for BlendMode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			// Normal group
 			BlendMode::Normal => write!(f, "Normal"),
@@ -346,7 +341,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 		let brightness = brightness as f32 / 255.;
 
 		let contrast = contrast as f32 / 100.;
-		let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+		let contrast = if contrast > 0. { (contrast * std::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
 
 		let offset = brightness * contrast + brightness - contrast / 2.;
 
@@ -368,13 +363,13 @@ fn brightness_contrast<T: Adjust<Color>>(
 		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
 	};
 	let brightness_curve_solutions = brightness_curve_points.solve();
-	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
+	let mut brightness_lut: [f32; WINDOW_SIZE] = std::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
 		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
 	});
 	// Special handling for when brightness is negative
 	if brightness_is_negative {
-		brightness_lut = core::array::from_fn(|i| {
+		brightness_lut = std::array::from_fn(|i| {
 			let mut x = i;
 			while x > 1 && brightness_lut[x] > i as f32 / WINDOW_SIZE as f32 {
 				x -= 1;
@@ -393,7 +388,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
 	};
 	let contrast_curve_solutions = contrast_curve_points.solve();
-	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
+	let contrast_lut: [f32; WINDOW_SIZE] = std::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
 		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
 	});
@@ -919,8 +914,7 @@ async fn vibrance<T: Adjust<Color>>(
 }
 
 /// Color Channel
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -930,8 +924,7 @@ pub enum RedGreenBlue {
 }
 
 /// Color Channel
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum RedGreenBlueAlpha {
 	#[default]
@@ -942,8 +935,7 @@ pub enum RedGreenBlueAlpha {
 }
 
 /// Style of noise pattern
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -958,8 +950,7 @@ pub enum NoiseType {
 	WhiteNoise,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 /// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
@@ -975,8 +966,7 @@ pub enum FractalType {
 }
 
 /// Distance function used by the cellular noise
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -986,8 +976,7 @@ pub enum CellularDistanceFunction {
 	Hybrid,
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -1006,8 +995,7 @@ pub enum CellularReturnType {
 }
 
 /// Type of domain warp
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -1116,8 +1104,7 @@ async fn channel_mixer<T: Adjust<Color>>(
 	image
 }
 
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -1126,8 +1113,7 @@ pub enum RelativeAbsolute {
 }
 
 #[repr(C)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1419,7 +1405,7 @@ fn generate_curves<C: Channel + crate::raster::Linear>(_: impl Ctx, curve: Curve
 		anchor: [1.; 2],
 		handles: [curve.last_handle, [0.; 2]],
 	};
-	for sample in curve.manipulator_groups.iter().chain(core::iter::once(&end)) {
+	for sample in curve.manipulator_groups.iter().chain(std::iter::once(&end)) {
 		let [x0, y0, x1, y1, x2, y2, x3, y3] = [pos[0], pos[1], param[0], param[1], sample.handles[0][0], sample.handles[0][1], sample.anchor[0], sample.anchor[1]].map(f64::from);
 
 		let bezier = Bezier::from_cubic_coordinates(x0, y0, x1, y1, x2, y2, x3, y3);
@@ -1511,7 +1497,7 @@ mod test {
 	pub struct FutureWrapperNode<T: Clone>(T);
 
 	impl<'i, T: 'i + Clone + Send> Node<'i, ()> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn core::future::Future<Output = T> + 'i + Send>>;
+		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
 		fn eval(&'i self, _input: ()) -> Self::Output {
 			let value = self.0.clone();
 			Box::pin(async move { value })

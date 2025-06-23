@@ -25,7 +25,6 @@ fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 
 /// Utility function for providing a default boolean value to serde.
 #[inline(always)]
-#[cfg(feature = "serde")]
 fn return_true() -> bool {
 	true
 }
@@ -33,8 +32,7 @@ fn return_true() -> bool {
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
-#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNode {
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
@@ -44,7 +42,7 @@ pub struct DocumentNode {
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input)
 	/// by using network.update_click_target(node_id).
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs"))]
+	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is the methodology by which most nodes are implemented, involving a call argument and upstream inputs.
 	/// By contrast, automatic composition is an alternative way to handle the composition of nodes as they execute in the graph.
@@ -144,29 +142,27 @@ pub struct DocumentNode {
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
-	#[cfg_attr(feature = "serde", serde(default = "return_true"))]
+	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-	#[cfg_attr(feature = "serde", serde(skip))]
+	#[serde(skip)]
 	pub original_location: OriginalLocation,
 }
 
 /// Represents the original location of a node input/output when [`NodeNetwork::generate_node_paths`] was called, allowing the types and errors to be derived.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Source {
 	pub node: Vec<NodeId>,
 	pub index: usize,
 }
 
 /// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-#[derive(Clone, Debug, PartialEq, Eq, DynAny, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct OriginalLocation {
 	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
@@ -285,8 +281,7 @@ impl DocumentNode {
 }
 
 /// Represents the possible inputs to a node.
-#[derive(Debug, Clone, PartialEq, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum NodeInput {
 	/// A reference to another node in the same network from which this node can receive its input.
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
@@ -309,8 +304,7 @@ pub enum NodeInput {
 	Inline(InlineRust),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct InlineRust {
 	pub expr: String,
 	pub ty: Type,
@@ -322,8 +316,7 @@ impl InlineRust {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
 }
@@ -396,7 +389,7 @@ impl NodeInput {
 	pub fn as_value(&self) -> Option<&TaggedValue> {
 		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
 	}
-	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<TaggedValue>> {
+	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<'_, TaggedValue>> {
 		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
 	}
 	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
@@ -408,8 +401,7 @@ impl NodeInput {
 	}
 }
 
-#[derive(Clone, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum OldDocumentNodeImplementation {
 	/// This describes a (document) node built out of a subgraph of other (document) nodes.
@@ -419,7 +411,7 @@ pub enum OldDocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -443,8 +435,7 @@ pub enum OldDocumentNodeImplementation {
 	Extract,
 }
 
-#[derive(Clone, Debug, PartialEq, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum DocumentNodeImplementation {
 	/// This describes a (document) node built out of a subgraph of other (document) nodes.
@@ -454,7 +445,7 @@ pub enum DocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
-	#[cfg_attr(feature = "serde", serde(alias = "Unresolved"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias document upgrade code
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -519,24 +510,21 @@ impl DocumentNodeImplementation {
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(untagged))]
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
 pub enum NodeExportVersions {
 	OldNodeInput(NodeOutput),
 	NodeInput(NodeInput),
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[derive(Debug, serde::Deserialize)]
 pub struct NodeOutput {
 	pub node_id: NodeId,
 	pub node_output_index: usize,
 }
 
 // TODO: Eventually remove this document upgrade code
-#[cfg(feature = "serde")]
 fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -562,16 +550,15 @@ where
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
-#[derive(Clone, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct OldDocumentNode {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
 	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[serde(default)]
 	pub alias: String,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
-	#[cfg_attr(feature = "serde", serde(deserialize_with = "migrate_layer_to_merge"))]
+	#[serde(deserialize_with = "migrate_layer_to_merge")]
 	pub name: String,
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
@@ -580,48 +567,46 @@ pub struct OldDocumentNode {
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs"))]
+	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs"))]
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
 	// TODO: Remove once this references its definition instead (see above TODO).
 	/// Indicates to the UI if a primary output should be drawn for this node.
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
-	#[cfg_attr(feature = "serde", serde(default = "return_true"))]
+	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: OldDocumentNodeImplementation,
 	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[serde(default)]
 	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
-	#[cfg_attr(feature = "serde", serde(default = "return_true"))]
+	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[serde(default)]
 	pub locked: bool,
 	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
 	pub metadata: OldDocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
-	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
+	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-	#[cfg_attr(feature = "serde", serde(skip))]
+	#[serde(skip)]
 	pub original_location: OriginalLocation,
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Metadata about the node including its position in the graph UI
 pub struct OldDocumentNodeMetadata {
 	pub position: IVec2,
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(Clone, Copy, Debug, PartialEq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 /// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
 pub struct OldRootNode {
 	pub id: NodeId,
@@ -629,8 +614,7 @@ pub struct OldRootNode {
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(PartialEq, Debug, Clone, Hash, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(PartialEq, Debug, Clone, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum OldPreviewing {
 	/// If there is a node to restore the connection to the export for, then it is stored in the option.
 	/// Otherwise, nothing gets restored and the primary export is disconnected.
@@ -640,34 +624,32 @@ pub enum OldPreviewing {
 }
 
 // TODO: Eventually remove this document upgrade code
-#[derive(Clone, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct OldNodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[cfg_attr(feature = "serde", serde(alias = "outputs", deserialize_with = "deserialize_exports"))] // TODO: Eventually remove this alias document upgrade code
+	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias document upgrade code
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
-	//cfg_attr(feature = "serde", #[cfg_attr(feature = "serde", serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")))]
+	//cfg_attr(feature = "serde", #[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap"))]
 	pub nodes: HashMap<NodeId, OldDocumentNode>,
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
-	#[cfg_attr(feature = "serde", serde(default))]
+	#[serde(default)]
 	pub previewing: OldPreviewing,
 	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
-	#[cfg_attr(feature = "serde", serde(default = "default_import_metadata"))]
+	#[serde(default = "default_import_metadata")]
 	pub imports_metadata: (NodeId, IVec2),
-	#[cfg_attr(feature = "serde", serde(default = "default_export_metadata"))]
+	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
 
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
-	#[cfg_attr(feature = "serde", serde(default))]
-	//cfg_attr(feature = "serde", #[cfg_attr(feature = "serde", serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")))]
+	#[serde(default)]
+	//cfg_attr(feature = "serde", #[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap"))]
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
 // TODO: Eventually remove this document upgrade code
-#[cfg(feature = "serde")]
 fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
 	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
 	if s == "Layer" {
@@ -684,34 +666,27 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId::new(), IVec2::new(8, -4))
 }
 
-#[derive(Clone, Default, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Default, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	// TODO: Eventually remove this alias document upgrade code
-	#[cfg_attr(all(feature = "serde", target_arch = "wasm32"), serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
+	#[cfg_attr(target_arch = "wasm32", serde(alias = "outputs", deserialize_with = "deserialize_exports"))]
 	pub exports: Vec<NodeInput>,
 	// TODO: Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
-	#[cfg_attr(
-		feature = "serde",
-		serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")
-	)]
+	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub nodes: FxHashMap<NodeId, DocumentNode>,
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
-	#[cfg_attr(feature = "serde", serde(default))]
-	#[cfg_attr(
-		feature = "serde",
-		serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")
-	)]
+	#[serde(default)]
+	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 }
 
-impl std::hash::Hash for NodeNetwork {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for NodeNetwork {
+	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.exports.hash(state);
 		let mut nodes: Vec<_> = self.nodes.iter().collect();
 		nodes.sort_by_key(|(id, _)| *id);
@@ -1270,7 +1245,7 @@ impl NodeNetwork {
 	}
 
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
-	pub fn recursive_nodes(&self) -> RecursiveNodeIter {
+	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
 		let nodes = self.nodes.iter().collect();
 		RecursiveNodeIter { nodes }
 	}

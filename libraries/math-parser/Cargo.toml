@@ -15,7 +15,7 @@ lazy_static = "1.5"
 num-complex = "0.4"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = { workspace = true }
 
 [[bench]]
 name = "bench"
