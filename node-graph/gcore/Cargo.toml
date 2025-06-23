@@ -7,10 +7,9 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["serde", "wasm"]
+default = ["serde"]
 nightly = []
 type_id_logging = []
-wasm = ["web-sys"]
 wgpu = ["dep:wgpu"]
 vello = ["dep:vello", "bezier-rs/kurbo", "wgpu"]
 dealloc_nodes = []
@@ -47,7 +46,6 @@ base64 = { workspace = true }
 serde = { workspace = true, optional = true }
 vello = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies

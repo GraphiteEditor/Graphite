@@ -299,7 +299,7 @@ impl Default for SvgRender {
 
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
-	#[cfg(feature = "wgpu")]
+	#[cfg(feature = "vello")]
 	pub resource_overrides: HashMap<u64, std::sync::Arc<wgpu::Texture>>,
 }
 

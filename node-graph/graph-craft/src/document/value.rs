@@ -4,6 +4,7 @@ use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_application_io::SurfaceFrame;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::raster_types::CPU;
@@ -30,7 +31,7 @@ macro_rules! tagged_value {
 			None,
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
-			SurfaceFrame(graphene_core::SurfaceFrame),
+			SurfaceFrame(SurfaceFrame),
 			#[serde(skip)]
 			EditorApi(Arc<WasmEditorApi>)
 		}
@@ -76,7 +77,7 @@ macro_rules! tagged_value {
 					Self::None => concrete!(()),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
-					Self::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
+					Self::SurfaceFrame(_) => concrete!(SurfaceFrame),
 					Self::EditorApi(_) => concrete!(&WasmEditorApi)
 				}
 			}
@@ -89,7 +90,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
-					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
+					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
 
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
@@ -103,7 +104,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(<$ty as Clone>::clone(input.downcast_ref().unwrap()))), )*
 					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(RenderOutput::clone(input.downcast_ref().unwrap()))),
-					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(graphene_core::SurfaceFrame::clone(input.downcast_ref().unwrap()))),
+					x if x == TypeId::of::<SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(SurfaceFrame::clone(input.downcast_ref().unwrap()))),
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
@@ -430,7 +431,7 @@ pub struct RenderOutput {
 
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, Hash, serde::Serialize, serde::Deserialize)]
 pub enum RenderOutputType {
-	CanvasFrame(graphene_core::SurfaceFrame),
+	CanvasFrame(SurfaceFrame),
 	Svg(String),
 	Image(Vec<u8>),
 }
