@@ -25,11 +25,11 @@ editor = { path = "../../editor", package = "graphite-editor", features = [
 	"resvg",
 	"vello",
 ] }
+graphene-std = { workspace = true }
 
 # Workspace dependencies
 graph-craft = { workspace = true }
 log = { workspace = true }
-graphene-core = { workspace = true }
 serde = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
