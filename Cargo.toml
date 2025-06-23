@@ -4,6 +4,7 @@ members = [
 	"proc-macros",
 	"frontend/wasm",
 	"frontend/src-tauri",
+	"node-graph/gapplication-io",
 	"node-graph/gcore",
 	"node-graph/gstd",
 	"node-graph/graph-craft",
@@ -35,6 +36,7 @@ bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any", "serde"] }
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam", "reqwest", "log-bad-types", "rc"] }
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
+graphene-application-io = { path = "node-graph/gapplication-io" }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft" }
 graphene-std = { path = "node-graph/gstd" }

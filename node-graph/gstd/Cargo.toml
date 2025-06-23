@@ -9,8 +9,8 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["wasm", "imaginate"]
 gpu = []
-wgpu = ["gpu", "graph-craft/wgpu"]
-wasm = ["wasm-bindgen", "web-sys"]
+wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu"]
+wasm = ["wasm-bindgen", "web-sys", "graphene-application-io/wasm"]
 imaginate = ["image/png", "base64", "web-sys", "wasm-bindgen-futures"]
 image-compare = []
 vello = ["dep:vello", "gpu", "graphene-core/vello"]
@@ -23,6 +23,7 @@ dyn-any = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
+graphene-application-io = { workspace = true }
 
 # Workspace dependencies
 fastnoise-lite = { workspace = true }
