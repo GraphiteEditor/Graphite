@@ -1,11 +1,17 @@
+use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
+use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
+use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_text;
+use crate::messages::tool::common_functionality::transformation_cage::SelectedEdges;
 use crate::messages::tool::tool_messages::path_tool::PathOverlayMode;
+use crate::messages::tool::utility_types::ToolType;
 use bezier_rs::Bezier;
-use glam::DVec2;
-use graphene_core::renderer::Quad;
-use graphene_core::text::{FontCache, load_face};
+use glam::{DAffine2, DVec2};
+use graphene_std::renderer::Quad;
+use graphene_std::text::{FontCache, load_face};
 use graphene_std::vector::{HandleId, ManipulatorPointId, PointId, SegmentId, VectorData, VectorModificationType};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -64,7 +70,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	};
 
 	let buzz_face = font_cache.get(font).map(|data| load_face(data));
-	let far = graphene_core::text::bounding_box(text, buzz_face.as_ref(), typesetting, false);
+	let far = graphene_std::text::bounding_box(text, buzz_face.as_ref(), typesetting, false);
 
 	Quad::from_box([DVec2::ZERO, far])
 }
@@ -196,6 +202,228 @@ pub fn is_visible_point(
 			}
 		}
 	}
+}
+
+pub fn resize_bounds(
+	document: &DocumentMessageHandler,
+	responses: &mut VecDeque<Message>,
+	bounds: &mut BoundingBoxManager,
+	dragging_layers: &mut Vec<LayerNodeIdentifier>,
+	snap_manager: &mut SnapManager,
+	snap_candidates: &mut Vec<SnapCandidatePoint>,
+	input: &InputPreprocessorMessageHandler,
+	center: bool,
+	constrain: bool,
+	tool: ToolType,
+) {
+	if let Some(movement) = &mut bounds.selected_edges {
+		let center = center.then_some(bounds.center_of_transformation);
+		let snap = Some(SizeSnapData {
+			manager: snap_manager,
+			points: snap_candidates,
+			snap_data: SnapData::ignore(document, input, &dragging_layers),
+		});
+		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
+		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
+
+		let pivot_transform = DAffine2::from_translation(pivot);
+		let transformation = pivot_transform * delta * pivot_transform.inverse();
+
+		dragging_layers.retain(|layer| {
+			if *layer != LayerNodeIdentifier::ROOT_PARENT {
+				document.network_interface.document_network().nodes.contains_key(&layer.to_node())
+			} else {
+				log::error!("ROOT_PARENT should not be part of layers_dragging");
+				false
+			}
+		});
+
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &dragging_layers, responses, &document.network_interface, None, &tool, None);
+		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+	}
+}
+
+pub fn rotate_bounds(
+	document: &DocumentMessageHandler,
+	responses: &mut VecDeque<Message>,
+	bounds: &mut BoundingBoxManager,
+	dragging_layers: &mut Vec<LayerNodeIdentifier>,
+	drag_start: DVec2,
+	mouse_position: DVec2,
+	snap_angle: bool,
+	tool: ToolType,
+) {
+	let angle = {
+		let start_offset = drag_start - bounds.center_of_transformation;
+		let end_offset = mouse_position - bounds.center_of_transformation;
+		start_offset.angle_to(end_offset)
+	};
+
+	let snapped_angle = if snap_angle {
+		let snap_resolution = ROTATE_INCREMENT.to_radians();
+		(angle / snap_resolution).round() * snap_resolution
+	} else {
+		angle
+	};
+
+	let delta = DAffine2::from_angle(snapped_angle);
+
+	dragging_layers.retain(|layer| {
+		if *layer != LayerNodeIdentifier::ROOT_PARENT {
+			document.network_interface.document_network().nodes.contains_key(&layer.to_node())
+		} else {
+			log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
+			false
+		}
+	});
+
+	let mut selected = Selected::new(
+		&mut bounds.original_transforms,
+		&mut bounds.center_of_transformation,
+		&dragging_layers,
+		responses,
+		&document.network_interface,
+		None,
+		&tool,
+		None,
+	);
+	selected.update_transforms(delta, None, None);
+}
+
+pub fn skew_bounds(
+	document: &DocumentMessageHandler,
+	responses: &mut VecDeque<Message>,
+	bounds: &mut BoundingBoxManager,
+	free_movement: bool,
+	layers: &mut Vec<LayerNodeIdentifier>,
+	mouse_position: DVec2,
+	tool: ToolType,
+) {
+	if let Some(movement) = &mut bounds.selected_edges {
+		let mut pivot = DVec2::ZERO;
+
+		let transformation = movement.skew_transform(mouse_position, bounds.original_bound_transform, free_movement);
+
+		layers.retain(|layer| {
+			if *layer != LayerNodeIdentifier::ROOT_PARENT {
+				document.network_interface.document_network().nodes.contains_key(&layer.to_node())
+			} else {
+				log::error!("ROOT_PARENT should not be part of layers_dragging");
+				false
+			}
+		});
+
+		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, &layers, responses, &document.network_interface, None, &tool, None);
+		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+	}
+}
+
+// TODO: Replace returned tuple (where at most 1 element is true at a time) with an enum.
+/// Returns the tuple (resize, rotate, skew).
+pub fn transforming_transform_cage(
+	document: &DocumentMessageHandler,
+	mut bounding_box_manager: &mut Option<BoundingBoxManager>,
+	input: &InputPreprocessorMessageHandler,
+	responses: &mut VecDeque<Message>,
+	layers_dragging: &mut Vec<LayerNodeIdentifier>,
+) -> (bool, bool, bool) {
+	let dragging_bounds = bounding_box_manager.as_mut().and_then(|bounding_box| {
+		let edges = bounding_box.check_selected_edges(input.mouse.position);
+
+		bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
+			let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
+			bounding_box.opposite_pivot = selected_edges.calculate_pivot();
+			selected_edges
+		});
+
+		edges
+	});
+
+	let rotating_bounds = bounding_box_manager.as_ref().map(|bounding_box| bounding_box.check_rotate(input.mouse.position)).unwrap_or_default();
+
+	let selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
+
+	let is_flat_layer = bounding_box_manager.as_ref().map(|bounding_box_manager| bounding_box_manager.transform_tampered).unwrap_or(true);
+
+	if dragging_bounds.is_some() && !is_flat_layer {
+		responses.add(DocumentMessage::StartTransaction);
+
+		*layers_dragging = selected;
+
+		if let Some(bounds) = &mut bounding_box_manager {
+			bounds.original_bound_transform = bounds.transform;
+
+			layers_dragging.retain(|layer| {
+				if *layer != LayerNodeIdentifier::ROOT_PARENT {
+					document.network_interface.document_network().nodes.contains_key(&layer.to_node())
+				} else {
+					log::error!("ROOT_PARENT should not be part of layers_dragging");
+					false
+				}
+			});
+
+			let mut selected = Selected::new(
+				&mut bounds.original_transforms,
+				&mut bounds.center_of_transformation,
+				&layers_dragging,
+				responses,
+				&document.network_interface,
+				None,
+				&ToolType::Select,
+				None,
+			);
+			bounds.center_of_transformation = selected.mean_average_of_pivots();
+
+			// Check if we're hovering over a skew triangle
+			let edges = bounds.check_selected_edges(input.mouse.position);
+			if let Some(edges) = edges {
+				let closest_edge = bounds.get_closest_edge(edges, input.mouse.position);
+				if bounds.check_skew_handle(input.mouse.position, closest_edge) {
+					// No resize or rotate, just skew
+					return (false, false, true);
+				}
+			}
+		}
+
+		// Just resize, no rotate or skew
+		return (true, false, false);
+	}
+
+	if rotating_bounds {
+		responses.add(DocumentMessage::StartTransaction);
+
+		if let Some(bounds) = &mut bounding_box_manager {
+			layers_dragging.retain(|layer| {
+				if *layer != LayerNodeIdentifier::ROOT_PARENT {
+					document.network_interface.document_network().nodes.contains_key(&layer.to_node())
+				} else {
+					log::error!("ROOT_PARENT should not be part of layers_dragging");
+					false
+				}
+			});
+
+			let mut selected = Selected::new(
+				&mut bounds.original_transforms,
+				&mut bounds.center_of_transformation,
+				&selected,
+				responses,
+				&document.network_interface,
+				None,
+				&ToolType::Select,
+				None,
+			);
+
+			bounds.center_of_transformation = selected.mean_average_of_pivots();
+		}
+
+		*layers_dragging = selected;
+
+		// No resize or skew, just rotate
+		return (false, true, false);
+	}
+
+	// No resize, rotate, or skew
+	return (false, false, false);
 }
 
 /// Calculates similarity metric between new bezier curve and two old beziers by using sampled points.

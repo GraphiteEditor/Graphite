@@ -1,7 +1,7 @@
 use super::utility_types::ToolType;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use graphene_core::raster::color::Color;
+use graphene_std::raster::color::Color;
 
 #[impl_message(Message, Tool)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -32,13 +32,7 @@ pub enum ToolMessage {
 	#[child]
 	Spline(SplineToolMessage),
 	#[child]
-	Line(LineToolMessage),
-	#[child]
-	Rectangle(RectangleToolMessage),
-	#[child]
-	Ellipse(EllipseToolMessage),
-	#[child]
-	Polygon(PolygonToolMessage),
+	Shape(ShapeToolMessage),
 	#[child]
 	Text(TextToolMessage),
 
@@ -62,7 +56,6 @@ pub enum ToolMessage {
 	ActivateToolArtboard,
 	ActivateToolNavigate,
 	ActivateToolEyedropper,
-	ActivateToolText,
 	ActivateToolFill,
 	ActivateToolGradient,
 
@@ -70,10 +63,11 @@ pub enum ToolMessage {
 	ActivateToolPen,
 	ActivateToolFreehand,
 	ActivateToolSpline,
-	ActivateToolLine,
-	ActivateToolRectangle,
-	ActivateToolEllipse,
-	ActivateToolPolygon,
+	ActivateToolShapeLine,
+	ActivateToolShapeRectangle,
+	ActivateToolShapeEllipse,
+	ActivateToolShape,
+	ActivateToolText,
 
 	ActivateToolBrush,
 	// ActivateToolImaginate,

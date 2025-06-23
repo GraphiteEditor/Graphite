@@ -41,6 +41,9 @@ async fn boolean_operation<I: Into<GraphicGroupTable> + 'n + Send + Clone>(
 		VectorData::transform(result_vector_data.instance, transform);
 		result_vector_data.instance.style.set_stroke_transform(DAffine2::IDENTITY);
 		result_vector_data.instance.upstream_graphic_group = Some(group_of_paths.clone());
+
+		// Clean up the boolean operation result by merging duplicated points
+		result_vector_data.instance.merge_by_distance(0.001);
 	}
 
 	result_vector_data_table
@@ -280,7 +283,7 @@ fn to_path(vector: &VectorData, transform: DAffine2) -> Vec<path_bool::PathSegme
 	path
 }
 
-fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &bezier_rs::Subpath<PointId>, transform: DAffine2) {
+fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<PointId>, transform: DAffine2) {
 	use path_bool::PathSegment;
 	let mut global_start = None;
 	let mut global_end = DVec2::ZERO;

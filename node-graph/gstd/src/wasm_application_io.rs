@@ -1,9 +1,7 @@
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-#[cfg(target_arch = "wasm32")]
-use graphene_core::application_io::SurfaceHandle;
-use graphene_core::application_io::{ApplicationIo, ExportFormat, RenderConfig};
+use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
 #[cfg(target_arch = "wasm32")]
 use graphene_core::instances::Instances;
 #[cfg(target_arch = "wasm32")]
@@ -27,6 +25,7 @@ use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+#[cfg(feature = "wgpu")]
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
@@ -126,7 +125,7 @@ async fn render_canvas(
 	surface_handle: wgpu_executor::WgpuSurface,
 	render_params: RenderParams,
 ) -> RenderOutputType {
-	use graphene_core::SurfaceFrame;
+	use graphene_application_io::SurfaceFrame;
 
 	let footprint = render_config.viewport;
 	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
@@ -171,7 +170,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 	)]
 	mut data: Instances<T>,
 	footprint: Footprint,
-	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+	surface_handle: Arc<graphene_application_io::SurfaceHandle<HtmlCanvasElement>>,
 ) -> RasterDataTable<CPU>
 where
 	Instances<T>: GraphicElementRendered,
@@ -259,7 +258,15 @@ async fn render<'a: 'n, T: 'n + GraphicElementRendered + WasmNotSend>(
 	ctx.footprint();
 
 	let RenderConfig { hide_artboards, for_export, .. } = render_config;
-	let render_params = RenderParams::new(render_config.view_mode, None, false, hide_artboards, for_export);
+	let render_params = RenderParams {
+		view_mode: render_config.view_mode,
+		culling_bounds: None,
+		thumbnail: false,
+		hide_artboards,
+		for_export,
+		for_mask: false,
+		alignment_parent_transform: None,
+	};
 
 	let data = data.eval(ctx.clone()).await;
 	let editor_api = editor_api.eval(None).await;

@@ -5,7 +5,7 @@ use rustc_hash::FxHashSet;
 
 impl VectorData {
 	/// Collapse all points with edges shorter than the specified distance
-	pub(crate) fn merge_by_distance(&mut self, distance: f64) {
+	pub fn merge_by_distance(&mut self, distance: f64) {
 		// Treat self as an undirected graph
 		let indices = VectorDataIndex::build_from(self);
 

@@ -15,42 +15,29 @@ passthrough = ["wgpu-executor/passthrough"]
 gpu = [
 	"interpreted-executor/gpu",
 	"graphene-std/gpu",
-	"graphene-core/gpu",
 	"wgpu-executor",
-	"gpu-executor",
 ]
 
 [dependencies]
 # Local dependencies
-graphene-std = { path = "../gstd", features = ["serde"] }
-interpreted-executor = { path = "../interpreted-executor" }
+graphene-core = { workspace = true }
+graphene-std = { workspace = true }
+interpreted-executor = { workspace = true }
+graph-craft = { workspace = true, features = ["loading"] }
 
 # Workspace dependencies
 log = { workspace = true }
-bitflags = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-bezier-rs = { workspace = true }
-glam = { workspace = true }
-graph-craft = { workspace = true, features = ["loading"] }
-dyn-any = { workspace = true }
-graphene-core = { workspace = true }
 futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-image = { workspace = true, default-features = false, features = [
-	"bmp",
-	"png",
-] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 # Required dependencies
 clap = { version = "4.5.31", features = ["cargo", "derive"] }
 
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }
-gpu-executor = { path = "../gpu-executor", optional = true }
 
-# Optional workspace dependencies
-wasm-bindgen = { workspace = true, optional = true }
+[package.metadata.cargo-shear]
+ignored = ["wgpu-executor"]

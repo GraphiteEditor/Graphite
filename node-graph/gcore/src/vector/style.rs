@@ -2,7 +2,7 @@
 
 use crate::Color;
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-use crate::renderer::format_transform_matrix;
+use crate::renderer::{RenderParams, format_transform_matrix};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use std::fmt::Write;
@@ -22,7 +22,7 @@ pub enum GradientType {
 pub struct GradientStops(Vec<(f64, Color)>);
 
 impl std::hash::Hash for GradientStops {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.0.len().hash(state);
 		self.0.iter().for_each(|(position, color)| {
 			position.to_bits().hash(state);
@@ -146,8 +146,8 @@ impl Default for Gradient {
 	}
 }
 
-impl core::hash::Hash for Gradient {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for Gradient {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.stops.0.len().hash(state);
 		[].iter()
 			.chain(self.start.to_array().iter())
@@ -214,7 +214,7 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
-	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+	fn render_defs(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], _render_params: &RenderParams) -> u64 {
 		// TODO: Figure out how to use `self.transform` as part of the gradient transform, since that field (`Gradient::transform`) is currently never read from, it's only written to.
 
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
@@ -381,7 +381,7 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs through mutating the first argument.
-	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], render_params: &RenderParams) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
 			Self::Solid(color) => {
@@ -392,7 +392,7 @@ impl Fill {
 				result
 			}
 			Self::Gradient(gradient) => {
-				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let gradient_id = gradient.render_defs(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
@@ -412,6 +412,20 @@ impl Fill {
 			Self::Solid(color) => Some(*color),
 			_ => None,
 		}
+	}
+
+	/// Find if fill can be represented with only opaque colors
+	pub fn is_opaque(&self) -> bool {
+		match self {
+			Fill::Solid(color) => color.is_opaque(),
+			Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
+			Fill::None => true,
+		}
+	}
+
+	/// Returns if fill is none
+	pub fn is_none(&self) -> bool {
+		*self == Self::None
 	}
 }
 
@@ -499,19 +513,19 @@ pub enum FillType {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
-pub enum LineCap {
+pub enum StrokeCap {
 	#[default]
 	Butt,
 	Round,
 	Square,
 }
 
-impl LineCap {
+impl StrokeCap {
 	fn svg_name(&self) -> &'static str {
 		match self {
-			LineCap::Butt => "butt",
-			LineCap::Round => "round",
-			LineCap::Square => "square",
+			StrokeCap::Butt => "butt",
+			StrokeCap::Round => "round",
+			StrokeCap::Square => "square",
 		}
 	}
 }
@@ -519,20 +533,51 @@ impl LineCap {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
-pub enum LineJoin {
+pub enum StrokeJoin {
 	#[default]
 	Miter,
 	Bevel,
 	Round,
 }
 
-impl LineJoin {
+impl StrokeJoin {
 	fn svg_name(&self) -> &'static str {
 		match self {
-			LineJoin::Bevel => "bevel",
-			LineJoin::Miter => "miter",
-			LineJoin::Round => "round",
+			StrokeJoin::Bevel => "bevel",
+			StrokeJoin::Miter => "miter",
+			StrokeJoin::Round => "round",
 		}
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum StrokeAlign {
+	#[default]
+	Center,
+	Inside,
+	Outside,
+}
+
+impl StrokeAlign {
+	pub fn is_not_centered(self) -> bool {
+		self != Self::Center
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum PaintOrder {
+	#[default]
+	StrokeAbove,
+	StrokeBelow,
+}
+
+impl PaintOrder {
+	pub fn is_default(self) -> bool {
+		self == Self::default()
 	}
 }
 
@@ -542,6 +587,7 @@ fn daffine2_identity() -> DAffine2 {
 
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[serde(default)]
 pub struct Stroke {
 	/// Stroke color
 	pub color: Option<Color>,
@@ -549,26 +595,38 @@ pub struct Stroke {
 	pub weight: f64,
 	pub dash_lengths: Vec<f64>,
 	pub dash_offset: f64,
-	pub line_cap: LineCap,
-	pub line_join: LineJoin,
-	pub line_join_miter_limit: f64,
+	#[serde(alias = "line_cap")]
+	pub cap: StrokeCap,
+	#[serde(alias = "line_join")]
+	pub join: StrokeJoin,
+	#[serde(alias = "line_join_miter_limit")]
+	pub join_miter_limit: f64,
+	#[serde(default)]
+	pub align: StrokeAlign,
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
 	pub non_scaling: bool,
+	#[serde(default)]
+	pub paint_order: PaintOrder,
 }
 
-impl core::hash::Hash for Stroke {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for Stroke {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.color.hash(state);
 		self.weight.to_bits().hash(state);
-		self.dash_lengths.len().hash(state);
-		self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
+		{
+			self.dash_lengths.len().hash(state);
+			self.dash_lengths.iter().for_each(|length| length.to_bits().hash(state));
+		}
 		self.dash_offset.to_bits().hash(state);
-		self.line_cap.hash(state);
-		self.line_join.hash(state);
-		self.line_join_miter_limit.to_bits().hash(state);
+		self.cap.hash(state);
+		self.join.hash(state);
+		self.join_miter_limit.to_bits().hash(state);
+		self.align.hash(state);
+		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.non_scaling.hash(state);
+		self.paint_order.hash(state);
 	}
 }
 
@@ -590,11 +648,13 @@ impl Stroke {
 			weight,
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
-			line_cap: LineCap::Butt,
-			line_join: LineJoin::Miter,
-			line_join_miter_limit: 4.,
+			cap: StrokeCap::Butt,
+			join: StrokeJoin::Miter,
+			join_miter_limit: 4.,
+			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
 			non_scaling: false,
+			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
 
@@ -604,14 +664,16 @@ impl Stroke {
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
-			line_cap: if time < 0.5 { self.line_cap } else { other.line_cap },
-			line_join: if time < 0.5 { self.line_join } else { other.line_join },
-			line_join_miter_limit: self.line_join_miter_limit + (other.line_join_miter_limit - self.line_join_miter_limit) * time,
+			cap: if time < 0.5 { self.cap } else { other.cap },
+			join: if time < 0.5 { self.join } else { other.join },
+			join_miter_limit: self.join_miter_limit + (other.join_miter_limit - self.join_miter_limit) * time,
+			align: if time < 0.5 { self.align } else { other.align },
 			transform: DAffine2::from_mat2_translation(
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
 			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
+			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
 
@@ -637,23 +699,23 @@ impl Stroke {
 		self.dash_offset
 	}
 
-	pub fn line_cap_index(&self) -> u32 {
-		self.line_cap as u32
+	pub fn cap_index(&self) -> u32 {
+		self.cap as u32
 	}
 
-	pub fn line_join_index(&self) -> u32 {
-		self.line_join as u32
+	pub fn join_index(&self) -> u32 {
+		self.join as u32
 	}
 
-	pub fn line_join_miter_limit(&self) -> f32 {
-		self.line_join_miter_limit as f32
+	pub fn join_miter_limit(&self) -> f32 {
+		self.join_miter_limit as f32
 	}
 
 	/// Provide the SVG attributes for the stroke.
-	pub fn render(&self) -> String {
+	pub fn render(&self, aligned_strokes: bool, override_paint_order: bool, _render_params: &RenderParams) -> String {
 		// Don't render a stroke at all if it would be invisible
 		let Some(color) = self.color else { return String::new() };
-		if self.weight <= 0. || color.a() == 0. {
+		if !self.has_renderable_stroke() {
 			return String::new();
 		}
 
@@ -661,16 +723,21 @@ impl Stroke {
 		let weight = (self.weight != 1.).then_some(self.weight);
 		let dash_array = (!self.dash_lengths.is_empty()).then_some(self.dash_lengths());
 		let dash_offset = (self.dash_offset != 0.).then_some(self.dash_offset);
-		let line_cap = (self.line_cap != LineCap::Butt).then_some(self.line_cap);
-		let line_join = (self.line_join != LineJoin::Miter).then_some(self.line_join);
-		let line_join_miter_limit = (self.line_join_miter_limit != 4.).then_some(self.line_join_miter_limit);
+		let stroke_cap = (self.cap != StrokeCap::Butt).then_some(self.cap);
+		let stroke_join = (self.join != StrokeJoin::Miter).then_some(self.join);
+		let stroke_join_miter_limit = (self.join_miter_limit != 4.).then_some(self.join_miter_limit);
+		let stroke_align = (self.align != StrokeAlign::Center).then_some(self.align);
+		let paint_order = (self.paint_order != PaintOrder::StrokeAbove || override_paint_order).then_some(PaintOrder::StrokeBelow);
 
 		// Render the needed stroke attributes
 		let mut attributes = format!(r##" stroke="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 		if color.a() < 1. {
 			let _ = write!(&mut attributes, r#" stroke-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 		}
-		if let Some(weight) = weight {
+		if let Some(mut weight) = weight {
+			if stroke_align.is_some() && aligned_strokes {
+				weight *= 2.;
+			}
 			let _ = write!(&mut attributes, r#" stroke-width="{}""#, weight);
 		}
 		if let Some(dash_array) = dash_array {
@@ -679,18 +746,21 @@ impl Stroke {
 		if let Some(dash_offset) = dash_offset {
 			let _ = write!(&mut attributes, r#" stroke-dashoffset="{}""#, dash_offset);
 		}
-		if let Some(line_cap) = line_cap {
-			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, line_cap.svg_name());
+		if let Some(stroke_cap) = stroke_cap {
+			let _ = write!(&mut attributes, r#" stroke-linecap="{}""#, stroke_cap.svg_name());
 		}
-		if let Some(line_join) = line_join {
-			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, line_join.svg_name());
+		if let Some(stroke_join) = stroke_join {
+			let _ = write!(&mut attributes, r#" stroke-linejoin="{}""#, stroke_join.svg_name());
 		}
-		if let Some(line_join_miter_limit) = line_join_miter_limit {
-			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, line_join_miter_limit);
+		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
+			let _ = write!(&mut attributes, r#" stroke-miterlimit="{}""#, stroke_join_miter_limit);
 		}
 		// Add vector-effect attribute to make strokes non-scaling
 		if self.non_scaling {
 			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
+		}
+		if paint_order.is_some() {
+			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
 		}
 		attributes
 	}
@@ -724,24 +794,33 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_line_cap(mut self, line_cap: LineCap) -> Self {
-		self.line_cap = line_cap;
+	pub fn with_stroke_cap(mut self, stroke_cap: StrokeCap) -> Self {
+		self.cap = stroke_cap;
 		self
 	}
 
-	pub fn with_line_join(mut self, line_join: LineJoin) -> Self {
-		self.line_join = line_join;
+	pub fn with_stroke_join(mut self, stroke_join: StrokeJoin) -> Self {
+		self.join = stroke_join;
 		self
 	}
 
-	pub fn with_line_join_miter_limit(mut self, limit: f64) -> Self {
-		self.line_join_miter_limit = limit;
+	pub fn with_stroke_join_miter_limit(mut self, limit: f64) -> Self {
+		self.join_miter_limit = limit;
+		self
+	}
+
+	pub fn with_stroke_align(mut self, stroke_align: StrokeAlign) -> Self {
+		self.align = stroke_align;
 		self
 	}
 
 	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
 		self.non_scaling = non_scaling;
 		self
+	}
+
+	pub fn has_renderable_stroke(&self) -> bool {
+		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
 	}
 }
 
@@ -753,11 +832,13 @@ impl Default for Stroke {
 			color: Some(Color::from_rgba8_srgb(0, 0, 0, 255)),
 			dash_lengths: Vec::new(),
 			dash_offset: 0.,
-			line_cap: LineCap::Butt,
-			line_join: LineJoin::Miter,
-			line_join_miter_limit: 4.,
+			cap: StrokeCap::Butt,
+			join: StrokeJoin::Miter,
+			join_miter_limit: 4.,
+			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
 			non_scaling: false,
+			paint_order: PaintOrder::default(),
 		}
 	}
 }
@@ -769,8 +850,8 @@ pub struct PathStyle {
 	fill: Fill,
 }
 
-impl core::hash::Hash for PathStyle {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for PathStyle {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.stroke.hash(state);
 		self.fill.hash(state);
 	}
@@ -929,19 +1010,35 @@ impl PathStyle {
 	}
 
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
-	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	#[allow(clippy::too_many_arguments)]
+	pub fn render(
+		&self,
+		svg_defs: &mut String,
+		element_transform: DAffine2,
+		stroke_transform: DAffine2,
+		bounds: [DVec2; 2],
+		transformed_bounds: [DVec2; 2],
+		aligned_strokes: bool,
+		override_paint_order: bool,
+		render_params: &RenderParams,
+	) -> String {
+		let view_mode = render_params.view_mode;
 		match view_mode {
 			ViewMode::Outline => {
-				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
+				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				let mut outline_stroke = Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
-				let stroke_attribute = outline_stroke.render();
+				let stroke_attribute = outline_stroke.render(aligned_strokes, override_paint_order, render_params);
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 			_ => {
-				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds);
-				let stroke_attribute = self.stroke.as_ref().map(|stroke| stroke.render()).unwrap_or_default();
+				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+				let stroke_attribute = self
+					.stroke
+					.as_ref()
+					.map(|stroke| stroke.render(aligned_strokes, override_paint_order, render_params))
+					.unwrap_or_default();
 				format!("{fill_attribute}{stroke_attribute}")
 			}
 		}

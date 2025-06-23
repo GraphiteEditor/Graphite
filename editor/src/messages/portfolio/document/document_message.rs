@@ -8,15 +8,16 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeId;
-use graphene_core::Color;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::Image;
-use graphene_core::vector::style::ViewMode;
+use graphene_std::Color;
+use graphene_std::raster::BlendMode;
+use graphene_std::raster::Image;
 use graphene_std::renderer::ClickTarget;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::style::ViewMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
+#[derivative(Debug, PartialEq)]
 pub enum DocumentMessage {
 	Noop,
 	// Sub-messages
@@ -121,6 +122,9 @@ pub enum DocumentMessage {
 	SelectedLayersReorder {
 		relative_index_offset: isize,
 	},
+	ClipLayer {
+		id: NodeId,
+	},
 	SelectLayer {
 		id: NodeId,
 		ctrl: bool,
@@ -142,6 +146,9 @@ pub enum DocumentMessage {
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
+	SetFillForSelectedLayers {
+		fill: f64,
+	},
 	SetOverlaysVisibility {
 		visible: bool,
 		overlays_type: Option<OverlaysType>,
@@ -151,6 +158,7 @@ pub enum DocumentMessage {
 	},
 	SetSnapping {
 		#[serde(skip)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},

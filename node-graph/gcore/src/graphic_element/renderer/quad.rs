@@ -143,50 +143,55 @@ impl Quad {
 	}
 }
 
-impl core::ops::Mul<Quad> for DAffine2 {
+impl std::ops::Mul<Quad> for DAffine2 {
 	type Output = Quad;
 
 	fn mul(self, rhs: Quad) -> Self::Output {
 		Quad(rhs.0.map(|point| self.transform_point2(point)))
 	}
 }
-#[test]
-fn offset_quad() {
-	fn eq(a: Quad, b: Quad) -> bool {
-		a.0.iter().zip(b.0).all(|(a, b)| a.abs_diff_eq(b, 0.0001))
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn offset_quad() {
+		fn eq(a: Quad, b: Quad) -> bool {
+			a.0.iter().zip(b.0).all(|(a, b)| a.abs_diff_eq(b, 0.0001))
+		}
+
+		assert!(eq(Quad::from_box([DVec2::ZERO, DVec2::ONE]).inflate(0.5), Quad::from_box([DVec2::splat(-0.5), DVec2::splat(1.5)])));
+		assert!(eq(Quad::from_box([DVec2::ONE, DVec2::ZERO]).inflate(0.5), Quad::from_box([DVec2::splat(1.5), DVec2::splat(-0.5)])));
+		assert!(eq(
+			(DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).inflate(0.5),
+			DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::splat(-0.5), DVec2::splat(1.5)])
+		));
+	}
+	#[test]
+	fn quad_contains() {
+		assert!(Quad::from_box([DVec2::ZERO, DVec2::ONE]).contains(DVec2::splat(0.5)));
+		assert!(Quad::from_box([DVec2::ONE, DVec2::ZERO]).contains(DVec2::splat(0.5)));
+		assert!(Quad::from_box([DVec2::splat(300.), DVec2::splat(500.)]).contains(DVec2::splat(350.)));
+		assert!((DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(DVec2::new(-0.5, 0.5)));
+
+		assert!(!Quad::from_box([DVec2::ZERO, DVec2::ONE]).contains(DVec2::new(1., 1.1)));
+		assert!(!Quad::from_box([DVec2::ONE, DVec2::ZERO]).contains(DVec2::new(0.5, -0.01)));
+		assert!(!(DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(DVec2::splat(0.5)));
 	}
 
-	assert!(eq(Quad::from_box([DVec2::ZERO, DVec2::ONE]).inflate(0.5), Quad::from_box([DVec2::splat(-0.5), DVec2::splat(1.5)])));
-	assert!(eq(Quad::from_box([DVec2::ONE, DVec2::ZERO]).inflate(0.5), Quad::from_box([DVec2::splat(1.5), DVec2::splat(-0.5)])));
-	assert!(eq(
-		(DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).inflate(0.5),
-		DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::splat(-0.5), DVec2::splat(1.5)])
-	));
-}
-#[test]
-fn quad_contains() {
-	assert!(Quad::from_box([DVec2::ZERO, DVec2::ONE]).contains(DVec2::splat(0.5)));
-	assert!(Quad::from_box([DVec2::ONE, DVec2::ZERO]).contains(DVec2::splat(0.5)));
-	assert!(Quad::from_box([DVec2::splat(300.), DVec2::splat(500.)]).contains(DVec2::splat(350.)));
-	assert!((DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(DVec2::new(-0.5, 0.5)));
-
-	assert!(!Quad::from_box([DVec2::ZERO, DVec2::ONE]).contains(DVec2::new(1., 1.1)));
-	assert!(!Quad::from_box([DVec2::ONE, DVec2::ZERO]).contains(DVec2::new(0.5, -0.01)));
-	assert!(!(DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(DVec2::splat(0.5)));
-}
-
-#[test]
-fn intersect_lines() {
-	assert_eq!(
-		Quad::intersect_lines(DVec2::new(-5., 5.), DVec2::new(5., 5.), DVec2::new(2., 7.), DVec2::new(2., 3.)),
-		Some(DVec2::new(2., 5.))
-	);
-	assert_eq!(Quad::intersect_lines(DVec2::new(4., 6.), DVec2::new(4., 5.), DVec2::new(2., 7.), DVec2::new(2., 3.)), None);
-	assert_eq!(Quad::intersect_lines(DVec2::new(-5., 5.), DVec2::new(5., 5.), DVec2::new(2., 7.), DVec2::new(2., 9.)), None);
-}
-#[test]
-fn intersect_quad() {
-	assert!(Quad::from_box([DVec2::ZERO, DVec2::splat(5.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(7.)])));
-	assert!(Quad::from_box([DVec2::ZERO, DVec2::splat(5.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(4.2)])));
-	assert!(!Quad::from_box([DVec2::ZERO, DVec2::splat(3.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(4.2)])));
+	#[test]
+	fn intersect_lines() {
+		assert_eq!(
+			Quad::intersect_lines(DVec2::new(-5., 5.), DVec2::new(5., 5.), DVec2::new(2., 7.), DVec2::new(2., 3.)),
+			Some(DVec2::new(2., 5.))
+		);
+		assert_eq!(Quad::intersect_lines(DVec2::new(4., 6.), DVec2::new(4., 5.), DVec2::new(2., 7.), DVec2::new(2., 3.)), None);
+		assert_eq!(Quad::intersect_lines(DVec2::new(-5., 5.), DVec2::new(5., 5.), DVec2::new(2., 7.), DVec2::new(2., 9.)), None);
+	}
+	#[test]
+	fn intersect_quad() {
+		assert!(Quad::from_box([DVec2::ZERO, DVec2::splat(5.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(7.)])));
+		assert!(Quad::from_box([DVec2::ZERO, DVec2::splat(5.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(4.2)])));
+		assert!(!Quad::from_box([DVec2::ZERO, DVec2::splat(3.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(4.2)])));
+	}
 }

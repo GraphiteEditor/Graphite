@@ -34,19 +34,16 @@ pub use crate::messages::broadcast::broadcast_event::{BroadcastEvent, BroadcastE
 pub use crate::messages::message::{Message, MessageDiscriminant};
 pub use crate::messages::tool::tool_messages::artboard_tool::{ArtboardToolMessage, ArtboardToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::brush_tool::{BrushToolMessage, BrushToolMessageDiscriminant};
-pub use crate::messages::tool::tool_messages::ellipse_tool::{EllipseToolMessage, EllipseToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::eyedropper_tool::{EyedropperToolMessage, EyedropperToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::fill_tool::{FillToolMessage, FillToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::freehand_tool::{FreehandToolMessage, FreehandToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::gradient_tool::{GradientToolMessage, GradientToolMessageDiscriminant};
 // pub use crate::messages::tool::tool_messages::imaginate_tool::{ImaginateToolMessage, ImaginateToolMessageDiscriminant};
-pub use crate::messages::tool::tool_messages::line_tool::{LineToolMessage, LineToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::navigate_tool::{NavigateToolMessage, NavigateToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::path_tool::{PathToolMessage, PathToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::pen_tool::{PenToolMessage, PenToolMessageDiscriminant};
-pub use crate::messages::tool::tool_messages::polygon_tool::{PolygonToolMessage, PolygonToolMessageDiscriminant};
-pub use crate::messages::tool::tool_messages::rectangle_tool::{RectangleToolMessage, RectangleToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::select_tool::{SelectToolMessage, SelectToolMessageDiscriminant};
+pub use crate::messages::tool::tool_messages::shape_tool::{ShapeToolMessage, ShapeToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::spline_tool::{SplineToolMessage, SplineToolMessageDiscriminant};
 pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextToolMessageDiscriminant};
 

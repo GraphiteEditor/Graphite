@@ -137,7 +137,7 @@
 		await refreshWires();
 	}
 
-	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
+	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement; nodeInput: SVGSVGElement } | undefined {
 		// TODO: Avoid the linear search
 		const wireStartNodeIdIndex = Array.from($nodeGraph.nodes.keys()).findIndex((nodeId) => nodeId === (wire.wireStart as Node).nodeId);
 		let nodeOutputConnectors = outputs[wireStartNodeIdIndex + 1];
@@ -146,6 +146,7 @@
 		}
 		const indexOutput = Number(wire.wireStart.index);
 		const nodeOutput = nodeOutputConnectors?.[indexOutput] as SVGSVGElement | undefined;
+		if (nodeOutput === undefined) return undefined;
 
 		// TODO: Avoid the linear search
 		const wireEndNodeIdIndex = Array.from($nodeGraph.nodes.keys()).findIndex((nodeId) => nodeId === (wire.wireEnd as Node).nodeId);
@@ -155,6 +156,7 @@
 		}
 		const indexInput = Number(wire.wireEnd.index);
 		const nodeInput = nodeInputConnectors?.[indexInput] as SVGSVGElement | undefined;
+		if (nodeInput === undefined) return undefined;
 
 		return { nodeOutput, nodeInput };
 	}
@@ -177,8 +179,9 @@
 
 		nodeWirePaths = $nodeGraph.wires.flatMap((wire) => {
 			// TODO: This call contains linear searches, which combined with the loop we're in, causes O(n^2) complexity as the graph grows
-			const { nodeOutput, nodeInput } = resolveWire(wire);
-			if (!nodeOutput || !nodeInput) return [];
+			const resolvedWires = resolveWire(wire);
+			if (!resolvedWires) return [];
+			const { nodeOutput, nodeInput } = resolvedWires;
 
 			const wireStartNode = wire.wireStart.nodeId !== undefined ? $nodeGraph.nodes.get(wire.wireStart.nodeId) : undefined;
 			const wireStart = wireStartNode?.isLayer || false;

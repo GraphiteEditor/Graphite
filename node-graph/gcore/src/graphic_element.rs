@@ -12,27 +12,38 @@ use std::hash::Hash;
 
 pub mod renderer;
 
-#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct AlphaBlending {
-	pub opacity: f32,
 	pub blend_mode: BlendMode,
+	pub opacity: f32,
+	pub fill: f32,
+	pub clip: bool,
 }
 impl Default for AlphaBlending {
 	fn default() -> Self {
 		Self::new()
 	}
 }
-impl core::hash::Hash for AlphaBlending {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl Hash for AlphaBlending {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
+		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
+		self.clip.hash(state);
 	}
 }
 impl std::fmt::Display for AlphaBlending {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let round = |x: f32| (x * 1e3).round() / 1e3;
-		write!(f, "Opacity: {}% — Blend Mode: {}", round(self.opacity * 100.), self.blend_mode)
+		write!(
+			f,
+			"Blend Mode: {} — Opacity: {}% — Fill: {}% — Clip: {}",
+			self.blend_mode,
+			round(self.opacity * 100.),
+			round(self.fill * 100.),
+			if self.clip { "Yes" } else { "No" }
+		)
 	}
 }
 
@@ -40,7 +51,9 @@ impl AlphaBlending {
 	pub const fn new() -> Self {
 		Self {
 			opacity: 1.,
+			fill: 1.,
 			blend_mode: BlendMode::Normal,
+			clip: false,
 		}
 	}
 
@@ -49,7 +62,9 @@ impl AlphaBlending {
 
 		AlphaBlending {
 			opacity: lerp(self.opacity, other.opacity, t),
+			fill: lerp(self.fill, other.fill, t),
 			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
+			clip: if t < 0.5 { self.clip } else { other.clip },
 		}
 	}
 }
@@ -58,15 +73,13 @@ impl AlphaBlending {
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 	pub struct OldGraphicGroup {
 		elements: Vec<(GraphicElement, Option<NodeId>)>,
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 	pub struct GraphicGroup {
 		elements: Vec<(GraphicElement, Option<NodeId>)>,
 	}
@@ -146,8 +159,7 @@ impl From<RasterDataTable<GPU>> for GraphicGroupTable {
 }
 
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum GraphicElement {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 	GraphicGroup(GraphicGroupTable),
@@ -205,39 +217,27 @@ impl GraphicElement {
 			_ => None,
 		}
 	}
+
+	pub fn had_clip_enabled(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::GraphicGroup(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterDataCPU(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+			GraphicElement::RasterDataGPU(data) => data.instance_ref_iter().all(|instance| instance.alpha_blending.clip),
+		}
+	}
+
+	pub fn can_reduce_to_clip_path(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(vector_data_table) => vector_data_table.instance_ref_iter().all(|instance_data| {
+				let style = &instance_data.instance.style;
+				let alpha_blending = &instance_data.alpha_blending;
+				(alpha_blending.opacity > 1. - f32::EPSILON) && style.fill().is_opaque() && style.stroke().is_none_or(|stroke| !stroke.has_renderable_stroke())
+			}),
+			_ => false,
+		}
+	}
 }
-
-// // TODO: Rename to Raster
-// #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-// pub enum RasterDataType {
-// 	/// A CPU-based bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
-// 	// TODO: Rename to ImageTable
-// 	RasterData(RasterDataTable<CPU>),
-// 	/// A GPU texture with a finite position and extent
-// 	// TODO: Rename to ImageTextureTable
-// 	TextureData(TextureDataTable),
-// }
-
-// impl<'de> serde::Deserialize<'de> for RasterDataType {
-// 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-// 	where
-// 		D: serde::Deserializer<'de>,
-// 	{
-// 		Ok(RasterDataType::RasterData(RasterDataTable::new(Image::deserialize(deserializer)?)))
-// 	}
-// }
-
-// impl serde::Serialize for RasterDataType {
-// 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-// 	where
-// 		S: serde::Serializer,
-// 	{
-// 		match self {
-// 			RasterDataType::RasterData(_) => self.serialize(serializer),
-// 			RasterDataType::TextureData(_) => todo!(),
-// 		}
-// 	}
-// }
 
 impl<'de> serde::Deserialize<'de> for Raster<CPU> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -275,8 +275,7 @@ impl serde::Serialize for Raster<GPU> {
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
 	pub graphic_group: GraphicGroupTable,
 	pub label: String,
@@ -309,8 +308,7 @@ impl Artboard {
 pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub struct ArtboardGroup {
 		pub artboards: Vec<(Artboard, Option<NodeId>)>,
 	}
@@ -448,8 +446,10 @@ async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTabl
 							instance: current_element.instance.clone(),
 							transform: *current_instance.transform * *current_element.transform,
 							alpha_blending: AlphaBlending {
-								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
 								blend_mode: current_element.alpha_blending.blend_mode,
+								opacity: current_instance.alpha_blending.opacity * current_element.alpha_blending.opacity,
+								fill: current_element.alpha_blending.fill,
+								clip: current_element.alpha_blending.clip,
 							},
 							source_node_id: reference,
 						});

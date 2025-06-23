@@ -13,7 +13,7 @@ license = "Apache-2.0"
 [features]
 default = ["gpu"]
 gpu = ["editor/gpu"]
-tauri = ["ron", "editor/tauri"]
+tauri = [ "editor/tauri"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -25,33 +25,20 @@ editor = { path = "../../editor", package = "graphite-editor", features = [
 	"resvg",
 	"vello",
 ] }
+graphene-std = { workspace = true }
 
 # Workspace dependencies
 graph-craft = { workspace = true }
 log = { workspace = true }
-graphene-core = { workspace = true, features = ["std", "alloc"] }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-bezier-rs = { workspace = true }
 glam = { workspace = true }
-futures = { workspace = true }
 math-parser = { workspace = true }
-wgpu = { workspace = true, features = [
-	"fragile-send-sync-non-atomic-wasm",
-] } # We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
-web-sys = { workspace = true, features = [
-	"Window",
-	"CanvasRenderingContext2d",
-	"Document",
-	"HtmlCanvasElement",
-	"IdleRequestOptions",
-] }
-
-# Optional workspace dependencies
-ron = { workspace = true, optional = true }
+wgpu = { workspace = true }
+web-sys = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
@@ -59,7 +46,7 @@ wasm-opt = false
 [package.metadata.wasm-pack.profile.dev.wasm-bindgen]
 debug-js-glue = true
 demangle-name-section = true
-dwarf-debug-info = true
+dwarf-debug-info = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Os", "-g"]
@@ -81,3 +68,6 @@ dwarf-debug-info = true
 unexpected_cfgs = { level = "warn", check-cfg = [
 	'cfg(wasm_bindgen_unstable_test_coverage)',
 ] }
+
+[package.metadata.cargo-shear]
+ignored = ["wgpu"]

@@ -88,10 +88,10 @@ impl Parse for ParsedWidgetOverride {
 					let lit: LitStr = input.parse()?;
 					Ok(ParsedWidgetOverride::Custom(lit))
 				}
-				_ => Err(syn::Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
+				_ => Err(Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
 			}
 		} else {
-			Err(syn::Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
+			Err(Error::new(input.span(), "Expected ParsedWidgetOverride::<variant>"))
 		}
 	}
 }
@@ -474,7 +474,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	}
 
 	let unit = extract_attribute(attrs, "unit")
-		.map(|attr| attr.parse_args::<LitStr>().map_err(|e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
+		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, format!("Expected a unit type as string"))))
 		.transpose()?;
 
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
@@ -1214,7 +1214,7 @@ mod tests {
 		let attr = quote!(category("Test"));
 
 		// Use quote_spanned! to attach a specific span to the problematic part
-		let problem_span = proc_macro2::Span::call_site(); // You could create a custom span here if needed
+		let problem_span = Span::call_site(); // You could create a custom span here if needed
 		let tuples = quote_spanned!(problem_span=> () ());
 		let input = quote! {
 			fn test_node(

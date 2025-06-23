@@ -3,12 +3,10 @@ use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
 use graphene_core::raster::bbox::Bbox;
-use graphene_core::raster::{
-	Alpha, AlphaMut, Bitmap, BitmapMut, CellularDistanceFunction, CellularReturnType, Channel, DomainWarpType, FractalType, Image, LinearChannel, Luminance, NoiseType, RGBMut,
-};
+pub use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
-use graphene_core::{AlphaBlending, Color, Ctx, ExtractFootprint};
+use graphene_core::{AlphaBlending, Ctx, ExtractFootprint};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -303,11 +301,10 @@ fn empty_image(_: impl Ctx, transform: DAffine2, color: Color) -> RasterDataTabl
 
 /// Constructs a raster image.
 #[node_macro::node(category(""))]
-fn image(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
+fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTable<CPU> {
 	image
 }
 
-// #[cfg(feature = "serde")]
 // macro_rules! generate_imaginate_node {
 // 	($($val:ident: $t:ident: $o:ty,)*) => {
 // 		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
@@ -388,7 +385,6 @@ fn image(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> RasterDataTa
 // 	}
 // }
 
-// #[cfg(feature = "serde")]
 // generate_imaginate_node! {
 // 	seed: Seed: f64,
 // 	res: Res: Option<DVec2>,

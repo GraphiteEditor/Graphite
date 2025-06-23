@@ -1,7 +1,7 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-use graphene_core::Color;
+use graphene_std::Color;
 use graphene_std::vector::style::FillChoice;
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -60,14 +60,14 @@ impl ToolColorOptions {
 
 	pub fn apply_fill(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		if let Some(color) = self.active_color() {
-			let fill = graphene_core::vector::style::Fill::solid(color.to_gamma_srgb());
+			let fill = graphene_std::vector::style::Fill::solid(color.to_gamma_srgb());
 			responses.add(GraphOperationMessage::FillSet { layer, fill });
 		}
 	}
 
 	pub fn apply_stroke(&self, weight: f64, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		if let Some(color) = self.active_color() {
-			let stroke = graphene_core::vector::style::Stroke::new(Some(color.to_gamma_srgb()), weight);
+			let stroke = graphene_std::vector::style::Stroke::new(Some(color.to_gamma_srgb()), weight);
 			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 		}
 	}

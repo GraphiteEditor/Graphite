@@ -13,10 +13,10 @@ pub use alignment_snapper::*;
 use bezier_rs::TValue;
 pub use distribution_snapper::*;
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_core::vector::PointId;
+use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::NoHashBuilder;
+use graphene_std::vector::PointId;
 pub use grid_snapper::*;
 pub use layer_snapper::*;
 pub use snap_results::*;
@@ -248,6 +248,10 @@ impl SnapManager {
 		let point = SnapCandidatePoint::handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
 		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
 		self.update_indicator(snapped);
+	}
+
+	pub fn indicator_pos(&self) -> Option<DVec2> {
+		self.indicator.as_ref().map(|point| point.snapped_point_document)
 	}
 
 	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, constrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {

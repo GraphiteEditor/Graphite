@@ -5,18 +5,16 @@ use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
 use bytemuck::{Pod, Zeroable};
-use core::fmt::Debug;
 use glam::DVec2;
+use std::fmt::Debug;
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
 pub mod adjustments;
 pub mod bbox;
-#[cfg(not(target_arch = "spirv"))]
 pub mod brush_cache;
 pub mod color;
-#[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
 
@@ -30,9 +28,9 @@ pub trait Linear {
 	fn lerp(self, other: Self, value: Self) -> Self
 	where
 		Self: Sized + Copy,
-		Self: core::ops::Sub<Self, Output = Self>,
-		Self: core::ops::Mul<Self, Output = Self>,
-		Self: core::ops::Add<Self, Output = Self>,
+		Self: std::ops::Sub<Self, Output = Self>,
+		Self: std::ops::Mul<Self, Output = Self>,
+		Self: std::ops::Add<Self, Output = Self>,
 	{
 		self + (other - self) * value
 	}
@@ -112,12 +110,10 @@ impl<T: Rec709Primaries> RGBPrimaries for T {
 
 pub trait SRGB: Rec709Primaries {}
 
-#[cfg(feature = "serde")]
 pub trait Serde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
 #[cfg(not(feature = "serde"))]
 pub trait Serde {}
 
-#[cfg(feature = "serde")]
 impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 #[cfg(not(feature = "serde"))]
 impl<T> Serde for T {}
@@ -134,7 +130,7 @@ pub trait Pixel: Clone + Pod + Zeroable + Default {
 	}
 
 	fn byte_size() -> usize {
-		core::mem::size_of::<Self>()
+		size_of::<Self>()
 	}
 }
 pub trait RGB: Pixel {
@@ -287,9 +283,7 @@ impl<T: BitmapMut + Bitmap> BitmapMut for &mut T {
 	}
 }
 
-#[cfg(feature = "alloc")]
 pub use self::image::Image;
-#[cfg(feature = "alloc")]
 pub mod image;
 
 trait SetBlendMode {
@@ -314,6 +308,32 @@ impl SetBlendMode for RasterDataTable<CPU> {
 	fn set_blend_mode(&mut self, blend_mode: BlendMode) {
 		for instance in self.instance_mut_iter() {
 			instance.alpha_blending.blend_mode = blend_mode;
+		}
+	}
+}
+
+trait SetClip {
+	fn set_clip(&mut self, clip: bool);
+}
+
+impl SetClip for VectorDataTable {
+	fn set_clip(&mut self, clip: bool) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.clip = clip;
+		}
+	}
+}
+impl SetClip for GraphicGroupTable {
+	fn set_clip(&mut self, clip: bool) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.clip = clip;
+		}
+	}
+}
+impl SetClip for RasterDataTable<CPU> {
+	fn set_clip(&mut self, clip: bool) {
+		for instance in self.instance_mut_iter() {
+			instance.alpha_blending.clip = clip;
 		}
 	}
 }
@@ -343,9 +363,31 @@ fn opacity<T: MultiplyAlpha>(
 		RasterDataTable<CPU>,
 	)]
 	mut value: T,
-	#[default(100.)] factor: Percentage,
+	#[default(100.)] opacity: Percentage,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
-	value.multiply_alpha(factor / 100.);
+	value.multiply_alpha(opacity / 100.);
+	value
+}
+
+#[node_macro::node(category("Style"))]
+fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
+	_: impl Ctx,
+	#[implementations(
+		GraphicGroupTable,
+		VectorDataTable,
+		RasterDataTable<CPU>,
+	)]
+	mut value: T,
+	blend_mode: BlendMode,
+	#[default(100.)] opacity: Percentage,
+	#[default(100.)] fill: Percentage,
+	#[default(false)] clip: bool,
+) -> T {
+	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or Instance<T>) rather than applying to each row in its own table, which produces the undesired result
+	value.set_blend_mode(blend_mode);
+	value.multiply_alpha(opacity / 100.);
+	value.multiply_fill(fill / 100.);
+	value.set_clip(clip);
 	value
 }

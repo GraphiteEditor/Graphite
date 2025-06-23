@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use graphene_core::vector::style::{Fill, Gradient, GradientType};
+use graphene_std::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default)]
 pub struct GradientTool {
@@ -535,12 +535,13 @@ impl Fsm for GradientToolFsmState {
 mod test_gradient {
 	use crate::messages::input_mapper::utility_types::input_mouse::EditorMouseState;
 	use crate::messages::input_mapper::utility_types::input_mouse::ScrollDelta;
-	use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, utility_types::misc::GroupFolderType};
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_core::vector::fill;
-	use graphene_core::vector::style::Gradient;
+	use graphene_std::vector::fill;
 	use graphene_std::vector::style::Fill;
+	use graphene_std::vector::style::Gradient;
 
 	use super::gradient_space_transform;
 
