@@ -3,25 +3,25 @@ use crate::vector::misc::dvec2_to_point;
 use glam::DVec2;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
 
-/// Splits the `bezpath` at `t` value which lie in the range of [0, 1].
-/// Returns None if the `bezpath` given has zero segments or t is very close to 0 or 1.
+/// Splits the [`BezPath`] at `t` value which lie in the range of [0, 1].
+/// Returns [`None`] if the given [`BezPath`] has no segments or `t` is within f64::EPSILON of 0 or 1.
 pub fn split_bezpath(bezpath: &BezPath, t: f64, euclidian: bool) -> Option<(BezPath, BezPath)> {
 	if t <= f64::EPSILON || (1. - t) <= f64::EPSILON || bezpath.segments().count() == 0 {
 		return None;
 	}
 
-	// Get the segment which lie at the split.
+	// Get the segment which lies at the split.
 	let (segment_index, t) = t_value_to_parametric(bezpath, t, euclidian, None);
 	let segment = bezpath.get_seg(segment_index + 1).unwrap();
 
 	// Divide the segment.
-	let first_segment = segment.subsegment(0f64..t);
+	let first_segment = segment.subsegment(0.0..t);
 	let second_segment = segment.subsegment(t..1.);
 
 	let mut first_bezpath = BezPath::new();
 	let mut second_bezpath = BezPath::new();
 
-	// Append the segments upto the subdividing segment from original bezpath to first bezpath.
+	// Append the segments up to the subdividing segment from original bezpath to first bezpath.
 	for segment in bezpath.segments().take(segment_index) {
 		if first_bezpath.elements().is_empty() {
 			first_bezpath.move_to(segment.start());

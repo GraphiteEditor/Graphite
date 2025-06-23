@@ -5,7 +5,7 @@ use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
-use crate::raster_types::{CPU, RasterDataTable};
+use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
@@ -1330,8 +1330,10 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
 	if let Some((instance_row_index, bezpath)) = bezpaths.get(index).cloned() {
-		let mut result_vector_data = VectorData::default();
-		result_vector_data.style = vector_data.get(instance_row_index).unwrap().instance.style.clone();
+		let mut result_vector_data = VectorData {
+			style: vector_data.get(instance_row_index).unwrap().instance.style.clone(),
+			..Default::default()
+		};
 
 		for (_, (_, bezpath)) in bezpaths.iter().enumerate().filter(|(i, (ri, _))| *i != index && *ri == instance_row_index) {
 			result_vector_data.append_bezpath(bezpath.clone());
@@ -1908,7 +1910,7 @@ fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn count(_: impl Ctx, source: VectorDataTable) -> u64 {
+async fn count_elements<I>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] source: Instances<I>) -> u64 {
 	source.instance_iter().count() as u64
 }
 
@@ -2177,7 +2179,8 @@ mod test {
 		let instances = (0..5).map(|_| instance.clone()).collect::<Vec<Instance<VectorData>>>();
 
 		let length = super::path_length(Footprint::default(), vector_node_from_instances(instances)).await;
-		// 4040. = 101. * 4 (rectangle perimeter) * 2. (scale) * 5. (number of rows)
+
+		// 4040 equals 101 * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
 		assert_eq!(length, 4040.);
 	}
 	#[tokio::test]
