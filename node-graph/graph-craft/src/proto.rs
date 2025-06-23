@@ -193,6 +193,11 @@ impl ProtoNode {
 
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
+		// TODO: This is necessary since a mapping of path to type has to be stored for document node
+		// If this is removed, the identical node would be removed and the mapping wouldn't be added
+		// This can be improved by storing a list of paths for each proto node.
+		self.original_location.path.hash(&mut hasher);
+
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
 		}
@@ -208,25 +213,6 @@ impl ProtoNode {
 		};
 
 		Some(NodeId(hasher.finish()))
-	}
-
-	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
-	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
-		let inputs_exposed = match &value {
-			ConstructionArgs::Nodes(nodes) => nodes.len() + 1,
-			_ => 2,
-		};
-		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
-			construction_args: value,
-			input: ProtoNodeInput::ManualComposition(concrete!(Context)),
-			original_location: OriginalLocation {
-				path: Some(path),
-				inputs_exposed: vec![false; inputs_exposed],
-				..Default::default()
-			},
-			skip_deduplication: false,
-		}
 	}
 
 	/// Converts all references to other node IDs into new IDs by running the specified function on them.
@@ -317,29 +303,6 @@ impl ProtoNetwork {
 			self.replace_node_id(&outwards_edges, NodeId(index as u64), sni, false);
 			self.nodes[index].0 = sni;
 		}
-	}
-
-	// TODO: Remove
-	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
-	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-		for (id, node) in &self.nodes {
-			match &node.input {
-				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
-					self.check_ref(ref_id, id);
-					edges.entry(*id).or_default().push(*ref_id)
-				}
-				_ => (),
-			}
-
-			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
-				for (ref_id, _) in ref_nodes {
-					self.check_ref(ref_id, id);
-					edges.entry(*id).or_default().push(*ref_id)
-				}
-			}
-		}
-		edges
 	}
 
 	fn collect_inwards_edges_with_mapping(&self) -> (Vec<Vec<usize>>, FxHashMap<NodeId, usize>) {
@@ -477,9 +440,22 @@ impl ProtoNetwork {
 	fn is_topologically_sorted(&self) -> bool {
 		let mut visited = HashSet::new();
 
-		let inwards_edges = self.collect_inwards_edges();
-		for (id, _) in &self.nodes {
-			for &dependency in inwards_edges.get(id).unwrap_or(&Vec::new()) {
+		for (id, node) in &self.nodes {
+			let mut upstream_nodes = Vec::new();
+			match &node.input {
+				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
+					upstream_nodes.push(*ref_id);
+				}
+				_ => (),
+			}
+
+			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
+				for (ref_id, _) in ref_nodes {
+					upstream_nodes.push(*ref_id);
+				}
+			}
+
+			for dependency in upstream_nodes {
 				if !visited.contains(&dependency) {
 					dbg!(id, dependency);
 					dbg!(&visited);

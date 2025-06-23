@@ -7,6 +7,7 @@ pub struct Compiler {}
 impl Compiler {
 	pub fn compile(&self, mut network: NodeNetwork) -> impl Iterator<Item = Result<ProtoNetwork, String>> {
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
+		network.generate_node_paths(&[]);
 		network.populate_dependants();
 		for id in node_ids {
 			network.flatten(id);
@@ -19,6 +20,9 @@ impl Compiler {
 		proto_networks.map(move |mut proto_network| {
 			proto_network.resolve_inputs()?;
 			proto_network.generate_stable_node_ids();
+			// Deduplication of identical protonodes is more efficient, but also means the type information is lost for the corresponding document node
+			// let mut seen = std::collections::HashSet::new();
+			// proto_network.nodes.retain(|(protonode_id, _)| seen.insert(*protonode_id));
 			Ok(proto_network)
 		})
 	}

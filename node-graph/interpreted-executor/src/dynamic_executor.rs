@@ -18,8 +18,6 @@ pub struct DynamicExecutor {
 	tree: BorrowTree,
 	/// Stores the types of the proto nodes.
 	typing_context: TypingContext,
-	// This allows us to keep the nodes around for one more frame which is used for introspection
-	orphaned_nodes: HashSet<NodeId>,
 }
 
 impl Default for DynamicExecutor {
@@ -28,7 +26,6 @@ impl Default for DynamicExecutor {
 			output: Default::default(),
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
-			orphaned_nodes: HashSet::new(),
 		}
 	}
 }
@@ -59,12 +56,7 @@ impl DynamicExecutor {
 		let output = proto_network.output;
 		let tree = BorrowTree::new(proto_network, &typing_context).await?;
 
-		Ok(Self {
-			tree,
-			output,
-			typing_context,
-			orphaned_nodes: HashSet::new(),
-		})
+		Ok(Self { tree, output, typing_context })
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
@@ -72,16 +64,13 @@ impl DynamicExecutor {
 	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, GraphErrors> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
-		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).await?;
-		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
-		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
-		for node_id in old_to_remove {
-			if self.orphaned_nodes.contains(&node_id) {
-				let path = self.tree.free_node(node_id);
-				self.typing_context.remove_inference(node_id);
-				if let Some(path) = path {
-					remove.push(path);
-				}
+		let (add, orphaned_proto_nodes) = self.tree.update(proto_network, &self.typing_context).await?;
+		let mut remove = Vec::new();
+		for node_id in orphaned_proto_nodes {
+			let path = self.tree.free_node(node_id);
+			self.typing_context.remove_inference(node_id);
+			if let Some(path) = path {
+				remove.push(path);
 			}
 		}
 		let add = self.document_node_types(add.into_iter()).collect();
@@ -111,8 +100,6 @@ impl DynamicExecutor {
 
 	pub fn document_node_types<'a>(&'a self, nodes: impl Iterator<Item = Path> + 'a) -> impl Iterator<Item = (Path, NodeTypes)> + 'a {
 		nodes.flat_map(|id| self.tree.source_map().get(&id).map(|(_, b)| (id, b.clone())))
-		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
-		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
 	}
 }
 
@@ -193,21 +180,28 @@ impl BorrowTree {
 		Ok(nodes)
 	}
 
-	/// Pushes new nodes into the tree and return orphaned nodes
+	/// Pushes new nodes into the tree and returns a vec of nodes that had their types changed, and a vec of nodes that were removed
+	/// Does not return cloned nodes in the vec of added nodes, since their types are not needed by the editor
 	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
-		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
-		let mut new_nodes: Vec<_> = Vec::new();
-		// TODO: Problem: When an identity node is connected directly to an export the first input to identity node is not added to the proto network, while the second input is. This means the primary input does not have a type.
+		let mut old_nodes = self.nodes.keys().copied().collect::<HashSet<_>>();
+		let mut nodes_with_new_type: Vec<_> = Vec::new();
 		for (id, node) in proto_network.nodes {
+			let is_cloned_node = node.identifier == "graphene_core::value::ClonedNode".into();
+			let node_path = node.original_location.path.clone().unwrap_or_default().into();
+			// A document node is either added, or changed so that a new stable node id was regenerated
 			if !self.nodes.contains_key(&id) {
-				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
+				// If the path changes, then the id must change as well, which means this will update the mapping
+				// Returns whether the type changed for the document node path
+				if !is_cloned_node && self.update_source_map(id, typing_context, &node) {
+					nodes_with_new_type.push(node_path);
+				}
 				self.push_node(id, node, typing_context).await?;
-			} else if self.update_source_map(id, typing_context, &node) {
-				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 			}
+
 			old_nodes.remove(&id);
 		}
-		Ok((new_nodes, old_nodes))
+
+		Ok((nodes_with_new_type, old_nodes))
 	}
 
 	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {
@@ -308,9 +302,13 @@ impl BorrowTree {
 	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
 		let (_, path) = self.nodes.remove(&id)?;
 		if self.source_map.get(&path)?.0 == id {
+			// This occurs if the protonode got removed, and a new protonode with the same path was not created.
+			// This occurs when the document node got deleted.
 			self.source_map.remove(&path);
 			return Some(path);
 		}
+		// The proto node id changed for a document node, but the source map was already updated
+		// This occurs when an input changes for example
 		None
 	}
 
@@ -335,7 +333,7 @@ impl BorrowTree {
 	/// - Updates or inserts an entry in the `source_map` HashMap.
 	/// - Uses the `ProtoNode`'s original location path as the key for the source map.
 	/// - Collects input types from both the main input and parameters.
-	/// - Returns `false` and logs a warning if the node's type information is not found in the typing context.
+	/// - Returns `false` if the old type is the same as the new type
 	fn update_source_map(&mut self, id: NodeId, typing_context: &TypingContext, proto_node: &ProtoNode) -> bool {
 		let Some(node_io) = typing_context.type_of(id) else {
 			log::warn!("did not find type");
@@ -354,9 +352,10 @@ impl BorrowTree {
 				output: node_io.return_value.clone(),
 			},
 		);
-		let modified = *entry != update;
+
+		let type_changed = entry.1 != update.1;
 		*entry = update;
-		modified
+		return type_changed;
 	}
 
 	/// Inserts a new node into the [`BorrowTree`], calling the constructor function from `node_registry.rs`.
@@ -418,7 +417,12 @@ mod test {
 	#[test]
 	fn push_node_sync() {
 		let mut tree = BorrowTree::default();
-		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
+		let val_1_protonode = ProtoNode {
+			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+			construction_args: ConstructionArgs::Value(TaggedValue::U32(2u32).into()),
+			input: ProtoNodeInput::ManualComposition(concrete!(Context)),
+			..Default::default()
+		};
 		let context = TypingContext::default();
 		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();
