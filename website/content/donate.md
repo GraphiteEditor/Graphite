@@ -12,7 +12,7 @@ css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-ico
 
 **Own your tools. Own your art.** Invest in the sustainable, independent future of high-quality creative software that's free, and always will be.
 
-<p class="call-to-action">
+<div class="call-to-action">
 
 <span>
 <a href="https://github.com/sponsors/GraphiteEditor" target="_blank" class="button arrow">Donate: GitHub Sponsors</a>
@@ -24,9 +24,9 @@ css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-ico
 <em>Start to finish in several seconds</em>
 </span>
 
-</p>
+</div>
 
-<div class="feature-icons four-wide statistics" data-statistics>
+<div class="feature-icons three-wide statistics" data-statistics>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 		<span data-statistics-dollars></span>
@@ -117,9 +117,6 @@ A small fee of 3.6% + 30¢ reduces what we receive each month. If convenient, co
 
 </a>
 
-</div>
-<div class="triptych">
-
 <a href="https://buy.stripe.com/28o4jB62a0BA5DGbIL" target="_blank" class="block feature-box-narrow">
 
 <h1 class="feature-box-header">🧬 &ldquo;DNA&rdquo; &raquo;</h1>
@@ -154,9 +151,9 @@ A small fee of 3.6% + 30¢ reduces what we receive each month. If convenient, co
 
 </div>
 
-<div class="block">
+<div class="block action-buttons">
 
-<a href="https://donate.stripe.com/fZeg2j0HQ5VU6HK14d" target="_blank" class="button arrow">Or make a one-time donation</a>
+<a href="https://donate.stripe.com/6oU8wP6m0c2kb2AermbQY0a" target="_blank" class="button arrow">Or make a one-time donation</a>
 
 [Manage your ongoing membership](https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk)
 
@@ -213,9 +210,9 @@ Also available to individuals wanting to make a larger impact. [Reach out](/cont
 
 </div>
 
-<div class="block">
+<div class="block action-buttons">
 
-<a href="https://donate.stripe.com/fZeg2j0HQ5VU6HK14d" target="_blank" class="button arrow">Or make a one-time donation</a>
+<a href="https://donate.stripe.com/6oU8wP6m0c2kb2AermbQY0a" target="_blank" class="button arrow">Or make a one-time donation</a>
 
 [Manage your ongoing membership](https://billing.stripe.com/p/login/aEU9EzctSfe3cfK5kk)
 
