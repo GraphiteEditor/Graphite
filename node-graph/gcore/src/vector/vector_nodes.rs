@@ -210,7 +210,7 @@ where
 	vector_data
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
@@ -249,7 +249,7 @@ where
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
@@ -284,7 +284,7 @@ where
 	result_table
 }
 
-#[node_macro::node(name("Copy to Points"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Copy to Points"), category("Instancing"), path(graphene_core::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: VectorDataTable,
