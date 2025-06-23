@@ -16,7 +16,7 @@ use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
-use graphene_core::raster::color::Color;
+use graphene_std::raster::color::Color;
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
@@ -627,7 +627,7 @@ impl EditorHandle {
 		insert_index: Option<usize>,
 	) {
 		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let image = graphene_core::raster::Image::from_image_data(&image_data, width, height);
+		let image = graphene_std::raster::Image::from_image_data(&image_data, width, height);
 
 		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
 			let insert_parent_id = NodeId(insert_parent_id);
@@ -758,7 +758,7 @@ impl EditorHandle {
 		use graph_craft::document::DocumentNodeImplementation;
 		use graph_craft::document::NodeInput;
 		use graph_craft::document::value::TaggedValue;
-		use graphene_core::vector::*;
+		use graphene_std::vector::*;
 
 		let (_, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, _) = std::sync::mpsc::channel();
