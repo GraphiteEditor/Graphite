@@ -1,11 +1,11 @@
-use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, tangent_on_bezpath};
+use super::algorithms::bezpath_algorithms::{self, position_on_bezpath, sample_points_on_bezpath, split_bezpath, tangent_on_bezpath};
 use super::algorithms::offset_subpath::offset_subpath;
 use super::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use super::misc::{CentroidType, point_to_dvec2};
 use super::style::{Fill, Gradient, GradientStops, Stroke};
 use super::{PointId, SegmentDomain, SegmentId, StrokeId, VectorData, VectorDataTable};
 use crate::instances::{Instance, InstanceMut, Instances};
-use crate::raster_types::{CPU, RasterDataTable};
+use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, ReferencePoint, Transform};
@@ -1314,6 +1314,45 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result_table
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
+	let euclidian = !parameterized_distance;
+
+	let bezpaths = vector_data
+		.instance_ref_iter()
+		.enumerate()
+		.flat_map(|(instance_row_index, vector_data)| vector_data.instance.stroke_bezpath_iter().map(|bezpath| (instance_row_index, bezpath)).collect::<Vec<_>>())
+		.collect::<Vec<_>>();
+
+	let bezpath_count = bezpaths.len() as f64;
+	let t_value = t_value.clamp(0., bezpath_count);
+	let t_value = if reverse { bezpath_count - t_value } else { t_value };
+	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
+
+	if let Some((instance_row_index, bezpath)) = bezpaths.get(index).cloned() {
+		let mut result_vector_data = VectorData {
+			style: vector_data.get(instance_row_index).unwrap().instance.style.clone(),
+			..Default::default()
+		};
+
+		for (_, (_, bezpath)) in bezpaths.iter().enumerate().filter(|(i, (ri, _))| *i != index && *ri == instance_row_index) {
+			result_vector_data.append_bezpath(bezpath.clone());
+		}
+		let t = if t_value == bezpath_count { 1. } else { t_value.fract() };
+
+		if let Some((first, second)) = split_bezpath(&bezpath, t, euclidian) {
+			result_vector_data.append_bezpath(first);
+			result_vector_data.append_bezpath(second);
+		} else {
+			result_vector_data.append_bezpath(bezpath);
+		}
+
+		*vector_data.get_mut(instance_row_index).unwrap().instance = result_vector_data;
+	}
+
+	vector_data
+}
+
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector"), path(graphene_core::vector))]
@@ -1871,6 +1910,29 @@ fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn count_elements<I>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] source: Instances<I>) -> u64 {
+	source.instance_iter().count() as u64
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn path_length(_: impl Ctx, source: VectorDataTable) -> f64 {
+	source
+		.instance_iter()
+		.map(|vector_data_instance| {
+			let transform = vector_data_instance.transform;
+			vector_data_instance
+				.instance
+				.stroke_bezpath_iter()
+				.map(|mut bezpath| {
+					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+					bezpath.perimeter(DEFAULT_ACCURACY)
+				})
+				.sum::<f64>()
+		})
+		.sum()
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorDataTable>) -> f64 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
@@ -1942,6 +2004,7 @@ mod test {
 	use super::*;
 	use crate::Node;
 	use bezier_rs::Bezier;
+	use kurbo::Rect;
 	use std::pin::Pin;
 
 	#[derive(Clone)]
@@ -1957,6 +2020,24 @@ mod test {
 
 	fn vector_node(data: Subpath<PointId>) -> VectorDataTable {
 		VectorDataTable::new(VectorData::from_subpath(data))
+	}
+
+	fn create_vector_data_instance(bezpath: BezPath, transform: DAffine2) -> Instance<VectorData> {
+		let mut instance = VectorData::default();
+		instance.append_bezpath(bezpath);
+		Instance {
+			instance,
+			transform,
+			..Default::default()
+		}
+	}
+
+	fn vector_node_from_instances(data: Vec<Instance<VectorData>>) -> VectorDataTable {
+		let mut vector_data_table = VectorDataTable::default();
+		for instance in data {
+			vector_data_table.push(instance);
+		}
+		vector_data_table
 	}
 
 	#[tokio::test]
@@ -2085,10 +2166,22 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn lengths() {
+	async fn segment_lengths() {
 		let subpath = Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.));
 		let lengths = subpath_segment_lengths(Footprint::default(), vector_node(subpath)).await;
 		assert_eq!(lengths, vec![100.]);
+	}
+	#[tokio::test]
+	async fn path_length() {
+		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
+		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
+		let instance = create_vector_data_instance(bezpath, transform);
+		let instances = (0..5).map(|_| instance.clone()).collect::<Vec<Instance<VectorData>>>();
+
+		let length = super::path_length(Footprint::default(), vector_node_from_instances(instances)).await;
+
+		// 4040 equals 101 * 4 (rectangle perimeter) * 2 (scale) * 5 (number of rows)
+		assert_eq!(length, 4040.);
 	}
 	#[tokio::test]
 	async fn spline() {
