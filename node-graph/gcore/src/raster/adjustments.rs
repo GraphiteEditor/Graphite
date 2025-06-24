@@ -276,7 +276,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Channels"))]
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -299,7 +299,7 @@ fn extract_channel<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Channels"))]
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(

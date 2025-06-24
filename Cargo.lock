@@ -2313,7 +2313,7 @@ version = "0.0.0"
 dependencies = [
  "glam",
  "graph-craft",
- "graphene-core",
+ "graphene-std",
  "graphite-editor",
  "js-sys",
  "log",

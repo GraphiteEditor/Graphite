@@ -3,7 +3,7 @@
 	flex-wrap: wrap;
 	flex-direction: row;
 	gap: calc(var(--font-size-link) * 0.8);
-	margin-top: calc(40 * var(--variable-px));
+	margin: calc(40 * var(--variable-px)) 0;
 
 	span {
 		display: flex;
@@ -30,6 +30,10 @@
 	.triptych {
 		gap: 10px;
 		margin-top: 10px;
+
+		a {
+			flex-basis: calc(100% / 3 - 10px - (var(--feature-box-padding) * var(--variable-px)));
+		}
 	}
 
 	.triptych + .block,
@@ -42,6 +46,30 @@
 		flex-direction: row;
 		align-items: center;
 		justify-content: space-between;
+	}
+
+	.action-buttons {
+		gap: calc(var(--feature-box-padding) / 4 * var(--variable-px)) calc(var(--feature-box-padding) * var(--variable-px));
+		flex-wrap: wrap;
+
+		p {
+			text-align: left;
+			text-justify: auto;
+			white-space: nowrap;
+		}
+	}
+
+	@media screen and (max-width: 1280px) {
+		.triptych a {
+			// Half width, minus own padding on both sides, minus the gap
+			flex-basis: calc(50% - (var(--feature-box-padding) * var(--variable-px)) - 10px);
+		}
+	}
+
+	@media screen and (max-width: 640px) {
+		.triptych a {
+			flex-basis: 100%;
+		}
 	}
 
 	.feature-box-narrow {

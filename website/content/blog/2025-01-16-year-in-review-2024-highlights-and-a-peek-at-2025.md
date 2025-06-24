@@ -23,9 +23,21 @@ In a world where the notion of software ownership seems headed towards extinctio
 
 Graphite is and will always remain yours to keep, whether that's by running the lightweight, client-side [web app](https://editor.graphite.rs) (no signup, no cloud), <a href="https://support.google.com/chrome/answer/9658361" target="_blank">installing the PWA</a> on your desktop, self-hosting the <a href="https://github.com/GraphiteEditor/Graphite/releases/tag/latest-stable" target="_blank">builds</a>, or downloading the soon-to-be-ready native app for your OS of choice (more news on that later in the post).
 
-| | |
-|-|-|
-| <p>Join me—Keavon Chambers, founder and designer of Graphite—to see where the past year has brought us on this quest. And let me take this moment to thank our growing community for sharing my vision and showing support, both [financially](/donate) and by boosting the GitHub project page over the 10,000 star milestone just in time to celebrate the end of a productive 2024.</p> | <a href="https://github.com/GraphiteEditor/Graphite"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/10k-stars.avif" style="max-width: unset; margin-top: 0.5em" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenshot of 10,000 stars" /></a> |
+<style class="float-image">
+.float-image + p {
+	text-align: left;
+}
+.float-image + p > a {
+	float: right;
+	margin-left: 1.5em;
+	margin-bottom: 1em;
+}
+</style>
+
+<p>
+<a href="https://github.com/GraphiteEditor/Graphite"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/10k-stars.avif" style="max-width: unset; margin-top: 0.5em" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenshot of 10,000 stars" /></a>
+<span>Join me, founder and designer of Graphite, to see where the past year has brought us on this quest. And let me take this moment to thank our growing community for sharing my vision and showing support, both <a href="/donate">financially</a> and by boosting the GitHub project page over the 10,000 star milestone just in time to celebrate the end of a productive 2024.</span>
+</p>
 
 ## 2024 development progress report
 

@@ -210,7 +210,7 @@ where
 	vector_data
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
@@ -249,7 +249,7 @@ where
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other GraphicElementRendered types.
@@ -284,7 +284,7 @@ where
 	result_table
 }
 
-#[node_macro::node(name("Copy to Points"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Copy to Points"), category("Instancing"), path(graphene_core::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: VectorDataTable,
@@ -366,7 +366,7 @@ where
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn mirror<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>)] instance: Instances<I>,
@@ -424,7 +424,7 @@ where
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn round_corners(
 	_: impl Ctx,
 	source: VectorDataTable,
@@ -549,7 +549,7 @@ async fn round_corners(
 	result_table
 }
 
-#[node_macro::node(name("Merge by Distance"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), path(graphene_core::vector))]
 pub fn merge_by_distance(
 	_: impl Ctx,
 	vector_data: VectorDataTable,
@@ -694,7 +694,7 @@ pub fn merge_by_distance(
 	result_table
 }
 
-#[node_macro::node(category("Debug"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn box_warp(_: impl Ctx, vector_data: VectorDataTable, #[expose] rectangle: VectorDataTable) -> VectorDataTable {
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.instance, rect.transform)) else {
 		return vector_data;
@@ -783,7 +783,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
-#[node_macro::node(category("Vector"), name("Auto-Tangents"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(graphene_core::vector))]
 async fn auto_tangents(
 	_: impl Ctx,
 	source: VectorDataTable,
@@ -1018,7 +1018,7 @@ async fn auto_tangents(
 // 	result_table
 // }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1045,7 +1045,7 @@ async fn bounding_box(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTa
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn dimensions(_: impl Ctx, vector_data: VectorDataTable) -> DVec2 {
 	vector_data
 		.instance_ref_iter()
@@ -1102,7 +1102,7 @@ async fn points_to_polyline(_: impl Ctx, mut points: VectorDataTable, #[default(
 	points
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector), properties("offset_path_properties"))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector), properties("offset_path_properties"))]
 async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, join: StrokeJoin, #[default(4.)] miter_limit: f64) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1146,7 +1146,7 @@ async fn offset_path(_: impl Ctx, vector_data: VectorDataTable, distance: f64, j
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn solidify_stroke(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1314,7 +1314,7 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
 	let euclidian = !parameterized_distance;
 
@@ -1355,7 +1355,7 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(name("Position on Path"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
@@ -1391,7 +1391,7 @@ async fn position_on_path(
 
 /// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(name("Tangent on Path"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
@@ -1509,7 +1509,7 @@ async fn subpath_segment_lengths(_: impl Ctx, vector_data: VectorDataTable) -> V
 		.collect()
 }
 
-#[node_macro::node(name("Spline"), category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(name("Spline"), category("Vector: Modifier"), path(graphene_core::vector))]
 async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1555,7 +1555,7 @@ async fn spline(_: impl Ctx, vector_data: VectorDataTable) -> VectorDataTable {
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)] amount: f64, seed: SeedValue) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1608,7 +1608,7 @@ async fn jitter_points(_: impl Ctx, vector_data: VectorDataTable, #[default(5.)]
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDataTable, #[default(0.5)] time: Fraction) -> VectorDataTable {
 	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
 	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
@@ -1878,7 +1878,7 @@ fn bevel_algorithm(mut vector_data: VectorData, vector_data_transform: DAffine2,
 	vector_data
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1892,7 +1892,7 @@ fn bevel(_: impl Ctx, source: VectorDataTable, #[default(10.)] distance: Length)
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
 	let mut result_table = VectorDataTable::default();
 
@@ -1904,17 +1904,17 @@ fn close_path(_: impl Ctx, source: VectorDataTable) -> VectorDataTable {
 	result_table
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 fn point_inside(_: impl Ctx, source: VectorDataTable, point: DVec2) -> bool {
 	source.instance_iter().any(|instance| instance.instance.check_point_inside_shape(instance.transform, point))
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("General"), path(graphene_core::vector))]
 async fn count_elements<I>(_: impl Ctx, #[implementations(GraphicGroupTable, VectorDataTable, RasterDataTable<CPU>, RasterDataTable<GPU>)] source: Instances<I>) -> u64 {
 	source.instance_iter().count() as u64
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn path_length(_: impl Ctx, source: VectorDataTable) -> f64 {
 	source
 		.instance_iter()
@@ -1932,7 +1932,7 @@ async fn path_length(_: impl Ctx, source: VectorDataTable) -> f64 {
 		.sum()
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorDataTable>) -> f64 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;
@@ -1946,7 +1946,7 @@ async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<
 		.sum()
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, vector_data: impl Node<Context<'static>, Output = VectorDataTable>, centroid_type: CentroidType) -> DVec2 {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
 	let vector_data = vector_data.eval(new_ctx).await;

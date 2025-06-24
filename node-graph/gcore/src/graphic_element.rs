@@ -421,7 +421,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 	output
 }
 
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("Vector"))]
 async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTable {
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut VectorDataTable, current_group_table: GraphicGroupTable) {
