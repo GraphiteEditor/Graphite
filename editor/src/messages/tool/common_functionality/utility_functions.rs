@@ -205,7 +205,6 @@ pub fn is_visible_point(
 	}
 }
 
-
 /// Function to find the bounding box of bezier (uses method from kurbo)
 pub fn calculate_bezier_bbox(bezier: Bezier) -> [DVec2; 2] {
 	let start = Point::new(bezier.start.x, bezier.start.y);
@@ -268,7 +267,7 @@ pub fn is_intersecting(bezier: Bezier, quad: [DVec2; 2], transform: DAffine2) ->
 		}
 	}
 	is_intersecting
- }
+}
 
 pub fn resize_bounds(
 	document: &DocumentMessageHandler,
