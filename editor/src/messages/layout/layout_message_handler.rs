@@ -121,7 +121,10 @@ impl LayoutMessageHandler {
 						};
 
 						(|| {
-							let update_value = value.as_object().expect("ColorInput update was not of type: object");
+							let Some(update_value) = value.as_object() else {
+								warn!("ColorInput update was not of type: object");
+								return Message::NoOp;
+							};
 
 							// None
 							let is_none = update_value.get("none").and_then(|x| x.as_bool());
@@ -154,7 +157,8 @@ impl LayoutMessageHandler {
 								return (color_button.on_update.callback)(color_button);
 							}
 
-							panic!("ColorInput update was not able to be parsed with color data: {color_button:?}");
+							warn!("ColorInput update was not able to be parsed with color data: {color_button:?}");
+							Message::NoOp
 						})()
 					}
 				};

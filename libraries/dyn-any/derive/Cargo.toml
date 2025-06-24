@@ -17,13 +17,7 @@ proc-macro = true
 # Workspace dependencies
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
-syn = { workspace = true, default-features = false, features = [
-	"derive",
-	"parsing",
-	"proc-macro",
-	"printing",
-	"clone-impls",
-] }
+syn = { workspace = true }
 
 [dev-dependencies]
 # Local dependencies

@@ -143,7 +143,7 @@ impl Quad {
 	}
 }
 
-impl core::ops::Mul<Quad> for DAffine2 {
+impl std::ops::Mul<Quad> for DAffine2 {
 	type Output = Quad;
 
 	fn mul(self, rhs: Quad) -> Self::Output {

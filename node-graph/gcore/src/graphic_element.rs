@@ -12,8 +12,7 @@ use std::hash::Hash;
 
 pub mod renderer;
 
-#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct AlphaBlending {
 	pub blend_mode: BlendMode,
@@ -26,8 +25,8 @@ impl Default for AlphaBlending {
 		Self::new()
 	}
 }
-impl core::hash::Hash for AlphaBlending {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl Hash for AlphaBlending {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.opacity.to_bits().hash(state);
 		self.fill.to_bits().hash(state);
 		self.blend_mode.hash(state);
@@ -74,15 +73,13 @@ impl AlphaBlending {
 pub fn migrate_graphic_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<GraphicGroupTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 	pub struct OldGraphicGroup {
 		elements: Vec<(GraphicElement, Option<NodeId>)>,
 		transform: DAffine2,
 		alpha_blending: AlphaBlending,
 	}
-	#[derive(Clone, Debug, PartialEq, DynAny, Default)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Debug, PartialEq, DynAny, Default, serde::Serialize, serde::Deserialize)]
 	pub struct GraphicGroup {
 		elements: Vec<(GraphicElement, Option<NodeId>)>,
 	}
@@ -162,8 +159,7 @@ impl From<RasterDataTable<GPU>> for GraphicGroupTable {
 }
 
 /// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum GraphicElement {
 	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 	GraphicGroup(GraphicGroupTable),
@@ -279,8 +275,7 @@ impl serde::Serialize for Raster<GPU> {
 }
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Artboard {
 	pub graphic_group: GraphicGroupTable,
 	pub label: String,
@@ -313,8 +308,7 @@ impl Artboard {
 pub fn migrate_artboard_group<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<ArtboardGroupTable, D::Error> {
 	use serde::Deserialize;
 
-	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
-	#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+	#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub struct ArtboardGroup {
 		pub artboards: Vec<(Artboard, Option<NodeId>)>,
 	}
@@ -427,7 +421,7 @@ async fn flatten_group(_: impl Ctx, group: GraphicGroupTable, fully_flatten: boo
 	output
 }
 
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("Vector"))]
 async fn flatten_vector(_: impl Ctx, group: GraphicGroupTable) -> VectorDataTable {
 	// TODO: Avoid mutable reference, instead return a new GraphicGroupTable?
 	fn flatten_group(output_group_table: &mut VectorDataTable, current_group_table: GraphicGroupTable) {

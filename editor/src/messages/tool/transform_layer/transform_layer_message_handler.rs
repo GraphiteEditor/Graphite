@@ -140,6 +140,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
 		let using_pen_tool = tool_data.active_tool_type == ToolType::Pen;
+		let using_shape_tool = tool_data.active_tool_type == ToolType::Shape;
 
 		// TODO: Add support for transforming layer not in the document network
 		let selected_layers = document
@@ -392,7 +393,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			TransformLayerMessage::BeginGRS { transform_type } => {
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				if (using_path_tool && selected_points.is_empty())
-					|| (!using_path_tool && !using_select_tool && !using_pen_tool)
+					|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
 					|| selected_layers.is_empty()
 					|| transform_type.equivalent_to(self.transform_operation)
 				{
@@ -718,7 +719,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 
 #[cfg(test)]
 mod test_transform_layer {
-	use crate::messages::portfolio::document::graph_operation::{transform_utils, utility_types::ModifyInputsContext};
+	use crate::messages::portfolio::document::graph_operation::transform_utils;
+	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::prelude::Message;
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;

@@ -2130,6 +2130,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "graph-craft",
+ "graphene-application-io",
  "graphene-core",
  "iai-callgrind",
  "js-sys",
@@ -2146,6 +2147,19 @@ dependencies = [
  "web-sys",
  "wgpu-executor",
  "winit",
+]
+
+[[package]]
+name = "graphene-application-io"
+version = "0.1.0"
+dependencies = [
+ "dyn-any",
+ "glam",
+ "graphene-core",
+ "log",
+ "serde",
+ "web-sys",
+ "wgpu",
 ]
 
 [[package]]
@@ -2196,7 +2210,6 @@ dependencies = [
  "tokio",
  "usvg",
  "vello",
- "web-sys",
  "wgpu",
 ]
 
@@ -2212,6 +2225,7 @@ dependencies = [
  "futures",
  "glam",
  "graph-craft",
+ "graphene-application-io",
  "graphene-core",
  "image",
  "log",
@@ -2221,7 +2235,6 @@ dependencies = [
  "rand 0.9.0",
  "rand_chacha 0.9.0",
  "reqwest",
- "serde",
  "tokio",
  "usvg",
  "vello",
@@ -2263,9 +2276,9 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-proc-macros",
- "image",
  "interpreted-executor",
  "js-sys",
+ "kurbo",
  "log",
  "num_enum",
  "once_cell",
@@ -2300,7 +2313,7 @@ version = "0.0.0"
 dependencies = [
  "glam",
  "graph-craft",
- "graphene-core",
+ "graphene-std",
  "graphite-editor",
  "js-sys",
  "log",
@@ -7387,6 +7400,7 @@ dependencies = [
  "dyn-any",
  "futures",
  "glam",
+ "graphene-application-io",
  "graphene-core",
  "node-macro",
  "vello",

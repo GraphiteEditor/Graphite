@@ -12,14 +12,8 @@ use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::renderer::GraphicElementRendered;
 use graphene_core::transform::Transform;
 use graphene_core::value::ClonedNode;
-use graphene_core::vector::VectorDataTable;
 use graphene_core::vector::brush_stroke::{BrushStroke, BrushStyle};
 use graphene_core::{Ctx, GraphicElement, Node};
-
-#[node_macro::node(category("Debug"))]
-fn vector_points(_: impl Ctx, vector_data: VectorDataTable) -> Vec<DVec2> {
-	vector_data.instance_iter().flat_map(|element| element.instance.point_domain.positions().to_vec()).collect()
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BrushStampGenerator<P: Pixel + Alpha> {
