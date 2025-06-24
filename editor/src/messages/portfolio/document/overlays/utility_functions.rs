@@ -124,6 +124,16 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			overlay_context.outline_vector(&vector_data, transform);
 		}
 
+		// Get the selected segments and then add an bold line overlay on them
+		for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
+			let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+				continue;
+			};
+			if selected_shape_state.is_selected_segment(segment_id) {
+				overlay_context.outline_select_bezier(bezier, transform);
+			}
+		}
+
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 

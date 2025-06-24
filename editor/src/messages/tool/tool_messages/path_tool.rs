@@ -122,7 +122,6 @@ pub enum PathOverlayMode {
 pub struct PathEditingMode {
 	point_editing_mode: bool,
 	segment_editing_mode: bool,
-	region_editing_mode: bool,
 }
 
 impl Default for PathEditingMode {
@@ -130,7 +129,6 @@ impl Default for PathEditingMode {
 		Self {
 			point_editing_mode: true,
 			segment_editing_mode: false,
-			region_editing_mode: false,
 		}
 	}
 }
@@ -140,7 +138,6 @@ pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
-	RegionEditingMode { enabled: bool },
 }
 
 impl ToolMetadata for PathTool {
@@ -250,10 +247,6 @@ impl LayoutHolder for PathTool {
 			.icon("Overlays")
 			.on_update(|input| PathToolMessage::UpdateOptions(PathOptionsUpdate::SegmentEditingMode { enabled: input.checked }).into())
 			.widget_holder();
-		let region_editing_mode = CheckboxInput::new(self.options.path_editing_mode.region_editing_mode)
-			.icon("Overlays")
-			.on_update(|input| PathToolMessage::UpdateOptions(PathOptionsUpdate::RegionEditingMode { enabled: input.checked }).into())
-			.widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
@@ -270,8 +263,6 @@ impl LayoutHolder for PathTool {
 				point_editing_mode,
 				related_seperator.clone(),
 				segment_editing_mode,
-				related_seperator,
-				region_editing_mode,
 			],
 		}]))
 	}
@@ -293,10 +284,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				}
 				PathOptionsUpdate::SegmentEditingMode { enabled } => {
 					self.options.path_editing_mode.segment_editing_mode = enabled;
-					responses.add(OverlaysMessage::Draw);
-				}
-				PathOptionsUpdate::RegionEditingMode { enabled } => {
-					self.options.path_editing_mode.region_editing_mode = enabled;
 					responses.add(OverlaysMessage::Draw);
 				}
 			},
@@ -698,7 +685,6 @@ impl PathToolData {
 		else if let Some(layer) = document.click(input) {
 			shape_editor.deselect_all_points();
 			shape_editor.deselect_all_segments();
-			log::info!("reaching here");
 			if extend_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -1416,20 +1402,6 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
-				// Get the selected segments and then add an bold line overlay on them
-				for layer in document.network_interface.selected_nodes().selected_layers(document.metadata()) {
-					let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { continue };
-					let transform = document.metadata().transform_to_viewport(layer);
-					for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
-						let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-							continue;
-						};
-						if selected_shape_state.is_selected_segment(segment_id) {
-							overlay_context.outline_select_bezier(bezier, transform);
-						}
-					}
-				}
-
 				match self {
 					Self::Ready => {
 						tool_data.update_closest_segment(shape_editor, input.mouse.position, document, tool_options.path_overlay_mode);
@@ -1438,6 +1410,18 @@ impl Fsm for PathToolFsmState {
 							if tool_options.path_editing_mode.segment_editing_mode {
 								let transform = document.metadata().transform_to_viewport(closest_segment.layer());
 								overlay_context.outline_overlay_bezier(closest_segment.bezier(), transform);
+								// Draw the anchors again
+								let display_anchors = overlay_context.visibility_settings.anchors();
+								if display_anchors {
+									let start_pos = transform.transform_point2(closest_segment.bezier().start);
+									let end_pos = transform.transform_point2(closest_segment.bezier().end);
+									let start_id = closest_segment.points()[0];
+									let end_id = closest_segment.points()[1];
+									if let Some(shape_state) = shape_editor.selected_shape_state.get_mut(&closest_segment.layer()) {
+										overlay_context.manipulator_anchor(start_pos, shape_state.is_selected(ManipulatorPointId::Anchor(start_id)), None);
+										overlay_context.manipulator_anchor(end_pos, shape_state.is_selected(ManipulatorPointId::Anchor(end_id)), None);
+									}
+								}
 							} else {
 								let perp = closest_segment.calculate_perp(document);
 								let point = closest_segment.closest_point(document.metadata());
@@ -1905,7 +1889,7 @@ impl Fsm for PathToolFsmState {
 					selection_mode => selection_mode,
 				};
 
-				if tool_data.drag_start_pos == previous_mouse {
+				if (tool_data.drag_start_pos - previous_mouse).element_sum() < 1e-8 {
 					// If click happens inside of a shape then don't set selected nodes to empty
 					if document.click(&input).is_none() {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
@@ -1977,7 +1961,6 @@ impl Fsm for PathToolFsmState {
 				if let Some((layer, nearest_point)) = nearest_point {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
 					if !drag_occurred && extend_selection {
-						log::info!("yes here occured");
 						if clicked_selected && tool_data.last_clicked_point_was_selected {
 							shape_editor.selected_shape_state.entry(layer).or_default().deselect_point(nearest_point);
 						} else {
@@ -2003,20 +1986,17 @@ impl Fsm for PathToolFsmState {
 						let clicked_selected = shape_editor.selected_segments().any(|&segment| segment == nearest_segment.segment());
 						if !drag_occurred && extend_selection {
 							if clicked_selected && tool_data.last_clicked_segment_was_selected {
-								log::info!("deselecting form 2");
 								shape_editor
 									.selected_shape_state
 									.entry(nearest_segment.layer())
 									.or_default()
 									.deselect_segment(nearest_segment.segment());
 							} else {
-								log::info!("selecting from 2");
 								shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
 							}
 							responses.add(OverlaysMessage::Draw);
 						}
 						if !drag_occurred && !extend_selection && clicked_selected {
-							log::info!("deselect all and select form 2");
 							shape_editor.deselect_all_segments();
 							shape_editor.deselect_all_points();
 							shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
@@ -2104,6 +2084,7 @@ impl Fsm for PathToolFsmState {
 				if let Some(layer) = document.click(input) {
 					// Select all points in the layer
 					shape_editor.select_connected_anchors(document, layer, input.mouse.position);
+					responses.add(OverlaysMessage::Draw);
 				}
 
 				PathToolFsmState::Ready
