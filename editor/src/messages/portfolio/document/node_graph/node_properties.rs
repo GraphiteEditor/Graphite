@@ -1211,16 +1211,16 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	}
 
-	let rows = number_widget(
-		ParameterWidgetsInfo::from_index(document_node, node_id, RowsInput::INDEX, true, context),
-		NumberInput::default().min(1.),
-	);
 	let columns = number_widget(
 		ParameterWidgetsInfo::from_index(document_node, node_id, ColumnsInput::INDEX, true, context),
 		NumberInput::default().min(1.),
 	);
+	let rows = number_widget(
+		ParameterWidgetsInfo::from_index(document_node, node_id, RowsInput::INDEX, true, context),
+		NumberInput::default().min(1.),
+	);
 
-	widgets.extend([LayoutGroup::Row { widgets: rows }, LayoutGroup::Row { widgets: columns }]);
+	widgets.extend([LayoutGroup::Row { widgets: columns }, LayoutGroup::Row { widgets: rows }]);
 
 	widgets
 }
