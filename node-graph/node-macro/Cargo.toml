@@ -26,4 +26,5 @@ proc-macro-error2 = "2"
 
 [dev-dependencies]
 graphene-core = { workspace = true }
-
+similar-asserts = "1.7.0"
+prettyplease = "0.2"
