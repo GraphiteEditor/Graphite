@@ -1968,16 +1968,14 @@ impl Fsm for PathToolFsmState {
 						}
 						responses.add(OverlaysMessage::Draw);
 					}
-					if !drag_occurred && !extend_selection {
-						if clicked_selected {
-							if tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
-								tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
-							}
-							shape_editor.deselect_all_points();
-							shape_editor.deselect_all_segments();
-							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
-							responses.add(OverlaysMessage::Draw);
+					if !drag_occurred && !extend_selection && clicked_selected {
+						if tool_data.saved_points_before_anchor_convert_smooth_sharp.is_empty() {
+							tool_data.saved_points_before_anchor_convert_smooth_sharp = shape_editor.selected_points().copied().collect::<HashSet<_>>();
 						}
+						shape_editor.deselect_all_points();
+						shape_editor.deselect_all_segments();
+						shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
+						responses.add(OverlaysMessage::Draw);
 					}
 				}
 				// Segment editing mode
