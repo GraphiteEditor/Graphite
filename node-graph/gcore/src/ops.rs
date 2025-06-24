@@ -1,5 +1,4 @@
 use crate::Ctx;
-use crate::raster::BlendMode;
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
@@ -34,7 +33,7 @@ impl ValueProvider for MathNodeContext {
 }
 
 /// Calculates a mathematical expression with input values "A" and "B"
-#[node_macro::node(category("General"), properties("math_properties"))]
+#[node_macro::node(category("Math: Arithmetic"), properties("math_properties"))]
 fn math<U: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The value of "A" when calculating the expression
@@ -467,7 +466,7 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 // }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
 	let position = position.clamp(0., 1.);
 	gradient.evaluate(position)
@@ -477,12 +476,6 @@ fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position:
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
-}
-
-/// Constructs a blend mode choice value which may be set to any of the available blend modes in order to tell another node which blending operation to use.
-#[node_macro::node(category("Value"))]
-fn blend_mode_value(_: impl Ctx, _primary: (), blend_mode: BlendMode) -> BlendMode {
-	blend_mode
 }
 
 /// Constructs a string value which may be set to any plain text.
