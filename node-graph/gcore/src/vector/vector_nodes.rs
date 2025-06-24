@@ -1314,8 +1314,11 @@ async fn sample_points(_: impl Ctx, vector_data: VectorDataTable, spacing: f64, 
 	result_table
 }
 
+/// Splits a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+///
+/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
+async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, progress: Fraction, parameterized_distance: bool, reverse: bool) -> VectorDataTable {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = vector_data
@@ -1325,7 +1328,7 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 		.collect::<Vec<_>>();
 
 	let bezpath_count = bezpaths.len() as f64;
-	let t_value = t_value.clamp(0., bezpath_count);
+	let t_value = progress.clamp(0., bezpath_count);
 	let t_value = if reverse { bezpath_count - t_value } else { t_value };
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
@@ -1353,7 +1356,65 @@ async fn split_path(_: impl Ctx, mut vector_data: VectorDataTable, t_value: f64,
 	vector_data
 }
 
+/// Splits path segments into separate disconnected pieces where each is a distinct subpath.
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn split_segments(_: impl Ctx, mut vector_data: VectorDataTable) -> VectorDataTable {
+	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
+	for vector_data_instance in vector_data.instance_mut_iter() {
+		let points_count = vector_data_instance.instance.point_domain.ids().len();
+		let segments_count = vector_data_instance.instance.segment_domain.ids().len();
+
+		let mut point_usages = vec![0_usize; points_count];
+
+		// Count how many times each point is used as an endpoint of the segments
+		let start_points = vector_data_instance.instance.segment_domain.start_point().iter();
+		let end_points = vector_data_instance.instance.segment_domain.end_point().iter();
+		for (&start, &end) in start_points.zip(end_points) {
+			point_usages[start] += 1;
+			point_usages[end] += 1;
+		}
+
+		let mut new_points = PointDomain::new();
+		let mut offset_sum: usize = 0;
+		let mut points_with_new_offsets = Vec::with_capacity(points_count);
+
+		// Build a new point domain with the original points, but with duplications based on their extra usages by the segments
+		for (index, (point_id, point)) in vector_data_instance.instance.point_domain.iter().enumerate() {
+			// Ensure at least one usage to preserve free-floating points not connected to any segments
+			let usage_count = point_usages[index].max(1);
+
+			new_points.push_unchecked(point_id, point);
+
+			for i in 1..usage_count {
+				new_points.push_unchecked(point_id.generate_from_hash(i as u64), point);
+			}
+
+			points_with_new_offsets.push(offset_sum);
+			offset_sum += usage_count;
+		}
+
+		// Reconcile the segment domain with the new points
+		vector_data_instance.instance.point_domain = new_points;
+		for original_segment_index in 0..segments_count {
+			let original_point_start_index = vector_data_instance.instance.segment_domain.start_point()[original_segment_index];
+			let original_point_end_index = vector_data_instance.instance.segment_domain.end_point()[original_segment_index];
+
+			point_usages[original_point_start_index] -= 1;
+			point_usages[original_point_end_index] -= 1;
+
+			let start_usage = points_with_new_offsets[original_point_start_index] + point_usages[original_point_start_index];
+			let end_usage = points_with_new_offsets[original_point_end_index] + point_usages[original_point_end_index];
+
+			vector_data_instance.instance.segment_domain.set_start_point(original_segment_index, start_usage);
+			vector_data_instance.instance.segment_domain.set_end_point(original_segment_index, end_usage);
+		}
+	}
+
+	vector_data
+}
+
 /// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn position_on_path(
@@ -1390,6 +1451,7 @@ async fn position_on_path(
 }
 
 /// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn tangent_on_path(
