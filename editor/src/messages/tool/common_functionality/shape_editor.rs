@@ -1235,45 +1235,154 @@ impl ShapeState {
 			}
 
 			let mut visited = Vec::new();
+
 			while let Some((anchor, handles)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
-				visited.push(anchor);
-
-				// If the adjacent point is just this point then skip
 				let mut handles = handles.map(|handle| (handle.1 != anchor).then_some(handle));
+				visited.push(anchor);
+				let [Some(start), Some(end)] = handles else {
+					continue;
+				};
 
-				// If the adjacent points are themselves being deleted, then repeatedly visit the newest agacent points.
-				for handle in &mut handles {
+				// let mut drop = anchor;
+				let (mut start_pt, mut end_pt) = (start.1, end.1);
+				let mut castelau_handles = get_relative_handles(start, end, &vector_data, anchor);
+				for handle in handles.iter_mut() {
 					while let Some((point, connected)) = (*handle).and_then(|(_, point)| missing_anchors.remove_entry(&point)) {
+						let (start_handle, end_handle) = calculate_de_castelau_from_handles(castelau_handles);
+						// drop = point;
 						visited.push(point);
 
 						*handle = connected.into_iter().find(|(_, point)| !visited.contains(point));
+						if let Some(border_node) = *handle {
+							let new_outer = relative_handle_on_anchor(&vector_data, border_node.0.opposite(), border_node.1);
+							let new_inner = relative_handle_on_anchor(&vector_data, border_node.0, point);
+							castelau_handles = if start_pt == point {
+								start_pt = border_node.1;
+								[new_outer, new_inner, start_handle, end_handle]
+							} else {
+								end_pt = border_node.1;
+								[start_handle, end_handle, new_inner, new_outer]
+							};
+						}
 					}
 				}
 
-				let [Some(start), Some(end)] = handles else { continue };
+				fn debug_helper2((start_h, start_p): (DVec2, PointId), (end_h, end_p): (DVec2, PointId), (drop_hs, drop_p, drop_he): (DVec2, PointId, DVec2), vector_data: &VectorData) {
+					fn format_single2(handle_rel: DVec2, p_id: PointId, vector_data: &VectorData) -> String {
+						let point_pos = vector_data.point_domain.position_from_id(p_id).unwrap_or_default();
+						let handle_pos = handle_rel + point_pos;
+						format!(
+							"Point {:?} - Handle Position: {:?} - Point Position: {:?} - Relative Position: {:?} - rel Hadle len: {:?}",
+							p_id,
+							handle_pos,
+							point_pos,
+							handle_rel,
+							handle_rel.length()
+						)
+					}
 
+					fn compute_k(drop_hs: DVec2, drop_he: DVec2) -> Option<(f64, f64, f64)> {
+						let numerator = drop_he.length();
+						let denominator = drop_hs.length_recip();
+						Some((numerator, denominator, numerator * denominator))
+					}
+
+					fn calc_outer(start_handle: DVec2, start_p: PointId, end_handle: DVec2, end_p: PointId, k: f64, vector_data: &VectorData) -> Option<(DVec2, DVec2, DVec2, DVec2)> {
+						let (rel_start, rel_end) = calc_outer_rel(start_handle, end_handle, k).unwrap_or((DVec2::ZERO, DVec2::ZERO));
+
+						let start_pos = vector_data.point_domain.position_from_id(start_p).unwrap_or_default();
+						let end_pos = vector_data.point_domain.position_from_id(end_p).unwrap_or_default();
+						Some((rel_start + start_pos, rel_end + end_pos, rel_start, rel_end))
+					}
+					fn calc_outer_rel(start_handle: DVec2, end_handle: DVec2, k: f64) -> Option<(DVec2, DVec2)> {
+						let calc_start_rel = (1. + k) * (start_handle);
+						let calc_end_rel = ((1. + k) * (end_handle)) * k.recip();
+						Some((calc_start_rel, calc_end_rel))
+					}
+					fn aligned<T: AsRef<str> >(str: T, label: &str) -> String {
+						let width = 10;
+						format!("{:>width$}: {}", label, str.as_ref())
+					}
+					let (num, denom, k) = compute_k(drop_hs, drop_he).unwrap_or((0.0, 0.0, 0.0));
+					let (calc_start, calc_end, calc_start_rel, calc_end_rel) =
+						calc_outer(start_h, start_p, end_h, end_p, k, vector_data).unwrap_or((DVec2::ZERO, DVec2::ZERO, DVec2::ZERO, DVec2::ZERO));
+
+					let log_vec = [
+						aligned(format_single2(start_h, start_p, vector_data), "start"),
+						aligned(format_single2(drop_hs, drop_p, vector_data), "dropS"),
+						aligned(format_single2(drop_he, drop_p, vector_data), "dropE"),
+						aligned(format_single2(end_h, end_p, vector_data), "end"),
+						aligned(format!("Numerator: {}, Denominator: {}, k: {}", num, denom, k), "length"),
+						aligned(format!("HLeft: {:?}, HRight: {:?}", calc_start, calc_end), "handles"),
+						aligned(format!("HrelLeft: {:?}, HrelRight: {:?}", calc_start_rel, calc_end_rel), "handles rel"),
+					];
+
+					log::debug!("De Castelau debug info:\n{}", log_vec.join("\n"));
+				}
+
+				fn dbg_calculate_de_castelau_relative(
+					start_handle: DVec2,
+					end_handle: DVec2,
+					drop_handle: (DVec2, DVec2),
+					start_pt: PointId,
+					end_pt: PointId,
+					drop_pt: PointId,
+					vector_data: &VectorData,
+				) -> (Option<DVec2>, Option<DVec2>) {
+					// debug_helper2((start_handle, start_pt), (end_handle, end_pt), (drop_handle.0, drop_pt, drop_handle.1), vector_data);
+					calculate_de_castelau_from_handles([Some(start_handle), Some(drop_handle.0), Some(drop_handle.1), Some(end_handle)])
+				}
 				// Avoid reconnecting to points that are being deleted (this can happen if a whole loop is deleted)
-				if deleted_anchors.contains(&start.1) || deleted_anchors.contains(&end.1) {
+				if deleted_anchors.contains(&start_pt) || deleted_anchors.contains(&end_pt) {
 					continue;
 				}
 
-				// Grab the handles from the opposite side of the segment(s) being deleted and make it relative to the anchor
-				let [handle_start, handle_end] = [start, end].map(|(handle, _)| {
-					let handle = handle.opposite();
-					let handle_position = handle.to_manipulator_point().get_position(&vector_data);
-					let relative_position = handle
-						.to_manipulator_point()
-						.get_anchor(&vector_data)
-						.and_then(|anchor| vector_data.point_domain.position_from_id(anchor));
-					handle_position.and_then(|handle| relative_position.map(|relative| handle - relative)).unwrap_or_default()
-				});
+				let (start_rel, end_rel) = calculate_de_castelau_from_handles(castelau_handles);
+				/*
+				let (start_rel, end_rel) = dbg_calculate_de_castelau_relative(
+					castelau_handles[0].unwrap(),
+					castelau_handles[3].unwrap(),
+					(castelau_handles[1].unwrap(), castelau_handles[2].unwrap()),
+					start_pt,
+					end_pt,
+					drop,
+					&vector_data,
+				);
+				*/
+
+				fn relative_handle_on_anchor(vector_data: &VectorData, handle: HandleId, anchor: PointId) -> Option<DVec2> {
+					fn anchor_pos(vector_data: &VectorData, anchor: PointId) -> Option<DVec2> {
+						vector_data.point_domain.position_from_id(anchor)
+					}
+					handle.to_manipulator_point().get_position(vector_data).and_then(|pos| anchor_pos(vector_data, anchor).map(|a| pos - a))
+				}
+
+				fn get_relative_handles(start: (HandleId, PointId), end: (HandleId, PointId), vector_data: &VectorData, anchor: PointId) -> [Option<DVec2>; 4] {
+					let (del1, del2) = (relative_handle_on_anchor(vector_data, start.0, anchor), relative_handle_on_anchor(vector_data, end.0, anchor));
+					let start = relative_handle_on_anchor(vector_data, start.0.opposite(), start.1);
+					let end = relative_handle_on_anchor(vector_data, end.0.opposite(), end.1);
+
+					[start, del1, del2, end]
+				}
+
+				fn calculate_de_castelau_from_handles([start_outer, start_inner, end_inner, end_outer]: [Option<DVec2>; 4]) -> (Option<DVec2>, Option<DVec2>) {
+					start_inner
+						.zip(end_inner)
+						.and_then(|(start, end)| Some(start.length() * end.length_recip()).filter(|len_rel: &f64| f64::is_normal(*len_rel)))
+						.map_or((start_outer, end_outer), |len_relative| {
+							(
+								start_outer.map(|start_handle| (1. + len_relative) * start_handle),
+								end_outer.map(|end_handle| ((1. + len_relative) * end_handle) * len_relative.recip()),
+							)
+						})
+				}
 
 				let segment = start.0.segment;
 
 				let modification_type = VectorModificationType::InsertSegment {
 					id: segment,
-					points: [start.1, end.1],
-					handles: [Some(handle_start), Some(handle_end)],
+					points: [start_pt, end_pt],
+					handles: [start_rel, end_rel],
 				};
 
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
