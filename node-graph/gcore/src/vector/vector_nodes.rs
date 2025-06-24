@@ -355,8 +355,7 @@ where
 			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
 
 			for mut instance in instance.instance_ref_iter().map(|instance| instance.to_instance_cloned()) {
-				let local_matrix = DAffine2::from_mat2(instance.transform.matrix2);
-				instance.transform = transform * local_matrix;
+				instance.transform = transform * instance.transform;
 
 				result_table.push(instance);
 			}

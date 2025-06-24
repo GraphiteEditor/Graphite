@@ -34,6 +34,7 @@ pub struct TransformLayerMessageHandler {
 	start_mouse: ViewportPosition,
 
 	original_transforms: OriginalTransforms,
+	pivot_from_select: Option<DVec2>,
 	pivot: ViewportPosition,
 
 	local_pivot: DocumentPosition,
@@ -176,7 +177,8 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 			}
 
 			if !using_path_tool {
-				*selected.pivot = selected.mean_average_of_pivots();
+				debug!("{:?}", self.pivot_from_select);
+				*selected.pivot = self.pivot_from_select.unwrap_or(selected.mean_average_of_pivots());
 				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(selected.mean_average_of_pivots());
 			} else if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
@@ -686,6 +688,7 @@ impl MessageHandler<TransformLayerMessage, TransformData<'_>> for TransformLayer
 					self.initial_transform,
 				)
 			}
+			TransformLayerMessage::SetCenter { center: pivot } => self.pivot_from_select = pivot,
 		}
 	}
 

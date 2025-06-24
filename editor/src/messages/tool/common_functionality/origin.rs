@@ -102,6 +102,10 @@ impl Origin {
 		}
 	}
 
+	pub fn position(&self) -> Option<DVec2> {
+		self.origin
+	}
+
 	/// Answers if the origin widget has changed (so we should refresh the tool bar at the top of the canvas).
 	pub fn should_refresh_origin_position(&mut self) -> bool {
 		if !self.active {

@@ -54,7 +54,7 @@ impl Pivot {
 		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 	}
 
-	pub fn update(&mut self, _document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
+	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>) {
 		if !overlay_context.visibility_settings.pivot() {
 			self.active = false;
 			return;
@@ -62,7 +62,7 @@ impl Pivot {
 			self.active = true;
 		}
 
-		// self.recalculate_pivot(document);
+		self.recalculate_transform(document);
 		if let (Some(pivot), Some(data)) = (self.pivot, draw_data) {
 			overlay_context.pivot(pivot, data.0);
 		}

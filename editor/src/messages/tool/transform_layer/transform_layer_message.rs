@@ -15,6 +15,7 @@ pub enum TransformLayerMessage {
 	BeginGrab,
 	BeginRotate,
 	BeginScale,
+	SetCenter { center: Option<DVec2> },
 	BeginGRS { transform_type: TransformType },
 	BeginGrabPen { last_point: DVec2, handle: DVec2 },
 	BeginRotatePen { last_point: DVec2, handle: DVec2 },

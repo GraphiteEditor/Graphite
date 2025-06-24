@@ -48,6 +48,7 @@ pub struct SelectOptions {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
+	DotType(DotType),
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -58,10 +59,21 @@ pub enum NestedSelectionBehavior {
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-enum DotType {
+pub enum DotType {
 	#[default]
 	Origin,
 	Pivot,
+	Off,
+}
+
+impl fmt::Display for DotType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			DotType::Off => write!(f, "Bounding Box Center"),
+			DotType::Pivot => write!(f, "Pivot"),
+			DotType::Origin => write!(f, "Origin"),
+		}
+	}
 }
 
 impl fmt::Display for NestedSelectionBehavior {
@@ -147,6 +159,25 @@ impl SelectTool {
 			.disabled(disabled)
 			.widget_holder()
 	}
+	fn dot_type_widget(&self) -> WidgetHolder {
+		let dot_type_entries = [DotType::Off, DotType::Pivot, DotType::Origin]
+			.iter()
+			.map(|dot_type| {
+				MenuListEntry::new(format!("{dot_type:?}"))
+					.label(dot_type.to_string())
+					.on_commit(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::DotType(*dot_type)).into())
+			})
+			.collect();
+
+		DropdownInput::new(vec![dot_type_entries])
+			.selected_index(Some(match self.tool_data.dot_type {
+				DotType::Off => 0,
+				DotType::Pivot => 1,
+				DotType::Origin => 2,
+			}))
+			.tooltip("Choose between bounding box center, pivot point, or origin point for transformations")
+			.widget_holder()
+	}
 
 	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
 		[AlignAxis::X, AlignAxis::Y]
@@ -218,9 +249,13 @@ impl LayoutHolder for SelectTool {
 		// Select mode (Deep/Shallow)
 		widgets.push(self.deep_selection_widget());
 
+		// Dot Type (Pivot/Origin/Off)
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(self.dot_type_widget());
+
 		// Pivot
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0));
+		widgets.push(self.pivot_reference_point_widget(self.tool_data.selected_layers_count == 0 || self.tool_data.dot_type != DotType::Pivot));
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
@@ -259,14 +294,26 @@ impl LayoutHolder for SelectTool {
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		if let ToolMessage::Select(SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior))) = message {
-			self.tool_data.nested_selection_behavior = nested_selection_behavior;
-			responses.add(ToolMessage::UpdateHints);
+		let mut redraw_ref_pivot = false;
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
+			match option_update {
+				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
+					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
+					responses.add(ToolMessage::UpdateHints);
+				}
+				SelectOptionsUpdate::DotType(dot_type) => {
+					self.tool_data.dot_type = *dot_type;
+					responses.add(ToolMessage::UpdateHints);
+					let center = self.tool_data.get_pivot_position();
+					responses.add(TransformLayerMessage::SetCenter { center });
+					redraw_ref_pivot = true;
+				}
+			}
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
+		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_ref_pivot {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
@@ -349,7 +396,7 @@ struct SelectToolData {
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
 	origin: Origin,
-	dot_type: Option<DotType>,
+	dot_type: DotType,
 	compass_rose: CompassRose,
 	line_center: DVec2,
 	skew_edge: EdgeBool,
@@ -516,11 +563,19 @@ impl SelectToolData {
 		self.layers_dragging = original;
 	}
 
-	fn is_over(&self, mouse: DVec2) -> bool {
-		let Some(dot_type) = self.dot_type else { return false };
-		match dot_type {
-			DotType::Pivot => self.pivot.is_over(mouse),
-			DotType::Origin => self.origin.is_over(mouse),
+	fn state_from_dot(&self, mouse: DVec2) -> Option<SelectToolFsmState> {
+		match self.dot_type {
+			DotType::Pivot => self.pivot.is_over(mouse).then_some(SelectToolFsmState::DraggingPivot),
+			DotType::Origin => self.origin.is_over(mouse).then_some(SelectToolFsmState::DraggingOrigin),
+			_ => None,
+		}
+	}
+
+	fn get_pivot_position(&self) -> Option<DVec2> {
+		match self.dot_type {
+			DotType::Origin => None,
+			DotType::Pivot => self.pivot.position().or(Some(DVec2::splat(0.5))),
+			_ => Some(DVec2::splat(0.5)),
 		}
 	}
 }
@@ -532,7 +587,6 @@ impl Fsm for SelectToolFsmState {
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData { document, input, font_cache, .. } = tool_action_data;
 
-		tool_data.dot_type = Some(DotType::Pivot);
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
@@ -739,8 +793,8 @@ impl Fsm for SelectToolFsmState {
 
 				// Update pivot
 				match tool_data.dot_type {
-					Some(DotType::Pivot) => tool_data.pivot.update(document, &mut overlay_context, Some((angle,))),
-					Some(DotType::Origin) => tool_data.origin.update(document, &mut overlay_context),
+					DotType::Pivot => tool_data.pivot.update(document, &mut overlay_context, Some((angle,))),
+					DotType::Origin => tool_data.origin.update(document, &mut overlay_context),
 					_ => (),
 				};
 
@@ -941,22 +995,20 @@ impl Fsm for SelectToolFsmState {
 
 				let state =
 				// Dragging the pivot
-				if tool_data.is_over(input.mouse.position) {
+				if let Some(state) = tool_data.state_from_dot(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-					match tool_data.dot_type.unwrap_or_default(){
-						DotType::Pivot => SelectToolFsmState::DraggingPivot,
-						DotType::Origin => SelectToolFsmState::DraggingOrigin,
-					}
+					state
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if dragging_bounds.is_some() && !is_flat_layer {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.layers_dragging = selected;
+					let center = tool_data.get_pivot_position();
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
@@ -980,7 +1032,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 							None
 						);
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						bounds.center_of_transformation = center.unwrap_or(selected.mean_average_of_pivots());
 
 						// Check if we're hovering over a skew triangle
 						let edges = bounds.check_selected_edges(input.mouse.position);
@@ -1018,6 +1070,7 @@ impl Fsm for SelectToolFsmState {
 				else if rotating_bounds {
 					responses.add(DocumentMessage::StartTransaction);
 
+					let center = tool_data.get_pivot_position();
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -1038,7 +1091,7 @@ impl Fsm for SelectToolFsmState {
 							None
 						);
 
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						bounds.center_of_transformation = center.unwrap_or(selected.mean_average_of_pivots());
 					}
 
 					tool_data.layers_dragging = selected;
@@ -1630,6 +1683,8 @@ impl Fsm for SelectToolFsmState {
 
 				let pos: Option<DVec2> = position.into();
 				tool_data.pivot.set_normalized_position(pos.unwrap());
+				let center = tool_data.pivot.position();
+				responses.add(TransformLayerMessage::SetCenter { center });
 
 				self
 			}
@@ -1638,6 +1693,7 @@ impl Fsm for SelectToolFsmState {
 
 				let pos: Option<DVec2> = position.into();
 				tool_data.origin.set_normalized_position(pos.unwrap(), document, responses);
+				responses.add(TransformLayerMessage::SetCenter { center: None });
 
 				self
 			}
