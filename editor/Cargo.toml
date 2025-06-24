@@ -41,7 +41,6 @@ bezier-rs = { workspace = true }
 kurbo = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
-kurbo = { workspace = true }
 derivative = { workspace = true }
 specta = { workspace = true }
 dyn-any = { workspace = true }

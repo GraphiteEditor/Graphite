@@ -16,7 +16,6 @@ use glam::{DAffine2, DVec2};
 pub use indexed::VectorDataIndex;
 use kurbo::{Affine, Rect, Shape};
 pub use modification::*;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 
 // TODO: Eventually remove this migration document upgrade code
