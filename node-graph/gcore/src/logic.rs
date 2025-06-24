@@ -37,7 +37,7 @@ fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usiz
 	string.len()
 }
 
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Math: Logic"))]
 async fn switch<T, C: Send + 'n + Clone>(
 	#[implementations(Context)] ctx: C,
 	condition: bool,
