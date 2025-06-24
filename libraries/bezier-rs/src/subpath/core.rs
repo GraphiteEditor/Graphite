@@ -104,7 +104,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
-	pub fn iter(&self) -> SubpathIter<PointId> {
+	pub fn iter(&self) -> SubpathIter<'_, PointId> {
 		SubpathIter {
 			subpath: self,
 			index: 0,
@@ -113,7 +113,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath` always considering it as a closed subpath.
-	pub fn iter_closed(&self) -> SubpathIter<PointId> {
+	pub fn iter_closed(&self) -> SubpathIter<'_, PointId> {
 		SubpathIter {
 			subpath: self,
 			index: 0,

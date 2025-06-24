@@ -97,21 +97,21 @@ impl Rect {
 	}
 }
 
-impl core::ops::Mul<Rect> for DAffine2 {
-	type Output = super::Quad;
+impl std::ops::Mul<Rect> for DAffine2 {
+	type Output = Quad;
 
 	fn mul(self, rhs: Rect) -> Self::Output {
-		self * super::Quad::from_box(rhs.0)
+		self * Quad::from_box(rhs.0)
 	}
 }
 
-impl core::ops::Index<usize> for Rect {
+impl std::ops::Index<usize> for Rect {
 	type Output = DVec2;
 	fn index(&self, index: usize) -> &Self::Output {
 		&self.0[index]
 	}
 }
-impl core::ops::IndexMut<usize> for Rect {
+impl std::ops::IndexMut<usize> for Rect {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		&mut self.0[index]
 	}

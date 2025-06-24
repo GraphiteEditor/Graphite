@@ -10,4 +10,5 @@ pub mod vector;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
 
+pub use graphene_application_io as application_io;
 pub use graphene_core::*;

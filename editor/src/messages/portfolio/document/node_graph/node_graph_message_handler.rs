@@ -567,7 +567,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::AddTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|(id, _)| (*id, NodeId::new())).collect();
-				let nodes: Vec<_> = new_ids.iter().map(|(_, id)| *id).collect();
+				let nodes: Vec<_> = new_ids.values().copied().collect();
 				responses.add(NodeGraphMessage::AddNodes {
 					nodes: data,
 					new_ids: new_ids.clone(),

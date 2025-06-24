@@ -294,7 +294,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Iterator over all direct children (excluding self and recursive children)
-	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: self.first_child(metadata),
 			next_node: Self::next_sibling,
@@ -302,7 +302,7 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	pub fn downstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn downstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::previous_sibling,
@@ -311,7 +311,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// All ancestors of this layer, including self, going to the document root
-	pub fn ancestors(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn ancestors(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::parent,
@@ -320,7 +320,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Iterator through all the last children, starting from self
-	pub fn last_children(self, metadata: &DocumentMetadata) -> AxisIter {
+	pub fn last_children(self, metadata: &DocumentMetadata) -> AxisIter<'_> {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::last_child,
@@ -329,7 +329,7 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Iterator through all descendants, including recursive children (not including self)
-	pub fn descendants(self, metadata: &DocumentMetadata) -> DescendantsIter {
+	pub fn descendants(self, metadata: &DocumentMetadata) -> DescendantsIter<'_> {
 		DescendantsIter {
 			front: self.first_child(metadata),
 			back: self.last_child(metadata).and_then(|child| child.last_children(metadata).last()),

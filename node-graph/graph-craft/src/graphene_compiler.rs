@@ -32,5 +32,5 @@ impl Compiler {
 }
 
 pub trait Executor<I, O> {
-	fn execute(&self, input: I) -> LocalFuture<Result<O, Box<dyn Error>>>;
+	fn execute(&self, input: I) -> LocalFuture<'_, Result<O, Box<dyn Error>>>;
 }

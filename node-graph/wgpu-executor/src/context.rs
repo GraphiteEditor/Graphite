@@ -16,7 +16,7 @@ impl Context {
 			backends: wgpu::Backends::all(),
 			..Default::default()
 		};
-		let instance = wgpu::Instance::new(instance_descriptor);
+		let instance = Instance::new(instance_descriptor);
 
 		let adapter_options = wgpu::RequestAdapterOptions {
 			power_preference: wgpu::PowerPreference::HighPerformance,
