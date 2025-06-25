@@ -216,8 +216,10 @@ pub fn input_mappings() -> Mapping {
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
-		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Delete); modifiers=[Alt], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Backspace); modifiers=[Alt], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Delete); modifiers=[Shift], action_dispatch=PathToolMessage::DeleteAndRefit),
+		entry!(KeyDown(Backspace); modifiers=[Shift], action_dispatch=PathToolMessage::DeleteAndRefit),
 		entry!(KeyDownNoRepeat(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { extend_selection: Shift, lasso_select: Control, handle_drag_from_anchor: Alt, drag_restore_handle: Control }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),

@@ -12,6 +12,7 @@ use crate::messages::tool::common_functionality::utility_functions::is_visible_p
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use bezier_rs::{Bezier, BezierHandles, Subpath, TValue};
 use glam::{DAffine2, DVec2};
+use graph_craft::document;
 use graphene_std::vector::{HandleId, SegmentId};
 use graphene_std::vector::{ManipulatorPointId, PointId, VectorData, VectorModificationType};
 
@@ -1173,6 +1174,10 @@ impl ShapeState {
 		}
 	}
 
+	pub fn get_bezier_from_segment_id(segment: SegmentId, vector_data: &VectorData) -> Option<SegmentId> {
+		vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment).map(|(_, bezier, _, _)| bezier)
+	}
+
 	fn dissolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId); 2]> {
 		// Delete point
 		let modification_type = VectorModificationType::RemovePoint { id: anchor };
@@ -1196,6 +1201,14 @@ impl ShapeState {
 		let [Some(start), Some(end)] = opposites.map(|opposite| opposite.to_manipulator_point().get_anchor(vector_data)) else {
 			return None;
 		};
+		let Some(bezier1) = vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment).map(|(_, bezier, _, _)| bezier) else {
+			return None;
+		};
+		let Some(bezier2) = vector_data.segment_bezier_iter().find(|(id, _, _, _)| *id == segment).map(|(_, bezier, _, _)| bezier) else {
+			return None;
+		};
+		// Here we should also return the beziers of the connected handles
+
 		Some([(handles[0], start), (handles[1], end)])
 	}
 
@@ -1301,6 +1314,15 @@ impl ShapeState {
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
+		}
+	}
+
+	pub fn delete_point_and_refit(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		// Here define the logic of what happens exactly when sone selected points are deleted
+		for (&layer, state) in &mut self.selected_shape_state {
+			let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else {
+				continue;
+			};
 		}
 	}
 

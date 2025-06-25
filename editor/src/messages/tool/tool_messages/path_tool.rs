@@ -47,6 +47,7 @@ pub enum PathToolMessage {
 	DeselectAllPoints,
 	Delete,
 	DeleteAndBreakPath,
+	DeleteAndRefit,
 	DragStop {
 		extend_selection: Key,
 		shrink_selection: Key,
@@ -284,6 +285,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				DeleteAndRefit,
 				ClosePath,
 				PointerMove,
 			),
@@ -296,6 +298,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				BreakPath,
 				DeleteAndBreakPath,
+				DeleteAndRefit,
 				SwapSelectedHandles,
 			),
 			PathToolFsmState::Drawing { .. } => actions!(PathToolMessageDiscriminant;
@@ -306,6 +309,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Enter,
 				BreakPath,
 				DeleteAndBreakPath,
+				DeleteAndRefit,
 				Escape,
 				RightClick,
 			),
@@ -1921,11 +1925,24 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
+				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.break_path_at_selected_point(document, responses);
+				responses.add(PathToolMessage::SelectionChanged);
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DeleteAndBreakPath) => {
+				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.delete_point_and_break_path(document, responses);
+				responses.add(PathToolMessage::SelectionChanged);
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::DeleteAndRefit) => {
+				responses.add(DocumentMessage::AddTransaction);
+				shape_editor.delete_point_and_refit(document, responses);
+				responses.add(PathToolMessage::SelectionChanged);
+
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::FlipSmoothSharp) => {
@@ -2278,7 +2295,8 @@ fn update_dynamic_hints(state: PathToolFsmState, responses: &mut VecDeque<Messag
 
 			if at_least_one_anchor_selected {
 				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());
-				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Cut Anchor").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Alt], "Cut Anchor").prepend_plus());
+				delete_selected_hints.push(HintInfo::keys([Key::Shift], "Re-Fit").prepend_plus());
 			}
 
 			if single_colinear_anchor_selected {
