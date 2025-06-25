@@ -418,16 +418,14 @@ impl Hash for VectorModification {
 	}
 }
 
+pub type VectorTableModification = Vec<VectorModification>;
+
 /// A node that applies a procedural modification to some [`VectorData`].
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: Box<VectorModification>) -> VectorDataTable {
-	if vector_data.is_empty() {
-		vector_data.push(Instance::default());
-	}
-	let vector_data_instance = vector_data.get_mut(0).expect("push should give one item");
-	modification.apply(vector_data_instance.instance);
-	if vector_data.len() > 1 {
-		warn!("The path modify ran on {} instances of vector data. Only the first can be modified.", vector_data.len());
+async fn path_modify(_ctx: impl Ctx, mut vector_data: VectorDataTable, modification: VectorTableModification) -> VectorDataTable {
+	for (index, instance) in vector_data.instance_mut_iter().enumerate() {
+		let instance_modification = &modification[index];
+		instance_modification.apply(instance.instance);
 	}
 	vector_data
 }
