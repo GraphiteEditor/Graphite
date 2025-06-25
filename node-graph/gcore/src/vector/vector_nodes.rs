@@ -1587,6 +1587,9 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 			}
 
 			for segment in new_segments {
+				if bezpath.elements().is_empty() {
+					bezpath.move_to(segment.start())
+				}
 				bezpath.push(segment.as_path_el());
 			}
 
