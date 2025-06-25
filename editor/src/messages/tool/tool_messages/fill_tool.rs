@@ -2,8 +2,10 @@ use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::vector::PointId;
-use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::vector::stroke::{CapInput, JoinInput, MiterLimitInput};
+use graphene_std::vector::style::{Fill, Stroke, StrokeCap, StrokeJoin};
 
 #[derive(Default)]
 pub struct FillTool {
@@ -74,9 +76,10 @@ impl ToolTransition for FillTool {
 	}
 }
 
-pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, layer_to_viewport_transform: DAffine2) -> bool {
+pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, zoom: f64, layer_to_viewport_transform: DAffine2) -> bool {
 	let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
-	let max_stroke_distance = stroke_width;
+	let threshold = (2.0 - zoom).exp2();
+	let max_stroke_distance = stroke_width + threshold;
 
 	if let Some((segment_index, t)) = subpath.project(mouse_pos) {
 		let nearest_point = subpath.evaluate(bezier_rs::SubpathTValue::Parametric { segment_index, t });
@@ -123,39 +126,38 @@ impl Fsm for FillToolFsmState {
 
 						// Stroke
 						let stroke_node = graph_layer.upstream_node_id_from_name("Stroke");
+						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
+
+						let stroke = vector_data.style.stroke().unwrap();
 						let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
 						let zoom = document.document_ptz.zoom();
 						let modified_stroke_width = stroke_width * zoom;
-						let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, document.metadata().transform_to_viewport(layer)));
+						let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
 
 						// Fill
 						let fill_node = graph_layer.upstream_node_id_from_name("Fill");
 						let fill_exists_and_visible = fill_node.is_some_and(|fill| document.network_interface.is_visible(&fill, &[]));
 
+						subpaths = vector_data.stroke_bezier_paths();
 						if stroke_exists_and_visible && close_to_stroke {
 							let overlay_stroke = || {
-								let mut stroke = Stroke::new(Some(preview_color), modified_stroke_width);
-								stroke.transform = document.metadata().transform_to_viewport(layer);
-								let line_cap = graph_layer.find_input("Stroke", 5).unwrap();
-								stroke.cap = if let TaggedValue::StrokeCap(line_cap) = line_cap { *line_cap } else { return None };
-								let line_join = graph_layer.find_input("Stroke", 6).unwrap();
-								stroke.join = if let TaggedValue::StrokeJoin(line_join) = line_join { *line_join } else { return None };
-								let miter_limit = graph_layer.find_input("Stroke", 7).unwrap();
-								stroke.join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { return None };
+								let mut overlay_stroke = Stroke::new(Some(preview_color), modified_stroke_width);
+								overlay_stroke.transform = document.metadata().transform_to_viewport_with_stroke_transform(layer, stroke);
+								let line_cap = graph_layer.find_input("Stroke", CapInput::INDEX).unwrap();
+								overlay_stroke.cap = if let TaggedValue::StrokeCap(line_cap) = line_cap { *line_cap } else { StrokeCap::default() };
+								let line_join = graph_layer.find_input("Stroke", JoinInput::INDEX).unwrap();
+								overlay_stroke.join = if let TaggedValue::StrokeJoin(line_join) = line_join { *line_join } else { StrokeJoin::default() };
+								let miter_limit = graph_layer.find_input("Stroke", MiterLimitInput::INDEX).unwrap();
+								overlay_stroke.join_miter_limit = if let TaggedValue::F64(miter_limit) = miter_limit { *miter_limit } else { f64::default() };
 
-								Some(stroke)
+								overlay_stroke
 							};
 
-							if let Some(stroke) = overlay_stroke() {
-								subpaths = vector_data.stroke_bezier_paths();
-								overlay_context.fill_stroke(subpaths, &stroke);
-							}
+							overlay_context.fill_stroke(subpaths, &overlay_stroke());
 						} else if fill_exists_and_visible {
-							subpaths = vector_data.stroke_bezier_paths();
 							overlay_context.fill_path(
 								subpaths,
-								document.metadata().transform_to_viewport(layer),
+								document.metadata().transform_to_viewport_with_stroke_transform(layer, stroke),
 								&preview_color,
 								true,
 								stroke_exists_and_visible,
@@ -198,9 +200,10 @@ impl Fsm for FillToolFsmState {
 
 					// Stroke
 					let stroke_node = graph_layer.upstream_node_id_from_name("Stroke");
-					let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
 					let stroke_exists_and_visible = stroke_node.is_some_and(|stroke| document.network_interface.is_visible(&stroke, &[]));
-					let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, document.metadata().transform_to_viewport(layer)));
+					let stroke_width = get_stroke_width(layer, &document.network_interface).unwrap_or(1.0);
+					let zoom = document.document_ptz.zoom();
+					let close_to_stroke = subpaths.any(|subpath| close_to_subpath(input.mouse.position, subpath, stroke_width, zoom, document.metadata().transform_to_viewport(layer)));
 
 					// Fill
 					let fill_node = graph_layer.upstream_node_id_from_name("Fill");

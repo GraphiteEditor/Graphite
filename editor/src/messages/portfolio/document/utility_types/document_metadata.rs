@@ -5,6 +5,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::renderer::{ClickTarget, ClickTargetType, Quad};
 use graphene_std::transform::Footprint;
+use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, VectorData};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
@@ -86,6 +87,24 @@ impl DocumentMetadata {
 
 		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
+
+		footprint * local_transform
+	}
+
+	pub fn transform_to_viewport_with_stroke_transform(&self, layer: LayerNodeIdentifier, _stroke: Stroke) -> DAffine2 {
+		// We're not allowed to convert the root parent to a node id
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.document_to_viewport;
+		}
+
+		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
+
+		// let has_real_stroke = vector_data.style.stroke().filter(|stroke| stroke.weight() > 0.);
+		// let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
+		// let applied_stroke_transform = set_stroke_transform.unwrap_or(*instance.transform);
+		// let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
+		// let stroke_transform = self.upstream_transform(stroke_node);
 
 		footprint * local_transform
 	}
