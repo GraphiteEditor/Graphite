@@ -35,6 +35,7 @@ pub struct TextOptions {
 	font_name: String,
 	font_style: String,
 	fill: ToolColorOptions,
+	shear: f64,
 }
 
 impl Default for TextOptions {
@@ -46,6 +47,7 @@ impl Default for TextOptions {
 			font_name: graphene_std::consts::DEFAULT_FONT_FAMILY.into(),
 			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
+			shear: 0.,
 		}
 	}
 }
@@ -784,6 +786,7 @@ impl Fsm for TextToolFsmState {
 						max_width: constraint_size.map(|size| size.x),
 						character_spacing: tool_options.character_spacing,
 						max_height: constraint_size.map(|size| size.y),
+						shear: tool_options.shear,
 					},
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),

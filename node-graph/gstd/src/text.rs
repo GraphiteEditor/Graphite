@@ -14,6 +14,7 @@ fn text<'i: 'n>(
 	#[default(0.)] character_spacing: f64,
 	#[default(None)] max_width: Option<f64>,
 	#[default(None)] max_height: Option<f64>,
+	#[default(0.)] shear: f64,
 ) -> VectorDataTable {
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -21,6 +22,7 @@ fn text<'i: 'n>(
 		character_spacing,
 		max_width,
 		max_height,
+		shear,
 	};
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));

@@ -1,7 +1,7 @@
 use crate::vector::PointId;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use core::cell::RefCell;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use parley::fontique::Blob;
 use parley::{Alignment, AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use skrifa::GlyphId;
@@ -11,6 +11,8 @@ use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{MetadataProvider, OutlineGlyph};
 use std::sync::Arc;
 
+// Thread-local storage avoids expensive re-initialization of font and layout contexts
+// across multiple text rendering operations within the same thread
 thread_local! {
 	static FONT_CONTEXT: RefCell<FontContext> = RefCell::new(FontContext::new());
 	static LAYOUT_CONTEXT: RefCell<LayoutContext<()>> = RefCell::new(LayoutContext::new());
@@ -18,6 +20,7 @@ thread_local! {
 
 struct PathBuilder {
 	current_subpath: Subpath<PointId>,
+	glyph_subpaths: Vec<Subpath<PointId>>,
 	other_subpaths: Vec<Subpath<PointId>>,
 	origin: DVec2,
 	scale: f64,
@@ -26,6 +29,7 @@ struct PathBuilder {
 
 impl PathBuilder {
 	fn point(&self, x: f32, y: f32) -> DVec2 {
+		// Y-axis inversion converts from font coordinate system (Y-up) to graphics coordinate system (Y-down)
 		DVec2::new(self.origin.x + x as f64, self.origin.y - y as f64) * self.scale
 	}
 
@@ -33,13 +37,23 @@ impl PathBuilder {
 		self.origin = DVec2::new(x, y);
 	}
 
-	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord]) {
+	fn draw_glyph(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, skew: DAffine2) {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
 		glyph.draw(settings, self).unwrap();
 
-		if !self.current_subpath.is_empty() {
-			self.other_subpaths.push(core::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		// Apply transforms in correct order: style-based skew first, then user-requested skew
+		// This ensures font synthesis (italic) is applied before user transformations
+		for glyph_subpath in &mut self.glyph_subpaths {
+			if let Some(style_skew) = style_skew {
+				glyph_subpath.apply_transform(style_skew);
+			}
+
+			glyph_subpath.apply_transform(skew);
+		}
+
+		if !self.glyph_subpaths.is_empty() {
+			self.other_subpaths.extend(core::mem::take(&mut self.glyph_subpaths));
 		}
 	}
 }
@@ -47,7 +61,7 @@ impl PathBuilder {
 impl OutlinePen for PathBuilder {
 	fn move_to(&mut self, x: f32, y: f32) {
 		if !self.current_subpath.is_empty() {
-			self.other_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+			self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 		}
 		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(self.point(x, y), self.id.next_id()));
 	}
@@ -71,7 +85,7 @@ impl OutlinePen for PathBuilder {
 
 	fn close(&mut self) {
 		self.current_subpath.set_closed(true);
-		self.other_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
+		self.glyph_subpaths.push(std::mem::replace(&mut self.current_subpath, Subpath::new(Vec::new(), false)));
 	}
 }
 
@@ -82,6 +96,7 @@ pub struct TypesettingConfig {
 	pub character_spacing: f64,
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
+	pub shear: f64,
 }
 
 impl Default for TypesettingConfig {
@@ -92,22 +107,39 @@ impl Default for TypesettingConfig {
 			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
+			shear: 0.,
 		}
 	}
 }
 
-fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder) {
+fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder, shear: f64) {
 	let mut run_x = glyph_run.offset();
 	let run_y = glyph_run.baseline();
 
 	let run = glyph_run.run();
+
+	// User-requested shear applied around baseline to avoid vertical displacement
+	// Translation ensures rotation point is at the baseline, not origin
+	let skew = DAffine2::from_translation(DVec2::new(0.0, run_y as f64))
+		* DAffine2::from_cols_array(&[1.0, 0.0, -shear.to_radians().tan() as f64, 1.0, 0.0, 0.0])
+		* DAffine2::from_translation(DVec2::new(0.0, -run_y as f64));
+
+	let synthesis = run.synthesis();
+
+	// Font synthesis (e.g., synthetic italic) applied separately from user transforms
+	// This preserves the distinction between font styling and user transformations
+	let style_skew = synthesis.skew().map(|angle| {
+		DAffine2::from_translation(DVec2::new(0.0, run_y as f64))
+			* DAffine2::from_cols_array(&[1.0, 0.0, -angle.to_radians().tan() as f64, 1.0, 0.0, 0.0])
+			* DAffine2::from_translation(DVec2::new(0.0, -run_y as f64))
+	});
 
 	let font = run.font();
 	let font_size = run.font_size();
 
 	let normalized_coords = run.normalized_coords().iter().map(|coord| NormalizedCoord::from_bits(*coord)).collect::<Vec<_>>();
 
-	// Get glyph outlines using Skrifa. This can be cached later
+	// TODO: This can be cached for better performance
 	let font_collection_ref = font.data.as_ref();
 	let font_ref = ReadFontsRef::from_index(font_collection_ref, font.index).unwrap();
 	let outlines = font_ref.outline_glyphs();
@@ -120,7 +152,7 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 		let glyph_id = GlyphId::from(glyph.id);
 		if let Some(glyph_outline) = outlines.get(glyph_id) {
 			path_builder.set_origin(glyph_x as f64, glyph_y as f64);
-			path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords);
+			path_builder.draw_glyph(&glyph_outline, font_size, &normalized_coords, style_skew, skew);
 		}
 	}
 }
@@ -160,6 +192,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 
 	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
+		glyph_subpaths: Vec::new(),
 		other_subpaths: Vec::new(),
 		origin: DVec2::ZERO,
 		scale: layout.scale() as f64,
@@ -168,14 +201,9 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 
 	for line in layout.lines() {
 		for item in line.items() {
-			match item {
-				PositionedLayoutItem::GlyphRun(glyph_run) => {
-					render_glyph_run(&glyph_run, &mut path_builder);
-				}
-				PositionedLayoutItem::InlineBox(_inline_box) => {
-					// Render the inline box
-				}
-			};
+			if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+				render_glyph_run(&glyph_run, &mut path_builder, typesetting.shear);
+			}
 		}
 	}
 

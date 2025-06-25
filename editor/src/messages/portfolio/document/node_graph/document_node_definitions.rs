@@ -1556,6 +1556,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
 						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
+						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().shear), false),
 					],
 					..Default::default()
 				},
@@ -1606,6 +1607,17 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(1.),
 								blank_assist: false,
+								..Default::default()
+							}),
+						),
+						PropertiesRow::with_override(
+							"Shear",
+							"TODO",
+							WidgetOverride::Number(NumberInputSettings {
+								min: Some(-85.),
+
+								max: Some(85.),
+								unit: Some("°".to_string()),
 								..Default::default()
 							}),
 						),
