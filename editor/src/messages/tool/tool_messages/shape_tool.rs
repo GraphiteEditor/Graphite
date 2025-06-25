@@ -597,7 +597,7 @@ impl Fsm for ShapeToolFsmState {
 					}
 				}
 
-				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging);
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
 
 				if !input.keyboard.key(Key::Control) {
 					match (resize, rotate, skew) {

@@ -326,6 +326,7 @@ pub fn transforming_transform_cage(
 	input: &InputPreprocessorMessageHandler,
 	responses: &mut VecDeque<Message>,
 	layers_dragging: &mut Vec<LayerNodeIdentifier>,
+	pos: Option<DVec2>
 ) -> (bool, bool, bool) {
 	let dragging_bounds = bounding_box_manager.as_mut().and_then(|bounding_box| {
 		let edges = bounding_box.check_selected_edges(input.mouse.position);
@@ -372,7 +373,7 @@ pub fn transforming_transform_cage(
 				&ToolType::Select,
 				None,
 			);
-			bounds.center_of_transformation = selected.mean_average_of_pivots();
+			bounds.center_of_transformation = pos.unwrap_or(selected.mean_average_of_pivots());
 
 			// Check if we're hovering over a skew triangle
 			let edges = bounds.check_selected_edges(input.mouse.position);
@@ -413,7 +414,7 @@ pub fn transforming_transform_cage(
 				None,
 			);
 
-			bounds.center_of_transformation = selected.mean_average_of_pivots();
+			bounds.center_of_transformation = pos.unwrap_or(selected.mean_average_of_pivots());
 		}
 
 		*layers_dragging = selected;

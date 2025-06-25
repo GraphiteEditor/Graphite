@@ -88,7 +88,7 @@ impl Origin {
 		}
 	}
 
-	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw: bool) {
 		if !overlay_context.visibility_settings.pivot() {
 			self.active = false;
 			return;
@@ -97,6 +97,7 @@ impl Origin {
 		}
 
 		self.recalculate_origin(document);
+		if !draw {return};
 		if let Some(origin) = self.origin {
 			overlay_context.draw_origin(origin);
 		}

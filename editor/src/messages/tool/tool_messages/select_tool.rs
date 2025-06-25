@@ -62,6 +62,16 @@ pub enum DotType {
 	Off,
 }
 
+impl DotType {
+	pub fn is_pivot(self) -> bool {
+		self == Self::Pivot
+	}
+
+	pub fn is_origin(self) -> bool {
+		self == Self::Pivot
+	}
+}
+
 impl fmt::Display for DotType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -787,12 +797,8 @@ impl Fsm for SelectToolFsmState {
 						.flatten()
 				});
 
-				// Update pivot
-				match tool_data.dot_type {
-					DotType::Pivot => tool_data.pivot.update(document, &mut overlay_context, Some((angle,))),
-					DotType::Origin => tool_data.origin.update(document, &mut overlay_context),
-					_ => (),
-				};
+				tool_data.pivot.update(document, &mut overlay_context, Some((angle,)), tool_data.dot_type.is_pivot());
+				tool_data.origin.update(document, &mut overlay_context, tool_data.dot_type.is_origin());
 
 				// Update compass rose
 				if overlay_context.visibility_settings.compass_rose() {
@@ -918,6 +924,7 @@ impl Fsm for SelectToolFsmState {
 						(SelectionShapeType::Lasso, _) => overlay_context.polygon(polygon, None, fill_color),
 					}
 				}
+
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
@@ -949,7 +956,8 @@ impl Fsm for SelectToolFsmState {
 				let intersection_list = document.click_list(input).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list);
 
-				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging);
+				let pos = tool_data.get_pivot_position();
+				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, pos);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -995,9 +1003,11 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
-					responses.add(SelectToolMessage::SetPivot {
-						position: tool_data.pivot.old_pivot_position,
-					});
+					if tool_data.dot_type.is_pivot() && !tool_data.layers_dragging.is_empty() {
+						responses.add(SelectToolMessage::SetPivot {
+							position: tool_data.pivot.old_pivot_position,
+						});
+					}
 
 					tool_data.get_snap_candidates(document, input);
 					let (axis, using_compass) = {
@@ -1024,9 +1034,11 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 
-						responses.add(SelectToolMessage::SetPivot {
-							position: tool_data.pivot.old_pivot_position,
-						});
+						if tool_data.dot_type.is_pivot() && false {
+							responses.add(SelectToolMessage::SetPivot {
+								position: tool_data.pivot.old_pivot_position,
+							});
+						}
 					}
 
 					if let Some(intersection) = intersection {
