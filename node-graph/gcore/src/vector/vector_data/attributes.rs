@@ -132,6 +132,11 @@ impl PointDomain {
 		self.position.push(position);
 	}
 
+	pub fn push_unchecked(&mut self, id: PointId, position: DVec2) {
+		self.id.push(id);
+		self.position.push(position);
+	}
+
 	pub fn positions(&self) -> &[DVec2] {
 		&self.position
 	}
