@@ -158,8 +158,8 @@ fn grid<T: GridSpacing>(
 	#[implementations(f64, DVec2)]
 	spacing: T,
 	#[default(30., 30.)] angles: DVec2,
-	#[default(10)] rows: u32,
 	#[default(10)] columns: u32,
+	#[default(10)] rows: u32,
 ) -> VectorDataTable {
 	let (x_spacing, y_spacing) = spacing.as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();
