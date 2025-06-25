@@ -1662,6 +1662,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for mut source_path in source_paths {
 			source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
+			// Skip if the path has no segments else get the point at the end of the path.
 			let Some(end) = source_path.segments().last().and_then(|element| Some(element.end())) else {
 				continue;
 			};
@@ -1688,6 +1689,7 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for mut target_path in target_paths {
 			target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
+			// Skip if the path has no segments else get the point at the start of the path.
 			let Some(start) = target_path.segments().next().and_then(|element| Some(element.start())) else {
 				continue;
 			};
