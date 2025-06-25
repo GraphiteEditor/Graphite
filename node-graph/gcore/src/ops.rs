@@ -1,11 +1,8 @@
 use crate::Ctx;
-use crate::raster::BlendMode;
 use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::{Fraction, Percentage};
 use crate::vector::style::GradientStops;
 use crate::{Color, Node};
-use core::marker::PhantomData;
-use core::ops::{Add, Div, Mul, Rem, Sub};
 use dyn_any::DynAny;
 use glam::{DVec2, IVec2, UVec2};
 use math_parser::ast;
@@ -13,9 +10,8 @@ use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
-
-#[cfg(target_arch = "spirv")]
-use spirv_std::num_traits::float::Float;
+use std::marker::PhantomData;
+use std::ops::{Add, Div, Mul, Rem, Sub};
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
@@ -37,7 +33,7 @@ impl ValueProvider for MathNodeContext {
 }
 
 /// Calculates a mathematical expression with input values "A" and "B"
-#[node_macro::node(category("General"), properties("math_properties"))]
+#[node_macro::node(category("Math: Arithmetic"), properties("math_properties"))]
 fn math<U: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The value of "A" when calculating the expression
@@ -252,7 +248,7 @@ impl TangentInverse for f64 {
 		if radians { self.atan() } else { self.atan().to_degrees() }
 	}
 }
-impl TangentInverse for glam::DVec2 {
+impl TangentInverse for DVec2 {
 	type Output = f64;
 	fn atan(self, radians: bool) -> Self::Output {
 		if radians { self.y.atan2(self.x) } else { self.y.atan2(self.x).to_degrees() }
@@ -325,19 +321,19 @@ fn absolute_value<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f6
 
 /// The minimum function (min) picks the smaller of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn min<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
+fn min<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	if value < other_value { value } else { other_value }
 }
 
 /// The maximum function (max) picks the larger of two numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn max<T: core::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
+fn max<T: std::cmp::PartialOrd>(_: impl Ctx, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T, #[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] other_value: T) -> T {
 	if value > other_value { value } else { other_value }
 }
 
 /// The clamp function (clamp) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
-fn clamp<T: core::cmp::PartialOrd>(
+fn clamp<T: std::cmp::PartialOrd>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] value: T,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, &str)] min: T,
@@ -355,7 +351,7 @@ fn clamp<T: core::cmp::PartialOrd>(
 
 /// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
-fn equals<U: core::cmp::PartialEq<T>, T>(
+fn equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
@@ -365,7 +361,7 @@ fn equals<U: core::cmp::PartialEq<T>, T>(
 
 /// The inequality operation (!=) compares two values and returns true if they are not equal, or false if they are.
 #[node_macro::node(category("Math: Logic"))]
-fn not_equals<U: core::cmp::PartialEq<T>, T>(
+fn not_equals<U: std::cmp::PartialEq<T>, T>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] value: T,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32, DVec2, &DVec2, &str)] other_value: U,
@@ -376,7 +372,7 @@ fn not_equals<U: core::cmp::PartialEq<T>, T>(
 /// The less-than operation (<) compares two values and returns true if the first value is less than the second, or false if it is not.
 /// If enabled with "Or Equal", the less-than-or-equal operation (<=) will be used instead.
 #[node_macro::node(category("Math: Logic"))]
-fn less_than<T: core::cmp::PartialOrd<T>>(
+fn less_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
@@ -388,7 +384,7 @@ fn less_than<T: core::cmp::PartialOrd<T>>(
 /// The greater-than operation (>) compares two values and returns true if the first value is greater than the second, or false if it is not.
 /// If enabled with "Or Equal", the greater-than-or-equal operation (>=) will be used instead.
 #[node_macro::node(category("Math: Logic"))]
-fn greater_than<T: core::cmp::PartialOrd<T>>(
+fn greater_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32)] value: T,
 	#[implementations(f64, &f64, f32, &f32, u32, &u32)] other_value: T,
@@ -445,32 +441,8 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option
 	color
 }
 
-// // Aims for interoperable compatibility with:
-// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
-// // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
-// #[node_macro::node(category("Raster: Adjustment"))]
-// async fn gradient_map<T: Adjust<Color>>(
-// 	_: impl Ctx,
-// 	#[implementations(
-// 		Color,
-// 		RasterDataTable<CPU>,
-// 		GradientStops,
-// 	)]
-// 	mut image: T,
-// 	gradient: GradientStops,
-// 	reverse: bool,
-// ) -> T {
-// 	image.adjust(|color| {
-// 		let intensity = color.luminance_srgb();
-// 		let intensity = if reverse { 1. - intensity } else { intensity };
-// 		gradient.evaluate(intensity as f64)
-// 	});
-
-// 	image
-// }
-
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("Color"))]
 fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
 	let position = position.clamp(0., 1.);
 	gradient.evaluate(position)
@@ -480,12 +452,6 @@ fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position:
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
-}
-
-/// Constructs a blend mode choice value which may be set to any of the available blend modes in order to tell another node which blending operation to use.
-#[node_macro::node(category("Value"))]
-fn blend_mode_value(_: impl Ctx, _primary: (), blend_mode: BlendMode) -> BlendMode {
-	blend_mode
 }
 
 /// Constructs a string value which may be set to any plain text.
@@ -533,8 +499,7 @@ fn extract_xy<T: Into<DVec2>>(_: impl Ctx, #[implementations(DVec2, IVec2, UVec2
 }
 
 /// The X or Y component of a coordinate.
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum XY {
 	#[default]
@@ -566,7 +531,7 @@ where
 		self.0.reset();
 	}
 
-	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any + Send + Sync>> {
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.0.serialize()
 	}
 }
@@ -586,7 +551,7 @@ impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Nod
 pub struct IntoNode<O>(PhantomData<O>);
 impl<O> IntoNode<O> {
 	pub const fn new() -> Self {
-		Self(core::marker::PhantomData)
+		Self(PhantomData)
 	}
 }
 impl<O> Default for IntoNode<O> {
@@ -598,7 +563,7 @@ impl<'input, I: 'input, O: 'input> Node<'input, I> for IntoNode<O>
 where
 	I: Into<O> + Sync + Send,
 {
-	type Output = ::dyn_any::DynFuture<'input, O>;
+	type Output = dyn_any::DynFuture<'input, O>;
 
 	#[inline]
 	fn eval(&'input self, input: I) -> Self::Output {
@@ -613,8 +578,8 @@ mod test {
 
 	#[test]
 	pub fn dot_product_function() {
-		let vector_a = glam::DVec2::new(1., 2.);
-		let vector_b = glam::DVec2::new(3., 4.);
+		let vector_a = DVec2::new(1., 2.);
+		let vector_b = DVec2::new(3., 4.);
 		assert_eq!(dot_product((), vector_a, vector_b), 11.);
 	}
 

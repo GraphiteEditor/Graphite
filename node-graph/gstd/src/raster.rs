@@ -91,7 +91,7 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: RasterDa
 	result_table
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Channels"))]
 fn combine_channels(
 	_: impl Ctx,
 	_primary: (),
@@ -305,7 +305,6 @@ fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Raster
 	image
 }
 
-// #[cfg(feature = "serde")]
 // macro_rules! generate_imaginate_node {
 // 	($($val:ident: $t:ident: $o:ty,)*) => {
 // 		pub struct ImaginateNode<P: Pixel, E, C, G, $($t,)*> {
@@ -386,7 +385,6 @@ fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Raster
 // 	}
 // }
 
-// #[cfg(feature = "serde")]
 // generate_imaginate_node! {
 // 	seed: Seed: f64,
 // 	res: Res: Option<DVec2>,
@@ -404,7 +402,7 @@ fn image_value(_: impl Ctx, _primary: (), image: RasterDataTable<CPU>) -> Raster
 // 	tiling: Tiling: bool,
 // }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Pattern"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
@@ -561,7 +559,7 @@ fn noise_pattern(
 	result
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Pattern"))]
 fn mandelbrot(ctx: impl ExtractFootprint + Send) -> RasterDataTable<CPU> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();

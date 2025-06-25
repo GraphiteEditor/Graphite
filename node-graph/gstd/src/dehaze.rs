@@ -6,7 +6,7 @@ use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use std::cmp::{max, min};
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster: Filter"))]
 async fn dehaze(_: impl Ctx, image_frame: RasterDataTable<CPU>, strength: Percentage) -> RasterDataTable<CPU> {
 	let mut result_table = RasterDataTable::default();
 

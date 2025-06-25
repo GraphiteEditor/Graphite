@@ -22,7 +22,7 @@ pub enum GradientType {
 pub struct GradientStops(Vec<(f64, Color)>);
 
 impl std::hash::Hash for GradientStops {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.0.len().hash(state);
 		self.0.iter().for_each(|(position, color)| {
 			position.to_bits().hash(state);
@@ -146,8 +146,8 @@ impl Default for Gradient {
 	}
 }
 
-impl core::hash::Hash for Gradient {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for Gradient {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.stops.0.len().hash(state);
 		[].iter()
 			.chain(self.start.to_array().iter())
@@ -627,8 +627,8 @@ pub struct Stroke {
 	pub paint_order: PaintOrder,
 }
 
-impl core::hash::Hash for Stroke {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for Stroke {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.color.hash(state);
 		self.weight.to_bits().hash(state);
 		{
@@ -866,8 +866,8 @@ pub struct PathStyle {
 	fill: Fill,
 }
 
-impl core::hash::Hash for PathStyle {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for PathStyle {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.stroke.hash(state);
 		self.fill.hash(state);
 	}

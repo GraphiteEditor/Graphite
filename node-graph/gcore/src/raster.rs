@@ -5,18 +5,16 @@ use crate::raster_types::{CPU, RasterDataTable};
 use crate::registry::types::Percentage;
 use crate::vector::VectorDataTable;
 use bytemuck::{Pod, Zeroable};
-use core::fmt::Debug;
 use glam::DVec2;
+use std::fmt::Debug;
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::float::Float;
 
 pub mod adjustments;
 pub mod bbox;
-#[cfg(not(target_arch = "spirv"))]
 pub mod brush_cache;
 pub mod color;
-#[cfg(not(target_arch = "spirv"))]
 pub mod curve;
 pub mod discrete_srgb;
 
@@ -30,9 +28,9 @@ pub trait Linear {
 	fn lerp(self, other: Self, value: Self) -> Self
 	where
 		Self: Sized + Copy,
-		Self: core::ops::Sub<Self, Output = Self>,
-		Self: core::ops::Mul<Self, Output = Self>,
-		Self: core::ops::Add<Self, Output = Self>,
+		Self: std::ops::Sub<Self, Output = Self>,
+		Self: std::ops::Mul<Self, Output = Self>,
+		Self: std::ops::Add<Self, Output = Self>,
 	{
 		self + (other - self) * value
 	}
@@ -112,12 +110,10 @@ impl<T: Rec709Primaries> RGBPrimaries for T {
 
 pub trait SRGB: Rec709Primaries {}
 
-#[cfg(feature = "serde")]
 pub trait Serde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
 #[cfg(not(feature = "serde"))]
 pub trait Serde {}
 
-#[cfg(feature = "serde")]
 impl<T: serde::Serialize + for<'a> serde::Deserialize<'a>> Serde for T {}
 #[cfg(not(feature = "serde"))]
 impl<T> Serde for T {}
@@ -134,7 +130,7 @@ pub trait Pixel: Clone + Pod + Zeroable + Default {
 	}
 
 	fn byte_size() -> usize {
-		core::mem::size_of::<Self>()
+		size_of::<Self>()
 	}
 }
 pub trait RGB: Pixel {

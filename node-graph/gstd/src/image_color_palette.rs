@@ -1,7 +1,7 @@
 use graphene_core::raster_types::{CPU, RasterDataTable};
 use graphene_core::{Color, Ctx};
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Color"))]
 async fn image_color_palette(
 	_: impl Ctx,
 	image: RasterDataTable<CPU>,
