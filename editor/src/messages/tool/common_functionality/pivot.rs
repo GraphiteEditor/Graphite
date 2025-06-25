@@ -15,7 +15,7 @@ pub struct Pivot {
 	/// The viewspace pivot position
 	pivot: Option<DVec2>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
-	old_pivot_position: ReferencePoint,
+	pub old_pivot_position: ReferencePoint,
 	/// Used to enable and disable the pivot
 	active: bool,
 }

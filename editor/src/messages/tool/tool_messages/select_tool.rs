@@ -968,8 +968,7 @@ impl Fsm for SelectToolFsmState {
 				let show_compass = bounds.is_some_and(|quad| quad.all_sides_at_least_width(COMPASS_ROSE_HOVER_RING_DIAMETER) && quad.contains(mouse_position));
 				let can_grab_compass_rose = compass_rose_state.can_grab() && (show_compass || bounds.is_none());
 
-				let state = 
-				if let Some(state) = tool_data.state_from_dot(input.mouse.position) {
+				let state = if let Some(state) = tool_data.state_from_dot(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
 					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
@@ -996,6 +995,9 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
+					responses.add(SelectToolMessage::SetPivot {
+						position: tool_data.pivot.old_pivot_position,
+					});
 
 					tool_data.get_snap_candidates(document, input);
 					let (axis, using_compass) = {
@@ -1021,6 +1023,10 @@ impl Fsm for SelectToolFsmState {
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
+
+						responses.add(SelectToolMessage::SetPivot {
+							position: tool_data.pivot.old_pivot_position,
+						});
 					}
 
 					if let Some(intersection) = intersection {
@@ -1050,13 +1056,7 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
-
-				let selection = tool_data.nested_selection_behavior;
-				SelectToolFsmState::Ready { selection }
-			}
-			(SelectToolFsmState::DraggingOrigin, SelectToolMessage::Abort) => {
+			(SelectToolFsmState::DraggingPivot | SelectToolFsmState::DraggingOrigin, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				let selection = tool_data.nested_selection_behavior;
