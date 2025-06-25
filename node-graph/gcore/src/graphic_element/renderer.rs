@@ -1284,10 +1284,6 @@ impl GraphicElementRendered for RasterDataTable<GPU> {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
-
-	fn to_graphic_element(&self) -> GraphicElement {
-		GraphicElement::RasterData(self.clone())
-	}
 }
 
 impl GraphicElementRendered for GraphicElement {
