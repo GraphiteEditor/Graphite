@@ -15,7 +15,7 @@ use crate::vector::{FillId, PointDomain, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, GraphicElement, GraphicGroupTable, OwnedContextImpl};
 use bezier_rs::{Join, ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
-use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Point, Shape};
+use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::PI;
@@ -1662,7 +1662,9 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for mut source_path in source_paths {
 			source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-			let end: Point = source_path.elements().last().and_then(|element| element.end_point()).unwrap_or_default();
+			let Some(end) = source_path.segments().last().and_then(|element| Some(element.end())) else {
+				continue;
+			};
 
 			for element in source_path.elements_mut() {
 				match element {
@@ -1686,20 +1688,22 @@ async fn morph(_: impl Ctx, source: VectorDataTable, #[expose] target: VectorDat
 		for mut target_path in target_paths {
 			target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-			let end: Point = target_path.elements().last().and_then(|element| element.end_point()).unwrap_or_default();
+			let Some(start) = target_path.segments().next().and_then(|element| Some(element.start())) else {
+				continue;
+			};
 
 			for element in target_path.elements_mut() {
 				match element {
-					PathEl::MoveTo(point) => *point = point.lerp(end, time),
-					PathEl::LineTo(point) => *point = point.lerp(end, time),
+					PathEl::MoveTo(point) => *point = start.lerp(*point, time),
+					PathEl::LineTo(point) => *point = start.lerp(*point, time),
 					PathEl::QuadTo(point, point1) => {
-						*point = point.lerp(end, time);
-						*point1 = point1.lerp(end, time);
+						*point = start.lerp(*point, time);
+						*point1 = start.lerp(*point1, time);
 					}
 					PathEl::CurveTo(point, point1, point2) => {
-						*point = point.lerp(end, time);
-						*point1 = point1.lerp(end, time);
-						*point2 = point2.lerp(end, time);
+						*point = start.lerp(*point, time);
+						*point1 = start.lerp(*point1, time);
+						*point2 = start.lerp(*point2, time);
 					}
 					PathEl::ClosePath => {}
 				}
