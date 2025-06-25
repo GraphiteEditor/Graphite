@@ -1,5 +1,5 @@
 use crate::instances::Instances;
-use crate::raster::bbox::AxisAlignedBbox;
+use crate::math::bbox::AxisAlignedBbox;
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::vector::VectorDataTable;
 use crate::{Artboard, CloneVarArgs, Context, Ctx, ExtractAll, GraphicGroupTable, OwnedContextImpl};

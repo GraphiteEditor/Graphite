@@ -10,6 +10,7 @@ pub mod gradient;
 mod graphic_element;
 pub mod instances;
 pub mod logic;
+pub mod math;
 pub mod memo;
 pub mod misc;
 pub mod ops;

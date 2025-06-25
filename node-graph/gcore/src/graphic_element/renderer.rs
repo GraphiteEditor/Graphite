@@ -1,7 +1,7 @@
-mod quad;
-mod rect;
-
 use crate::instances::Instance;
+use crate::math::math_ext::QuadExt;
+pub use crate::math::quad::Quad;
+pub use crate::math::rect::Rect;
 use crate::raster::{BlendMode, Image};
 use crate::raster_types::{CPU, GPU, RasterDataTable};
 use crate::transform::{Footprint, Transform};
@@ -13,8 +13,6 @@ use bezier_rs::Subpath;
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use num_traits::Zero;
-pub use quad::Quad;
-pub use rect::Rect;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 #[cfg(feature = "vello")]

@@ -12,7 +12,6 @@ use std::fmt::Debug;
 use spirv_std::num_traits::float::Float;
 
 pub mod adjustments;
-pub mod bbox;
 pub mod brush_cache;
 pub mod color;
 pub mod curve;

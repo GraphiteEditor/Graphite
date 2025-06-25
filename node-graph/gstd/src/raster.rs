@@ -2,7 +2,7 @@ use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use graphene_core::instances::Instance;
-use graphene_core::raster::bbox::Bbox;
+use graphene_core::math::bbox::Bbox;
 pub use graphene_core::raster::*;
 use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
 use graphene_core::transform::Transform;
