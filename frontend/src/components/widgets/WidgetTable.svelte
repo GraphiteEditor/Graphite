@@ -3,21 +3,28 @@
 
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
-	export let widgetData: WidgetTableFromJsMessages;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any; // TODO: Give this a real type
+	
+	interface Props {
+		widgetData: WidgetTableFromJsMessages;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		layoutTarget: any; // TODO: Give this a real type
+	}
+
+	let { widgetData, layoutTarget }: Props = $props();
 </script>
 
 <table>
-	{#each widgetData.tableWidgets as row}
-		<tr>
-			{#each row as cell}
-				<td>
-					<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} />
-				</td>
-			{/each}
-		</tr>
-	{/each}
+	<tbody>
+		{#each widgetData.tableWidgets as row}
+			<tr>
+				{#each row as cell}
+					<td>
+						<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} />
+					</td>
+				{/each}
+			</tr>
+		{/each}
+	</tbody>
 </table>
 
 <style lang="scss">

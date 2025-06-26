@@ -9,7 +9,7 @@
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 
-	$: requestFullscreenHotkeys = fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked;
+	let requestFullscreenHotkeys = $derived(fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked);
 
 	async function handleClick() {
 		if ($fullscreen.windowFullscreen) fullscreen.exitFullscreen();

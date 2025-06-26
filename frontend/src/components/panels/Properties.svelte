@@ -9,7 +9,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let propertiesSectionsLayout = defaultWidgetLayout();
+	let propertiesSectionsLayout = $state(defaultWidgetLayout());
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
