@@ -1,5 +1,5 @@
 use super::poisson_disk::poisson_disk_sample;
-use crate::vector::misc::dvec2_to_point;
+use crate::vector::misc::{PointSpacingType, dvec2_to_point};
 use glam::DVec2;
 use kurbo::{BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Rect, Shape};
 
@@ -67,7 +67,15 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_l
 	}
 }
 
-pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool, segments_length: &[f64]) -> Option<BezPath> {
+pub fn sample_polyline_on_bezpath(
+	bezpath: BezPath,
+	point_spacing_type: PointSpacingType,
+	amount: f64,
+	start_offset: f64,
+	stop_offset: f64,
+	adaptive_spacing: bool,
+	segments_length: &[f64],
+) -> Option<BezPath> {
 	let mut sample_bezpath = BezPath::new();
 
 	let was_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
@@ -78,22 +86,33 @@ pub fn sample_points_on_bezpath(bezpath: BezPath, spacing: f64, start_offset: f6
 	// Adjust the usable length by subtracting start and stop offsets.
 	let mut used_length = total_length - start_offset - stop_offset;
 
+	// Sanity check that the usable length is positive.
 	if used_length <= 0. {
 		return None;
 	}
 
-	// Determine the number of points to generate along the path.
-	let sample_count = if adaptive_spacing {
-		// Calculate point count to evenly distribute points while covering the entire path.
-		// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-		(used_length / spacing).round()
-	} else {
-		// Calculate point count based on exact spacing, which may not cover the entire path.
+	const SAFETY_MAX_COUNT: f64 = 10_000. - 1.;
 
-		// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-		let count = (used_length / spacing + f64::EPSILON).floor();
-		used_length -= used_length % spacing;
-		count
+	// Determine the number of points to generate along the path.
+	let sample_count = match point_spacing_type {
+		PointSpacingType::Separation => {
+			let spacing = amount.min(used_length - f64::EPSILON);
+
+			if adaptive_spacing {
+				// Calculate point count to evenly distribute points while covering the entire path.
+				// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
+				(used_length / spacing).round().min(SAFETY_MAX_COUNT)
+			} else {
+				// Calculate point count based on exact spacing, which may not cover the entire path.
+				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
+				let count = (used_length / spacing + f64::EPSILON).floor().min(SAFETY_MAX_COUNT);
+				if count != SAFETY_MAX_COUNT {
+					used_length -= used_length % spacing;
+				}
+				count
+			}
+		}
+		PointSpacingType::Quantity => (amount - 1.).floor().clamp(1., SAFETY_MAX_COUNT),
 	};
 
 	// Skip if there are no points to generate.

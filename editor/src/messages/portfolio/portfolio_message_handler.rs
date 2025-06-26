@@ -441,7 +441,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
 
 				const TEXT_REPLACEMENTS: [(&str, &str); 2] = [
-					("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePointsNode"),
+					("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
 					("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
 				];
 				let document_serialized_content = TEXT_REPLACEMENTS
@@ -1073,6 +1073,29 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						);
 
 						document.network_interface.replace_reference_name(node_id, network_path, "Merge by Distance".to_string());
+					}
+
+					if reference == "Sample Points" && inputs_count == 5 {
+						let node_definition = resolve_document_node_type("Sample Polyline").unwrap();
+						let new_node_template = node_definition.default_node_template();
+						let document_node = new_node_template.document_node;
+						document.network_interface.replace_implementation(node_id, network_path, document_node.implementation.clone());
+						document
+							.network_interface
+							.replace_implementation_metadata(node_id, network_path, new_node_template.persistent_node_metadata);
+
+						let old_inputs = document.network_interface.replace_inputs(node_id, document_node.inputs.clone(), network_path);
+						let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
+
+						document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 1), new_spacing_value, network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[1].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[2].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+						document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
+
+						document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
 					}
 				}
 
