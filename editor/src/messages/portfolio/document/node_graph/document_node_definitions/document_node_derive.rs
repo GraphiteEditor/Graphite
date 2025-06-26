@@ -13,16 +13,16 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			document_node: DocumentNode { implementation, .. },
 			..
 		} = node_template;
+
 		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation {
 			if let Some((new_name, _suffix)) = name.rsplit_once("<") {
 				*name = Cow::Owned(new_name.to_string())
 			}
 		};
 	}
+
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	'outer: for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
-		let id = id.clone();
-
 		for node in custom.iter() {
 			let DocumentNodeDefinition {
 				node_template: NodeTemplate {
@@ -32,7 +32,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 				..
 			} = node;
 			match implementation {
-				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == &id => continue 'outer,
+				DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) if name == id => continue 'outer,
 				_ => (),
 			}
 		}
@@ -44,13 +44,13 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			description,
 			properties,
 		} = metadata;
-		let Some(implementations) = &node_registry.get(&id) else { continue };
+
+		let Some(implementations) = &node_registry.get(id) else { continue };
+
 		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
-		let mut input_type = &first_node_io.call_argument;
-		if valid_inputs.len() > 1 {
-			input_type = &const { generic!(D) };
-		}
+
+		let input_type = if valid_inputs.len() > 1 { &const { generic!(D) } } else { &first_node_io.call_argument };
 		let output_type = &first_node_io.return_value;
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
@@ -86,7 +86,9 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			description: Cow::Borrowed(description),
 			properties: *properties,
 		};
+
 		custom.push(node);
 	}
+
 	custom
 }

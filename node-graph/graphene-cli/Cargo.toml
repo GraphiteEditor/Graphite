@@ -12,11 +12,7 @@ wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
 wayland = ["graphene-std/wayland"]
 profiling = ["wgpu-executor/profiling"]
 passthrough = ["wgpu-executor/passthrough"]
-gpu = [
-	"interpreted-executor/gpu",
-	"graphene-std/gpu",
-	"wgpu-executor",
-]
+gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "wgpu-executor"]
 
 [dependencies]
 # Local dependencies
@@ -24,7 +20,7 @@ graphene-core = { workspace = true }
 graphene-std = { workspace = true }
 interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
-preprocessor = { path = "../preprocessor" }
+preprocessor = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }

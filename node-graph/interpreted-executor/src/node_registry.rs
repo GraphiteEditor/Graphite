@@ -137,6 +137,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	];
 	node_types.extend(
 		[
+			convert_node!(from: f32, to: numbers),
+			convert_node!(from: f64, to: numbers),
 			convert_node!(from: i8, to: numbers),
 			convert_node!(from: u8, to: numbers),
 			convert_node!(from: u16, to: numbers),
@@ -145,12 +147,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			convert_node!(from: u32, to: numbers),
 			convert_node!(from: i64, to: numbers),
 			convert_node!(from: u64, to: numbers),
-			convert_node!(from: isize, to: numbers),
-			convert_node!(from: usize, to: numbers),
 			convert_node!(from: i128, to: numbers),
 			convert_node!(from: u128, to: numbers),
-			convert_node!(from: f32, to: numbers),
-			convert_node!(from: f64, to: numbers),
+			convert_node!(from: isize, to: numbers),
+			convert_node!(from: usize, to: numbers),
 		]
 		.into_iter()
 		.flatten(),
@@ -169,12 +169,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// This occurs for the ChannelMixerNode presumably because of the long name.
 		// This might be caused by the stringify! macro
 		let mut new_name = id.name.replace('\n', " ");
-		// Remove struct generics for all nodes except for the IntoNode
+
+		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
 		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode")) {
 			if let Some((path, _generics)) = new_name.split_once("<") {
 				new_name = path.to_string();
 			}
 		}
+
 		let nid = ProtoNodeIdentifier { name: Cow::Owned(new_name) };
 		map.entry(nid).or_default().insert(types.clone(), c);
 	}
@@ -240,6 +242,8 @@ mod node_registry_macros {
 	macro_rules! convert_node {
 		(from: $from:ty, to: numbers) => {{
 			let x: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				convert_node!(from: $from, to: f32),
+				convert_node!(from: $from, to: f64),
 				convert_node!(from: $from, to: i8),
 				convert_node!(from: $from, to: u8),
 				convert_node!(from: $from, to: u16),
@@ -248,12 +252,10 @@ mod node_registry_macros {
 				convert_node!(from: $from, to: u32),
 				convert_node!(from: $from, to: i64),
 				convert_node!(from: $from, to: u64),
-				convert_node!(from: $from, to: isize),
-				convert_node!(from: $from, to: usize),
 				convert_node!(from: $from, to: i128),
 				convert_node!(from: $from, to: u128),
-				convert_node!(from: $from, to: f32),
-				convert_node!(from: $from, to: f64),
+				convert_node!(from: $from, to: isize),
+				convert_node!(from: $from, to: usize),
 			];
 			x
 		}};

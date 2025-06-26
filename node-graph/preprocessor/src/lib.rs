@@ -1,8 +1,7 @@
-use graph_craft::ProtoNodeIdentifier;
-use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
+use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
@@ -11,6 +10,7 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<String,
 	if network.generated {
 		return;
 	}
+
 	for node in network.nodes.values_mut() {
 		match &mut node.implementation {
 			DocumentNodeImplementation::Network(node_network) => expand_network(node_network, substitutions),
@@ -64,27 +64,24 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
+
 							let into_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
 							};
 							let convert_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::ConvertNode<{}>", input_ty.clone()).into(),
 							};
-							let proto_node = if into_node_registry.iter().any(|(ident, _)| {
-								let ident = ident.name.as_ref();
-								ident == into_node_identifier.name.as_ref()
-							}) {
+
+							let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.name.as_ref() == into_node_identifier.name.as_ref()) {
 								generated_nodes += 1;
 								into_node_identifier
-							} else if into_node_registry.iter().any(|(ident, _)| {
-								let ident = ident.name.as_ref();
-								ident == convert_node_identifier.name.as_ref()
-							}) {
+							} else if into_node_registry.keys().any(|ident| ident.name.as_ref() == convert_node_identifier.name.as_ref()) {
 								generated_nodes += 1;
 								convert_node_identifier
 							} else {
 								identity_node.clone()
 							};
+
 							DocumentNode {
 								inputs: vec![NodeInput::network(input.clone(), i)],
 								// manual_composition: Some(fn_input.clone()),
@@ -116,6 +113,7 @@ pub fn generate_node_substitutions() -> HashMap<String, DocumentNode> {
 			skip_deduplication: false,
 			..Default::default()
 		};
+
 		nodes.insert(NodeId(input_count as u64), document_node);
 
 		let node = DocumentNode {

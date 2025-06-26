@@ -45,6 +45,7 @@ pub struct NodeRuntime {
 	/// Which node is inspected and which monitor node is used (if any) for the current execution
 	inspect_state: Option<InspectState>,
 
+	/// Mapping of the fully-qualified node paths to their preprocessor substitutions.
 	substitutions: HashMap<String, DocumentNode>,
 
 	// TODO: Remove, it doesn't need to be persisted anymore
@@ -228,6 +229,7 @@ impl NodeRuntime {
 	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
 		#[cfg(not(test))]
 		preprocessor::expand_network(&mut graph, &self.substitutions);
+
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		// We assume only one output

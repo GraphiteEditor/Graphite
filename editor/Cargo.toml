@@ -13,10 +13,7 @@ license = "Apache-2.0"
 [features]
 default = ["wasm"]
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
-gpu = [
-	"interpreted-executor/gpu",
-	"wgpu-executor",
-]
+gpu = ["interpreted-executor/gpu", "wgpu-executor"]
 tauri = ["ron", "decouple-execution"]
 decouple-execution = []
 resvg = ["graphene-std/resvg"]
@@ -29,7 +26,7 @@ graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
 graphene-std = { workspace = true }
-preprocessor = { path = "../node-graph/preprocessor" }
+preprocessor = { workspace = true }
 
 # Workspace dependencies
 js-sys = { workspace = true }
