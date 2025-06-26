@@ -39,15 +39,34 @@ impl Pivot {
 			return;
 		}
 
-		if !document.network_interface.selected_nodes().has_selected_nodes() {
+		let selected_nodes = document.network_interface.selected_nodes();
+		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
+		let Some(first) = layers.next() else {
+			// If no layers are selected then we revert things back to default
 			self.normalized_pivot = DVec2::ZERO;
 			self.pivot = None;
 			return;
 		};
 
-		let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
-		self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+		// Add one because the first item is consumed above.
+		let selected_layers_count = layers.count() + 1;
+
+		// If just one layer is selected we can use its inner transform (as it accounts for rotation)
+		if selected_layers_count == 1 {
+			let [min, max] = document.metadata().nonzero_bounding_box(first);
+			self.transform_from_normalized = {
+				let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+				let layer_transform = document.metadata().transform_to_viewport(first);
+				layer_transform * bounds_transform
+			};
+			self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+		} else {
+			let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			debug!("[{} {}]", min, max);
+			self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+			self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+			debug!("{:?}", self.pivot);
+		}
 	}
 
 	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>, draw: bool) {

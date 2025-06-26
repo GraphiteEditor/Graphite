@@ -56,8 +56,8 @@ pub enum NestedSelectionBehavior {
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DotType {
-	#[default]
 	Origin,
+	#[default]
 	Pivot,
 	Off,
 }
@@ -1033,12 +1033,6 @@ impl Fsm for SelectToolFsmState {
 					if !extend && !input.keyboard.key(remove_from_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
-
-						if tool_data.dot_type.is_pivot() && false {
-							responses.add(SelectToolMessage::SetPivot {
-								position: tool_data.pivot.old_pivot_position,
-							});
-						}
 					}
 
 					if let Some(intersection) = intersection {
