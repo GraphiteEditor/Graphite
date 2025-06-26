@@ -2,7 +2,6 @@
 
 use crate::consts::PIVOT_DIAMETER;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::transform::ReferencePoint;
@@ -40,53 +39,15 @@ impl Pivot {
 			return;
 		}
 
-		let selected_nodes = document.network_interface.selected_nodes();
-		let mut layers = selected_nodes.selected_visible_and_unlocked_layers(&document.network_interface);
-		let Some(first) = layers.next() else {
-			// If no layers are selected then we revert things back to default
+		if !document.network_interface.selected_nodes().has_selected_nodes() {
 			self.normalized_pivot = DVec2::ZERO;
 			self.pivot = None;
 			return;
 		};
 
-
-		// Add one because the first item is consumed above.
-		let selected_layers_count = layers.count() + 1;
-
-		// If just one layer is selected we can use its inner transform (as it accounts for rotation)
-		if selected_layers_count == 1 {
-			self.transform_from_normalized = Self::get_layer_pivot_transform(first, document);
-			self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
-		} else {
-			// If more than one layer is selected we use the AABB with the mean of the pivots
-			let get_viewport = |layer: LayerNodeIdentifier| {
-				let [min, max] = document.network_interface.document_metadata().nonzero_bounding_box(layer);
-				let pivot = self.normalized_pivot;
-				document.network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
-			};
-			let xy_summation = document
-				.network_interface
-				.selected_nodes()
-				.selected_visible_and_unlocked_layers(&document.network_interface)
-				.map(get_viewport)
-				.reduce(|a, b| a + b)
-				.unwrap_or_default();
-
-			let pivot = xy_summation / selected_layers_count as f64;
-			self.pivot = Some(pivot);
-			let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
-			self.normalized_pivot = (pivot - min) / (max - min);
-
-			self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-		}
-	}
-
-	fn get_layer_pivot_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-		let [min, max] = document.metadata().nonzero_bounding_box(layer);
-
-		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-		let layer_transform = document.metadata().transform_to_viewport(layer);
-		layer_transform * bounds_transform
+		let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+		self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
 	}
 
 	pub fn update(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, draw_data: Option<(f64,)>, draw: bool) {
