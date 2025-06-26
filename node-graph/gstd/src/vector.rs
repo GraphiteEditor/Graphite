@@ -1,6 +1,7 @@
 use bezier_rs::{ManipulatorGroup, Subpath};
 use glam::{DAffine2, DVec2};
 use graphene_core::instances::{Instance, InstanceRef};
+use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::misc::BooleanOperation;
 use graphene_core::vector::style::Fill;
 pub use graphene_core::vector::*;

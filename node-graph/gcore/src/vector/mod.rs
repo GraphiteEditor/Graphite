@@ -1,4 +1,4 @@
-mod algorithms;
+pub mod algorithms;
 pub mod brush_stroke;
 pub mod click_target;
 pub mod generator_nodes;
