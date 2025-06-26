@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { FillChoice } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+	import type { FillChoice } from "@graphite/messages.svelte";
+	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages.svelte";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

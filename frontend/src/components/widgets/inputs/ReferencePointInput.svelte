@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ReferencePoint } from "@graphite/messages";
+	import type { ReferencePoint } from "@graphite/messages.svelte";
 
 	interface Props {
 		value: string;

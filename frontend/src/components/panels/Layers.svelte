@@ -11,11 +11,12 @@
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
-	} from "@graphite/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
+	} from "@graphite/messages.svelte";
+	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages.svelte";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
+	import type { WidgetLayout as WidgetLayoutState } from "@graphite/messages.svelte";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -60,24 +61,21 @@
 	let layerToClipAltKeyPressed = $state(false);
 
 	// Layouts
-	let layersPanelControlBarLeftLayout = $state(defaultWidgetLayout());
-	let layersPanelControlBarRightLayout = $state(defaultWidgetLayout());
-	let layersPanelBottomBarLayout = $state(defaultWidgetLayout());
+	let layersPanelControlBarLeftLayout = $state<WidgetLayoutState>(defaultWidgetLayout());
+	let layersPanelControlBarRightLayout = $state<WidgetLayoutState>(defaultWidgetLayout());
+	let layersPanelBottomBarLayout = $state<WidgetLayoutState>(defaultWidgetLayout());
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
 			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
-			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
 			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
-			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
 			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
-			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
@@ -182,7 +180,7 @@
 
 		draggable = false;
 		listing.editingName = true;
-		layers = layers;
+		// layers = layers;
 
 		await tick();
 
@@ -197,7 +195,7 @@
 
 		draggable = true;
 		listing.editingName = false;
-		layers = layers;
+		// layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
 		editor.handle.setLayerName(listing.entry.id, name);
@@ -207,7 +205,7 @@
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
 		draggable = true;
 		listing.editingName = false;
-		layers = layers;
+		// layers = layers;
 
 		// Set it back to the original name if the user didn't enter a new name
 		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.alias;
@@ -472,7 +470,7 @@
 			});
 		};
 		recurse(updateDocumentLayerStructure);
-		layers = layers;
+		// layers = layers;
 	}
 
 	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
@@ -481,12 +479,12 @@
 		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
 		if (layer) {
 			layer.entry = targetLayer;
-			layers = layers;
+			// layers = layers;
 		}
 	}
 </script>
 
-<LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
+<LayoutCol class="layers" ondragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
 		<Separator />
@@ -498,10 +496,10 @@
 			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
 			data-layer-panel
 			bind:this={list}
-			on:click={() => deselectAllLayers()}
-			on:dragover={updateInsertLine}
-			on:dragend={drop}
-			on:drop={drop}
+			onclick={() => deselectAllLayers()}
+			ondragover={updateInsertLine}
+			ondragend={drop}
+			ondrop={drop}
 		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
@@ -519,8 +517,8 @@
 					data-index={index}
 					tooltip={listing.entry.tooltip}
 					{draggable}
-					on:dragstart={(e) => draggable && dragStart(e, listing)}
-					on:click={(e) => selectLayerWithModifiers(e, listing)}
+					ondragstart={(e) => draggable && dragStart(e, listing)}
+					onclick={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if listing.entry.childrenAllowed}
 						<button
@@ -547,7 +545,7 @@
 					{#if listing.entry.name === "Artboard"}
 						<IconLabel icon="Artboard" class={"layer-type-icon"} />
 					{/if}
-					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
+					<LayoutRow class="layer-name" ondblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"

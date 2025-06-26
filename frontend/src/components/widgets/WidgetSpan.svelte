@@ -2,8 +2,8 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
-	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
+	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages.svelte";
+	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages.svelte";
 	import { debouncer } from "@graphite/utility-functions/debounce";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -80,6 +80,7 @@
 	let extraClasses = $derived(Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" "));
+
 	let direction = $derived(watchDirection(widgetData));
 	let widgets = $derived(watchWidgets(widgetData));
 </script>
@@ -175,11 +176,11 @@
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
-			<TextButton {...exclude(textButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
+			<TextButton {...exclude(textButton)} onclick={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
 		{#if breadcrumbTrailButtons}
-			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} action={(breadcrumbIndex) => widgetValueCommitAndUpdate(index, breadcrumbIndex)} />
+			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} onclick={(breadcrumbIndex) => widgetValueCommitAndUpdate(index, breadcrumbIndex)} />
 		{/if}
 		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
 		{#if textInput}

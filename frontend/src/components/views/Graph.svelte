@@ -4,8 +4,8 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node } from "@graphite/messages";
-	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/messages";
+	import type { Node } from "@graphite/messages.svelte";
+	import type { FrontendNodeWire, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/messages.svelte";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -40,7 +40,9 @@
 	let outputs: SVGSVGElement[][] = $state([]);
 	let nodeElements: HTMLDivElement[] = $state([]);
 
-
+	// $inspect("Nodes", $nodeGraph.nodes).with(console.info);
+	// $inspect("Outputs", outputs).with(console.info);
+	// $inspect("Inputs", inputs).with(console.info);
 
 
 	let inputElement: HTMLInputElement | undefined = $state();
@@ -123,12 +125,16 @@
 	}
 
 	async function watchNodes(nodes: Map<bigint, FrontendNode>) {
-		Array.from(nodes.keys()).forEach((_, index) => {
-			if (!inputs[index + 1]) inputs[index + 1] = [];
-			if (!outputs[index + 1]) outputs[index + 1] = [];
-		});
 		if (!inputs[0]) inputs[0] = [];
 		if (!outputs[0]) outputs[0] = [];
+		let length = nodes.size;
+
+		let diff = length - inputs.length;
+
+		if (diff > 0) {
+			inputs.push(...Array.from({ length: diff }, () => []))
+			outputs.push(...Array.from({ length: diff }, () => []))
+		}
 
 		await refreshWires();
 	}
@@ -690,7 +696,7 @@
 				</LayoutRow>
 				<Separator type="Section" direction="Vertical" />
 				<LayoutRow class="merge-selected-nodes">
-					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
+					<TextButton label="Merge Selected Nodes" onclick={() => editor.handle.mergeSelectedNodes()} />
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
@@ -740,62 +746,66 @@
 
 	<!-- Import and Export ports -->
 	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		{#each $nodeGraph.imports as { outputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="output"
-				data-datatype={outputMetadata.dataType}
-				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-				bind:this={outputs[0][index]}
-			>
-				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
-				{#if outputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
+		<!-- // TODO: SM17 Check data order, had to add condition to fix undefined error -->
+		{#if outputs.length > 0}
+			{#each $nodeGraph.imports as { outputMetadata, position }, index}
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 8 8"
+					class="port"
+					data-port="output"
+					data-datatype={outputMetadata.dataType}
+					style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
+					style:--offset-left={position.x / 24}
+					style:--offset-top={position.y / 24}
+					bind:this={outputs[0][index]}
+				>
+					<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
+					{#if outputMetadata.connectedTo !== undefined}
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+					{:else}
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+					{/if}
+				</svg>
 
-			<div
-				class="edit-import-export import"
-				onpointerenter={() => (hoveringImportIndex = index)}
-				onpointerleave={() => (hoveringImportIndex = undefined)}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				{#if editingNameImportIndex == index}
-					<input
-						class="import-text-input"
-						type="text"
-						style:width={importsToEdgeTextInputWidth()}
-						bind:this={inputElement}
-						bind:value={editingNameText}
-						onblur={setEditingImportName}
-						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
-					/>
-				{:else}
-					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
-				{/if}
-				{#if hoveringImportIndex === index || editingNameImportIndex === index}
-					<IconButton
-						size={16}
-						icon={"Remove"}
-						class="remove-button-import"
-						data-index={index}
-						data-import-text-edge
-						onclick={() => {
-							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-						}}
-					/>
-					<div class="reorder-drag-grip" title="Reorder this import"></div>
-				{/if}
-			</div>
-		{/each}
+				<div
+					class="edit-import-export import"
+					onpointerenter={() => (hoveringImportIndex = index)}
+					onpointerleave={() => (hoveringImportIndex = undefined)}
+					style:--offset-left={position.x / 24}
+					style:--offset-top={position.y / 24}
+				>
+					{#if editingNameImportIndex == index}
+						<input
+							class="import-text-input"
+							type="text"
+							style:width={importsToEdgeTextInputWidth()}
+							bind:this={inputElement}
+							bind:value={editingNameText}
+							onblur={setEditingImportName}
+							onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+						/>
+					{:else}
+						<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+					{/if}
+					{#if hoveringImportIndex === index || editingNameImportIndex === index}
+						<IconButton
+							size={16}
+							icon={"Remove"}
+							class="remove-button-import"
+							data-index={index}
+							data-import-text-edge
+							onclick={() => {
+								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+							}}
+						/>
+						<div class="reorder-drag-grip" title="Reorder this import"></div>
+					{/if}
+				</div>
+			{/each}
+		{/if}
+
 		{#if $nodeGraph.reorderImportIndex !== undefined}
 			{@const position = {
 				x: Number($nodeGraph.imports[0].position.x),
@@ -932,7 +942,7 @@
 						{@html $nodeGraph.thumbnails.get(node.id)}
 					{/if}
 					<!-- Layer stacking top output -->
-					{#if node.primaryOutput}
+					{#if node.primaryOutput && outputs[nodeIndex + 1]?.length > 0}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
@@ -1062,7 +1072,7 @@
 				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
-			>
+				>
 				{#if node.errors}
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>

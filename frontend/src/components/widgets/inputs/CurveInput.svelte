@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Curve, CurveManipulatorGroup } from "@graphite/messages";
+	import type { Curve, CurveManipulatorGroup } from "@graphite/messages.svelte";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

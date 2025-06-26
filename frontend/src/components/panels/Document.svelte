@@ -15,7 +15,7 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		isWidgetSpanRow,
-	} from "@graphite/messages";
+	} from "@graphite/messages.svelte";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
-	import type { FrontendNodeType } from "@graphite/messages";
+	import type { FrontendNodeType } from "@graphite/messages.svelte";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -112,7 +112,13 @@
 	onMount(() => {
 		setTimeout(() => nodeSearchInput?.focus(), 0);
 	});
-	let nodeCategories = $derived(buildNodeCategories($nodeGraph.nodeTypes, searchTerm));
+
+	let nodeCategories = $state<[string, NodeCategoryDetails][]>([]);
+
+	$effect(() => {
+		nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
+	})
+
 </script>
 
 <div class="node-catalog">
@@ -129,7 +135,7 @@
 					<TextLabel>{nodeCategory[0]}</TextLabel>
 				</summary>
 				{#each nodeCategory[1].nodes as nodeType}
-					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} action={() => onselectNodeType?.(nodeType.name)} />
+					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} onclick={() => onselectNodeType?.(nodeType.name)} />
 				{/each}
 			</details>
 		{:else}
