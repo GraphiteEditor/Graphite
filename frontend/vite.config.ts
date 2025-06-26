@@ -34,16 +34,7 @@ const ALLOWED_LICENSES = [
 	"NCSA",
 ];
 
-const runesGlobs = [
-	"**/components/layout/*.svelte",
-	"**/components/widgets/labels/*.svelte",
-	"**/components/widgets/buttons/*.svelte",
-	"**/components/widgets/inputs/*.svelte",
-	"**/components/floating-menus/MenuList.svelte",
-	"**/components/floating-menus/ColorPicker.svelte",
-	"**/components/floating-menus/Dialog.svelte",
-	"**/components/window/workspace/Panel.svelte",
-];
+const runesGlobs = ["**/*.svelte"];
 
 function forceRunes(filePath: string): boolean {
 	const relativePath = filePath.slice(filePath.indexOf("src"));

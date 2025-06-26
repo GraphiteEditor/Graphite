@@ -19,8 +19,13 @@
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite WASM editor
-	export let editor: Editor;
+	
+	interface Props {
+		// Graphite WASM editor
+		editor: Editor;
+	}
+
+	let { editor }: Props = $props();
 	setContext("editor", editor);
 
 	// State provider systems

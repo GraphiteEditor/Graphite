@@ -13,8 +13,12 @@
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
 
-	export let platform: Graphite.Platform;
-	export let maximized: boolean;
+	interface Props {
+		platform: Graphite.Platform;
+		maximized: boolean;
+	}
+
+	let { platform, maximized }: Props = $props();
 
 	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
@@ -29,11 +33,11 @@
 		[ACCEL_KEY, "Shift", "KeyT"],
 	];
 
-	let entries: MenuListEntry[] = [];
+	let entries: MenuListEntry[] = $state([]);
 
-	$: docIndex = $portfolio.activeDocumentIndex;
-	$: displayName = $portfolio.documents[docIndex]?.displayName || "";
-	$: windowTitle = `${displayName}${displayName && " - "}Graphite`;
+	let docIndex = $derived($portfolio.activeDocumentIndex);
+	let displayName = $derived($portfolio.documents[docIndex]?.displayName || "");
+	let windowTitle = $derived(`${displayName}${displayName && " - "}Graphite`);
 
 	onMount(() => {
 		const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);

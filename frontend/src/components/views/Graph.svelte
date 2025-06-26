@@ -26,21 +26,16 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	let graph: HTMLDivElement | undefined;
+	let graph: HTMLDivElement | undefined = $state();
 
-	// Key value is node id + input/output index
-	// Imports/Export are stored at a key value of 0
 
-	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
-	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
+	let inputElement  = $state<HTMLInputElement>();
+	let hoveringImportIndex = $state<number>();
+	let hoveringExportIndex = $state<number>()
 
-	let inputElement: HTMLInputElement;
-	let hoveringImportIndex: number | undefined = undefined;
-	let hoveringExportIndex: number | undefined = undefined;
-
-	let editingNameImportIndex: number | undefined = undefined;
-	let editingNameExportIndex: number | undefined = undefined;
-	let editingNameText = "";
+	let editingNameImportIndex = $state<number>();
+	let editingNameExportIndex = $state<number>();
+	let editingNameText = $state<string>("");
 
 	function exportsToEdgeTextInputWidth() {
 		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
@@ -230,6 +225,11 @@
 		}
 		return result;
 	}
+	// Key value is node id + input/output index
+	// Imports/Export are stored at a key value of 0
+
+	let gridSpacing = $derived(calculateGridSpacing($nodeGraph.transform.scale));
+	let dotRadius = $derived(1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2);
 </script>
 
 <div
@@ -252,9 +252,9 @@
 			}}
 		>
 			{#if typeof $nodeGraph.contextMenuInformation.contextMenuData === "string" && $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog onselectNodeType={(e) => createNode(e)} />
 			{:else if $nodeGraph.contextMenuInformation.contextMenuData && "compatibleType" in $nodeGraph.contextMenuInformation.contextMenuData}
-				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} onselectNodeType={(e) => createNode(e)} />
 			{:else}
 				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">
@@ -356,8 +356,8 @@
 
 			<div
 				class="edit-import-export import"
-				on:pointerenter={() => (hoveringImportIndex = index)}
-				on:pointerleave={() => (hoveringImportIndex = undefined)}
+				onpointerenter={() => (hoveringImportIndex = index)}
+				onpointerleave={() => (hoveringImportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
 			>
@@ -368,11 +368,11 @@
 						style:width={importsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
-						on:blur={setEditingImportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+						onblur={setEditingImportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingImportName(e)}
 					/>
 				{:else}
-					<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+					<p class="import-text" ondblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
 				{/if}
 				{#if hoveringImportIndex === index || editingNameImportIndex === index}
 					<IconButton
@@ -394,7 +394,7 @@
 				x: Number($nodeGraph.imports[0].position.x),
 				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24} />
+			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24}></div>
 		{/if}
 		{#if $nodeGraph.addImport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
@@ -428,8 +428,8 @@
 			</svg>
 			<div
 				class="edit-import-export export"
-				on:pointerenter={() => (hoveringExportIndex = index)}
-				on:pointerleave={() => (hoveringExportIndex = undefined)}
+				onpointerenter={() => (hoveringExportIndex = index)}
+				onpointerleave={() => (hoveringExportIndex = undefined)}
 				style:--offset-left={position.x / 24}
 				style:--offset-top={position.y / 24}
 			>
@@ -452,11 +452,11 @@
 						style:width={exportsToEdgeTextInputWidth()}
 						bind:this={inputElement}
 						bind:value={editingNameText}
-						on:blur={setEditingExportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+						onblur={setEditingExportName}
+						onkeydown={(e) => e.key === "Enter" && setEditingExportName(e)}
 					/>
 				{:else}
-					<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
+					<p class="export-text" ondblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
 				{/if}
 			</div>
 		{/each}
@@ -465,7 +465,7 @@
 				x: Number($nodeGraph.exports[0].position.x),
 				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
 			}}
-			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
+			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24}></div>
 		{/if}
 		{#if $nodeGraph.addExport !== undefined}
 			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>

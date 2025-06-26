@@ -22,21 +22,12 @@
 		/*         └─ */ layers: 55,
 	};
 
-	let panelSizes = PANEL_SIZES;
-	let documentPanel: Panel | undefined;
+	let panelSizes = $state(PANEL_SIZES);
+	let documentPanel: Panel | undefined = $state();
 	let gutterResizeRestore: [number, number] | undefined = undefined;
 	let pointerCaptureId: number | undefined = undefined;
 
-	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
-	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
-		const name = doc.displayName;
-
-		if (!editor.handle.inDevelopmentMode()) return { name };
-
-		const tooltip = `Document ID: ${doc.id}`;
-		return { name, tooltip };
-	});
 
 	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
@@ -130,6 +121,17 @@
 
 		addListeners();
 	}
+	$effect(() => {
+		documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
+	});
+	let documentTabLabels = $derived($portfolio.documents.map((doc: FrontendDocumentDetails) => {
+		const name = doc.displayName;
+
+		if (!editor.handle.inDevelopmentMode()) return { name };
+
+		const tooltip = `Document ID: ${doc.id}`;
+		return { name, tooltip };
+	}));
 </script>
 
 <LayoutRow class="workspace" data-workspace>

@@ -6,10 +6,14 @@
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 	import WidgetTable from "@graphite/components/widgets/WidgetTable.svelte";
 
-	export let layout: WidgetLayout;
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	
+	interface Props {
+		layout: WidgetLayout;
+		class?: string;
+		classes?: Record<string, boolean>;
+	}
+
+	let { layout, class: className = "", classes = {} }: Props = $props();
 </script>
 
 {#each layout.layout as layoutGroup}
