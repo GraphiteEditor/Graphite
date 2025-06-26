@@ -524,7 +524,7 @@ impl Fsm for TextToolFsmState {
 						}
 
 						bounding_box_manager.render_overlays(&mut overlay_context, false);
-						// tool_data.pivot.update_pivot(document, &mut overlay_context, None);
+						tool_data.pivot.update(document, &mut overlay_context, None, true);
 					}
 				} else {
 					tool_data.bounding_box_manager.take();

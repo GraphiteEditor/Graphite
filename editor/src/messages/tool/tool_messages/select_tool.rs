@@ -68,7 +68,7 @@ impl DotType {
 	}
 
 	pub fn is_origin(self) -> bool {
-		self == Self::Pivot
+		self == Self::Origin
 	}
 }
 

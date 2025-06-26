@@ -35,26 +35,6 @@ impl Default for Pivot {
 
 impl Pivot {
 	/// Recomputes the pivot position and transform.
-	// fn recalculate_transform(&mut self, document: &DocumentMessageHandler) {
-	// 	if !self.active {
-	// 		self.pivot = None;
-	// 		return;
-	// 	}
-	//
-	// 	if !document.network_interface.selected_nodes().has_selected_nodes() {
-	// 		self.pivot = None;
-	// 		return;
-	// 	}
-	//
-	// 	let Some([min, max]) = document.selected_visible_and_unlock_layers_bounding_box_viewport() else {
-	// 		self.pivot = None;
-	// 		return;
-	// 	};
-	//
-	// 	self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
-	// 	self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
-	// }
-
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
 		if !self.active {
 			return;
@@ -69,12 +49,39 @@ impl Pivot {
 			return;
 		};
 
+
+		// Add one because the first item is consumed above.
+		let selected_layers_count = layers.count() + 1;
+
 		// If just one layer is selected we can use its inner transform (as it accounts for rotation)
-		self.transform_from_normalized = Self::get_layer_origin_transform(first, document);
-		self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+		if selected_layers_count == 1 {
+			self.transform_from_normalized = Self::get_layer_pivot_transform(first, document);
+			self.pivot = Some(self.transform_from_normalized.transform_point2(self.normalized_pivot));
+		} else {
+			// If more than one layer is selected we use the AABB with the mean of the pivots
+			let get_viewport = |layer: LayerNodeIdentifier| {
+				let [min, max] = document.network_interface.document_metadata().nonzero_bounding_box(layer);
+				let pivot = self.normalized_pivot;
+				document.network_interface.document_metadata().transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
+			};
+			let xy_summation = document
+				.network_interface
+				.selected_nodes()
+				.selected_visible_and_unlocked_layers(&document.network_interface)
+				.map(get_viewport)
+				.reduce(|a, b| a + b)
+				.unwrap_or_default();
+
+			let pivot = xy_summation / selected_layers_count as f64;
+			self.pivot = Some(pivot);
+			let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			self.normalized_pivot = (pivot - min) / (max - min);
+
+			self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
+		}
 	}
 
-	fn get_layer_origin_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
+	fn get_layer_pivot_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
 		let [min, max] = document.metadata().nonzero_bounding_box(layer);
 
 		let bounds_transform = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
