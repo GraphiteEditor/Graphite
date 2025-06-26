@@ -1226,20 +1226,20 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets
 }
 
-pub(crate) const SAMPLE_POINTS_TOOLTIP_SPACING: &str = "Use a point sampling density controlled by a distance between, or specific number of, points.";
-pub(crate) const SAMPLE_POINTS_TOOLTIP_SEPARATION: &str = "Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
-pub(crate) const SAMPLE_POINTS_TOOLTIP_QUANTITY: &str = "Number of points to place along the path.";
-pub(crate) const SAMPLE_POINTS_TOOLTIP_START_OFFSET: &str = "Exclude some distance from the start of the path before the first instance.";
-pub(crate) const SAMPLE_POINTS_TOOLTIP_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last instance.";
-pub(crate) const SAMPLE_POINTS_TOOLTIP_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_SPACING: &str = "Use a point sampling density controlled by a distance between, or specific number of, points.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_SEPARATION: &str = "Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_QUANTITY: &str = "Number of points to place along the path.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_START_OFFSET: &str = "Exclude some distance from the start of the path before the first instance.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last instance.";
+pub(crate) const SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
 
-pub(crate) fn sample_points_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	use graphene_std::vector::sample_points::*;
+pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::sample_polyline::*;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in sample_points_properties: {err}");
+			log::error!("Could not get document node in sample_polyline_properties: {err}");
 			return Vec::new();
 		}
 	};
@@ -1272,15 +1272,15 @@ pub(crate) fn sample_points_properties(node_id: NodeId, context: &mut NodeProper
 	);
 
 	vec![
-		spacing.with_tooltip(SAMPLE_POINTS_TOOLTIP_SPACING),
+		spacing.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_SPACING),
 		match current_spacing {
-			Some(TaggedValue::PointSpacingType(PointSpacingType::Separation)) => LayoutGroup::Row { widgets: separation }.with_tooltip(SAMPLE_POINTS_TOOLTIP_SEPARATION),
-			Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)) => LayoutGroup::Row { widgets: quantity }.with_tooltip(SAMPLE_POINTS_TOOLTIP_QUANTITY),
+			Some(TaggedValue::PointSpacingType(PointSpacingType::Separation)) => LayoutGroup::Row { widgets: separation }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_SEPARATION),
+			Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)) => LayoutGroup::Row { widgets: quantity }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_QUANTITY),
 			_ => LayoutGroup::Row { widgets: vec![] },
 		},
-		LayoutGroup::Row { widgets: start_offset }.with_tooltip(SAMPLE_POINTS_TOOLTIP_START_OFFSET),
-		LayoutGroup::Row { widgets: stop_offset }.with_tooltip(SAMPLE_POINTS_TOOLTIP_STOP_OFFSET),
-		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip(SAMPLE_POINTS_TOOLTIP_ADAPTIVE_SPACING),
+		LayoutGroup::Row { widgets: start_offset }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_START_OFFSET),
+		LayoutGroup::Row { widgets: stop_offset }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET),
+		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING),
 	]
 }
 

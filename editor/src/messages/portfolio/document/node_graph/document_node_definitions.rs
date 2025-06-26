@@ -1822,7 +1822,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Sample Points",
+			identifier: "Sample Polyline",
 			category: "Vector: Modifier",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -1846,7 +1846,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									NodeInput::network(concrete!(bool), 6),
 									NodeInput::node(NodeId(0), 0),
 								],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePointsNode")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePolylineNode")),
 								manual_composition: Some(generic!(T)),
 								..Default::default()
 							},
@@ -1900,7 +1900,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								},
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Sample Points".to_string(),
+										display_name: "Sample Polyline".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 										..Default::default()
 									},
@@ -1941,10 +1941,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					input_properties: vec![
 						("Vector Data", "The shape to be resampled and converted into a polyline.").into(),
-						Into::<PropertiesRow>::into(("Spacing", node_properties::SAMPLE_POINTS_TOOLTIP_SPACING)),
+						Into::<PropertiesRow>::into(("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING)),
 						PropertiesRow::with_override(
 							"Separation",
-							node_properties::SAMPLE_POINTS_TOOLTIP_SEPARATION,
+							node_properties::SAMPLE_POLYLINE_TOOLTIP_SEPARATION,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
@@ -1953,7 +1953,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						PropertiesRow::with_override(
 							"Quantity",
-							node_properties::SAMPLE_POINTS_TOOLTIP_QUANTITY,
+							node_properties::SAMPLE_POLYLINE_TOOLTIP_QUANTITY,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(2.),
 								is_integer: true,
@@ -1962,7 +1962,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						PropertiesRow::with_override(
 							"Start Offset",
-							node_properties::SAMPLE_POINTS_TOOLTIP_START_OFFSET,
+							node_properties::SAMPLE_POLYLINE_TOOLTIP_START_OFFSET,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
@@ -1971,21 +1971,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						PropertiesRow::with_override(
 							"Stop Offset",
-							node_properties::SAMPLE_POINTS_TOOLTIP_STOP_OFFSET,
+							node_properties::SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
 						),
-						Into::<PropertiesRow>::into(("Adaptive Spacing", node_properties::SAMPLE_POINTS_TOOLTIP_ADAPTIVE_SPACING)),
+						Into::<PropertiesRow>::into(("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING)),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
 			description: Cow::Borrowed("Convert vector geometry into a polyline composed of evenly spaced points."),
-			properties: Some("sample_points_properties"),
+			properties: Some("sample_polyline_properties"),
 		},
 		DocumentNodeDefinition {
 			identifier: "Scatter Points",
@@ -2358,7 +2358,7 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("math_properties".to_string(), Box::new(node_properties::math_properties));
 	map.insert("rectangle_properties".to_string(), Box::new(node_properties::rectangle_properties));
 	map.insert("grid_properties".to_string(), Box::new(node_properties::grid_properties));
-	map.insert("sample_points_properties".to_string(), Box::new(node_properties::sample_points_properties));
+	map.insert("sample_polyline_properties".to_string(), Box::new(node_properties::sample_polyline_properties));
 	map.insert(
 		"identity_properties".to_string(),
 		Box::new(|_node_id, _context| node_properties::string_properties("The identity node simply passes its data through.")),

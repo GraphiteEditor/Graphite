@@ -67,7 +67,7 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t: f64, euclidian: bool, segments_l
 	}
 }
 
-pub fn sample_points_on_bezpath(
+pub fn sample_polyline_on_bezpath(
 	bezpath: BezPath,
 	point_spacing_type: PointSpacingType,
 	amount: f64,
