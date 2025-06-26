@@ -1,6 +1,5 @@
 <script lang="ts">
 	import WidgetSection from './WidgetSection.svelte';
-	import { stopPropagation } from 'svelte/legacy';
 
 	import { getContext } from "svelte";
 
@@ -37,7 +36,10 @@
 
 <!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
-	<button class="header" class:expanded onclick={stopPropagation(() => (expanded = !expanded))} tabindex="0">
+	<button class="header" class:expanded onclick={(event) => {
+		event.stopPropagation();
+		expanded = !expanded;
+	}} tabindex="0">
 		<div class="expand-arrow"></div>
 		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
