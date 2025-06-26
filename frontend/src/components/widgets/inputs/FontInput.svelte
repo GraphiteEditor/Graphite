@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/messages";
+	import type { MenuListEntry } from "@graphite/messages.svelte";
 	import type { FontsState } from "@graphite/state-providers/fonts";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
